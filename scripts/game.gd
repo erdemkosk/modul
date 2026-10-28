@@ -31,6 +31,7 @@ var combat: Combat
 var arena := false
 var arena_node: Arena
 var cage: Cage
+var missions: Missions
 var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
@@ -52,13 +53,20 @@ func _ready() -> void:
 	_bind_keys()
 	arena = Mode.current == "arena"
 	var caged := Mode.current == "cage"
-	place_name = "KAFES" if caged else ("TEST ALANI" if arena else "VADİ")
+	var mission := Mode.current == "mission"
+	var md := Missions.find(Mode.mission) if mission else {}
+	place_name = "KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ"))
 	weather = Weather.new()
-	weather.hour = 21.6 if caged else 11.0 # (the cage fights at night, under its lights)
-	weather.day_length_minutes = 0.0 if arena or caged else 40.0
-	weather.preset = "clear"
+	weather.hour = 21.6 if caged else (float(md.hour) if mission else 11.0) # (the cage fights at night, under its lights)
+	weather.day_length_minutes = 0.0 if arena or caged or mission else 40.0
+	weather.preset = str(md.weather) if mission else "clear"
 	add_child(weather)
-	if caged:
+	if mission:
+		var mt := TestTerrain.new()
+		Missions.ground(Mode.mission, mt)
+		terrain = mt
+		add_child(mt)
+	elif caged:
 		var ct := TestTerrain.new()
 		ct.default_surface = Surface.preset("asphalt")
 		ct.noise_from = 52.0
@@ -121,15 +129,24 @@ func _ready() -> void:
 	add_child(_death)
 	if cage:
 		add_child(cage)
+	if mission:
+		missions = Missions.new()
+		missions.game = self
+		missions.terrain = terrain
+		missions.def = md
+		add_child(missions)
 	Settings.apply(get_tree())
 	machine.label = "SEN"
-	if cage == null: # (the cage opens on its start panel: the pointer stays free to press it)
+	if cage == null and missions == null: # (the cage and a mission open on their start panels: the pointer stays free)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
 
 
 func _start_xform() -> Transform3D:
+	if Mode.current == "mission":
+		var mp := Vector3(0.0, float(terrain.call("height_at", 0.0, -6.0)) + 1.5, -6.0)
+		return Transform3D(Basis(Vector3.UP, PI), mp) # (on the pad, facing the site)
 	if Mode.current == "cage":
 		var at := Vector3(-CageArena.HALF + 4.5, float(terrain.call("height_at", -CageArena.HALF + 4.5, -CageArena.HALF + 4.5)) + 1.5, -CageArena.HALF + 4.5)
 		return Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at)
@@ -207,6 +224,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("build"):
 		if cage and not cage.can_build() and not builder.active:
 			say("Dövüş sırasında araç değiştirilemez: turlar arası atölyede")
+		elif missions and not missions.can_build() and not builder.active:
+			say("Görev sürerken araç değiştirilemez: R ile baştan başla")
 		else:
 			if cage and not builder.active:
 				cage.on_build_open()
@@ -259,7 +278,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				spawn_enemy("tracked")
 				say("Dalga: iki akıncı, bir tank, bir paletli roketatar")
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active \
-			and not (cage and cage.panel_up()):
+			and not (cage and cage.panel_up()) and not (missions and missions.panel_up()):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -338,7 +357,7 @@ func _physics_process(dt: float) -> void:
 	_apply_armed() # (a rebuild makes the guns anew)
 	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
 	# is rebuilt where it started
-	if Input.is_physical_key_pressed(KEY_K) and cage == null:
+	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null:
 		_recover_t += dt
 		if _recover_t >= 1.5:
 			_recover_t = 0.0
@@ -368,6 +387,9 @@ func aim_point() -> Vector3:
 func _on_player_died() -> void:
 	if cage:
 		cage.on_player_died()
+		return
+	if missions:
+		missions.on_player_died()
 		return
 	var by := machine.last_hit_by
 	var who := by.label if is_instance_valid(by) and by != machine else ""
@@ -476,6 +498,6 @@ func _process(dt: float) -> void:
 
 
 static func _ground_name(label: String) -> String:
-	return {"asphalt": "asfalt", "gravel": "çakıl", "dirt": "toprak", "grass": "çimen", "rock": "kaya",
+	return {"asphalt": "asfalt", "concrete": "beton", "gravel": "çakıl", "dirt": "toprak", "grass": "çimen", "rock": "kaya",
 		"mud": "çamur", "bog": "bataklık", "snow": "kar", "snowpack": "sert kar", "wet": "ıslak zemin",
 		"ice": "buz"}.get(label, label)

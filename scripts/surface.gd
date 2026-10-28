@@ -37,6 +37,10 @@ static func preset(id: String) -> Surface:
 			s.color = Color(0.2, 0.2, 0.21)
 			s.grip = 1.0
 			s.rolling_resistance = 0.015
+		"concrete": # (a works yard: poured slabs, worn and dusty)
+			s.color = Color(0.46, 0.45, 0.43)
+			s.grip = 0.95
+			s.rolling_resistance = 0.016
 		"dirt":
 			pass
 		"ice":

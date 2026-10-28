@@ -120,6 +120,12 @@ func hitscan(from: Vector3, dir: Vector3, reach: float, damage: float, push: flo
 			_impact(end, hit.normal, "metal", 0.35)
 			if is_instance_valid(owner) and (body as Machine).team != owner.team:
 				hit_confirmed.emit(owner, false)
+		elif body is StructurePiece:
+			var sp := body as StructurePiece
+			sp.hit(damage, end, dir)
+			_impact(end, hit.normal, sp.chip_kind(), 0.4)
+			if is_instance_valid(owner):
+				hit_confirmed.emit(owner, false)
 		elif body is Breakable:
 			var br := body as Breakable
 			br.hit(damage, end, dir)
@@ -300,6 +306,9 @@ func flame(from: Vector3, dir: Vector3, reach: float, damage: float, owner: Mach
 			(body as Machine).blast(at, 1.4, heat * 5.0, 20.0, owner, "alev")
 			if is_instance_valid(owner) and (body as Machine).team != owner.team:
 				hit_confirmed.emit(owner, false)
+		elif body is StructurePiece and not burned.has(body):
+			burned[body] = true
+			(body as StructurePiece).heat(heat * 5.0)
 		elif body is Breakable:
 			(body as Breakable).hit(heat * 2.0, at, d)
 		elif randf() < 0.04 and not on_cooldown(at):
@@ -437,6 +446,7 @@ func explode(at: Vector3, radius: float, damage: float, push: float, owner: Mach
 		var d := maxf(br.center().distance_to(at) - reach * 0.6, 0.0)
 		if d < radius:
 			br.hit(damage * (1.0 - 0.5 * d / radius), at, (br.center() - at).normalized(), true)
+	_burst_pieces(at, radius, damage, push)
 	for d in _debris:
 		if is_instance_valid(d) and d.global_position.distance_to(at) < radius * 2.0:
 			var away := (d.global_position - at)
@@ -462,6 +472,34 @@ func explode(at: Vector3, radius: float, damage: float, push: float, owner: Mach
 	sound("res://assets/audio/explosion/close_0%d.wav" % randi_range(1, 3), at, 6.0, randf_range(0.9, 1.05))
 	if on_machine:
 		sound("res://assets/audio/explosion/debris_metal_0%d.wav" % randi_range(1, 2), at, 0.0, 1.0)
+
+
+## A burst on the structures' pieces in reach: hit by how near (to the piece, not its middle); the
+## loose ones pushed.
+func _burst_pieces(at: Vector3, radius: float, damage: float, push: float) -> void:
+	var q := PhysicsShapeQueryParameters3D.new()
+	var sph := SphereShape3D.new()
+	sph.radius = radius * 1.2
+	q.shape = sph
+	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.collision_mask = 1
+	var seen := {}
+	for h: Dictionary in get_world_3d().direct_space_state.intersect_shape(q, 48):
+		var p := h.collider as StructurePiece
+		if p == null or seen.has(p) or p.hp <= 0.0:
+			continue
+		seen[p] = true
+		var box := p.world_aabb()
+		var near := Vector3(clampf(at.x, box.position.x, box.end.x), clampf(at.y, box.position.y, box.end.y),
+			clampf(at.z, box.position.z, box.end.z)) # (the nearest point of it)
+		var d := near.distance_to(at)
+		if d > radius:
+			continue
+		var f := 1.0 - 0.6 * d / radius
+		var dir := (p.global_position - at).normalized()
+		p.hit(damage * f, near, dir, true)
+		if is_instance_valid(p) and not p.standing and p.hp > 0.0:
+			p.apply_impulse(dir * push * 0.15 * f, near - p.global_position)
 
 
 func _process(dt: float) -> void:

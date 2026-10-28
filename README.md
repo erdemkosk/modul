@@ -6,6 +6,13 @@ are this project's own.
 
 ## Play
 
+- **Görevler**: industrial sites to bring down, Besiege's way but our own: a water tower, a factory
+  chimney, fuel tanks, a warehouse, scaffolding, a transformer, a tower crane, a silo. Each is built
+  of pieces (steel shrugs off rounds, brick and concrete break into lumps, wood splinters and burns,
+  fuel goes up and lights what's round it); take out what holds a piece up and it comes down (a
+  water tower stands on three legs of four, not on two). The mud, snow and rain work on it all: wet
+  wood hardly catches, the rain puts fires out, wheels sink. Six missions, each opened by the one
+  before; stars by the time; some have guards (Forge's machines). Build first, then start.
 - **Kafes**: a six-round tournament in a small walled cage before a crowd. Each round lays its own
   floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals,
   built fresh for each run (`forge.gd`) and stronger each round; win by tearing them apart or leaving them unable to move for 8 s, or on the
@@ -97,7 +104,11 @@ are this project's own.
   `assets/audio/crowd` (CC0, see its CREDITS).
 - Fire control (`machine_gun.gd`): the cannon and the pod lay themselves over for their round's drop at
   the aim's range; the crosshair's rings show where each would land.
-- `scripts/game.gd`: both modes. `scripts/menu.gd`: the start.
+- Missions: `missions.gd` (the list, the yard, the flow, the record in user://missions.cfg),
+  `mission_ui.gd` (the brief, the clock and targets, markers, done and failed), `structure.gd` and
+  `structure_piece.gd` (what stands on what, falling, hit points by stuff, fire), `structures.gd`
+  (the industrial structures). The menu's GÖREVLER lists them.
+- `scripts/game.gd`: every mode. `scripts/menu.gd`: the start.
 
 ## Tests
 
@@ -112,5 +123,7 @@ godot --headless --path . -s res://tests/hazard_test.gd
 godot --headless --path . -s res://tests/ai_test.gd
 godot --headless --path . -s res://tests/designs_test.gd
 godot --headless --path . -s res://tests/flipper_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip]
+godot --headless --path . -s res://tests/structures_test.gd
+godot --headless --path . -s res://tests/missions_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id>]
 ```

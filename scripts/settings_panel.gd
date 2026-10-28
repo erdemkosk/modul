@@ -62,7 +62,7 @@ func _ready() -> void:
 	var again := Button.new()
 	again.text = "İPUÇLARINI YENİDEN GÖSTER"
 	again.focus_mode = Control.FOCUS_NONE
-	PauseMenu.style_button(again, false)
+	PauseMenu.style_button(again, true)
 	again.pressed.connect(func() -> void:
 		Hints.reset()
 		again.text = "İPUÇLARI YENİDEN GÖSTERİLECEK")

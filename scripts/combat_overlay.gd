@@ -238,6 +238,10 @@ func _draw() -> void:
 	# the machine you last hit, from above, at the top right
 	if _target_t > 0.0 and is_instance_valid(_target) and _target.alive:
 		_draw_target(Rect2(Vector2(screen.x - 230.0, 70.0), Vector2(200.0, 200.0)), font)
+	var ms: Variant = game.get("missions")
+	var cg: Variant = game.get("cage")
+	if (ms and (ms as Missions).panel_up()) or (cg and (cg as Cage).panel_up()):
+		return # (a start or end panel's up: nothing over the world)
 	# the enemy: the nearest first, each name nudged up off any already there
 	var me := _bound.global_position
 	var taken: Array[Rect2] = []

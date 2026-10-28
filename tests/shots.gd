@@ -16,6 +16,9 @@ var _arena := false
 var _polish := false
 var _forge := false
 var _flip := false
+var _sites := false
+var _mission := ""
+var _st := {}
 var _cage := false
 var _t := 0.0
 var _step := 0
@@ -44,10 +47,18 @@ func _initialize() -> void:
 			_forge = true
 		if a == "--flip":
 			_flip = true
+		if a == "--sites":
+			_sites = true
+		if a.begins_with("--mission="):
+			_mission = a.substr(10)
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
 	Mode.current = "valley" if _valley else ("cage" if _cage else "arena")
+	if _mission != "":
+		Mode.current = "mission"
+		Mode.mission = _mission
+		Missions.save_path = "user://shots_missions.cfg"
 	_g = load("res://scenes/game.tscn").instantiate()
 	root.add_child(_g)
 
@@ -83,7 +94,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else _arena_steps()))))))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else _arena_steps()))))))))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -159,6 +170,82 @@ func _flip_steps() -> Array:
 			_cam(PI * 0.62, -0.16, 9.5), func() -> void: _shoot("flip_air")],
 		[3.0, func(_s: float) -> void:
 			_cam(PI * 0.7, -0.22, 11.0), func() -> void: _shoot("flip_after")],
+	]
+
+
+## The sites' structures: standing in a row, then brought down (legs, the chimney's foot, fire).
+func _sites_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			var t: Node = _g.get("terrain")
+			var k := 0
+			for kind: String in ["water_tower", "chimney", "fuel_tank", "warehouse", "scaffold", "transformer", "crane", "silo"]:
+				var p := _m.global_transform * Vector3(-42.0 + k * 12.0, 0.0, -34.0 - (k % 2) * 6.0)
+				p.y = float(t.call("height_at", p.x, p.z))
+				var s := Structures.make(kind, Transform3D(Basis.IDENTITY, p), t)
+				_g.add_child(s)
+				_st[kind] = s
+				k += 1],
+		[2.0, func(_s: float) -> void:
+			_cam(PI * 0.0, -0.12, 30.0), func() -> void: _shoot("sites_standing")],
+		[1.0, func(_s: float) -> void:
+			_cam(PI * 0.1, -0.2, 16.0), func() -> void: _shoot("sites_close")],
+		[0.2, _noop, func() -> void:
+			var wt := _st.water_tower as Structure
+			# (picked out first: a piece that breaks leaves its structure's list)
+			for p in wt.pieces.filter(func(p: StructurePiece) -> bool: return p.grounded and p.size.y > 8.0 and p.global_position.x < wt.global_position.x):
+				p.hit(99999.0, p.global_position, Vector3.RIGHT, true)
+			var ch := _st.chimney as Structure
+			for p in ch.pieces.filter(func(p: StructurePiece) -> bool: return p.stuff == "brick" and p.global_position.y - ch.global_position.y < 2.0):
+				p.hit(99999.0, p.global_position, Vector3.RIGHT, true)
+			for kind: String in ["scaffold", "warehouse"]:
+				for p in (_st[kind] as Structure).pieces:
+					if p.stuff == "wood":
+						p.ignite()
+						break
+			for p in (_st.fuel_tank as Structure).pieces:
+				if p.stuff == "fuel":
+					p.ignite()],
+		[1.2, func(_s: float) -> void:
+			_cam(PI * 0.0, -0.12, 30.0), func() -> void: _shoot("sites_falling")],
+		[6.0, func(_s: float) -> void:
+			_cam(PI * 0.0, -0.12, 30.0), func() -> void: _shoot("sites_after")],
+	]
+
+
+## A mission: its brief, under way (the targets marked), coming down, done.
+func _mission_steps() -> Array:
+	return [
+		[3.0, func(_s: float) -> void:
+			_cam(PI, -0.28, 12.0), func() -> void: _shoot("mission_brief")],
+		[0.5, _noop, func() -> void:
+			var ms: Missions = _g.get("missions")
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			ms.start()],
+		[2.5, func(_s: float) -> void:
+			_m.throttle = 0.4
+			_cam(PI, -0.18, 12.0), func() -> void: _shoot("mission_run")],
+		[0.2, _noop, func() -> void:
+			var ms: Missions = _g.get("missions")
+			_m.throttle = 0.0
+			for k in ms.targets.size() - 1:
+				var st := ms.targets[k]
+				for p in st.pieces.filter(func(p: StructurePiece) -> bool: return p.grounded and p.global_position.x < st.global_position.x + 0.5):
+					p.hit(99999.0, p.global_position, Vector3.RIGHT, true)],
+		[2.0, func(_s: float) -> void:
+			_cam(PI, -0.18, 14.0), func() -> void: _shoot("mission_falling")],
+		[0.2, _noop, func() -> void:
+			var ms: Missions = _g.get("missions")
+			var st := ms.targets[ms.targets.size() - 1]
+			for p in st.pieces.filter(func(p: StructurePiece) -> bool: return p.grounded):
+				p.hit(99999.0, p.global_position, Vector3.RIGHT, true)],
+		[3.0, func(_s: float) -> void:
+			_cam(PI, -0.18, 14.0), func() -> void: _shoot("mission_done")],
 	]
 
 

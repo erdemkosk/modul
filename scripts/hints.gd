@@ -11,6 +11,9 @@ const CARDS := {
 	"build": ["İNŞA", [["Sol tık · sağ tık", "parça tak · sök"], ["1-0, Q E Z X C F H", "parça seç (üstteki sekmeler de)"],
 		["R · M", "çevir · ayna"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],
 		["B", "sür"]]],
+	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
+		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],
+		["Ayaklar, dipler", "taşıyanı kır: üstündeki devrilir"], ["R", "baştan başla"]]],
 	"cage": ["KAFES", [["B", "önce aracını kur: turnuvada sadece atölyede değişir"], ["DÖVÜŞE BAŞLA · Enter", "ilk tura çık"],
 		["Kazanmak", "rakibi parçala ya da 8 sn hareketsiz bırak"], ["Turlar arası", "atölyede hasarı kredinle onar"],
 		["Ters dönmek", "8 sn'de sayılırsın; ancak çeviriciyle (F) doğrulursun"],
@@ -41,11 +44,15 @@ func _process(dt: float) -> void:
 		return
 	var b := game.get("builder") as Builder
 	var cage := game.get("cage") as Cage
+	var ms := game.get("missions") as Missions
 	if b and b.active:
 		_show("build")
 	elif cage and cage.state == "prep" and cage.panel_up():
 		_show("cage")
-	elif (cage == null or cage.state == "fight") and game.get("player_input") and is_instance_valid(game.get("machine")):
+	elif ms and ms.state == "prep" and ms.panel_up():
+		_show("mission")
+	elif (cage == null or cage.state == "fight") and (ms == null or ms.state == "run") and game.get("player_input") \
+			and is_instance_valid(game.get("machine")):
 		_show("drive")
 
 
@@ -84,7 +91,7 @@ func _show(key: String) -> void:
 	# cage's start: bottom middle (the parts' tray and the start panel are up top and in the middle)
 	if key == "drive":
 		_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-		_card.offset_top = 120.0
+		_card.offset_top = 120.0 if game.get("missions") == null else 250.0 # (a mission's targets list is up there)
 	else:
 		_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 		_card.grow_vertical = Control.GROW_DIRECTION_BEGIN

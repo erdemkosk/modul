@@ -702,6 +702,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		if other is RigidBody3D and not other is Machine and (other as RigidBody3D).mass < total_mass * 0.05:
 			continue # (debris rattling on it)
 		var felt_dv := dv
+		if other is StructurePiece:
+			# into a structure: the blow lands on it too (its weight times how hard it stopped)
+			var bite := RAM_BITE if _part_near(at) >= 0 and design[_part_near(at)].id == "spike" else 1.0
+			(other as StructurePiece).hit.call_deferred(dv * total_mass * 0.06 * bite, at, linear_velocity.normalized(), true) # (not mid-step)
 		if other is Machine:
 			_knock_by = other
 			# struck by its ram's spikes: the blow lands on a few points, and tears
