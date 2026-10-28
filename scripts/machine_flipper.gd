@@ -24,6 +24,7 @@ var node: Node3D
 var flap: Node3D
 var air := 1.0 ## 0..1: full, it can fire
 var condition := 1.0
+var key := 0 ## the key it fires on (0: F)
 var _rest: Transform3D
 var _t := -1.0 ## s since it fired (-1: down)
 

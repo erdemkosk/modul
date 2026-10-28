@@ -9,7 +9,7 @@ const CARDS := {
 		["Sağ tık", "uzağa nişan (görüş daralır)"], ["1-9 · 0", "silahları aç / kapat · hepsi"], ["F", "çevirici (varsa): üstündekini ters çevirir"],
 		["B", "inşa ekranı"], ["C", "kamera"]]],
 	"build": ["İNŞA", [["Sol tık · sağ tık", "parça tak · sök"], ["1-0, Q E Z X C F H", "parça seç (üstteki sekmeler de)"],
-		["R · M", "çevir · ayna"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],
+		["R · T · M", "çevir · devir (yan, ters) · ayna"], ["K", "fare üstteki silaha / çeviriciye tuş ver"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],
 		["B", "sür"]]],
 	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
 		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],

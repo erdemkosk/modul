@@ -90,6 +90,7 @@ var aim_point := Vector3.ZERO
 var firing := false
 var guns: Array[MachineGun] = []
 var flippers: Array[MachineFlipper] = []
+var keyed := false ## (yours: its parts answer to the keys they're given)
 var last_hit_by: Machine
 var last_hit_kind := "" ## (what hurt it last: the death card's line)
 var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
@@ -189,6 +190,8 @@ func can_place(id: String, at: Vector3i, rot: int) -> bool:
 		return false
 	if Parts.def(id).kind == "track" and rot % 2 == 1:
 		return false # (a track runs fore and aft)
+	if rot >= 4 and not Parts.can_tilt(id):
+		return false # (a wheel, a track, the cab: upright only)
 	var cells := Parts.cells_of(id, at, rot)
 	for c in cells:
 		if _occ.has(c):
@@ -263,16 +266,22 @@ func _connected_without(skip: int) -> bool:
 func to_data() -> Array:
 	var out := []
 	for p: Dictionary in design:
-		out.append([p.id, p.at.x, p.at.y, p.at.z, p.rot])
+		var row := [p.id, p.at.x, p.at.y, p.at.z, p.rot]
+		if int(p.get("key", 0)) != 0:
+			row.append(int(p.key)) # (the key it answers to)
+		out.append(row)
 	return out
 
 
 func from_data(data: Array) -> void:
 	design.clear()
 	for e: Variant in data:
-		if e is Array and (e as Array).size() == 5 and Parts.DEFS.has(str(e[0])):
+		if e is Array and (e as Array).size() >= 5 and Parts.DEFS.has(str(e[0])):
 			var pid := str(e[0])
-			design.append({"id": pid, "at": Vector3i(int(e[1]), int(e[2]), int(e[3])), "rot": int(e[4]), "hp": Parts.hp_of(pid)})
+			var p := {"id": pid, "at": Vector3i(int(e[1]), int(e[2]), int(e[3])), "rot": int(e[4]), "hp": Parts.hp_of(pid)}
+			if (e as Array).size() >= 6 and int(e[5]) != 0:
+				p.key = int(e[5])
+			design.append(p)
 	rebuild()
 	_note_built()
 	set_down()
@@ -347,6 +356,7 @@ func rebuild() -> void:
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.9, 0.75, 0.95), xf.origin)
 			"weapon":
 				var mg := MachineGun.make(self, node, p.id)
+				mg.key = int(p.get("key", 0))
 				mg.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				guns.append(mg)
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.8, 0.9, 0.8), xf.origin)
@@ -357,6 +367,7 @@ func rebuild() -> void:
 				_add_wedge(xf)
 			"flipper":
 				var fl := MachineFlipper.make(self, node)
+				fl.key = int(p.get("key", 0))
 				fl.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				flippers.append(fl)
 				_add_shape(ext * Vector3(0.95, 0.8, 0.95), xf.origin)
@@ -628,7 +639,9 @@ func _physics_process(dt: float) -> void:
 			return
 	_power(dt)
 	for g in guns:
-		g.update(dt, aim_point, firing and g.armed, powered)
+		# (yours: a gun with a key of its own fires on that key, the rest on the mouse; a crew's on its own)
+		var trig := g.key_down if keyed and g.key != 0 else firing
+		g.update(dt, aim_point, trig and g.armed, powered)
 	for f in flippers:
 		f.update(dt, powered)
 	var fwd := -global_basis.z

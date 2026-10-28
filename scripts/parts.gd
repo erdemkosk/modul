@@ -84,10 +84,30 @@ static func model(id: String) -> String:
 	return "res://assets/parts/%s.glb" % id
 
 
-## The footprint turned `rot` quarter turns about +y (x and z swap on odd turns).
+## How a part can lie: `rot` is its turn about up (0-3 quarter turns) plus 4 times its tilt (0
+## upright, 1 tipped forward, 2 upside down, 3 tipped back, 4 on its right side, 5 on its left).
+## Old designs (0-3) are upright.
+const TILTS := [Basis.IDENTITY, Basis(Vector3.RIGHT, -PI * 0.5), Basis(Vector3.RIGHT, PI), Basis(Vector3.RIGHT, PI * 0.5),
+	Basis(Vector3.BACK, -PI * 0.5), Basis(Vector3.BACK, PI * 0.5)]
+const TILT_NAMES := ["dik", "öne yatık", "ters", "arkaya yatık", "sağ yanı üstü", "sol yanı üstü"]
+
+
+static func basis_of(rot: int) -> Basis:
+	return Basis(Vector3.UP, (rot % 4) * PI * 0.5) * TILTS[(rot / 4) % 6]
+
+
+## What can lie any way (wheels, tracks and the cab only stand upright: they work that way up).
+static func can_tilt(id: String) -> bool:
+	return not str(def(id).kind) in ["wheel", "track", "cab"]
+
+
+## The footprint as the part lies.
 static func size_of(id: String, rot: int) -> Vector3i:
 	var s: Vector3i = DEFS[id].size
-	return Vector3i(s.z, s.y, s.x) if rot % 2 == 1 else s
+	if rot < 4:
+		return Vector3i(s.z, s.y, s.x) if rot % 2 == 1 else s
+	var v := basis_of(rot) * Vector3(s)
+	return Vector3i(roundi(absf(v.x)), roundi(absf(v.y)), roundi(absf(v.z)))
 
 
 ## Every cell a part covers, its footprint's low corner at `at`.
@@ -105,4 +125,4 @@ static func cells_of(id: String, at: Vector3i, rot: int) -> Array[Vector3i]:
 static func xform_of(id: String, at: Vector3i, rot: int) -> Transform3D:
 	var s := size_of(id, rot)
 	var c := (Vector3(at) + Vector3(s) * 0.5) * CELL
-	return Transform3D(Basis(Vector3.UP, rot * PI * 0.5), c)
+	return Transform3D(basis_of(rot), c)

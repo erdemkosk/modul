@@ -221,7 +221,7 @@ func _chip(g: MachineGun, i: int) -> PanelContainer:
 	key.add_theme_stylebox_override("panel", ks)
 	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(key)
-	var kl := Ui.label(key, str(i + 1) if i < 9 else "", 18, Color(0.08, 0.05, 0.02), "display")
+	var kl := Ui.label(key, OS.get_keycode_string(g.key) if g.key != 0 else (str(i + 1) if i < 9 else ""), 18, Color(0.08, 0.05, 0.02), "display")
 	kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var pic := TextureRect.new()
 	var icon := "res://assets/parts/icons/%s.png" % ICON.get(g.kind, g.kind)
@@ -272,7 +272,7 @@ func _flip_chip(f: MachineFlipper) -> PanelContainer:
 	key.add_theme_stylebox_override("panel", ks)
 	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(key)
-	Ui.label(key, "F", 18, Color(0.08, 0.05, 0.02), "display").horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	Ui.label(key, OS.get_keycode_string(f.key) if f.key != 0 else "F", 18, Color(0.08, 0.05, 0.02), "display").horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var pic := TextureRect.new()
 	if ResourceLoader.exists("res://assets/parts/icons/flipper.png"):
 		pic.texture = load("res://assets/parts/icons/flipper.png")
@@ -317,7 +317,7 @@ func _weapons(m: Machine) -> void:
 		var plate := _chips.get_child(m.guns.size() + k) as PanelContainer
 		var st := plate.get_meta("state") as Label
 		var up := f._t >= 0.0
-		st.text = "FIRLATTI" if up else ("HAZIR  ·  F" if f.ready() else ("HAVA DOLUYOR" if f.condition > 0.25 else "BOZUK"))
+		st.text = "FIRLATTI" if up else (("HAZIR  ·  %s" % (OS.get_keycode_string(f.key) if f.key != 0 else "F")) if f.ready() else ("HAVA DOLUYOR" if f.condition > 0.25 else "BOZUK"))
 		if not m.powered:
 			st.text = "AKÜ BİTTİ"
 		st.add_theme_color_override("font_color", Ui.GOOD if f.ready() and m.powered else (Ui.BAD if not m.powered or f.condition <= 0.25 else Ui.ACCENT))

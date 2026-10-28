@@ -56,6 +56,11 @@ var _ghost_mat: StandardMaterial3D
 var _outline_mat: StandardMaterial3D
 var _glow_mat: StandardMaterial3D
 var _target := {} ## {at, rot, ok, index, mirror} or {} (nothing under the mouse)
+var _listen := -1 ## (K pressed over a gun or a flipper: the part waiting for its key)
+var _key_tags: Array[Label3D] = []
+## Keys the driving already uses (a part can still have one: it's said).
+const DRIVE_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_B, KEY_TAB, KEY_L, KEY_T, KEY_C, KEY_K, KEY_ESCAPE,
+	KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]
 var _remove_i := -1
 var _glowing: Node3D
 var _cards := {}
@@ -315,8 +320,9 @@ func _build_toolbar() -> void:
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
-	var tools := [["undo", "Geri al", "Ctrl Z"], ["redo", "İleri al", "Ctrl Y"], ["turn", "Çevir", "R"], ["mirror", "Ayna", "M"],
-		["iso", "İzometrik", "V"], ["clear", "Temizle", "kabin kalır"], ["starter", "Başlangıç", "aracı"]]
+	var tools := [["undo", "Geri al", "Ctrl Z"], ["redo", "İleri al", "Ctrl Y"], ["turn", "Çevir", "R"], ["tilt", "Devir", "T"],
+		["keyb", "Tuş ver", "K · fare üstte"], ["mirror", "Ayna", "M"], ["iso", "İzometrik", "V"], ["clear", "Temizle", "kabin kalır"],
+		["starter", "Başlangıç", "aracı"]]
 	for t: Array in tools:
 		var b := _button(grid, "%s\n%s" % [t[1], t[2]], 13)
 		b.custom_minimum_size = Vector2(96, 50)
@@ -327,6 +333,8 @@ func _build_toolbar() -> void:
 	_tools.mirror.toggled.connect(func(on: bool) -> void: set_mirror(on))
 	_tools.iso.toggled.connect(func(on: bool) -> void: set_iso(on))
 	_tools.turn.pressed.connect(_turn)
+	_tools.tilt.pressed.connect(_tilt)
+	_tools.keyb.pressed.connect(func() -> void: _hint_say("Bir silahın ya da çeviricinin üstüne gel ve K'ye bas"))
 	_tools.undo.pressed.connect(undo)
 	_tools.redo.pressed.connect(redo)
 	_tools.clear.pressed.connect(_on_clear)
@@ -683,8 +691,24 @@ func set_mirror(on: bool) -> void:
 
 
 func _turn() -> void:
-	rot = (rot + 1) % 4
+	rot = (rot / 4) * 4 + (rot % 4 + 1) % 4
 	_play("turn.wav", -6.0, randf_range(0.95, 1.05))
+
+
+## Tips the part over (upright, forward, upside down, back, on its right side, its left).
+func _tilt() -> void:
+	if not Parts.can_tilt(selected):
+		_hint_say("%s yalnız dik takılır" % Parts.def(selected).name)
+		return
+	rot = ((rot / 4 + 1) % 6) * 4 + rot % 4
+	_play("turn.wav", -6.0, randf_range(0.8, 0.9))
+	_hint_say("Duruş: %s" % Parts.TILT_NAMES[rot / 4])
+
+
+func _hint_say(t: String) -> void:
+	var g := get_parent()
+	if g and g.has_method("say"):
+		g.call("say", t)
 
 
 func _make_ghost() -> void:
@@ -907,6 +931,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			redo()
 		get_viewport().set_input_as_handled()
 		return
+	if key and key.pressed and not key.echo and _listen >= 0:
+		_bind_key(key) # (waiting for a part's key: this is it, whatever it is)
+		get_viewport().set_input_as_handled()
+		return
 	if key and key.pressed and not key.echo:
 		var ids := Parts.ORDER.filter(func(i: String) -> bool: return i != "cab")
 		var n := KEYS.find(key.keycode)
@@ -915,6 +943,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		elif key.keycode == KEY_R:
 			_turn()
+			get_viewport().set_input_as_handled()
+		elif key.keycode == KEY_T:
+			_tilt()
+			get_viewport().set_input_as_handled()
+		elif key.keycode == KEY_K:
+			_listen_for_key()
 			get_viewport().set_input_as_handled()
 		elif key.keycode == KEY_V:
 			set_iso(not cam.iso)
@@ -1028,6 +1062,7 @@ func _play(file: String, db := 0.0, pitch := 1.0) -> void:
 
 
 func _process(dt: float) -> void:
+	_show_key_tags()
 	_t += dt
 	if _clear_armed > 0.0:
 		_clear_armed -= dt
@@ -1092,7 +1127,7 @@ func aim_ray(from: Vector3, dir: Vector3) -> Dictionary:
 	var hit := machine.pick(from, dir)
 	if hit.is_empty():
 		return {}
-	var r := rot
+	var r := rot if Parts.can_tilt(selected) else rot % 4
 	var kind := str(Parts.def(selected).kind)
 	if kind == "wheel":
 		r = Machine.wheel_rot_for(hit.normal, rot)
@@ -1119,7 +1154,9 @@ func mirrored(id: String, at: Vector3i, r: int) -> Dictionary:
 	if str(Parts.def(id).kind) in ["wheel", "track"]:
 		r2 = (r + 2) % 4 if r % 2 == 0 else r
 	else:
-		r2 = (4 - r) % 4
+		# (the mirror turns it the other way about up, and swaps its right side for its left)
+		var tilt: int = [0, 1, 2, 3, 5, 4][(r / 4) % 6]
+		r2 = tilt * 4 + (4 - r % 4) % 4
 	var s := Parts.size_of(id, r2)
 	var at2 := Vector3i(mid2 - at.x - s.x, at.y, at.z)
 	if at2 == at and r2 == r:
@@ -1140,3 +1177,65 @@ static func load_saved() -> Array:
 		return []
 	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	return d if d is Array else []
+
+
+
+# --- Keys -------------------------------------------------------------------------------------------
+
+## K over a gun or a flipper: the next key pressed is the one it answers to (Esc: none, back to the
+## mouse or F).
+func _listen_for_key() -> void:
+	var i := _remove_i
+	if i < 0 or i >= machine.design.size() or not str(Parts.def(machine.design[i].id).kind) in ["weapon", "flipper"]:
+		_hint_say("Tuş vermek için farenin altında bir silah ya da çevirici olsun, sonra K")
+		return
+	_listen = i
+	_hint_say("%s için bir tuşa bas  ·  Esc: tuşu kaldır" % Parts.def(machine.design[i].id).name)
+	_play("tick.wav", -4.0, 1.3)
+
+
+func _bind_key(key: InputEventKey) -> void:
+	var i := _listen
+	_listen = -1
+	if i < 0 or i >= machine.design.size():
+		return
+	var p: Dictionary = machine.design[i]
+	var code := key.physical_keycode
+	if code == KEY_ESCAPE:
+		p.erase("key")
+		_hint_say("%s: tuşu kaldırıldı (%s)" % [Parts.def(p.id).name, "F" if p.id == "flipper" else "farenin sol tuşu"])
+	else:
+		p.key = code
+		var name := OS.get_keycode_string(code)
+		_hint_say("%s artık %s ile%s" % [Parts.def(p.id).name, name, "  ·  bu tuş sürüşte de kullanılıyor" if code in DRIVE_KEYS else ""])
+	machine.rebuild()
+	machine.set_building(true)
+	save()
+	_play("bolt_on_0%d.wav" % randi_range(1, 3), -6.0, 1.3)
+
+
+## While building: the key each part answers to, over it.
+func _show_key_tags() -> void:
+	var want: Array[int] = []
+	if active:
+		for i in machine.design.size():
+			if int(machine.design[i].get("key", 0)) != 0:
+				want.append(i)
+	while _key_tags.size() < want.size():
+		var l := Label3D.new()
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.no_depth_test = true
+		l.font = Ui.font("display")
+		l.font_size = 64
+		l.pixel_size = 0.004
+		l.outline_size = 12
+		l.modulate = Ui.ACCENT
+		add_child(l)
+		_key_tags.append(l)
+	for k in _key_tags.size():
+		var l := _key_tags[k]
+		l.visible = k < want.size()
+		if l.visible:
+			var p: Dictionary = machine.design[want[k]]
+			l.text = OS.get_keycode_string(int(p.key))
+			l.global_position = machine.global_transform * (Parts.xform_of(p.id, p.at, p.rot).origin + Vector3.UP * 0.6)

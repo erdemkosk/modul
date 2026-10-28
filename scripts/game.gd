@@ -267,11 +267,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		machine.set_lights(not machine.lights_on)
 	elif event.is_action_pressed("right_up") and not builder.active:
 		right_up()
-	elif event.is_action_pressed("flip") and not builder.active and player_input:
-		if machine.flippers.is_empty():
-			say("Çevirici yok: inşada SİLAH sekmesinden takılır")
-		elif not machine.flip():
-			say("Çevirici dolmadı" if machine.powered else "Akü bitti: çevirici çalışmaz")
+	elif event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo and not builder.active \
+			and player_input and _fire_flippers((event as InputEventKey).physical_keycode):
+		pass
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and not builder.active:
 		if key.keycode >= KEY_0 and key.keycode <= KEY_9:
@@ -351,6 +349,21 @@ func clear_enemies() -> int:
 
 
 ## Back on its wheels where it is (rolled over, or stuck nose-down).
+## The flippers on `code` (F for those with no key of their own): fired. True if any answers to it.
+func _fire_flippers(code: int) -> bool:
+	var any := false
+	var fired := false
+	for f in machine.flippers:
+		if (f.key if f.key != 0 else KEY_F) == code:
+			any = true
+			fired = f.fire() or fired
+	if any and not fired:
+		say("Çevirici dolmadı" if machine.powered else "Akü bitti: çevirici çalışmaz")
+	elif not any and code == KEY_F and machine.flippers.is_empty() and Mode.current != "valley":
+		say("Çevirici yok: inşada SİLAH sekmesinden takılır")
+	return any
+
+
 func right_up() -> void:
 	if cage and cage.state == "fight":
 		# in the cage there's no crane: on your back, only your own flipper gets you up
@@ -402,6 +415,9 @@ func _physics_process(dt: float) -> void:
 	else:
 		_recover_t = 0.0
 	machine.firing = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	machine.keyed = true
+	for g in machine.guns:
+		g.key_down = g.key != 0 and Input.is_physical_key_pressed(g.key)
 
 
 ## Where the middle of the screen looks: the first thing along the camera's line (not your own machine).

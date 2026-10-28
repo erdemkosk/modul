@@ -46,6 +46,8 @@ are this project's own.
 | Building: left / right click | bolt on / take off (right drag turns the view) |
 | Building: 1-9, 0, Q, E, Z, X, C, F, H · R | pick a part · turn it |
 | Building: V · M · Ctrl Z / Ctrl Y | isometric view · mirror · undo / redo |
+| Building: T | tip the part over (forward, upside down, back, on either side; wheels, tracks, the cab stay upright) |
+| Building: K | over a gun or a flipper, then any key: it answers to that key (Esc: back to the mouse / F) |
 
 ## How it works
 
@@ -132,5 +134,6 @@ godot --headless --path . -s res://tests/flipper_test.gd
 godot --headless --path . -s res://tests/structures_test.gd
 godot --headless --path . -s res://tests/missions_test.gd
 godot --headless --path . -s res://tests/salvage_test.gd
+godot --headless --path . -s res://tests/keys_test.gd
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id>]
 ```
