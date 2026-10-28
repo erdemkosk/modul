@@ -23,6 +23,11 @@ Output: assets/parts/<id>.glb, assets/parts/previews/*.png (--render).
                     (node Belt) one band whose UVs run along it in links, for the game to scroll and draw
   rockets    2x2x2  a six-tube rocket launcher: Turret > Gun (the pod), its rockets Rocket0..5 in the tubes
   battery    1x1x2  two 12 V blocks in a tray, cables and an isolator switch
+  engine_l   2x2x3  a V8 turbo-diesel (200 kW): two banks, twin turbos and stacks, a big radiator and fan
+  engine_s   1x1x2  a small petrol engine (40 kW): block, finned head, pull start, muffler
+  spike      1x1x1  a ram head: a steel wedge with three hardened spikes forward
+  flamer     2x1x2  a flamethrower: Turret > Gun (the projector, its nozzle), Muzzle at the nozzle; a fuel tank
+  plate      1x1x1  a steel plate on the cell's outer face, on brackets
   cannon     2x2x2  a 76 mm gun in a sloped armoured turret: Turret > Gun (the mantlet and barrel, a muzzle
                     brake), Muzzle at its end
 """
@@ -45,7 +50,8 @@ OUT_DIR = os.path.join(vk.ROOT, "assets", "parts")
 PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 1, 1), "wheel_s": (1, 2, 2),
          "wheel_l": (2, 3, 3), "engine": (2, 2, 2), "light": (1, 1, 1),
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
-         "battery": (1, 1, 2)}
+         "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
+         "plate": (1, 1, 1)}
 
 
 def materials():
@@ -783,10 +789,135 @@ def build_engine():
     box("Plate", (0.1, 0.005, 0.05), (0.12, -0.36, bz + 0.3), "Steel", grp="Part")
 
 
+
+# --- Third batch: a big and a small engine, a ram, a flamethrower, a plate ---------------------------
+
+def build_engine_l():
+    """A V8 turbo-diesel (200 kW): the vee of two banks with their covers, twin turbos and stacks, a big
+    radiator and fan, the bell housing, on a heavy bed."""
+    sx, sy, sz = ext(PARTS["engine_l"])
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    base = -hz
+    for s in (-1, 1):
+        box(f"Rail{s}", (0.08, sy - 0.04, 0.09), (s * (hx - 0.06), 0, base + 0.045), "SteelDark", bev=0.008, grp="Part")
+        for y in (-0.5, 0.0, 0.5):
+            cyl(f"Mount{s}{y}", 0.05, 0.06, (s * 0.32, y, base + 0.12), segs=12, mat="Rubber", grp="Part")
+    bz = base + 0.16
+    box("Crank", (0.42, 0.95, 0.24), (0, -0.05, bz + 0.12), "Engine", bev=0.03, grp="Part")
+    box("Sump", (0.36, 0.85, 0.1), (0, -0.05, bz + 0.0), "PaintDark", bev=0.02, grp="Part")
+    for s in (-1, 1):  # the two banks, leaning out
+        bank = box(f"Bank{s}", (0.26, 0.9, 0.3), (s * 0.2, -0.05, bz + 0.36), "Engine", rot=(0, s * 0.5, 0), bev=0.025, grp="Part")
+        box(f"Cover{s}", (0.2, 0.86, 0.06), (s * 0.29, -0.05, bz + 0.52), "Paint", rot=(0, s * 0.5, 0), bev=0.02, grp="Part")
+        for k in range(4):
+            y = -0.4 + k * 0.24
+            box(f"CoverFin{s}{k}", (0.18, 0.02, 0.03), (s * 0.31, y, bz + 0.56), "Paint", rot=(0, s * 0.5, 0), grp="Part")
+            tube(f"Runner{s}{k}", [(s * 0.38, y, bz + 0.36), (s * 0.48, y, bz + 0.34), (s * 0.5, y * 0.7, bz + 0.3)], 0.024,
+                 mat="Exhaust", nring=8, sub=4, grp="Part")
+        cyl(f"Manifold{s}", 0.035, 0.85, (s * 0.5, -0.05, bz + 0.3), axis="Y", segs=12, mat="Exhaust", grp="Part")
+        revolve(f"Turbo{s}", [(-0.06, 0.02), (-0.06, 0.09), (0.0, 0.1), (0.06, 0.08), (0.06, 0.02)], 18, ("Exhaust",), axis="Y",
+                center=(s * 0.5, -0.55, bz + 0.4), grp="Part")
+        tube(f"Stack{s}", [(s * 0.5, -0.6, bz + 0.45), (s * 0.52, -0.62, bz + 0.6), (s * 0.52, -0.62, hz + 0.2)], 0.045,
+             mat="HeatWrap", nring=12, sub=4, grp="Part")
+        box(f"Cap{s}", (0.11, 0.11, 0.01), (s * 0.52, -0.6, hz + 0.22), "SteelDark", rot=(0.5, 0, 0), grp="Part")
+    box("Intake", (0.16, 0.8, 0.12), (0, -0.05, bz + 0.5), "Steel", bev=0.03, grp="Part")
+    cyl("Bell", 0.26, 0.12, (0, -0.6, bz + 0.22), axis="Y", segs=28, mat="Engine", bev=0.015, grp="Part")
+    box("Radiator", (sx - 0.16, 0.08, sz * 0.66), (0, hy - 0.08, bz + 0.34), "Radiator", bev=0.01, grp="Part")
+    for k in range(12):
+        box(f"Fin{k}", (sx - 0.2, 0.01, 0.012), (0, hy - 0.035, bz + 0.06 + k * 0.05), "Steel", grp="Part")
+    box("Shroud", (0.7, 0.06, 0.6), (0, hy - 0.2, bz + 0.34), "PaintDark", bev=0.01, grp="Part")
+    for k in range(7):
+        a = k * 2 * PI / 7
+        box(f"Blade{k}", (0.07, 0.012, 0.24), (math.cos(a) * 0.13, hy - 0.2, bz + 0.34 + math.sin(a) * 0.13), "SteelDark",
+            rot=(0.35, PI / 2 - a, 0), grp="Part")
+    cyl("Alternator", 0.08, 0.14, (-0.28, 0.42, bz + 0.3), axis="Y", segs=18, mat="Steel", bev=0.01, grp="Part")
+    tube("Hose", [(0.0, 0.38, bz + 0.5), (0.06, 0.5, bz + 0.62), (0.1, hy - 0.1, bz + 0.62)], 0.03, mat="Rubber", nring=10,
+         sub=4, grp="Part")
+    box("Badge", (0.12, 0.005, 0.05), (0.15, -0.6 - 0.065, bz + 0.38), "Steel", grp="Part")
+
+
+def build_engine_s():
+    """A small petrol engine (40 kW): a single block with its head, a carburettor and air filter, a
+    pull-start drum, a little radiator, a short exhaust with a muffler."""
+    sx, sy, sz = ext(PARTS["engine_s"])
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    base = -hz
+    box("Plate", (sx - 0.02, sy - 0.02, 0.03), (0, 0, base + 0.015), "SteelDark", bev=0.004, grp="Part")
+    bolts("PlateBolt", (0, 0, base + 0.03), (0, 0, 1), sx * 0.7, sy * 0.8, grp="Part")
+    box("Block", (0.26, 0.36, 0.2), (0, -0.04, base + 0.13), "Engine", bev=0.02, grp="Part")
+    box("Head", (0.22, 0.32, 0.08), (0, -0.04, base + 0.27), "Steel", bev=0.015, grp="Part")
+    for k in range(5):
+        box(f"Fin{k}", (0.24, 0.015, 0.06), (0, -0.18 + k * 0.07, base + 0.33), "Steel", grp="Part")
+    cyl("Starter", 0.07, 0.05, (0, -0.25, base + 0.14), axis="Y", segs=18, mat="Paint", grp="Part")
+    cyl("Filter", 0.06, 0.08, (-0.17, 0.05, base + 0.28), axis="X", segs=16, mat="Paint", bev=0.01, grp="Part")
+    tube("Exhaust", [(0.13, -0.05, base + 0.22), (0.2, -0.05, base + 0.2), (0.2, 0.15, base + 0.15)], 0.02, mat="Exhaust",
+         nring=8, sub=4, grp="Part")
+    cyl("Muffler", 0.045, 0.16, (0.2, 0.25, base + 0.15), axis="Y", segs=14, mat="Exhaust", grp="Part")
+    box("Radiator", (0.3, 0.04, 0.22), (0, hy - 0.05, base + 0.16), "Radiator", bev=0.006, grp="Part")
+
+
+def build_spike():
+    """A ram: a steel wedge-shaped head bolted on, three hardened spikes forward from it."""
+    s = CELL
+    h = s / 2
+    box("Back", (s - 0.02, 0.06, s - 0.02), (0, -h + 0.03, 0), "SteelDark", bev=0.006, grp="Part")
+    bolts("BackBolt", (0, -h, 0), (0, -1, 0), 0.3, 0.3, grp="Part")
+    prof = [(-h + 0.06, -h + 0.02), (0.05, -0.12), (0.05, 0.12), (-h + 0.06, h - 0.02)]
+    verts = [(x, y, z) for x in (-h + 0.02, h - 0.02) for (y, z) in prof]
+    faces = [(0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+    ob = bt.mk("Head", verts, faces, ("Paint",), grp="Part", smooth=0)
+    bt.bevel(ob, 0.01, 2)
+    for k, x in enumerate((-0.14, 0.0, 0.14)):
+        cyl(f"Spike{k}", 0.045, 0.3, (x, 0.2, 0.0), axis="Y", r2=0.0, segs=10, mat="Steel", grp="Part")
+        cyl(f"Collar{k}", 0.055, 0.03, (x, 0.06, 0.0), axis="Y", segs=10, mat="SteelDark", grp="Part")
+    box("Stripe", (s - 0.08, 0.01, 0.05), (0, -0.02, 0.15), "Hazard", rot=(0.7, 0, 0), grp="Part")
+
+
+def build_flamer():
+    """A flamethrower on a ring mount: Turret (turns) > Gun (elevates): the projector tube with its
+    shroud and nozzle, the pilot light (node Pilot), a fuel tank and its hose; Muzzle at the nozzle."""
+    sx, sy, sz = ext(PARTS["flamer"])
+    hz = sz / 2
+    box("BasePlate", (sx * 0.9, sy * 0.9, 0.03), (0, 0, -hz + 0.015), "SteelDark", bev=0.005, grp="Part")
+    bolts("BaseBolt", (0, 0, -hz + 0.03), (0, 0, 1), sx * 0.7, sy * 0.7, grp="Part")
+    cyl("Ring", 0.28, 0.07, (0, 0, -hz + 0.065), segs=28, mat="Paint", bev=0.01, grp="Part")
+    yaw_z = -hz + 0.1
+    cyl("Table", 0.25, 0.04, (0, 0, yaw_z + 0.02), segs=28, mat="SteelDark", grp="Turret")
+    cyl("Tank", 0.13, 0.42, (0.0, -0.22, yaw_z + 0.17), axis="X", segs=20, mat="Spring", bev=0.02, grp="Turret")
+    for s in (-1, 1):
+        box(f"Strap{s}", (0.02, 0.28, 0.3), (s * 0.12, -0.22, yaw_z + 0.17), "SteelDark", grp="Turret")
+        box(f"Yoke{s}", (0.04, 0.12, 0.2), (s * 0.15, 0.05, yaw_z + 0.12), "Paint", bev=0.008, grp="Turret")
+    trun = Vector((0, 0.05, yaw_z + 0.22))
+    cyl("Body", 0.07, 0.42, tuple(trun + Vector((0, 0.12, 0))), axis="Y", segs=16, mat="SteelDark", bev=0.01, grp="Gun")
+    cyl("Shroud", 0.055, 0.4, tuple(trun + Vector((0, 0.5, 0))), axis="Y", segs=14, mat="Steel", grp="Gun")
+    for k in range(5):
+        cyl(f"Vent{k}", 0.06, 0.02, tuple(trun + Vector((0, 0.36 + k * 0.07, 0))), axis="Y", segs=14, mat="SteelDark", grp="Gun")
+    cyl("Nozzle", 0.04, 0.08, tuple(trun + Vector((0, 0.74, 0))), axis="Y", r2=0.03, segs=12, mat="Exhaust", grp="Gun")
+    tube("Hose", [(0.0, -0.1, yaw_z + 0.17), (0.08, 0.0, trun.z - 0.04), (0.04, 0.1, trun.z - 0.05)], 0.02, mat="Rubber",
+         nring=8, sub=4, grp="Gun")
+    cyl("Igniter", 0.012, 0.06, tuple(trun + Vector((0, 0.74, -0.06))), axis="Y", segs=8, mat="Steel", grp="Gun")
+    PIVOTS.update({"Turret": (0, 0, yaw_z), "Gun": tuple(trun), "Muzzle": tuple(trun + Vector((0, 0.8, 0)))})
+
+
+def build_plate():
+    """A steel plate: a slab two-fifths of a cell thick on the cell's outer face, bolted, its edges
+    bevelled, on two brackets."""
+    s = CELL
+    h = s / 2
+    box("Slab", (s - 0.01, 0.12, s - 0.01), (0, h - 0.06, 0), "Paint", bev=0.02, seg=2, grp="Part")
+    for x in (-1, 1):
+        for z in (-1, 1):
+            cyl(f"Bolt{x}{z}", 0.02, 0.015, (x * 0.17, h + 0.005, z * 0.17), axis="Y", segs=6, mat="Bolt", grp="Part")
+    for x in (-0.15, 0.15):
+        box(f"Bracket{x}", (0.04, s - 0.14, 0.18), (x, -0.07, 0), "SteelDark", bev=0.006, grp="Part")
+    box("Back", (s - 0.04, 0.03, s - 0.04), (0, -h + 0.015, 0), "SteelDark", bev=0.004, grp="Part")
+    bolts("BackBolt", (0, -h, 0), (0, -1, 0), 0.3, 0.3, grp="Part")
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
-            "track": build_track, "rockets": build_rockets, "battery": build_battery}
+            "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
+            "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate}
 
 
 def icon(pid):
@@ -798,7 +929,7 @@ def icon(pid):
     scene.render.film_transparent = True
     e = ext(PARTS[pid])
     span = max(e.x, e.y, e.z)
-    if pid in ("minigun", "cannon"):
+    if pid in ("minigun", "cannon", "flamer"):
         span *= 1.6
     if pid == "track":
         span *= 0.8  # (the barrels reach past the footprint)

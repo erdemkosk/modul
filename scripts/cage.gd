@@ -27,27 +27,27 @@ const REFUND := 0.5 ## of its price a part taken off in the workshop pays back
 const COUNT_OUT := 8.0 ## s a rival can't move before it's counted out
 const START_CREDITS := 300
 const ROUNDS := [
-	{"name": "ÇAMUR ÇUKURU", "rivals": [["raider", "PASLI"]],
+	{"name": "ÇAMUR ÇUKURU", "rivals": [["skirmisher", ""]],
 		"layout": {"zones": [[Rect2(-9, -9, 18, 18), "mud"]], "blocks": [Vector2(-14, 12), Vector2(14, -12)],
 			"spinners": [Vector2(-13, 13)]}},
-	{"name": "BUZ PİSTİ", "rivals": [["rammer", "KOÇBAŞI"]],
+	{"name": "BUZ PİSTİ", "rivals": [["", ""]],
 		"layout": {"zones": [[Rect2(-22, -7, 44, 14), "ice"]],
 			"spikes": [Rect2(-13, -17, 9, 2.5), Rect2(4, 14.5, 9, 2.5)],
 			"saws": [[Vector2(-10, 10), Vector2(10, 10)], [Vector2(-10, -10), Vector2(10, -10)]]}},
-	{"name": "ATEŞ KAPANLARI", "rivals": [["tank", "DEMİRYUMRUK"]], "house": true,
+	{"name": "ATEŞ KAPANLARI", "rivals": [["", ""]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "gravel"]],
 			"vents": [Vector2(-9, -9), Vector2(9, 9), Vector2(-9, 9), Vector2(9, -9)],
 			"drums": [Vector2(0, -16), Vector2(0.8, -16.4), Vector2(0, 16), Vector2(-0.8, 16.3)]}},
-	{"name": "BATAKLIK", "rivals": [["raider", "DİKEN"], ["raider", "KANCA"]], "house": true,
+	{"name": "BATAKLIK", "rivals": [["", ""], ["skirmisher", ""]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 14, 14), "bog"], [Rect2(10, 10, 14, 14), "bog"], [Rect2(-6, -6, 12, 12), "mud"]],
 			"pit": Rect2(-3, 8, 6, 6),
 			"fences": [[Vector2(-14, 0), Vector2(-5, 0)], [Vector2(5, 0), Vector2(14, 0)]]}},
-	{"name": "DİKENLİ ÇİT", "rivals": [["tracked", "ATEŞBÖCEĞİ"]], "house": true,
+	{"name": "DİKENLİ ÇİT", "rivals": [["", ""]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "dirt"]], "spikes": [Rect2(-2, -12, 4, 24)],
 			"fences": [[Vector2(-15, -9), Vector2(-15, 9)], [Vector2(15, -9), Vector2(15, 9)]],
 			"blocks": [Vector2(-8, 16), Vector2(8, -16)], "pit": Rect2(6, 6, 6, 6),
 			"spinners": [Vector2(-9, -9)]}},
-	{"name": "FİNAL", "rivals": [["tank", "ŞAMPİYON"], ["rammer", "KOÇBAŞI II"]], "house": true,
+	{"name": "FİNAL", "rivals": [["artillery", "ŞAMPİYON"], ["rammer", ""]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "wet"], [Rect2(-6, -6, 12, 12), "mud"]],
 			"vents": [Vector2(-15, 15), Vector2(15, -15)], "spikes": [Rect2(-20, -1.5, 7, 3), Rect2(13, -1.5, 7, 3)],
 			"fences": [[Vector2(-4, -15), Vector2(4, -15)], [Vector2(-4, 15), Vector2(4, 15)]], "pit": Rect2(-3, -3, 6, 6),
@@ -68,6 +68,7 @@ var houses: Array[Machine] = []
 var time_left := TIME
 var excite := 0.15
 var full: Array = [] ## the design as you set out with it (what the workshop puts back)
+var run_seed := 0 ## the run's: each round's rivals are Forge's from it (a new lot each run)
 var _count_t := 0.0
 var _still := {} ## Machine -> s it's been unable to move
 var _hp_start := {} ## Machine -> its health when the round began
@@ -162,6 +163,8 @@ func _missing_entries() -> Array:
 func start_run() -> void:
 	var m: Machine = game.get("machine")
 	full = m.to_data()
+	if run_seed == 0:
+		run_seed = randi() | 1
 	_begin_round(0)
 
 
@@ -185,10 +188,10 @@ func _begin_round(i: int) -> void:
 	for rv: Array in r.rivals:
 		var at := Vector3(CageArena.HALF - 5.0 - k * 6.0, 0.0, CageArena.HALF - 5.0 + k * 1.5)
 		at.y = arena.terrain.height_at(at.x, at.z) + 1.5
-		var data: Array = ({"raider": Designs.raider, "tank": Designs.tank, "tracked": Designs.tracked,
-			"rammer": Designs.rammer}[rv[0]] as Callable).call()
-		var e: Machine = game.call("_spawn", data, Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at), 1, true)
-		e.label = rv[1]
+		# built for this round from the run's seed: a style (the round's, or any), stronger each round
+		var made := Forge.make(run_seed * 977 + i * 31 + k, i, str(rv[0]))
+		var e: Machine = game.call("_spawn", made.data, Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at), 1, true)
+		e.label = str(rv[1]) if str(rv[1]) != "" else str(made.name)
 		e.set_physics_process(false) # (held till the countdown's done)
 		rivals.append(e)
 		k += 1

@@ -78,6 +78,9 @@ func _physics_process(dt: float) -> void:
 	var hurt := machine.health() < 0.35 and not rams
 	var near := range_near * (1.6 if hurt else 1.0)
 	var far := range_far * (1.4 if hurt else 1.0)
+	if _only("flamer"): # (a flamethrower's got to be close: it fights at 5-11 m)
+		near = 5.0
+		far = 11.0
 	# where to drive this moment
 	var goal := target.global_position
 	if rams:
@@ -302,6 +305,16 @@ func _pick_part() -> Dictionary:
 
 
 # --- What to go after ---------------------------------------------------------------------------
+
+## Every gun it has is of `kind`.
+func _only(kind: String) -> bool:
+	if machine.guns.is_empty():
+		return false
+	for g in machine.guns:
+		if g.kind != kind:
+			return false
+	return true
+
 
 func _has(kind: String) -> bool:
 	for g in machine.guns:

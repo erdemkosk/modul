@@ -7,8 +7,8 @@ are this project's own.
 ## Play
 
 - **Kafes**: a six-round tournament in a small walled cage before a crowd. Each round lays its own
-  floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals
-  (a rammer among them); win by tearing them apart or leaving them unable to move for 8 s, or on the
+  floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals,
+  built fresh for each run (`forge.gd`) and stronger each round; win by tearing them apart or leaving them unable to move for 8 s, or on the
   judges' decision at the bell. The damage stays between rounds: each win pays credits, and the
   workshop buys back what you lost, the cab first, and sells you new parts (B; half back for one
   taken off). From the third round house robots keep two hatched corners and drive into whatever comes
@@ -29,10 +29,11 @@ are this project's own.
 | Esc · K held | pause (go on, settings, the start menu) · rebuild a machine that can't move |
 | L · T | lights · back on its wheels |
 | F1 F2 F3 F5 F4 | raider (minigun) · tank (cannon) · target · tracked rocket carrier · a wave (proving ground) |
+| F7 | a new rival from Forge, any style and strength (proving ground) |
 | F6 | clear the other side's machines and the wreckage away (proving ground) |
 | G | your machine takes no damage / does again (proving ground) |
 | Building: left / right click | bolt on / take off (right drag turns the view) |
-| Building: 1-9, 0, Q, E · R | pick a part · turn it |
+| Building: 1-9, 0, Q, E, Z, X, C, F, H · R | pick a part · turn it |
 | Building: V · M · Ctrl Z / Ctrl Y | isometric view · mirror · undo / redo |
 
 ## How it works
@@ -53,7 +54,15 @@ are this project's own.
   nothing turns, spins up or loads until it's charged a little.
 - `scripts/combat.gd`: rounds, shells, rockets (thrust, wobble, smoke trail), bursts, craters, debris,
   effects and sound, pooled.
-- `scripts/ai_driver.gd`: the other side's crews. `scripts/designs.gd`: ready machines.
+- `scripts/ai_driver.gd`: the other side's crews. `scripts/designs.gd`: ready machines, and the build
+  screen's ready designs (HAZIR TASARIMLAR: Gezgin, Akıncı, Topçu, Roketatar, Koçbaşı, Ateşbaz, Gürz).
+- `scripts/forge.gd`: builds the other side's machines from sensible parts, a different one from each
+  seed: a style (skirmisher, gunner, artillery, rocketeer, flamethrower brawler, rammer) picks the guns
+  and the nose; then the cab at the front, a battery if the guns draw more than an engine charges,
+  engines until its kW per tonne reaches the round's mark, and wheels or tracks rated for its weight;
+  everything checked to bolt to the cab.
+- Parts added: the V8 (200 kW) and the small petrol engine (40 kW), steel plate (light armour), the ram
+  head (spikes: knocks it deals bite 1.7× harder) and the flamethrower (a 14 m cone that burns parts).
 - `scripts/builder.gd`: the build screen (its layout after Besiege's builder: part groups as tabs over
   tiles, tools down the left, slots, a drive button; a grid of the machine's cells, its centre of mass,
   ghosts with outlines, parts dropping in and lifting away to impact-gun and ratchet sounds from
@@ -90,5 +99,6 @@ godot --headless --path . -s res://tests/arena_test.gd
 godot --headless --path . -s res://tests/cage_test.gd
 godot --headless --path . -s res://tests/hazard_test.gd
 godot --headless --path . -s res://tests/ai_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage]
+godot --headless --path . -s res://tests/designs_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge]
 ```

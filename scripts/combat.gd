@@ -273,6 +273,47 @@ func _throw_clods(at: Vector3, radius: float) -> void:
 	e.emitting = true
 
 
+## A flamethrower's lick: rays out in a narrow cone to its range; what they meet burns (a machine's
+## parts round where it's met, cover, the ground scorched), nearer hotter.
+func flame(from: Vector3, dir: Vector3, reach: float, damage: float, owner: Machine) -> void:
+	var space := get_world_3d().direct_space_state
+	var side := dir.cross(Vector3.UP).normalized()
+	var up := side.cross(dir).normalized()
+	var burned := {}
+	for o: Vector2 in [Vector2.ZERO, Vector2(0.08, 0.0), Vector2(-0.08, 0.0), Vector2(0.0, 0.06), Vector2(0.0, -0.08)]:
+		var d := (dir + side * o.x + up * o.y).normalized()
+		var q := PhysicsRayQueryParameters3D.create(from, from + d * reach, RAY_MASK)
+		if is_instance_valid(owner):
+			q.exclude = [owner.get_rid()]
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			continue
+		var body: Object = hit.collider
+		var at: Vector3 = hit.position
+		var heat := damage * (1.0 - 0.5 * from.distance_to(at) / reach) / 5.0
+		if body is Machine and not burned.has(body):
+			burned[body] = true
+			(body as Machine).blast(at, 1.4, heat * 5.0, 20.0, owner, "alev")
+			if is_instance_valid(owner) and (body as Machine).team != owner.team:
+				hit_confirmed.emit(owner, false)
+		elif body is Breakable:
+			(body as Breakable).hit(heat * 2.0, at, d)
+		elif randf() < 0.04 and not on_cooldown(at):
+			scorch(at, 0.8)
+
+
+var _scorched := {} ## (a little grid: where a flame's scorched the ground lately)
+
+
+func on_cooldown(at: Vector3) -> bool:
+	var k := Vector2i(roundi(at.x), roundi(at.z))
+	var t := Time.get_ticks_msec()
+	if _scorched.has(k) and t - int(_scorched[k]) < 4000:
+		return true
+	_scorched[k] = t
+	return false
+
+
 ## The launcher's back-blast: a cloud of dust and smoke behind the pod.
 func backblast(at: Vector3, dir: Vector3) -> void:
 	_burst(at, "smoke", 0.45, dir)

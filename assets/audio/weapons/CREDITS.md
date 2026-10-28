@@ -190,3 +190,5 @@ a water plip and splash, gravel grains. GunFoley plays them all by name.
   barrels passing; one second, every partial a whole number of cycles so it loops without a seam. CC0.
 - `casings/brass_metal_0*.wav`, `casings/brass_dirt_0*.wav`: from the Mud Run project (`../car`), its
   modal-synthesis casings (CC0).
+- `flame_loop.wav`: synthesized (a Python one-off): low-passed noise for the roar of burning fuel, a
+  little unfiltered hiss and sparse crackles; its ends crossfaded over 0.3 s so it loops. CC0.

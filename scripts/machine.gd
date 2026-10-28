@@ -70,6 +70,7 @@ const MAX_RISE := 9.0 ## m/s up it can be going at most (whatever's gone wrong, 
 const MAX_SPIN := 7.0 ## rad/s it can be turning at most
 const IMPACT_HURT := 6.0 ## hp per (m/s past it) squared
 const IMPACT_REACH := 0.8 ## m round where it struck that the parts take it
+const RAM_BITE := 1.7 ## times the knock a ram's spikes give (a third of a ram's blow past the safe takes)
 const SMOKERS := 4 ## parts that smoke at once at most
 const WEAR := preload("res://shaders/part_wear.gdshader")
 static var _wear_mat: ShaderMaterial
@@ -579,7 +580,8 @@ func _physics_process(dt: float) -> void:
 		var total := 0.0
 		for e: Array in ks:
 			total += float(e[1])
-		last_hit_kind = "çarpışma"
+		last_hit_kind = "koç" if _rammed else "çarpışma"
+		_rammed = false
 		if is_instance_valid(_knock_by):
 			last_hit_by = _knock_by
 		_knock_by = null
@@ -663,8 +665,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		var other := state.get_contact_collider_object(i)
 		if other is RigidBody3D and not other is Machine and (other as RigidBody3D).mass < total_mass * 0.05:
 			continue # (debris rattling on it)
+		var felt_dv := dv
 		if other is Machine:
 			_knock_by = other
+			# struck by its ram's spikes: the blow lands on a few points, and tears
+			var oi: int = (other as Machine)._part_near(at)
+			if oi >= 0 and (other as Machine).design[oi].id == "spike":
+				felt_dv *= RAM_BITE
+				_rammed = true
 		# what's round where it struck takes it, less further from it (a knock crumples a corner,
 		# not one bolt)
 		var local := global_transform.affine_inverse() * at
@@ -673,7 +681,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 			var ext := Vector3(Parts.size_of(design[j].id, design[j].rot)) * Parts.CELL * 0.5
 			var d := ((local - c).abs() - ext).max(Vector3.ZERO).length() # (to its box, not its middle)
 			if d < IMPACT_REACH:
-				var felt := dv * (1.0 - 0.6 * d / IMPACT_REACH)
+				var felt := felt_dv * (1.0 - 0.6 * d / IMPACT_REACH)
 				if felt > float(worst.get(j, 0.0)):
 					worst[j] = felt
 		_knock_at = at
@@ -692,6 +700,7 @@ var _sputter := 1.0
 var _sputter_t := 0.0 ## s knocks don't hurt (just set down: built, made anew, put back on its wheels)
 var _knock_at := Vector3.ZERO
 var _knock_by: Machine
+var _rammed := false
 signal knocked(at: Vector3, dv: float)
 
 

@@ -161,8 +161,9 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 
 
 func spawn_enemy(kind: String) -> Machine:
-	var data: Array = {"raider": Designs.raider(), "tank": Designs.tank(), "dummy": Designs.dummy(),
-		"tracked": Designs.tracked()}[kind]
+	var made := Forge.make(randi(), randi_range(0, 5)) if kind == "forge" else {}
+	var data: Array = made.data if kind == "forge" else {"raider": Designs.raider(), "tank": Designs.tank(),
+		"dummy": Designs.dummy(), "tracked": Designs.tracked()}[kind]
 	if arena_node and kind != "dummy":
 		# in through the gate, one beside the other
 		var k := 0
@@ -170,7 +171,7 @@ func spawn_enemy(kind: String) -> Machine:
 			if m != machine and (m as Machine).team != 0:
 				k += 1
 		var e := _spawn(data, arena_node.gate_point(k % 9), 1, true)
-		e.label = LABELS.get(kind, "DÜŞMAN")
+		e.label = str(made.name) if kind == "forge" else LABELS.get(kind, "DÜŞMAN")
 		return e
 	var a := randf() * TAU
 	var r := 70.0 if kind != "dummy" else 30.0
@@ -180,7 +181,7 @@ func spawn_enemy(kind: String) -> Machine:
 	p.y = float(terrain.call("height_at", p.x, p.z)) + 2.5
 	var face := Basis(Vector3.UP, atan2(p.x - machine.global_position.x, p.z - machine.global_position.z))
 	var e2 := _spawn(data, Transform3D(face, p), 1, kind != "dummy")
-	e2.label = LABELS.get(kind, "DÜŞMAN")
+	e2.label = str(made.name) if kind == "forge" else LABELS.get(kind, "DÜŞMAN")
 	return e2
 
 
@@ -236,6 +237,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				spawn_enemy("dummy")
 			KEY_F5:
 				spawn_enemy("tracked")
+			KEY_F7:
+				var f := spawn_enemy("forge")
+				say("Yeni rakip: %s" % f.label)
 			KEY_F6:
 				var n := clear_enemies()
 				say("Alan temizlendi: %d araç kaldırıldı" % n if n > 0 else "Alanda düşman yok")

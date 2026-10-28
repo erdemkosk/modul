@@ -1,7 +1,23 @@
 class_name Designs
 extends RefCounted
 ## Ready machines (the same [id, x, y, z, rot] rows a saved design has): the starter you begin with,
-## and the ones the other side drives.
+## the builder's ready designs (PRESETS), and the ones the other side drives in the arena. (The
+## cage's rivals are Forge's, a new one each fight.)
+
+## The builder's ready designs: [name, what it is, the function].
+const PRESETS := [
+	["GEZGİN", "Başlangıç aracı: dört yol tekerleği, bir motor.", "starter"],
+	["AKINCI", "Hafif ve çevik: minigun, küçük gövde.", "raider"],
+	["TOPÇU", "Ağır: top, zırh, iki motor, arazi tekerleği.", "tank"],
+	["ROKETATAR", "Paletli: roket kovanı, akü, iki motor.", "tracked"],
+	["KOÇBAŞI", "Silahsız: dikenli burun, iki motor, büyük teker.", "spiked"],
+	["ATEŞBAZ", "Alev makinesi ve dikenli burun: yanaşır, yakar.", "brawler"],
+	["GÜRZ", "V8'ler, palet, top ve ikinci silah: ağır topçu.", "heavy"],
+]
+
+
+static func preset(i: int) -> Array:
+	return (Callable(Designs, str(PRESETS[i][2]))).call()
 
 ## A cab on a 4 x 6 lattice bed, the engine behind it, four road wheels, two lights. ~800 kg, 90 kW.
 static func starter() -> Array:
@@ -41,8 +57,8 @@ static func tracked() -> Array:
 	return out
 
 
-## The rammer: no guns, a wedge nose of armour, two engines on big wheels; it drives into you.
-## ~1.9 t, 180 kW.
+## The rammer: no guns, a wedge nose of armour, two engines on big wheels; it drives in under you and
+## shoves. ~1.9 t, 180 kW.
 static func rammer() -> Array:
 	var out := _bed(-1, 2, -2, 2)
 	out.append_array([["cab", 0, 1, -1, 0], ["engine", -1, 1, 1, 0], ["engine", 1, 1, 1, 0],
@@ -52,6 +68,25 @@ static func rammer() -> Array:
 		out.append(["armor", x, 1, -2, 0])
 		out.append(["wedge", x, 1, -3, 0])
 	return out
+
+
+## The rammer with rams along the top of its nose: it hurts more where it strikes, shoves less.
+static func spiked() -> Array:
+	var out := rammer()
+	for e: Array in out:
+		if e[0] == "wedge" and e[2] == 1:
+			e[0] = "spike"
+	return out
+
+
+## The flamethrower brawler: it closes in behind a spiked nose and burns (Forge's, always the same).
+static func brawler() -> Array:
+	return Forge.make(7, 2, "brawler").data
+
+
+## The heavy gunner: V8s on tracks, the cannon and a second gun (Forge's, always the same).
+static func heavy() -> Array:
+	return Forge.make(11, 4, "artillery").data
 
 
 ## The cage's house robot: wide and low, armour all over the front and the top, two engines on big

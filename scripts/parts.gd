@@ -36,6 +36,12 @@ const DEFS := {
 	"engine": {"name": "Dizel motor", "size": Vector3i(2, 2, 2), "mass": 180.0, "kind": "engine", "power": 90.0,
 		"alternator": 2.8,
 		"about": "Turbo dizel, 90 kW. Alternatörü aküyü 2,8 kW ile doldurur. Birden fazlası güçlerini toplar."},
+	"engine_l": {"name": "V8 dizel", "size": Vector3i(2, 2, 3), "mass": 320.0, "kind": "engine", "power": 200.0,
+		"alternator": 4.5, "hp": 260.0,
+		"about": "İki turbolu V8, 200 kW. Ağır ama güçlü: tank ve paletliler için. Alternatörü 4,5 kW."},
+	"engine_s": {"name": "Küçük motor", "size": Vector3i(1, 1, 2), "mass": 70.0, "kind": "engine", "power": 40.0,
+		"alternator": 1.5, "hp": 90.0,
+		"about": "Benzinli, 40 kW. Hafif ve küçük: hafif akıncılar için, ya da yedek güç."},
 	"battery": {"name": "Akü", "size": Vector3i(1, 1, 2), "mass": 60.0, "kind": "battery", "hp": 90.0, "kwh": 1.2,
 		"about": "24 V, 1,2 kWh. Silahların motorları, kule dönüşü ve farlar buradan çeker; motorlar doldurur."},
 	"light": {"name": "Far", "size": Vector3i(1, 1, 1), "mass": 4.0, "kind": "light", "hp": 20.0,
@@ -44,11 +50,17 @@ const DEFS := {
 		"weapon": "minigun", "about": "Altı namlu, dakikada 2400 atım. Namlular önce dönmeli. Yakında yıkıcı."},
 	"cannon": {"name": "Top", "size": Vector3i(2, 2, 2), "mass": 420.0, "kind": "weapon", "hp": 260.0,
 		"weapon": "cannon", "about": "76 mm. 2,5 sn'de bir; mermi düşer, patlar, toprağı oyar. Geri tepmesi aracı iter."},
+	"spike": {"name": "Koç başlığı", "size": Vector3i(1, 1, 1), "mass": 45.0, "kind": "ram", "hp": 260.0,
+		"about": "Çivili çelik burun. Çarptığın yere çok daha ağır darbe vurur; ön yüze takılır."},
+	"flamer": {"name": "Alev makinesi", "size": Vector3i(2, 1, 2), "mass": 90.0, "kind": "weapon", "hp": 110.0,
+		"weapon": "flamer", "about": "14 m'ye alev püskürtür: önündeki her parçayı yakar. Yakın dövüş için."},
+	"plate": {"name": "Çelik plaka", "size": Vector3i(1, 1, 1), "mass": 22.0, "kind": "block", "hp": 150.0,
+		"about": "Hafif zırh: bloktan çok daha hafif, kafesten çok daha sağlam."},
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
-const ORDER := ["frame", "armor", "wedge", "wheel_s", "wheel_l", "track", "engine", "battery", "light", "minigun",
-	"cannon", "rockets", "cab"]
+const ORDER := ["frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
+	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
 ## Hit points by part (what a hit takes off; at 0 it comes off), if a part doesn't say its own.

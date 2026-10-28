@@ -97,6 +97,11 @@ func _draw() -> void:
 					_line(corner, corner - Vector2(0.0, d.y * 7.0), ring, 2.0)
 				if g.reload_frac() > 0.0 and g.armed:
 					_arc(s, r + 7.0, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - g.reload_frac()), Color(1, 1, 1, 0.75), 2.0)
+			"flamer":
+				# a wide broken ring: the stream's spread, its reach the aim's (14 m)
+				for k in 8:
+					var a := k * TAU / 8.0
+					_arc(s, 24.0, a + 0.12, a + TAU / 8.0 - 0.12, ring, 1.6)
 			"rockets":
 				# a tick per tube, lit while it's full
 				var r := 21.0

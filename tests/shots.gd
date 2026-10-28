@@ -14,6 +14,7 @@ var _valley := false
 var _tracks := false
 var _arena := false
 var _polish := false
+var _forge := false
 var _cage := false
 var _t := 0.0
 var _step := 0
@@ -38,6 +39,8 @@ func _initialize() -> void:
 			_polish = true
 		if a == "--cage":
 			_cage = true
+		if a == "--forge":
+			_forge = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
@@ -77,7 +80,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else _arena_steps()))))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else _arena_steps())))))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -89,6 +92,46 @@ func _process(dt: float) -> bool:
 	_step += 1
 	_mark = _t
 	return false
+
+
+## Forge's rivals, one of each style, side by side; the builder's ready designs; the flamethrower.
+func _forge_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			var k := 0
+			for st: String in Forge.STYLES:
+				var made := Forge.make(31 + k * 5, 3, st)
+				var at := _m.global_transform * Vector3(-12.5 + k * 5.0, 1.5, -12.0)
+				var e: Machine = _g.call("_spawn", made.data, Transform3D(_m.global_basis.rotated(Vector3.UP, PI * 0.85), at), 1, false)
+				e.label = made.name
+				k += 1],
+		[4.0, func(_s: float) -> void:
+			_cam(PI * 0.0, -0.3, 22.0), func() -> void: _shoot("forge_lineup")],
+		[2.0, func(_s: float) -> void:
+			_cam(PI * 0.12, -0.18, 15.0), func() -> void: _shoot("forge_lineup_low")],
+		[1.0, _noop, func() -> void:
+			for n in root.get_tree().get_nodes_in_group("machines"):
+				if n != _m:
+					n.queue_free()
+			var b: Builder = _g.get("builder")
+			b.set_active(true)
+			b.load_preset(5)],
+		[3.0, func(_s: float) -> void:
+			_cam(PI * 0.75, -0.5, 9.0), func() -> void: _shoot("forge_presets")],
+		[1.0, _noop, func() -> void:
+			(_g.get("builder") as Builder).set_active(false)
+			_g.call("_spawn", Designs.dummy(), Transform3D(_m.global_basis, _m.global_transform * Vector3(0.0, 1.5, -18.0)), 1, false)],
+		[3.0, func(_s: float) -> void:
+			var e := _enemy()
+			if e:
+				_m.aim_point = e.com_global()
+				_m.throttle = 0.6 if _m.global_position.distance_to(e.global_position) > 9.0 else 0.0
+				_m.firing = _m.global_position.distance_to(e.global_position) < 13.0
+			_cam(PI * 0.8, -0.2, 9.0), func() -> void: _shoot("forge_flame")],
+	]
 
 
 func _noop(_s: float) -> void:

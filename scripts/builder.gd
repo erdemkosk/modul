@@ -34,11 +34,12 @@ const DIM := Color(0.68, 0.66, 0.6)
 const BAD := Color(1.0, 0.42, 0.32)
 const GOOD := Color(0.55, 0.9, 0.5)
 ## The keys that pick the parts, in Parts.ORDER (the cab left out).
-const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_Q, KEY_E]
-const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E"]
+const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_Q, KEY_E, KEY_Z, KEY_X,
+	KEY_C, KEY_F, KEY_H]
+const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H"]
 ## The cards' groups.
-const GROUPS := [["GÖVDE", ["frame", "armor", "wedge"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
-	["GÜÇ", ["engine", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets"]]]
+const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
+	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine
@@ -277,6 +278,18 @@ func _build_designs() -> void:
 		_button(row, "Kaydet", 12).pressed.connect(save_slot.bind(k))
 		_button(row, "Yükle", 12).pressed.connect(load_slot.bind(k))
 	_refresh_slots()
+	# the ready designs, two to a row (loading one is undoable)
+	_label(col, "HAZIR TASARIMLAR", 13, ACCENT)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 5)
+	grid.add_theme_constant_override("v_separation", 5)
+	col.add_child(grid)
+	for i in Designs.PRESETS.size():
+		var b := _button(grid, str(Designs.PRESETS[i][0]), 12)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.tooltip_text = str(Designs.PRESETS[i][1])
+		b.pressed.connect(load_preset.bind(i))
 
 
 ## Under them: the tools, paper buttons with their keys, three to a row.
@@ -819,6 +832,10 @@ func _on_clear() -> void:
 
 func reset_starter() -> void:
 	_swap_design(Designs.starter())
+
+
+func load_preset(i: int) -> void:
+	_swap_design(Designs.preset(i))
 
 
 ## A whole new design: the old parts lift away, the new ones drop in (undoable unless it's the undo).

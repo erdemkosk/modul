@@ -29,9 +29,12 @@ const KINDS := {
 	"minigun": {"yaw_rate": 3.0, "pitch_rate": 2.5, "pitch": Vector2(-0.25, 0.9), "on": 0.04},
 	"cannon": {"yaw_rate": 0.9, "pitch_rate": 0.6, "pitch": Vector2(-0.12, 0.45), "on": 0.015},
 	"rockets": {"yaw_rate": 1.4, "pitch_rate": 1.0, "pitch": Vector2(-0.1, 0.75), "on": 0.03},
+	"flamer": {"yaw_rate": 2.4, "pitch_rate": 2.0, "pitch": Vector2(-0.35, 0.6), "on": 0.14},
 }
 ## kW: the minigun's motor at full spin, each mount's traverse at full slew, a loader at work.
-const DRAW := {"minigun": [4.0, 0.8, 0.0], "cannon": [0.0, 3.0, 1.5], "rockets": [0.0, 1.2, 1.0]}
+const DRAW := {"minigun": [4.0, 0.8, 0.0], "cannon": [0.0, 3.0, 1.5], "rockets": [0.0, 1.2, 1.0], "flamer": [1.2, 0.8, 0.0]}
+const FLAME_RANGE := 14.0 ## m
+const FLAME_DPS := 90.0 ## hp a second at the stream's heart
 const MINIGUN_RATE := 40.0
 const MINIGUN_SPREAD := 0.012 ## rad
 const MINIGUN_DAMAGE := 5.0
@@ -91,9 +94,10 @@ var _recoil := 0.0 ## 0..1 how far back the barrel or the pod is
 var _recoil_v := 0.0
 var _motor: AudioStreamPlayer3D
 var _brass: GPUParticles3D
+var _fire: GPUParticles3D ## (a flamethrower's stream)
 var _flash: MeshInstance3D
 var _flash_t := 0.0
-const RECOIL := {"minigun": 0.006, "cannon": 0.28, "rockets": 0.05} ## m back at full recoil
+const RECOIL := {"minigun": 0.006, "cannon": 0.28, "rockets": 0.05, "flamer": 0.002} ## m back at full recoil
 
 
 static func make(m: Machine, part: Node3D, id: String) -> MachineGun:
@@ -140,6 +144,9 @@ func _dress() -> void:
 	_flash.visible = false
 	_flash.position = Vector3(0, 0, -0.25 if big else -0.08)
 	muzzle.add_child(_flash)
+	if kind == "flamer":
+		_flame_dress()
+		return
 	if kind != "minigun":
 		return
 	_motor = AudioStreamPlayer3D.new()
@@ -185,6 +192,68 @@ func _dress() -> void:
 	_brass.position = Vector3(0.12, 0.0, 0.0)
 	_brass.visibility_aabb = AABB(Vector3(-6, -6, -6), Vector3(12, 12, 12))
 	gun.add_child(_brass)
+
+
+## A flamethrower's stream (fire thrown forward, slowing and rising and going to smoke) and its roar.
+func _flame_dress() -> void:
+	_fire = GPUParticles3D.new()
+	var pm := ParticleProcessMaterial.new()
+	pm.direction = Vector3(0, 0, -1)
+	pm.spread = 7.0
+	pm.initial_velocity_min = 17.0
+	pm.initial_velocity_max = 21.0
+	pm.damping_min = 6.0
+	pm.damping_max = 9.0
+	pm.gravity = Vector3(0, 2.5, 0)
+	pm.scale_min = 0.5
+	pm.scale_max = 0.9
+	var grow := CurveTexture.new()
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.25))
+	c.add_point(Vector2(1.0, 3.2))
+	grow.curve = c
+	pm.scale_curve = grow
+	var fade := GradientTexture1D.new()
+	var g := Gradient.new()
+	g.set_color(0, Color(1.0, 0.9, 0.55, 1.0))
+	g.add_point(0.35, Color(1.0, 0.45, 0.1, 0.9))
+	g.add_point(0.7, Color(0.35, 0.18, 0.1, 0.5))
+	g.set_color(g.get_point_count() - 1, Color(0.15, 0.14, 0.13, 0.0))
+	fade.gradient = g
+	pm.color_ramp = fade
+	_fire.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.7, 0.7)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	fm.vertex_color_use_as_albedo = true
+	fm.albedo_texture = WheelSpray._puff()
+	q.material = fm
+	_fire.draw_pass_1 = q
+	_fire.amount = 220
+	_fire.lifetime = 0.9
+	_fire.local_coords = false
+	_fire.emitting = false
+	_fire.visibility_aabb = AABB(Vector3(-10, -6, -20), Vector3(20, 14, 24))
+	muzzle.add_child(_fire)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.55, 0.2)
+	l.omni_range = 7.0
+	l.light_energy = 0.0
+	l.position = Vector3(0, 0, -2.5)
+	l.name = "FlameLight"
+	muzzle.add_child(l)
+	_motor = AudioStreamPlayer3D.new()
+	var s := (load("res://assets/audio/weapons/flame_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
+	s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	s.loop_end = 74970
+	_motor.stream = s
+	_motor.unit_size = 9.0
+	_motor.volume_db = -80.0
+	gun.add_child(_motor)
 
 
 static var _star_tex: ImageTexture
@@ -253,6 +322,8 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	if _flash:
 		_flash_t -= dt
 		_flash.visible = _flash_t > 0.0
+	if kind == "flamer" and muzzle and muzzle.has_node("FlameLight"):
+		(muzzle.get_node("FlameLight") as OmniLight3D).light_energy = _spin * randf_range(3.0, 5.0)
 	if _motor:
 		_motor.volume_db = linear_to_db(maxf(_spin * 0.7, 0.0001)) - 2.0
 		_motor.pitch_scale = 0.4 + _spin * 0.75
@@ -276,6 +347,22 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 				_minigun_round()
 		elif _cool < 0.0:
 			_cool = 0.0
+	elif kind == "flamer":
+		# the pump and the pilot: the stream comes up in a moment and dies as fast
+		_spin = move_toward(_spin, 1.0 if firing and on_target and powered else 0.0, dt * 5.0)
+		if _fire:
+			_fire.emitting = _spin > 0.3
+		if _motor:
+			_motor.volume_db = linear_to_db(maxf(_spin, 0.0001)) + 2.0
+			if _spin > 0.05 and not _motor.playing:
+				_motor.play()
+			elif _spin <= 0.05 and _motor.playing:
+				_motor.stop()
+		if _spin > 0.5:
+			if _cool <= 0.0:
+				_cool = 0.1
+				if Combat.current:
+					Combat.current.flame(_bore().origin, -_bore().basis.z, FLAME_RANGE, FLAME_DPS * 0.1, machine)
 	elif kind == "rockets":
 		if firing and on_target and loaded > 0 and _cool <= 0.0:
 			_cool = ROCKET_GAP

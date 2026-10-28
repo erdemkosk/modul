@@ -11,8 +11,8 @@ extends CanvasLayer
 ##   top left       where you are and the tally; top right the camera (C) and the frame rate
 ## Under the panels, CombatOverlay: the screen going red when you're hurt, where it came from, the enemy.
 
-const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets"}
-const NAME := {"minigun": "MİNİGUN", "cannon": "TOP 76", "rockets": "ROKET"}
+const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets", "flamer": "flamer"}
+const NAME := {"minigun": "MİNİGUN", "cannon": "TOP 76", "rockets": "ROKET", "flamer": "ALEV"}
 const TOP_SPEED := 90.0 ## km/h at the speed bar's end
 
 var game: Node
@@ -283,6 +283,9 @@ func _weapons(m: Machine) -> void:
 			"rockets":
 				frac = float(g.loaded) / MachineGun.ROCKETS
 				text = "%d / %d ROKET" % [g.loaded, MachineGun.ROCKETS]
+			"flamer":
+				frac = 1.0
+				text = "YAKIYOR" if g._spin > 0.5 else "HAZIR  ·  14 M"
 		if not m.powered:
 			text = "AKÜ BİTTİ"
 		var lit := g.armed
