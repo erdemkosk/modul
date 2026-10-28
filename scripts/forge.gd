@@ -8,8 +8,8 @@ extends RefCounted
 ##   rocketeer   the rocket pod, a battery, tracks when it's heavy
 ##   brawler     a flamethrower and a spiked nose: it closes in and burns
 ##   rammer      no guns, a nose of spikes and wedges, all the power it can carry
-## and then, whatever the style: the cab at the front of the bed, the guns on the cab's roof (a
-## second gun from the fourth round), armour or plates or rams across the front by the round, a
+## and then, whatever the style: the cab at the front of the bed, the gun on the cab's roof (a
+## second up on an engine, now and then from the third round), armour or plates or rams across the front by the round, a
 ## battery if the guns draw more than the engines charge, the running gear chosen for the weight (road
 ## wheels, off-road wheels, tracks: rated for what it weighs, with a margin), and engines added until
 ## its power for its weight reaches the round's mark. Everything's checked to bolt to the cab.
@@ -84,7 +84,7 @@ func _build() -> void:
 	var heavy := style in ["artillery", "rocketeer"]
 	# the bed: 3 or 4 wide for the light, 4 (now and then 5 later on, always for a heavy one late on)
 	# for the rest; 5 long for the light, 6 (or 7 later on) for the rest
-	var w := (3 + rng.randi() % 2) if light else (5 if heavy and tier >= 3 or tier >= 2 and rng.randf() < 0.25 else 4)
+	var w := (3 + rng.randi() % 2 if tier < 3 else 4) if light else (5 if heavy and tier >= 3 or tier >= 2 and rng.randf() < 0.25 else 4)
 	var l := 5 if light else (7 if tier >= 2 and rng.randf() < 0.3 else 6)
 	x0 = -(w / 2)
 	x1 = x0 + w - 1
@@ -125,6 +125,11 @@ func _build() -> void:
 	if style == "rammer":
 		for x in range(cx, cx + 2):
 			_put("spike", Vector3i(x, 1, z0 - 1)) # (in front of the cab)
+	# the cab's windscreen plated over (armour later on): it's what everyone shoots at
+	if not light or tier >= 2:
+		for x in range(cx, cx + 2):
+			for y: int in [1, 2]:
+				_put("armor" if tier >= 3 and not light else "plate", Vector3i(x, y, z0 - 1))
 	# the first engine, then a battery if the guns draw more than it charges, then a second gun (from
 	# the third round now and then), then engines till it's quick enough for the round
 	_add_engine(light, heavy)
@@ -136,12 +141,12 @@ func _build() -> void:
 		_place_on_bed("battery")
 	if not guns.is_empty() and rng.randf() < (0.6 if tier >= 3 else (0.25 if tier == 2 else 0.0)):
 		var second: String = "minigun" if style == "brawler" else ["minigun", "rockets", "flamer"][rng.randi() % 3]
-		if _place_on_bed(second):
+		if _place_on_engine(second): # (up on an engine's top: clear of the cab, it can fire forward over it)
 			guns.append(second)
 			if not _has("battery"):
 				_place_on_bed("battery")
 	var gear_kind := _gear_kind(light, heavy)
-	var mark := (70.0 + 12.0 * tier) * (1.2 if light or style == "rammer" else 1.0)
+	var mark := (95.0 + 10.0 * tier) * (1.15 if light or style == "rammer" else 1.0)
 	for i in 8:
 		gear_kind = _gear_kind(light, heavy)
 		if _power() / ((_mass() + _gear_mass(gear_kind)) / 1000.0) >= mark:
@@ -176,6 +181,17 @@ func _place_on_bed(id: String) -> bool:
 					continue
 				if _put(id, at):
 					return true
+	return false
+
+
+## On top of an engine, as far back as it'll go.
+func _place_on_engine(id: String) -> bool:
+	var s := Parts.size_of(id, 0)
+	for z in range(z1 - s.z + 1, z0 + 1, -1):
+		for x in range(x0, x1 - s.x + 2):
+			var at := Vector3i(x, 3, z)
+			if _held(id, at) and _put(id, at):
+				return true
 	return false
 
 

@@ -26,6 +26,7 @@ const PIT_OPENS := 45.0 ## s into a round the pit (if it has one) opens
 const REFUND := 0.5 ## of its price a part taken off in the workshop pays back
 const COUNT_OUT := 8.0 ## s a rival can't move before it's counted out
 const START_CREDITS := 300
+const CREW := [2.2, 1.7, 1.3, 1.0] ## by round: how far the rivals' aim wanders (x a seasoned crew's)
 const ROUNDS := [
 	{"name": "ÇAMUR ÇUKURU", "rivals": [["skirmisher", ""]],
 		"layout": {"zones": [[Rect2(-9, -9, 18, 18), "mud"]], "blocks": [Vector2(-14, 12), Vector2(14, -12)],
@@ -189,9 +190,14 @@ func _begin_round(i: int) -> void:
 		var at := Vector3(CageArena.HALF - 5.0 - k * 6.0, 0.0, CageArena.HALF - 5.0 + k * 1.5)
 		at.y = arena.terrain.height_at(at.x, at.z) + 1.5
 		# built for this round from the run's seed: a style (the round's, or any), stronger each round
-		var made := Forge.make(run_seed * 977 + i * 31 + k, i, str(rv[0]))
+		var made := Forge.make(run_seed * 977 + i * 31 + k, maxi(i - k, 0), str(rv[0])) # (a second one a round weaker)
 		var e: Machine = game.call("_spawn", made.data, Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at), 1, true)
 		e.label = str(rv[1]) if str(rv[1]) != "" else str(made.name)
+		for d in e.get_children():
+			if d is AiDriver:
+				# green crews early on (their aim wanders), seasoned by the fourth round; slower to open fire too
+				(d as AiDriver).clumsy = CREW[mini(i, CREW.size() - 1)]
+				(d as AiDriver)._wake = 1.2 + maxf(2.0 - i, 0.0) * 0.8
 		e.set_physics_process(false) # (held till the countdown's done)
 		rivals.append(e)
 		k += 1
@@ -331,7 +337,7 @@ func _round_over(won: bool, how: String) -> void:
 	for e in rivals:
 		var h := e.health() if is_instance_valid(e) and e.alive and not e.falling else 0.0
 		torn += float(_hp_start.get(e, 1.0)) - h
-	var pay := 350 + 120 * round + int(torn * 400.0) + int(maxf(time_left, 0.0) * 1.5)
+	var pay := 300 + 100 * round + int(torn * 350.0) + int(maxf(time_left, 0.0) * 1.0)
 	credits += pay
 	_ui.show_won(how if how != "" else "KAZANDIN", pay)
 	var last := round >= ROUNDS.size() - 1

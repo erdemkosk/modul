@@ -6,7 +6,7 @@ extends RefCounted
 
 const PATH := "user://settings.cfg"
 const DEFAULTS := {"sensitivity": 1.0, "fov": 70.0, "shake": 1.0, "volume": 0.8, "fullscreen": false,
-	"shadows": true, "ssao": true, "show_fps": true}
+	"shadows": true, "ssao": true, "show_fps": true, "hints_seen": ""}
 
 static var values := {}
 static var _loaded := false

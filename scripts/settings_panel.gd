@@ -59,6 +59,14 @@ func _ready() -> void:
 			t.focus_mode = Control.FOCUS_NONE
 			t.toggled.connect(func(on: bool) -> void: Settings.set_value(key, on))
 			row.add_child(t)
+	var again := Button.new()
+	again.text = "İPUÇLARINI YENİDEN GÖSTER"
+	again.focus_mode = Control.FOCUS_NONE
+	PauseMenu.style_button(again, false)
+	again.pressed.connect(func() -> void:
+		Hints.reset()
+		again.text = "İPUÇLARI YENİDEN GÖSTERİLECEK")
+	col.add_child(again)
 	var back := Button.new()
 	back.text = "GERİ"
 	back.focus_mode = Control.FOCUS_NONE

@@ -34,6 +34,7 @@ var _retarget_t := 0.0
 var _think := 0.0
 var _err := Vector3.ZERO
 var _wake := 1.2 ## s before it opens fire (a crew taking it in)
+var clumsy := 1.0 ## how far its aim wanders (1 a seasoned crew; the cage's first rounds' are greener)
 var _err_goal := Vector3.ZERO
 var _err_t := 0.0
 var _part: Dictionary = {} ## (the part of its target it aims at)
@@ -57,6 +58,12 @@ func _ready() -> void:
 
 func _physics_process(dt: float) -> void:
 	if machine == null or not machine.alive or machine.building or machine.falling:
+		return
+	if not machine.is_physics_processing():
+		# held (the cage's countdown): nothing counts as stuck, and it's not backing round yet
+		_stuck_t = 0.0
+		_back_t = 0.0
+		_reversing = false
 		return
 	if _arena == null:
 		_arena = get_tree().get_first_node_in_group("cage_arena")
@@ -122,6 +129,9 @@ func _physics_process(dt: float) -> void:
 		throttle = 0.5
 	elif absf(ang) > 2.2 and (dist > near or rams or shoving):
 		throttle = 0.5 # (tracks: it turns round where it is)
+	# spiked: struck home, it backs off for a run-up and comes again (a ram bites by its speed)
+	if rams and _spiked() and dist < 3.2 and _back_t <= 0.0 and absf(machine.speed) < 4.0:
+		_back_t = 1.1
 	# stuck: backs out, turned the other way
 	if _back_t > 0.0:
 		_back_t -= dt
@@ -207,8 +217,8 @@ func _steer_round(to: Vector3, _shoving_now: bool) -> Vector3:
 ## When its target's near something that would hurt it, where to drive to shove it there: round
 ## behind it first, then straight through it toward the harm; Vector3.INF when it isn't shoving.
 func _shove_goal(rams: bool) -> Vector3:
-	if _arena == null:
-		return Vector3.INF
+	if _arena == null or _spiked():
+		return Vector3.INF # (spikes throw what they strike off them: they bite, they don't push)
 	var t := target.global_position
 	var me := machine.global_position
 	var t2 := Vector2(t.x, t.z)
@@ -277,7 +287,7 @@ func _aim(dt: float, dist: float) -> void:
 	_err_t -= dt
 	if _err_t <= 0.0:
 		_err_t = randf_range(0.6, 1.3)
-		var spread := AIM_ERR_BASE + dist * AIM_ERR_PER_M + (target.linear_velocity.length() + absf(machine.speed)) * 0.08
+		var spread := (AIM_ERR_BASE + dist * AIM_ERR_PER_M + (target.linear_velocity.length() + absf(machine.speed)) * 0.08) * clumsy
 		_err_goal = Vector3(randf_range(-1, 1), randf_range(-0.4, 0.6), randf_range(-1, 1)).normalized() * spread * randf_range(0.3, 1.0)
 	_err = _err.lerp(_err_goal, 1.0 - exp(-2.5 * dt))
 	machine.aim_point = aim + _err
@@ -314,6 +324,15 @@ func _pick_part() -> Dictionary:
 
 
 # --- What to go after ---------------------------------------------------------------------------
+
+## Rams on its nose (two or more spikes).
+func _spiked() -> bool:
+	var n := 0
+	for p: Dictionary in machine.design:
+		if p.id == "spike":
+			n += 1
+	return n >= 2
+
 
 ## Every gun it has is of `kind`.
 func _only(kind: String) -> bool:

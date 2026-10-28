@@ -377,7 +377,34 @@ func _instance(id: String) -> Node3D:
 		_scenes[id] = load(Parts.model(id))
 	var n := (_scenes[id] as PackedScene).instantiate() as Node3D
 	PaintedLook.apply(n)
+	if TEAM_PAINT.has(team):
+		_team_paint(n)
 	return n
+
+
+## The other side's colours, on the parts' paint (yours stays the works yellow): the rivals oxide red,
+## the cage's house robots gunmetal.
+const TEAM_PAINT := {1: Color(0.36, 0.06, 0.045), 2: Color(0.11, 0.115, 0.12)}
+static var _team_mats := {} ## [team, painted material] -> that material in the team's colour
+
+
+func _team_paint(root: Node) -> void:
+	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null:
+			continue
+		for k in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(k)
+			if src == null or src.resource_name != "Paint":
+				continue
+			var painted := mi.get_surface_override_material(k) as ShaderMaterial
+			if painted == null:
+				continue
+			var key := [team, painted]
+			if not _team_mats.has(key):
+				var m := painted.duplicate() as ShaderMaterial
+				m.set_shader_parameter("albedo", TEAM_PAINT[team])
+				_team_mats[key] = m
+			mi.set_surface_override_material(k, _team_mats[key])
 
 
 func _add_shape(size: Vector3, at: Vector3) -> void:
@@ -983,12 +1010,18 @@ func _flash_part(i: int) -> void:
 		return
 	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 		mi.material_overlay = _flash_mat
+	# (held weakly: the part, or the whole machine, may be gone before the flash is over)
+	var wn: WeakRef = weakref(node)
+	var wm: WeakRef = weakref(self)
 	get_tree().create_timer(0.07).timeout.connect(func() -> void:
-		if is_instance_valid(node):
-			for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
-				if mi.material_overlay == _flash_mat:
-					mi.material_overlay = null
-			_show_wear())
+		var n := wn.get_ref() as Node3D
+		var me := wm.get_ref() as Machine
+		if n == null or me == null:
+			return
+		for mi: MeshInstance3D in n.find_children("*", "MeshInstance3D", true, false):
+			if mi.material_overlay == Machine._flash_mat:
+				mi.material_overlay = null
+		me._show_wear())
 
 
 static var _flash_mat: StandardMaterial3D
@@ -1124,7 +1157,7 @@ func break_off(i: int) -> void:
 		var xf := global_transform * Parts.xform_of(p.id, p.at, p.rot)
 		if c:
 			var v := velocity_at(xf.origin) + (xf.origin - com_global()).normalized() * randf_range(2.0, 6.0) + Vector3.UP * randf_range(2.0, 5.0)
-			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id])
+			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id], self)
 	gone.sort()
 	gone.reverse()
 	for j in gone:

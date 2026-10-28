@@ -278,16 +278,23 @@ func _build_designs() -> void:
 		_button(row, "Kaydet", 12).pressed.connect(save_slot.bind(k))
 		_button(row, "Yükle", 12).pressed.connect(load_slot.bind(k))
 	_refresh_slots()
-	# the ready designs, two to a row (loading one is undoable)
+	# the ready designs, four to a row, a picture of each (loading one is undoable)
 	_label(col, "HAZIR TASARIMLAR", 13, ACCENT)
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 5)
-	grid.add_theme_constant_override("v_separation", 5)
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
 	col.add_child(grid)
 	for i in Designs.PRESETS.size():
-		var b := _button(grid, str(Designs.PRESETS[i][0]), 12)
+		var b := _button(grid, str(Designs.PRESETS[i][0]), 10)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var pic := "res://assets/ui/presets/%s.png" % Designs.PRESETS[i][2] # (tools/preset_icons.gd)
+		if ResourceLoader.exists(pic):
+			b.icon = load(pic)
+			b.expand_icon = true
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.custom_minimum_size = Vector2(0, 66)
 		b.tooltip_text = str(Designs.PRESETS[i][1])
 		b.pressed.connect(load_preset.bind(i))
 

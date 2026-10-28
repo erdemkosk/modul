@@ -536,7 +536,7 @@ func dust_ring(at: Vector3, _owner: Machine) -> void:
 # --- Machines coming apart -----------------------------------------------------------------------
 
 ## A part off a machine: its model as a tumbling body, flung by what broke it.
-func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: PackedScene) -> void:
+func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: PackedScene, from: Machine = null) -> void:
 	var b := RigidBody3D.new()
 	b.collision_layer = 4
 	b.collision_mask = 1 | 2 | 4
@@ -548,6 +548,8 @@ func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: Pac
 	b.add_child(cs)
 	var model := scene.instantiate() as Node3D
 	PaintedLook.apply(model)
+	if from and Machine.TEAM_PAINT.has(from.team):
+		from._team_paint(model) # (in its side's colours still)
 	b.add_child(model)
 	add_child(b)
 	b.global_transform = xf

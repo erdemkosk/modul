@@ -55,7 +55,12 @@ are this project's own.
 - `scripts/combat.gd`: rounds, shells, rockets (thrust, wobble, smoke trail), bursts, craters, debris,
   effects and sound, pooled.
 - `scripts/ai_driver.gd`: the other side's crews. `scripts/designs.gd`: ready machines, and the build
-  screen's ready designs (HAZIR TASARIMLAR: Gezgin, Akıncı, Topçu, Roketatar, Koçbaşı, Ateşbaz, Gürz).
+  screen's ready designs (HAZIR TASARIMLAR: Gezgin, Akıncı, Topçu, Roketatar, Koçbaşı, Ateşbaz, Gürz),
+  each with a picture (`assets/ui/presets`, rendered by `godot --path . -s res://tools/preset_icons.gd`).
+- The other side is painted its own colours (`machine.gd` TEAM_PAINT): the rivals oxide red, the
+  cage's house robots gunmetal; their pieces keep them when they come off.
+- `scripts/hints.gd`: the first time you drive, build or stand at the cage's start, a card with the
+  keys that matter there (once each; AYARLAR can show them again).
 - `scripts/forge.gd`: builds the other side's machines from sensible parts, a different one from each
   seed: a style (skirmisher, gunner, artillery, rocketeer, flamethrower brawler, rammer) picks the guns
   and the nose; then the cab at the front, a battery if the guns draw more than an engine charges,

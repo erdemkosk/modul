@@ -442,6 +442,9 @@ func _make_hud() -> void:
 	_drive_hud = DriveHud.new()
 	_drive_hud.game = self
 	add_child(_drive_hud)
+	var hints := Hints.new() # (the first time at each thing: how it's done)
+	hints.game = self
+	add_child(hints)
 	_cross = Crosshair.new()
 	_cross.game = self
 	_cross.set_anchors_preset(Control.PRESET_FULL_RECT)
