@@ -13,6 +13,7 @@ var _out := "user://shots"
 var _valley := false
 var _tracks := false
 var _arena := false
+var _polish := false
 var _t := 0.0
 var _step := 0
 var _mark := 0.0
@@ -32,6 +33,8 @@ func _initialize() -> void:
 			_tracks = true
 		if a == "--arena":
 			_arena = true
+		if a == "--polish":
+			_polish = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
@@ -71,7 +74,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else _arena_steps()))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else _arena_steps())))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -226,6 +229,56 @@ func _arena2_steps() -> Array:
 			(_g.get("weather") as Weather).hour = 22.5
 			(_g.get("arena_node") as Arena).set_night(true)],
 		[4.0, func(_s: float) -> void: _cam(PI * 0.15, -0.4, 34.0), func() -> void: _shoot("arena_night")],
+	]
+
+
+## The polish: a hurt machine smoking and sooted, enemies marked, a hit from the side, the pause
+## menu, the death card.
+func _polish_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			var data := Designs.starter()
+			data.append(["minigun", 0, 3, 0, 0])
+			_m.from_data(data)
+			var e1: Machine = _g.spawn_enemy("tank")
+			var e2: Machine = _g.spawn_enemy("raider")
+			for e: Machine in [e1, e2]:
+				e.set_physics_process(false)
+				for c in e.get_children():
+					if c is AiDriver:
+						c.queue_free()
+			e1.global_position = _m.global_position + Vector3(-12, 1, -34)
+			e2.global_position = _m.global_position + Vector3(40, 1, -10)
+			e1.damage_part(e1.cab_index(), 300.0)
+			# hurt: the engine burning, the bed and a wheel shot about
+			for i in _m.design.size():
+				var id: String = _m.design[i].id
+				var frac := {"engine": 0.15, "light": 0.5, "frame": 0.45, "wheel_s": 0.6}.get(id, 1.0) as float
+				if id == "frame" and i % 3 != 0:
+					frac = 1.0
+				_m.design[i].hp = Parts.hp_of(id) * frac
+			_m.damage_part(_m.cab_index(), 420.0)],
+		[2.5, func(_s: float) -> void:
+			_cam(PI * 1.15, -0.25, 9.0)
+			if _s > 2.3 and _once("hit"):
+				_m.damaged.emit(60.0, _m.global_position + Vector3(30, 0, 0), "top")
+			, func() -> void: _shoot("hurt")],
+		[1.0, func(_s: float) -> void:
+			_cam(PI, -0.05, 11.0)
+			if _s > 0.8 and _once("hit2"):
+				_m.damaged.emit(80.0, _m.global_position + Vector3(-20, 0, 25), "roket")
+			, func() -> void: _shoot("markers")],
+		[0.5, _noop, func() -> void: (_g.get("pause") as PauseMenu).open()],
+		[0.6, _noop, func() -> void: _shoot("pause")],
+		[0.5, _noop, func() -> void:
+			(_g.get("pause") as PauseMenu)._show_settings(true)],
+		[0.6, _noop, func() -> void: _shoot("settings")],
+		[0.5, _noop, func() -> void:
+			(_g.get("pause") as PauseMenu).close()
+			(_g.get("_death") as DeathCard).show_card("TANK", "top", 154.0, 2)],
+		[1.6, _noop, func() -> void: _shoot("death")],
 	]
 
 

@@ -29,10 +29,23 @@ extends RigidBody3D
 ## (Parts.hp_of); at none it comes off as debris (Combat), and so does whatever was bolted on only
 ## through it; the cab gone, the whole machine comes apart.
 ##
+## Knocks hurt too: a blow on its body (ramming, being rammed, a wall, landing hard off a ramp) takes
+## hit points off the part where it struck, by how sharply it changed the machine's speed past what
+## its build takes without harm (IMPACT_SAFE m/s). Whatever comes off, the machine is worked out anew
+## (its mass, centre of mass, wheels, power), so it sits, steers and drives as what's left of it.
+## It's dead when its cab is gone (the driver's in it); with no engine or nothing to run on it's
+## `immobile` (the player can have it rebuilt).
+##
+## Hurt shows: a part darkens with soot and the pocks of rounds as it's hurt (part_wear.gdshader), and
+## one badly hurt smokes (an engine black and burning) — at most SMOKERS of them, the worst.
+##
 ## The design is a list of {id, at (Vector3i: the footprint's low corner), rot (quarter turns), hp}.
 
 signal changed
 signal died
+## It took `amount` hp from `from` (where the shot came from, or the burst or the knock was), by
+## `kind` (minigun, top, roket, patlama, çarpışma): what the HUD shows you.
+signal damaged(amount: float, from: Vector3, kind: String)
 
 const RAY_MASK := 1
 const MAX_STEER := 0.55 ## rad, slow; less going faster
@@ -40,7 +53,14 @@ const AIR_DENSITY := 1.2
 const CD := 0.9
 const BUMP_STIFF := 8.0 ## the bump stop, times the spring
 const TRACTION := 0.6 ## the most the drive pushes at a crawl, times its weight
-const STAMP_STEP := 0.12 ## m a wheel rolls between ruts pressed in
+const STAMP_STEP := 0.12
+const IMPACT_SAFE := 3.0 ## m/s a knock changes its speed by without harm
+const IMPACT_HURT := 6.0 ## hp per (m/s past it) squared
+const IMPACT_REACH := 0.8 ## m round where it struck that the parts take it
+const SMOKERS := 4 ## parts that smoke at once at most
+const WEAR := preload("res://shaders/part_wear.gdshader")
+static var _wear_mat: ShaderMaterial
+var _smoke: Array[GPUParticles3D] = [] ## m a wheel rolls between ruts pressed in
 
 var design: Array = [] ## [{id, at, rot}]
 var terrain: Node ## WorldTerrain (surface_at, patch_at); rays find its ground either way
@@ -56,6 +76,8 @@ var aim_point := Vector3.ZERO
 var firing := false
 var guns: Array[MachineGun] = []
 var last_hit_by: Machine
+var last_hit_kind := "" ## (what hurt it last: the death card's line)
+var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
 var invulnerable := false ## (the proving ground's G) hits push it but take nothing off
 var wet := 0.0 ## 0..1: the ground soaked by rain (Weather.wetness): what the wheels throw
 
@@ -101,6 +123,8 @@ func _ready() -> void:
 	collision_mask = 1 | 2
 	continuous_cd = true
 	can_sleep = false
+	contact_monitor = true
+	max_contacts_reported = 8
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	_root = Node3D.new()
 	_root.name = "Parts"
@@ -174,6 +198,7 @@ func place(id: String, at: Vector3i, rot: int) -> bool:
 		return false
 	design.append({"id": id, "at": at, "rot": rot, "hp": Parts.hp_of(id)})
 	rebuild()
+	_note_built()
 	return true
 
 
@@ -189,6 +214,7 @@ func remove(i: int) -> bool:
 		return false
 	design.remove_at(i)
 	rebuild()
+	_note_built()
 	return true
 
 
@@ -231,6 +257,8 @@ func from_data(data: Array) -> void:
 			var pid := str(e[0])
 			design.append({"id": pid, "at": Vector3i(int(e[1]), int(e[2]), int(e[3])), "rot": int(e[4]), "hp": Parts.hp_of(pid)})
 	rebuild()
+	_note_built()
+	set_down()
 
 
 ## The parts' models, boxes, mass, centre of mass, wheels and lamps, from the design.
@@ -317,6 +345,8 @@ func rebuild() -> void:
 		w.side = signf(w.rest.x - com.x)
 	energy_kj = capacity_kj * _energy_frac
 	_set_lamps()
+	_smoke.clear() # (they went with the part nodes)
+	_show_wear()
 	changed.emit()
 
 
@@ -503,6 +533,7 @@ func set_building(on: bool) -> void:
 		global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, g + 0.6 - low, at.z))
 	else:
 		freeze = false
+		set_down()
 	_engine_sound.stream_paused = on
 
 
@@ -511,6 +542,24 @@ func set_building(on: bool) -> void:
 func _physics_process(dt: float) -> void:
 	if building or total_mass <= 0.0 or not alive:
 		return
+	# the knocks felt last step (taken here, not in the middle of the physics step)
+	if not _knocks.is_empty():
+		var ks := _knocks
+		_knocks = []
+		var total := 0.0
+		for e: Array in ks:
+			total += float(e[1])
+		last_hit_kind = "çarpışma"
+		if is_instance_valid(_knock_by):
+			last_hit_by = _knock_by
+		_knock_by = null
+		damaged.emit(total, _knock_at, "çarpışma")
+		for e: Array in ks:
+			var j := design.find(e[0])
+			if j >= 0 and alive:
+				damage_part(j, float(e[1]))
+		if not alive:
+			return
 	_power(dt)
 	for g in guns:
 		g.update(dt, aim_point, firing and g.armed, powered)
@@ -557,6 +606,69 @@ func _physics_process(dt: float) -> void:
 	var v := linear_velocity
 	apply_central_force(-v * v.length() * 0.5 * AIR_DENSITY * CD * frontal)
 	_update_sound(on_ground.size(), dt)
+
+
+## Knocks: each contact's impulse this step, as a change in the machine's speed; past IMPACT_SAFE
+## it hurts the part where it struck.
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if building or not alive or total_mass <= 0.0:
+		return
+	if _grace > 0.0:
+		_grace -= state.step
+		return
+	var worst := {}
+	for i in state.get_contact_count():
+		var dv := state.get_contact_impulse(i).length() / total_mass
+		if dv <= IMPACT_SAFE:
+			continue
+		var at := state.get_contact_local_position(i)
+		var other := state.get_contact_collider_object(i)
+		if other is RigidBody3D and not other is Machine and (other as RigidBody3D).mass < total_mass * 0.05:
+			continue # (debris rattling on it)
+		if other is Machine:
+			_knock_by = other
+		# what's round where it struck takes it, less further from it (a knock crumples a corner,
+		# not one bolt)
+		var local := global_transform.affine_inverse() * at
+		for j in design.size():
+			var c := Parts.xform_of(design[j].id, design[j].at, design[j].rot).origin
+			var ext := Vector3(Parts.size_of(design[j].id, design[j].rot)) * Parts.CELL * 0.5
+			var d := ((local - c).abs() - ext).max(Vector3.ZERO).length() # (to its box, not its middle)
+			if d < IMPACT_REACH:
+				var felt := dv * (1.0 - 0.6 * d / IMPACT_REACH)
+				if felt > float(worst.get(j, 0.0)):
+					worst[j] = felt
+		_knock_at = at
+	if worst.is_empty():
+		return
+	for part: int in worst:
+		var over := float(worst[part]) - IMPACT_SAFE
+		if over > 0.0:
+			_knocks.append([design[part], over * over * IMPACT_HURT])
+	knocked.emit(_knock_at, float(worst.values().max()))
+
+
+var _knocks := []
+var _grace := 0.0 ## s knocks don't hurt (just set down: built, made anew, put back on its wheels)
+var _knock_at := Vector3.ZERO
+var _knock_by: Machine
+signal knocked(at: Vector3, dv: float)
+
+
+## Just put down somewhere (made, built, righted): for a moment it can land without harm.
+func set_down() -> void:
+	_grace = 1.5
+
+
+## True with no engine left or nothing left to run on.
+func immobile() -> bool:
+	return alive and (power_kw <= 0.0 or wheels.is_empty())
+
+
+## The cab's share of its hit points left (1 without one).
+func cab_frac() -> float:
+	var i := cab_index()
+	return clampf(float(design[i].hp) / Parts.hp_of("cab"), 0.0, 1.0) if i >= 0 else 0.0
 
 
 ## The battery: the alternators in (with the engines' revs), the cab, the lights and the guns out.
@@ -614,6 +726,12 @@ func charge_frac() -> float:
 
 
 func _process(dt: float) -> void:
+	for p in _smoke:
+		if is_instance_valid(p) and p.get_child_count() > 0:
+			var fire := p.get_child(0) as Node3D
+			if fire.visible:
+				fire.scale = Vector3.ONE * randf_range(0.8, 1.25)
+				(fire.get_child(1) as OmniLight3D).light_energy = randf_range(1.4, 2.6)
 	for w in wheels:
 		w.animate(dt)
 	for t in tracks:
@@ -653,12 +771,14 @@ func hit(at: Vector3, dir: Vector3, damage: float, push: float, by: Machine = nu
 	var i := _part_near(at + dir * 0.06)
 	if i >= 0:
 		last_hit_by = by
+		last_hit_kind = "minigun"
+		damaged.emit(damage, by.global_position if is_instance_valid(by) else at - dir * 20.0, "minigun")
 		damage_part(i, damage)
 
 
 ## A burst at `at`: every part within `radius` takes damage falling off with distance (half at the
 ## edge), the machine is heaved away from it.
-func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine = null) -> void:
+func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine = null, kind := "patlama") -> void:
 	if not alive:
 		return
 	var hurt := {}
@@ -673,6 +793,12 @@ func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine =
 	if hurt.is_empty():
 		return
 	last_hit_by = by
+	last_hit_kind = kind
+	var total := 0.0
+	for v: float in hurt.values():
+		total += v
+	if total > 0.0:
+		damaged.emit(total, at, kind)
 	# the worst first; indices shift as parts come off, so go by the part's dictionary
 	var keys := hurt.keys()
 	keys.sort_custom(func(a: int, b: int) -> bool: return hurt[a] > hurt[b])
@@ -691,6 +817,123 @@ func damage_part(i: int, amount: float) -> void:
 	design[i].hp = float(design[i].hp) - amount
 	if float(design[i].hp) <= 0.0:
 		break_off(i)
+	else:
+		_show_wear()
+
+
+## Soot and pocks on each hurt part; smoke from the worst (rebuilt with the parts).
+func _show_wear() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if _wear_mat == null:
+		_wear_mat = ShaderMaterial.new()
+		_wear_mat.shader = WEAR
+	var worst: Array = []
+	for i in mini(design.size(), part_nodes.size()):
+		var frac := clampf(float(design[i].hp) / Parts.hp_of(design[i].id), 0.0, 1.0)
+		var w := clampf((1.0 - frac) * 1.25, 0.0, 1.0)
+		var node := part_nodes[i]
+		if not is_instance_valid(node):
+			continue
+		for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+			if w > 0.02:
+				if mi.material_overlay != _wear_mat:
+					mi.material_overlay = _wear_mat
+				mi.set_instance_shader_parameter("wear", w)
+			elif mi.material_overlay == _wear_mat:
+				mi.material_overlay = null
+		if frac < 0.45:
+			worst.append([frac, i])
+	worst.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for k in SMOKERS:
+		if k >= _smoke.size():
+			_smoke.append(_make_smoke())
+		var p := _smoke[k]
+		if k < worst.size():
+			var i: int = worst[k][1]
+			var node := part_nodes[i]
+			var engine := str(Parts.def(design[i].id).kind) == "engine"
+			if p.get_parent() != node:
+				if p.get_parent():
+					p.get_parent().remove_child(p)
+				node.add_child(p)
+			var hurt := 1.0 - float(worst[k][0]) / 0.45
+			p.amount_ratio = clampf(0.3 + hurt * 0.7, 0.1, 1.0)
+			(p.process_material as ParticleProcessMaterial).color = Color(0.08, 0.075, 0.07, 0.8) if engine else Color(0.42, 0.4, 0.38, 0.55)
+			p.get_child(0).visible = engine and hurt > 0.4 # (the fire)
+			p.emitting = true
+		else:
+			p.emitting = false
+
+
+## A part's smoke: puffs rising and spreading from it, and a flicker of fire (an engine's).
+func _make_smoke() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	var m := ParticleProcessMaterial.new()
+	m.direction = Vector3.UP
+	m.spread = 20.0
+	m.initial_velocity_min = 0.8
+	m.initial_velocity_max = 1.8
+	m.gravity = Vector3(0.0, 0.6, 0.0)
+	m.damping_min = 0.4
+	m.damping_max = 0.8
+	m.scale_min = 0.6
+	m.scale_max = 1.2
+	var grow := CurveTexture.new()
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.3))
+	c.add_point(Vector2(1.0, 1.6))
+	grow.curve = c
+	m.scale_curve = grow
+	var fade := GradientTexture1D.new()
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.0))
+	g.add_point(0.12, Color(1, 1, 1, 0.9))
+	g.set_color(g.get_point_count() - 1, Color(1, 1, 1, 0.0))
+	fade.gradient = g
+	m.color_ramp = fade
+	p.process_material = m
+	var q := QuadMesh.new()
+	q.size = Vector2(0.9, 0.9)
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_texture = WheelSpray._puff()
+	q.material = mat
+	p.draw_pass_1 = q
+	p.amount = 40
+	p.lifetime = 3.0
+	p.local_coords = false
+	p.emitting = false
+	p.visibility_aabb = AABB(Vector3(-8, -2, -8), Vector3(16, 14, 16))
+	# the fire: a flickering orange billboard and a light
+	var fire := Node3D.new()
+	fire.visible = false
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	fm.albedo_texture = WheelSpray._puff()
+	fm.albedo_color = Color(1.0, 0.5, 0.15)
+	var fq := QuadMesh.new()
+	fq.size = Vector2(0.8, 1.0)
+	fq.material = fm
+	var fmi := MeshInstance3D.new()
+	fmi.mesh = fq
+	fmi.position = Vector3(0, 0.35, 0)
+	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fire.add_child(fmi)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.55, 0.2)
+	l.light_energy = 2.0
+	l.omni_range = 4.0
+	l.position = Vector3(0, 0.5, 0)
+	fire.add_child(l)
+	p.add_child(fire)
+	fire.set_process(true)
+	return p
 
 
 ## Part `i` off, and whatever hung on only through it; the cab: all of it.
@@ -774,15 +1017,22 @@ func _part_near(p: Vector3) -> int:
 	return best
 
 
-## How much is left of it, 0..1 (the cab's share counts double).
+## How much is left of it, 0..1, against it as it was built (parts shot off count as nothing left;
+## the cab's share counts double).
 func health() -> float:
 	var have := 0.0
-	var full := 0.0
 	for p: Dictionary in design:
-		var w := 2.0 if p.id == "cab" else 1.0
-		have += maxf(float(p.hp), 0.0) * w
-		full += Parts.hp_of(p.id) * w
-	return have / maxf(full, 1.0)
+		have += maxf(float(p.hp), 0.0) * (2.0 if p.id == "cab" else 1.0)
+	return have / maxf(_built_hp, 1.0)
+
+
+var _built_hp := 1.0 ## (all its parts' hit points as built: set when it's built, not as it's shot apart)
+
+
+func _note_built() -> void:
+	_built_hp = 0.0
+	for p: Dictionary in design:
+		_built_hp += Parts.hp_of(p.id) * (2.0 if p.id == "cab" else 1.0)
 
 
 ## Where the wheels' spray goes (freed with the parts on a rebuild).

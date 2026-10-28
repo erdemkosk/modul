@@ -13,7 +13,7 @@ extends Node3D
 ##   F1 F2 F3   a raider (minigun), a tank (cannon), a target       F4  a wave
 ##   F5         a tracked rocket carrier                             F6  clear them all away
 ##   G          (proving ground) yours takes no damage / does again
-##   Esc        menu
+##   Esc        pause (go on, settings, the start menu)
 
 const ARENA_ZONES := [
 	["asphalt", Rect2(-30, -60, 60, 40)], ["gravel", Rect2(-60, -20, 25, 60)], ["mud", Rect2(-30, 0, 24, 22)],
@@ -34,6 +34,11 @@ var player_input := true ## (tests, a demo) false: nothing here drives or aims y
 var disarmed: Array[int] = [] ## your guns (by their order) turned off: the rest fire together
 var _hud: Label
 var _drive_hud: DriveHud
+var pause: PauseMenu
+var _recover_t := 0.0 ## (K held) seconds toward rebuilding a machine that can't move
+var _death: DeathCard
+var _life_t := 0.0 ## seconds this machine's lived
+var _kills_at_spawn := 0
 var _cross: Control
 var _banner: Label
 var _toast: PanelContainer
@@ -52,6 +57,7 @@ func _ready() -> void:
 		var t := TestTerrain.new()
 		t.default_surface = Surface.preset("grass") # (a meadow round the zones)
 		t.noise_from = Arena.R + 12.0 # (the arena's floor flat out to its stands)
+		t.grid_strength = 0.0
 		for z: Array in ARENA_ZONES:
 			t.add_zone(z[1], Surface.preset(z[0]))
 		terrain = t
@@ -86,6 +92,17 @@ func _ready() -> void:
 	builder.cam = cam
 	add_child(builder)
 	_make_hud()
+	pause = PauseMenu.new()
+	pause.to_menu.connect(func() -> void:
+		builder.save()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+	add_child(pause)
+	_death = DeathCard.new()
+	_death.respawn.connect(_respawn)
+	add_child(_death)
+	Settings.apply(get_tree())
+	machine.label = "SEN"
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
@@ -109,10 +126,11 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 	if ai:
 		var d := AiDriver.new()
 		m.add_child(d)
+	m.label = "SEN" if team == 0 else "DÜŞMAN"
 	if team != 0:
 		m.died.connect(func() -> void:
 			kills += 1
-			say("Düşman aracı parçalandı (%d)" % kills))
+			say("%s parçalandı  ·  %d" % [m.label.capitalize(), kills]))
 	return m
 
 
@@ -125,7 +143,9 @@ func spawn_enemy(kind: String) -> Machine:
 		for m: Node in get_tree().get_nodes_in_group("machines"):
 			if m != machine and (m as Machine).team != 0:
 				k += 1
-		return _spawn(data, arena_node.gate_point(k % 9), 1, true)
+		var e := _spawn(data, arena_node.gate_point(k % 9), 1, true)
+		e.label = LABELS.get(kind, "DÜŞMAN")
+		return e
 	var a := randf() * TAU
 	var r := 70.0 if kind != "dummy" else 30.0
 	var p := machine.global_position + Vector3(cos(a), 0, sin(a)) * r
@@ -133,7 +153,12 @@ func spawn_enemy(kind: String) -> Machine:
 		p = p.normalized() * (Arena.R - 8.0)
 	p.y = float(terrain.call("height_at", p.x, p.z)) + 2.5
 	var face := Basis(Vector3.UP, atan2(p.x - machine.global_position.x, p.z - machine.global_position.z))
-	return _spawn(data, Transform3D(face, p), 1, kind != "dummy")
+	var e2 := _spawn(data, Transform3D(face, p), 1, kind != "dummy")
+	e2.label = LABELS.get(kind, "DÜŞMAN")
+	return e2
+
+
+const LABELS := {"raider": "AKINCI", "tank": "TANK", "dummy": "HEDEF", "tracked": "PALETLİ"}
 
 
 func _bind_keys() -> void:
@@ -169,9 +194,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key and key.pressed and not key.echo:
 		match key.keycode:
 			KEY_ESCAPE:
-				builder.save()
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-				get_tree().change_scene_to_file("res://scenes/menu.tscn")
+				pause.open()
+				get_viewport().set_input_as_handled()
+				return
 			KEY_F1:
 				spawn_enemy("raider")
 			KEY_F2:
@@ -239,9 +264,10 @@ func right_up() -> void:
 	machine.linear_velocity = Vector3.ZERO
 	machine.angular_velocity = Vector3.ZERO
 	machine.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, float(terrain.call("height_at", p.x, p.z)) + 2.0, p.z))
+	machine.set_down()
 
 
-func _physics_process(_dt: float) -> void:
+func _physics_process(dt: float) -> void:
 	if not is_instance_valid(machine) or not player_input:
 		return
 	if builder.active:
@@ -264,6 +290,19 @@ func _physics_process(_dt: float) -> void:
 		machine.throttle = fwd - back * 0.6
 	machine.aim_point = aim_point()
 	_apply_armed() # (a rebuild makes the guns anew)
+	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
+	# is rebuilt where it started
+	if Input.is_physical_key_pressed(KEY_K):
+		_recover_t += dt
+		if _recover_t >= 1.5:
+			_recover_t = 0.0
+			say("Araç yeniden kuruldu")
+			machine.died.disconnect(_on_player_died)
+			var old := machine
+			old.queue_free()
+			_respawn()
+	else:
+		_recover_t = 0.0
 	machine.firing = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 
@@ -278,9 +317,23 @@ func aim_point() -> Vector3:
 	return hit.position if not hit.is_empty() else from + dir * 600.0
 
 
+## Your cab's gone: the moment slowed right down, the wreck flying, and a card says what did it and
+## how you did; Space (or a few seconds) and a new one's built where you start.
 func _on_player_died() -> void:
-	say("Kabin vuruldu: araç parçalandı. Yeniden kuruluyor…")
-	await get_tree().create_timer(3.0).timeout
+	var by := machine.last_hit_by
+	var who := by.label if is_instance_valid(by) and by != machine else ""
+	_death.show_card(who, machine.last_hit_kind, _life_t, kills - _kills_at_spawn)
+	Engine.time_scale = 0.25
+	var tw := create_tween().set_ignore_time_scale(true)
+	tw.tween_interval(0.5)
+	tw.tween_property(Engine, "time_scale", 1.0, 1.0)
+
+
+## A new machine from the saved design where you start.
+func _respawn() -> void:
+	Engine.time_scale = 1.0
+	_life_t = 0.0
+	_kills_at_spawn = kills
 	var data := Builder.load_saved()
 	machine = _spawn(data if not data.is_empty() else Designs.starter(), _start_xform(), 0)
 	machine.died.connect(_on_player_died)
@@ -356,6 +409,7 @@ func _process(dt: float) -> void:
 		_hud.text = ""
 		return
 	machine.wet = weather.wetness
+	_life_t += dt
 	_cross.visible = not builder.active
 	_hud.text = ""
 

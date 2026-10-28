@@ -9,6 +9,7 @@ extends CanvasLayer
 ##                  for anything shed for want of charge
 ##   bottom right   the speed, big, a leaning bar under it, which way it's going and its power
 ##   top left       where you are and the tally; top right the camera (C) and the frame rate
+## Under the panels, CombatOverlay: the screen going red when you're hurt, where it came from, the enemy.
 
 const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets"}
 const NAME := {"minigun": "MİNİGUN", "cannon": "TOP 76", "rockets": "ROKET"}
@@ -21,6 +22,7 @@ var _hull_pct: Label
 var _hull_bar: Control
 var _mass: Label
 var _ground: Label
+var _status: Label
 var _bat_head: Label
 var _bat_flow: Label
 var _bat_bar: Control
@@ -50,6 +52,9 @@ func _ready() -> void:
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_root)
+	var fx := CombatOverlay.new()
+	fx.game = game
+	_root.add_child(fx)
 	_build_machine()
 	_build_guns()
 	_build_speed()
@@ -93,6 +98,7 @@ func _build_machine() -> void:
 	col.alignment = BoxContainer.ALIGNMENT_END
 	col.add_theme_constant_override("separation", 2)
 	row.add_child(col)
+	_status = Ui.label(col, "", 14, Ui.BAD, "head")
 	Ui.label(col, "GÖVDE", 13, Ui.DIM, "head")
 	_hull_pct = Ui.label(col, "100", 44, Ui.INK, "display")
 	_hull_bar = _canvas(col, Vector2(150, 8), func(c: Control) -> void:
@@ -141,6 +147,12 @@ func _draw_map(c: Control) -> void:
 		c.draw_rect(r, col)
 		if p.id == "cab":
 			c.draw_rect(r.grow(1.0), Ui.INK, false, 1.5)
+	# where its weight sits (it moves as parts come off)
+	var cm := off + (Vector2(m.com.x, m.com.z) / Parts.CELL - lo) * k
+	c.draw_circle(cm, 4.0, Color(0, 0, 0, 0.6))
+	c.draw_circle(cm, 2.6, Ui.ACCENT)
+	c.draw_line(cm - Vector2(7, 0), cm + Vector2(7, 0), Ui.ACCENT, 1.0)
+	c.draw_line(cm - Vector2(0, 7), cm + Vector2(0, 7), Ui.ACCENT, 1.0)
 	# its nose
 	c.draw_colored_polygon(PackedVector2Array([Vector2(c.size.x * 0.5, 0.0), Vector2(c.size.x * 0.5 - 5.0, 6.0),
 		Vector2(c.size.x * 0.5 + 5.0, 6.0)]), Ui.DIM)
@@ -388,6 +400,17 @@ func _process(dt: float) -> void:
 
 func _slow(m: Machine) -> void:
 	_hull = m.health()
+	# the cab (it's the driver) and whether it can still move
+	var cab := m.cab_frac()
+	var warn := ""
+	if m.immobile():
+		var hold: float = game.get("_recover_t") if game.get("_recover_t") != null else 0.0
+		warn = "HAREKETSİZ  ·  K BASILI TUT: YENİDEN KUR" if hold <= 0.0 else "YENİDEN KURULUYOR  %%%d" % int(hold / 1.5 * 100.0)
+	elif cab < 0.4:
+		warn = "KABİN %%%d  ·  KABİN GİDERSE ARAÇ GİDER" % int(cab * 100.0)
+	_status.text = warn
+	_status.visible = warn != ""
+	_status.modulate.a = 1.0 if fmod(_flash, 0.8) < 0.55 else 0.45
 	_hull_pct.text = "%%%d" % int(_hull * 100.0)
 	_hull_pct.add_theme_color_override("font_color", Ui.INK if _hull > 0.3 else Ui.BAD)
 	_hull_bar.queue_redraw()
@@ -443,4 +466,4 @@ func _slow(m: Machine) -> void:
 	_tally.text = ("Düşman %d   ·   Vurulan %d%s" % [enemies, game.get("kills"), "   ·   HASAR KAPALI" if m.invulnerable else ""]) if arena else ""
 	var cam := game.get("cam") as OrbitCamera
 	_cam.text = "KAMERA  ·  %s   [C]" % Ui.upper(OrbitCamera.MODE_NAMES[cam.mode]) if cam else ""
-	_fps.text = "%d FPS" % Engine.get_frames_per_second()
+	_fps.text = "%d FPS" % Engine.get_frames_per_second() if bool(Settings.get_value("show_fps")) else ""

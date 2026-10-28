@@ -2,7 +2,10 @@ extends Control
 ## The start, in the game's look (Ui): over a picture of a machine (assets/ui/menu_bg.png), a dark
 ## fall-off on the left with the name big in condensed capitals, a line under it, and the ways in as
 ## large words that take an orange bar when the mouse is on them, each with a line on what it is: the
-## proving ground (the arena), the valley, out.
+## proving ground (the arena), the valley, the settings, out.
+
+
+var _settings: SettingsPanel
 
 
 func _ready() -> void:
@@ -55,7 +58,16 @@ func _ready() -> void:
 	col.add_child(gap)
 	_item(col, "TEST ALANI", "Arenada kur, dene, dövüş: rakip araçlar, kırılan siper, çamur çukurları", "arena", 0)
 	_item(col, "VADİ", "İki kilometrelik vadi: yollar, çamur, kar ve orman", "valley", 1)
-	_item(col, "ÇIKIŞ", "", "", 2)
+	_item(col, "AYARLAR", "", "settings", 2)
+	_item(col, "ÇIKIŞ", "", "", 3)
+	Settings.apply(get_tree())
+	_settings = SettingsPanel.new()
+	_settings.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_settings.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_settings.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_settings.visible = false
+	_settings.closed.connect(func() -> void: _settings.visible = false)
+	add_child(_settings)
 	var foot := Ui.label(self, "B  inşa     1-9  silahlar     C  kamera     Esc  menü", 14, Ui.DIM, "label")
 	foot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	foot.offset_left = 110
@@ -101,6 +113,9 @@ func _item(parent: Node, t: String, hint: String, mode: String, k: int) -> void:
 	b.pressed.connect(func() -> void:
 		if mode == "":
 			get_tree().quit()
+			return
+		if mode == "settings":
+			_settings.visible = true
 			return
 		Mode.current = mode
 		get_tree().change_scene_to_file("res://scenes/game.tscn"))

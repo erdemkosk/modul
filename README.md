@@ -18,6 +18,7 @@ are this project's own.
 | Mouse · left button · right button held | look and aim · fire · aim at range (the view narrows) |
 | 1-9 · 0 | turn that gun on or off (the others stay as they are: any of them fire together) · all on |
 | C | the camera: chase (behind, up, looking where you aim) · high (over the fight) · from the turret |
+| Esc · K held | pause (go on, settings, the start menu) · rebuild a machine that can't move |
 | L · T | lights · back on its wheels |
 | F1 F2 F3 F5 F4 | raider (minigun) · tank (cannon) · target · tracked rocket carrier · a wave (proving ground) |
 | F6 | clear the other side's machines and the wreckage away (proving ground) |
@@ -52,6 +53,12 @@ are this project's own.
   hull, the battery and every consumer, shed or not, the guns).
 - `scripts/arena.gd`: the arena (models: `tools/blender/build_arena.py`); `scripts/breakable.gd`: its
   cover, chipped by rounds, broken into chunks by bursts; `scripts/test_terrain.gd` digs craters.
+- Hurt and death (`machine.gd`): rounds, bursts and knocks (ramming, walls, hard landings: the change
+  in speed past 3 m/s) take hit points off the parts where they land; a part at none comes off and
+  the machine is worked out anew (mass, centre of mass, wheels, power); the cab gone, it's dead; no
+  engine or nothing to run on, it can't move. Hurt parts soot over and smoke (`shaders/part_wear`).
+  `combat_overlay.gd` shows being hurt and where from, and marks the enemy; `death_card.gd` says what
+  did it. `pause_menu.gd`, `settings.gd` (user://settings.cfg), `settings_panel.gd`.
 - Fire control (`machine_gun.gd`): the cannon and the pod lay themselves over for their round's drop at
   the aim's range; the crosshair's rings show where each would land.
 - `scripts/game.gd`: both modes. `scripts/menu.gd`: the start.

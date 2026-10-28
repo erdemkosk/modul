@@ -46,6 +46,7 @@ func _physics_process(_d: float) -> bool:
 		"start":
 			_m = _game.get("machine")
 			_m.from_data(Designs.starter())
+			_m.invulnerable = true # (this is about driving and building: knocks off the road don't count here)
 			print("starter: %d parts, %.0f kg, %.0f kW, %d wheels, com %s" % [_m.design.size(), _m.total_mass, _m.power_kw, _m.wheels.size(), _m.com])
 			var steer := 0
 			for w in _m.wheels:

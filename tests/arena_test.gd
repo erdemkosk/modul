@@ -9,6 +9,8 @@ extends SceneTree
 ##    its neighbours with it.
 ## 4. Your hits are confirmed (for the crosshair) and your gun's shots shake the view; enemies come in
 ##    at the gate.
+## 5. Knocks: a gentle touch on the wall does nothing, a hard one hurts and breaks the nose off (the
+##    centre of mass moving back); its engine gone, it's alive but can't move.
 
 var _g: Node
 var _m: Machine
@@ -141,6 +143,42 @@ func _physics_process(_d: float) -> bool:
 			_expect(int(_r.conf) >= 5, "your hits are confirmed")
 			_expect(float(_r.trauma) > 0.5, "your cannon shakes the view")
 			_expect((_r.e_at as Vector3).x < -70.0 and absf((_r.e_at as Vector3).z) < 12.0, "the enemy comes in at the gate")
+			_g.clear_enemies()
+			# 5. knocks: a gentle touch on the wall does nothing
+			_m.invulnerable = false
+			_m.from_data(Designs.starter())
+			var p := Vector3(0.0, 0.0, -Arena.R + 6.0)
+			p.y = _g.terrain.call("height_at", p.x, p.z) + 0.8
+			_m.global_transform = Transform3D(Basis.IDENTITY, p) # (its nose, -z, toward the wall)
+			_m.linear_velocity = Vector3(0, 0, -2.0)
+			_m.angular_velocity = Vector3.ZERO
+			_r.hp0 = _m.health()
+		400:
+			print("a 2 m/s touch on the wall: health %.3f -> %.3f" % [_r.hp0, _m.health()])
+			_expect(is_equal_approx(_m.health(), float(_r.hp0)), "a gentle touch does no harm")
+			# a hard one: 15 m/s into it
+			var p := Vector3(0.0, 0.0, -Arena.R + 12.0)
+			p.y = _g.terrain.call("height_at", p.x, p.z) + 0.8
+			_m.global_transform = Transform3D(Basis.IDENTITY, p)
+			_m.linear_velocity = Vector3(0, 0, -15.0)
+			_m.angular_velocity = Vector3.ZERO
+			_r.hp0 = _m.health()
+			_r.parts0 = _m.design.size()
+			_r.com0 = _m.com
+		520:
+			print("15 m/s into the wall: health %.2f -> %.2f, parts %d -> %d, centre of mass %s -> %s" % [
+				_r.hp0, _m.health(), _r.parts0, _m.design.size(), _r.com0, _m.com])
+			_expect(_m.health() < float(_r.hp0) - 0.05, "a hard knock hurts it")
+			_expect(_m.design.size() < int(_r.parts0), "and breaks parts off its nose")
+			_expect((_m.com as Vector3).z > (_r.com0 as Vector3).z, "its centre of mass moves back as its nose goes")
+			# no engine: it can't move
+			var e := -1
+			for i in _m.design.size():
+				if _m.design[i].id == "engine":
+					e = i
+			if e >= 0:
+				_m.break_off(e)
+			_expect(_m.immobile() and _m.alive, "its engine gone, it's alive but can't move")
 			print("== arena_test ALL CHECKS PASSED" if _fail.is_empty() else "== arena_test FAILED: %d" % _fail.size())
 			quit(1 if not _fail.is_empty() else 0)
 			return true

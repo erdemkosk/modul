@@ -53,8 +53,9 @@ func cycle_mode() -> String:
 
 ## A shake (`amount` 0..1, adding up to 1) and a punch of the field of view (degrees).
 func add_trauma(amount: float, punch := 0.0) -> void:
-	trauma = minf(trauma + amount, 1.0)
-	_punch = maxf(_punch, punch)
+	var k := float(Settings.get_value("shake"))
+	trauma = minf(trauma + amount * k, 1.0)
+	_punch = maxf(_punch, punch * k)
 
 
 func set_iso(on: bool) -> void:
@@ -85,7 +86,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				yaw -= signf(_iso_drag) * PI * 0.5
 				_iso_drag = 0.0
 		else:
-			var sens := SENS * (_fov / 70.0) # (zoomed in, the mouse moves the view less)
+			var sens := SENS * float(Settings.get_value("sensitivity")) * (_fov / 70.0) # (zoomed in, the mouse moves the view less)
 			yaw -= mm.relative.x * sens
 			pitch = clampf(pitch - mm.relative.y * sens, -1.35, 0.6 if free_mouse else 0.45)
 
@@ -128,7 +129,8 @@ func _process(dt: float) -> void:
 		v_offset = 0.0
 	zoom = not free_mouse and not iso and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) \
 		and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	_fov = lerpf(_fov, 30.0 if zoom else 70.0, 1.0 - exp(-12.0 * dt))
+	var base := float(Settings.get_value("fov"))
+	_fov = lerpf(_fov, base * 0.43 if zoom else base, 1.0 - exp(-12.0 * dt))
 	fov = _fov + _punch
 
 
@@ -156,5 +158,14 @@ func _drive_view(dt: float, k: float) -> void:
 		want = want.lerp(target.com_global() + Vector3.UP * (target.top_y + 1.2), 0.35) # (in closer, over it)
 	if terrain and terrain.has_method("height_at"):
 		want.y = maxf(want.y, float(terrain.call("height_at", want.x, want.z)) + 0.6)
-	global_position = global_position.lerp(want, k if mode != TURRET else 1.0 - exp(-30.0 * dt))
+	# not through walls: from over the machine out to where it wants to be, it stops short of what's
+	# in the way (the ground, the arena, its cover; not machines or what's flying about)
+	var pivot := target.com_global() + Vector3.UP * 1.2
+	var q := PhysicsRayQueryParameters3D.create(pivot, want + (want - pivot).normalized() * 0.4, 1)
+	q.exclude = [target.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var blocked := not hit.is_empty() and mode != TURRET
+	if blocked:
+		want = (hit.position as Vector3) - (want - pivot).normalized() * 0.4
+	global_position = global_position.lerp(want, 1.0 if blocked else (k if mode != TURRET else 1.0 - exp(-30.0 * dt)))
 	look_at(global_position + look, Vector3.UP)

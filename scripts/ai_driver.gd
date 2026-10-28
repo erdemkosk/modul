@@ -90,6 +90,7 @@ func _physics_process(dt: float) -> void:
 			machine.linear_velocity = Vector3.ZERO
 			machine.angular_velocity = Vector3.ZERO
 			machine.global_transform = Transform3D(Basis(Vector3.UP, yaw), me + Vector3.UP * 2.0)
+			machine.set_down()
 	else:
 		_flip_t = 0.0
 

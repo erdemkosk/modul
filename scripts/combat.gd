@@ -374,7 +374,12 @@ func explode(at: Vector3, radius: float, damage: float, push: float, owner: Mach
 		if mach.global_position.distance_to(at) > radius + 6.0:
 			continue
 		var before := mach.health()
-		mach.blast(at, radius, damage, push, owner)
+		var kind := "patlama"
+		if is_equal_approx(radius, MachineGun.CANNON_RADIUS):
+			kind = "top"
+		elif is_equal_approx(radius, MachineGun.ROCKET_RADIUS):
+			kind = "roket"
+		mach.blast(at, radius, damage, push, owner, kind)
 		if is_instance_valid(owner) and mach.team != owner.team and (not mach.alive or mach.health() < before):
 			hit_confirmed.emit(owner, not mach.alive)
 	for n: Node in get_tree().get_nodes_in_group(Breakable.GROUP):
@@ -396,6 +401,10 @@ func explode(at: Vector3, radius: float, damage: float, push: float, owner: Mach
 		scorch(at, radius * 0.9)
 	_burst(at, "explosion", 1.0)
 	_burst(at, "dirt" if not on_machine else "metal", 1.0, -dir)
+	# what's left hanging in the air after, the sparks thrown, the shock running out over the ground
+	_burst(at + Vector3.UP * 0.6, "column", clampf(radius / 3.0, 0.4, 1.2))
+	_burst(at, "embers", clampf(radius / 3.0, 0.4, 1.0), Vector3.UP)
+	_shock(at, radius)
 	if not on_machine:
 		_throw_clods(at, radius)
 	shake(at, clampf(radius / 3.0, 0.2, 1.0) * 0.9, null)
@@ -500,6 +509,9 @@ func shatter(br: Breakable, dir: Vector3, from_burst: bool) -> void:
 	mat.albedo_color = k.color
 	mat.roughness = 0.9
 	mat.metallic = 0.4 if br.kind in ["container", "drum"] else 0.0
+	mat.vertex_color_use_as_albedo = br.kind in ["block", "barrier", "sandbags"] # (the lumps' faces shaded)
+	if mat.vertex_color_use_as_albedo:
+		mat.albedo_color = k.color
 	# chunks over its volume: a grid of pieces, each a little smaller and off-square
 	var cells: Array[Vector3] = []
 	var nx := maxi(int(ceil(pow(n * sz.x * sz.x / (sz.y * sz.z), 1.0 / 3.0))), 1)
@@ -521,7 +533,7 @@ func shatter(br: Breakable, dir: Vector3, from_burst: bool) -> void:
 		var away := (at - (br.center() - dir * 0.5)).normalized()
 		var v := away * randf_range(3.0, 9.0) * (1.4 if from_burst else 0.6) + Vector3.UP * randf_range(1.5, 5.0)
 		_chunk(Transform3D(xf.basis * Basis.from_euler(Vector3(randf(), randf(), randf()) * 0.4), at), csz, mat,
-			maxf(mass_total / n, 2.0), v)
+			maxf(mass_total / n, 2.0), v, br.kind in ["block", "barrier", "sandbags"])
 	var mid := br.center()
 	_burst(mid, "smoke", clampf(sz.length() / 3.0, 0.4, 1.2))
 	_burst(mid, br.chip_kind(), 1.0, Vector3.UP)
@@ -538,21 +550,33 @@ func shatter(br: Breakable, dir: Vector3, from_burst: bool) -> void:
 		_burst(mid, "explosion", 1.6)
 
 
-func _chunk(xf: Transform3D, csz: Vector3, mat: Material, mass_kg: float, vel: Vector3) -> void:
+func _chunk(xf: Transform3D, csz: Vector3, mat: Material, mass_kg: float, vel: Vector3, rough := false) -> void:
 	var b := RigidBody3D.new()
 	b.collision_layer = 4
 	b.collision_mask = 1 | 2 | 4
 	b.mass = mass_kg
 	var cs := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = csz
-	cs.shape = box
-	b.add_child(cs)
 	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = csz
-	bm.material = mat
-	mi.mesh = bm
+	if rough:
+		# a broken lump: a box with its corners knocked about, faces flat-shaded
+		var pts := PackedVector3Array()
+		for x: float in [-0.5, 0.5]:
+			for y: float in [-0.5, 0.5]:
+				for z: float in [-0.5, 0.5]:
+					pts.append(Vector3(x, y, z) * csz * Vector3(randf_range(0.6, 1.15), randf_range(0.6, 1.15), randf_range(0.6, 1.15)))
+		var shape := ConvexPolygonShape3D.new()
+		shape.points = pts
+		cs.shape = shape
+		mi.mesh = _lump(pts, mat)
+	else:
+		var box := BoxShape3D.new()
+		box.size = csz
+		cs.shape = box
+		var bm := BoxMesh.new()
+		bm.size = csz
+		bm.material = mat
+		mi.mesh = bm
+	b.add_child(cs)
 	b.add_child(mi)
 	add_child(b)
 	b.global_transform = xf
@@ -564,6 +588,66 @@ func _chunk(xf: Transform3D, csz: Vector3, mat: Material, mass_kg: float, vel: V
 		var old: RigidBody3D = _debris.pop_front()
 		if is_instance_valid(old):
 			old.queue_free()
+
+
+## A lump's mesh from its eight corners (0..7 as x, y, z go -/+): six four-sided faces, flat-shaded,
+## each a shade off the next (broken faces catching the light differently).
+static func _lump(p: PackedVector3Array, mat: Material) -> ArrayMesh:
+	var faces := [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for f: Array in faces:
+		var a: Vector3 = p[f[0]]
+		var b: Vector3 = p[f[1]]
+		var c: Vector3 = p[f[2]]
+		var d: Vector3 = p[f[3]]
+		var shade := randf_range(0.75, 1.0)
+		st.set_color(Color(shade, shade, shade))
+		st.set_normal((b - a).cross(c - a).normalized())
+		for v: Vector3 in [a, b, c, a, c, d]:
+			st.add_vertex(v)
+	st.generate_normals()
+	st.set_material(mat)
+	var m := st.commit()
+	return m
+
+
+## The shock of a burst: a pale ring running out over the ground and fading.
+func _shock(at: Vector3, radius: float) -> void:
+	if _headless:
+		return
+	if _ring_tex == null:
+		var n := 128
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		for y in n:
+			for x in n:
+				var r := Vector2(x - n * 0.5, y - n * 0.5).length() / (n * 0.5)
+				var a := clampf(1.0 - absf(r - 0.85) / 0.12, 0.0, 1.0)
+				img.set_pixel(x, y, Color(1, 0.95, 0.85, a * a))
+		_ring_tex = ImageTexture.create_from_image(img)
+	var mi := MeshInstance3D.new()
+	var q := PlaneMesh.new()
+	q.size = Vector2(1, 1)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = _ring_tex
+	m.albedo_color = Color(1, 1, 1, 0.6)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = m
+	mi.mesh = q
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.top_level = true
+	add_child(mi)
+	mi.global_position = at + Vector3.UP * 0.25
+	mi.scale = Vector3.ONE * 0.5
+	var tw := mi.create_tween().set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3.ONE * radius * 5.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.35)
+	tw.chain().tween_callback(mi.queue_free)
+
+
+static var _ring_tex: ImageTexture
 
 
 ## A blackened patch on the ground where a burst went off (pooled: the oldest goes).
@@ -638,6 +722,8 @@ const LOOKS := {
 	"explosion": {"color": Color(1.0, 0.55, 0.15), "amount": 1.0, "speed": Vector2(3.0, 9.0), "life": 0.7, "size": Vector2(2.0, 4.5), "gravity": -1.0, "glow": 5.0},
 	"smoke": {"color": Color(0.45, 0.42, 0.38), "amount": 0.8, "speed": Vector2(1.0, 3.0), "life": 2.5, "size": Vector2(2.5, 5.0), "gravity": -0.4, "glow": 0.0},
 	"flash": {"color": Color(1.0, 0.75, 0.4), "amount": 0.5, "speed": Vector2(4.0, 10.0), "life": 0.15, "size": Vector2(1.0, 2.0), "gravity": 0.0, "glow": 6.0},
+	"column": {"color": Color(0.2, 0.19, 0.18), "amount": 0.7, "speed": Vector2(1.0, 3.5), "life": 7.0, "size": Vector2(3.0, 7.0), "gravity": -0.7, "glow": 0.0},
+	"embers": {"color": Color(1.0, 0.55, 0.15), "amount": 0.8, "speed": Vector2(6.0, 15.0), "life": 1.6, "size": Vector2(0.08, 0.18), "gravity": 9.8, "glow": 10.0},
 }
 
 

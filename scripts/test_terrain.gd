@@ -15,6 +15,7 @@ const HALF := (SIZE - 1) / 2
 
 var default_surface := Surface.preset("dirt")
 var noise_from := 70.0 ## m from the middle the rolling noise starts (the arena keeps its floor flat)
+var grid_strength := 0.08 ## how much of the metre grid shows on it (the arena: none)
 const CHUNK := 32 ## m a mesh piece
 
 var _shape: HeightMapShape3D
@@ -172,7 +173,10 @@ func _build_surface_mask() -> ImageTexture:
 func _build_mesh() -> void:
 	_mat = ShaderMaterial.new()
 	_mat.shader = preload("res://shaders/terrain_grid.gdshader")
-	_mat.set_shader_parameter("surface_mask", _build_surface_mask())
+	var mask := _build_surface_mask()
+	_mat.set_shader_parameter("surface_mask", mask)
+	_mat.set_shader_parameter("surface_soft", mask)
+	_mat.set_shader_parameter("grid_strength", grid_strength)
 	_mat.set_shader_parameter("half_size", float(HALF))
 	var n := (SIZE - 1 + CHUNK - 1) / CHUNK
 	for cz in n:
