@@ -123,7 +123,8 @@ func _ready() -> void:
 		add_child(cage)
 	Settings.apply(get_tree())
 	machine.label = "SEN"
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if cage == null: # (the cage opens on its start panel: the pointer stays free to press it)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
 
@@ -150,6 +151,8 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 		var d := AiDriver.new()
 		m.add_child(d)
 	m.label = "SEN" if team == 0 else "DÜŞMAN"
+	if team == 0: # (what gives on yours: said at once, in red)
+		m.system_hit.connect(func(text: String, _at: Vector3) -> void: say("▲ " + text))
 	if team != 0:
 		m.died.connect(func() -> void:
 			kills += 1
@@ -202,8 +205,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("build"):
 		if cage and not cage.can_build() and not builder.active:
-			say("Turnuva başladı: araç artık yalnız atölyede onarılır")
+			say("Dövüş sırasında araç değiştirilemez: turlar arası atölyede")
 		else:
+			if cage and not builder.active:
+				cage.on_build_open()
 			builder.set_active(not builder.active)
 	elif event.is_action_pressed("lights"):
 		machine.set_lights(not machine.lights_on)
@@ -244,7 +249,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				spawn_enemy("tank")
 				spawn_enemy("tracked")
 				say("Dalga: iki akıncı, bir tank, bir paletli roketatar")
-	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active \
+			and not (cage and cage.panel_up()):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 

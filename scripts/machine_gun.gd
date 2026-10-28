@@ -85,6 +85,8 @@ var _loaded_sound := true
 var can_spin := true ## the minigun's motor
 var can_load := true ## the loader
 var armed := true ## (you pick which of your guns fire: 1-9, 0 all)
+var condition := 1.0 ## its share of hit points left: hurt, it turns slower; badly, it jams
+var _jam_t := 0.0
 var _recoil := 0.0 ## 0..1 how far back the barrel or the pod is
 var _recoil_v := 0.0
 var _motor: AudioStreamPlayer3D
@@ -223,13 +225,22 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	var dyaw := 0.0
 	var dpitch := 0.0
 	if powered:
-		dyaw = clampf(angle_difference(yaw, want_yaw), -k.yaw_rate * dt, k.yaw_rate * dt)
-		dpitch = clampf(want_pitch - pitch, -k.pitch_rate * dt, k.pitch_rate * dt)
+		var hurt := 0.35 + 0.65 * condition
+		dyaw = clampf(angle_difference(yaw, want_yaw), -k.yaw_rate * hurt * dt, k.yaw_rate * hurt * dt)
+		dpitch = clampf(want_pitch - pitch, -k.pitch_rate * hurt * dt, k.pitch_rate * hurt * dt)
 	yaw += dyaw
 	pitch += dpitch
 	_slew = clampf(0.5 * (absf(dyaw) / (k.yaw_rate * dt) + absf(dpitch) / (k.pitch_rate * dt)), 0.0, 1.0)
 	if not powered:
 		firing = false
+	# badly hurt, it jams now and then: a second and a half of nothing while it's cleared
+	_jam_t = maxf(_jam_t - dt, 0.0)
+	if _jam_t > 0.0:
+		firing = false
+	elif firing and condition < 0.35 and randf() < dt * 0.4:
+		_jam_t = 1.5
+		if Combat.current and muzzle:
+			Combat.current.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), muzzle.global_position, -4.0, 1.4)
 	turret.transform = Transform3D(Basis(Vector3.UP, yaw) * _turret_rest.basis, _turret_rest.origin)
 	# the recoil: a stiff spring back to battery (the cannon's barrel, the pod), a shiver for the minigun
 	_recoil_v += (-_recoil * 260.0 - _recoil_v * 26.0) * dt

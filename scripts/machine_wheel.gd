@@ -37,6 +37,8 @@ var track := false ## a track's road wheel
 var unit := -1 ## (a track's road wheel) which of the machine's tracks
 var patch := 0.0 ## (a track's) m of belt on the ground it presses through
 var lat_scale := 1.0 ## how much of the sideways hold it has this step (a track slewing: less)
+var flat := false ## its tyre's burst: it sits lower, grips half, drags and wobbles
+var thrown := false ## (a track's road wheel) its belt's off: it drives nothing and slides
 var tread_speed := 0.0 ## m/s its tread runs over the ground (+ forward)
 
 var contact := false
@@ -96,7 +98,8 @@ func suspend(dt: float) -> void:
 	var t := machine.global_transform
 	var up := t.basis.y.normalized()
 	var top := t * (rest + Vector3.UP * travel)
-	var reach := 2.0 * travel + radius
+	var r := radius * (0.8 if flat else 1.0)
+	var reach := 2.0 * travel + r
 	var q := PhysicsRayQueryParameters3D.create(top + up * 0.05, top - up * (reach + sink + 0.05), Machine.RAY_MASK)
 	q.exclude = [machine.get_rid()]
 	var hit := machine.get_world_3d().direct_space_state.intersect_ray(q)
@@ -110,7 +113,7 @@ func suspend(dt: float) -> void:
 		sink = move_toward(sink, 0.0, dt * 0.5)
 		return
 	var dist := top.distance_to(hit.position) + sink # (sunk in: the ground's that much lower)
-	var drop := dist - radius
+	var drop := dist - r
 	if drop > 2.0 * travel:
 		contact = false
 		load = 0.0
@@ -146,10 +149,14 @@ func tyre(dt: float, push: float, braking: float, angle: float) -> void:
 	var v_lat := v.dot(lat)
 	var surf: Surface = _surface()
 	surface_label = surf.label
-	mu = surf.grip * _tyre_factor(surf)
+	mu = surf.grip * _tyre_factor(surf) * (0.5 if flat else 1.0) * (0.4 if thrown else 1.0)
 	var share := load / 9.8 # kg on this wheel
 	# Soft ground: how deep, and what that costs.
 	var drag := surf.rolling_resistance * load * (1.5 if track else 1.0) # (a track's pins and wheels: more to turn)
+	if flat:
+		drag += 0.12 * load # (a flat drags like a brake on)
+		# and thumps round: the rim's flat spot coming down each turn
+		machine.apply_force(normal * load * 0.18 * sin(_spin * 2.0), point - machine.global_position)
 	if surf.is_soft():
 		var pressure := share / maxf(width * (patch if track else radius), 0.01) / REF_PRESSURE
 		var settle := surf.static_sink * clampf(pressure, 0.0, 3.0)

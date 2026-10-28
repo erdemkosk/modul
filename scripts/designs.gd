@@ -54,6 +54,22 @@ static func rammer() -> Array:
 	return out
 
 
+## The cage's house robot: wide and low, armour all over the front and the top, two engines on big
+## wheels, a light on top. ~2.6 t, 180 kW. (It takes no harm: HouseDriver drives it.)
+static func house() -> Array:
+	var out := _bed(-2, 2, -2, 2)
+	out.append_array([["cab", -1, 1, -1, 0], ["engine", -2, 1, 1, 0], ["engine", 1, 1, 1, 0],
+		["wheel_l", 3, -1, -2, 0], ["wheel_l", 3, -1, 1, 0], ["wheel_l", -4, -1, -2, 2], ["wheel_l", -4, -1, 1, 2],
+		["light", 0, 3, 0, 0]])
+	for x in range(-2, 3):
+		out.append(["wedge", x, 0, -3, 0])
+		out.append(["armor", x, 1, -2, 0])
+		out.append(["wedge", x, 1, -3, 0])
+	for x: int in [-2, 1, 2]:
+		out.append(["armor", x, 1, -1, 0])
+	return out
+
+
 ## A target that doesn't move: a cab behind an armour wall on a bed, no engine.
 static func dummy() -> Array:
 	var out := _bed(-1, 2, -1, 1)

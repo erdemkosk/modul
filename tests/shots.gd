@@ -271,6 +271,26 @@ func _cage_steps() -> Array:
 				if is_instance_valid(e):
 					e.damage_part(e.cab_index(), 99999.0)],
 		[5.0, func(_s: float) -> void: _cam(PI * 1.25, -0.3, 12.0), func() -> void: _shoot("cage_workshop")],
+		[0.5, _noop, func() -> void:
+			var c: Cage = _g.get("cage")
+			(c.get("_ui") as CageUi).close()
+			c.call("_begin_round", 5)],
+		[5.5, func(_s: float) -> void:
+			var c: Cage = _g.get("cage")
+			_g.set("player_input", false)
+			for e in c.rivals:
+				if is_instance_valid(e):
+					_m.aim_point = e.com_global()
+					break
+			_m.firing = _s > 4.0
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.CHASE
+			_cam(PI * 1.25, -0.2, 11.0), func() -> void: _shoot("final_hits")],
+		[0.5, _noop, func() -> void:
+			_m.firing = false
+			(_g.get("cage") as Cage).arena.open_pit()],
+		[4.0, func(_s: float) -> void:
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
+			_cam(PI * 1.25, -0.6, 22.0), func() -> void: _shoot("final_overview")],
 	]
 
 

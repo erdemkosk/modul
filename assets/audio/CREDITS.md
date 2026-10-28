@@ -17,3 +17,8 @@ Copied from the Mud Run project as they were:
 - `weapons/close_0*.wav`, `weapons/tail_01.wav`: the light machine gun ("hafif") shots, built from the Free Firearm
   Sound Library (CC0); see `weapons/CREDITS.md`.
 - `impact/*.wav` and `explosion/*.wav`: Sonniss GDC bundles (royalty free); see `CREDITS_SONNISS.md`.
+
+## İnşa's own
+
+- `impact/tyre_pop.wav`: synthesized (a Python one-off): a few milliseconds of broad noise for the
+  bang, a 70 Hz thump, and the air hissing out (high-passed noise dying over a third of a second). CC0.

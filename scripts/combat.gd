@@ -16,6 +16,8 @@ static var current: Combat
 signal shook(at: Vector3, amount: float, owner: Machine, punch: float)
 ## A round, a shell or a burst of yours took something off a machine.
 signal hit_confirmed(owner: Machine, killed: bool)
+## A part of `victim` took `amount` at `at` (by `by`, maybe nobody); `broke`: it came off.
+signal part_hit(victim: Machine, id: String, at: Vector3, amount: float, by: Machine, broke: bool)
 
 const RAY_MASK := 1 | 2 | 4 ## the ground, machines, debris
 const MAX_DEBRIS := 140

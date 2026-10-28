@@ -12,34 +12,46 @@ extends Node
 ##   between   the damage stays: you're paid for the round (more for what you tore off them, quicker),
 ##             and in the workshop you buy back what you lost — the cab first, then the engines, what
 ##             it runs on, the battery, the guns, the rest — as far as the money goes
-##   the end   your cab gone, you're out; win them all and you're the champion
+##   the end   your cab gone, you're out (or down the pit); win them all and you're the champion
+##
+## From the third round two house robots keep the hatched corners (CageArena.HOUSE_ZONES): they
+## can't be hurt, and drive into anything that comes in. Some rounds have a pit, which opens at
+## PIT_OPENS s (lights, a siren): what goes over it falls and is out. In the workshop you can also
+## build (B): a new part costs its price, one taken off pays back half.
 
 signal finished(won_all: bool)
 
 const TIME := 150.0 ## s a round
+const PIT_OPENS := 45.0 ## s into a round the pit (if it has one) opens
+const REFUND := 0.5 ## of its price a part taken off in the workshop pays back
 const COUNT_OUT := 8.0 ## s a rival can't move before it's counted out
 const START_CREDITS := 300
 const ROUNDS := [
 	{"name": "ÇAMUR ÇUKURU", "rivals": [["raider", "PASLI"]],
-		"layout": {"zones": [[Rect2(-9, -9, 18, 18), "mud"]], "blocks": [Vector2(-14, 12), Vector2(14, -12)]}},
+		"layout": {"zones": [[Rect2(-9, -9, 18, 18), "mud"]], "blocks": [Vector2(-14, 12), Vector2(14, -12)],
+			"spinners": [Vector2(-13, 13)]}},
 	{"name": "BUZ PİSTİ", "rivals": [["rammer", "KOÇBAŞI"]],
 		"layout": {"zones": [[Rect2(-22, -7, 44, 14), "ice"]],
-			"spikes": [Rect2(-13, -17, 9, 2.5), Rect2(4, 14.5, 9, 2.5)]}},
-	{"name": "ATEŞ KAPANLARI", "rivals": [["tank", "DEMİRYUMRUK"]],
+			"spikes": [Rect2(-13, -17, 9, 2.5), Rect2(4, 14.5, 9, 2.5)],
+			"saws": [[Vector2(-10, 10), Vector2(10, 10)], [Vector2(-10, -10), Vector2(10, -10)]]}},
+	{"name": "ATEŞ KAPANLARI", "rivals": [["tank", "DEMİRYUMRUK"]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "gravel"]],
 			"vents": [Vector2(-9, -9), Vector2(9, 9), Vector2(-9, 9), Vector2(9, -9)],
 			"drums": [Vector2(0, -16), Vector2(0.8, -16.4), Vector2(0, 16), Vector2(-0.8, 16.3)]}},
-	{"name": "BATAKLIK", "rivals": [["raider", "DİKEN"], ["raider", "KANCA"]],
+	{"name": "BATAKLIK", "rivals": [["raider", "DİKEN"], ["raider", "KANCA"]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 14, 14), "bog"], [Rect2(10, 10, 14, 14), "bog"], [Rect2(-6, -6, 12, 12), "mud"]],
+			"pit": Rect2(-3, 8, 6, 6),
 			"fences": [[Vector2(-14, 0), Vector2(-5, 0)], [Vector2(5, 0), Vector2(14, 0)]]}},
-	{"name": "DİKENLİ ÇİT", "rivals": [["tracked", "ATEŞBÖCEĞİ"]],
+	{"name": "DİKENLİ ÇİT", "rivals": [["tracked", "ATEŞBÖCEĞİ"]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "dirt"]], "spikes": [Rect2(-2, -12, 4, 24)],
 			"fences": [[Vector2(-15, -9), Vector2(-15, 9)], [Vector2(15, -9), Vector2(15, 9)]],
-			"blocks": [Vector2(-8, 16), Vector2(8, -16)]}},
-	{"name": "FİNAL", "rivals": [["tank", "ŞAMPİYON"], ["rammer", "KOÇBAŞI II"]],
+			"blocks": [Vector2(-8, 16), Vector2(8, -16)], "pit": Rect2(6, 6, 6, 6),
+			"spinners": [Vector2(-9, -9)]}},
+	{"name": "FİNAL", "rivals": [["tank", "ŞAMPİYON"], ["rammer", "KOÇBAŞI II"]], "house": true,
 		"layout": {"zones": [[Rect2(-24, -24, 48, 48), "wet"], [Rect2(-6, -6, 12, 12), "mud"]],
 			"vents": [Vector2(-15, 15), Vector2(15, -15)], "spikes": [Rect2(-20, -1.5, 7, 3), Rect2(13, -1.5, 7, 3)],
-			"fences": [[Vector2(-4, -15), Vector2(4, -15)], [Vector2(-4, 15), Vector2(4, 15)]]}},
+			"fences": [[Vector2(-4, -15), Vector2(4, -15)], [Vector2(-4, 15), Vector2(4, 15)]], "pit": Rect2(-3, -3, 6, 6),
+			"spinners": [Vector2(-12, 0), Vector2(12, 0)], "saws": [[Vector2(-8, -20), Vector2(8, -20)]]}},
 ]
 ## What a part costs to put back (credits): its weight, and a fitting charge.
 const PER_KG := 1.2
@@ -52,6 +64,7 @@ var state := "prep" ## prep, countdown, fight, won, workshop, lost, champion
 var round := 0
 var credits := START_CREDITS
 var rivals: Array[Machine] = []
+var houses: Array[Machine] = []
 var time_left := TIME
 var excite := 0.15
 var full: Array = [] ## the design as you set out with it (what the workshop puts back)
@@ -63,6 +76,7 @@ var _murmur: AudioStreamPlayer
 var _roar: AudioStreamPlayer
 var _shout: AudioStreamPlayer
 var _bound: Array[Machine] = []
+var _pit_called := false
 
 
 func _ready() -> void:
@@ -73,6 +87,14 @@ func _ready() -> void:
 	_roar = _loop("res://assets/audio/crowd/roar_loop.wav", -60.0, 12.0)
 	_shout = AudioStreamPlayer.new()
 	add_child(_shout)
+	var b := game.get("builder") as Builder
+	b.guard = _may_build
+	b.price_note = func(id: String) -> String: return "%d kredi" % int(price(id)) if state == "workshop" else ""
+	b.removed.connect(_on_removed)
+	b.closed.connect(func() -> void:
+		if state == "workshop":
+			full = (game.get("machine") as Machine).to_data() + _missing_entries()
+			_ui.show_workshop())
 	_prep()
 
 
@@ -106,9 +128,35 @@ func _prep() -> void:
 	_ui.show_prep()
 
 
-## You build before the first round; after that only the workshop's repairs (bought) change it.
+## You build before the first round for nothing, and in the workshop for credits.
 func can_build() -> bool:
-	return state == "prep"
+	return state in ["prep", "workshop"]
+
+
+## A part going on: free before the first round; in the workshop, if you can pay its price.
+func _may_build(id: String, _at: Vector3i, _rot: int) -> bool:
+	if state != "workshop":
+		return true
+	var p := int(price(id))
+	if credits < p:
+		game.call("say", "Kredi yetmiyor: %s %d kredi" % [Parts.def(id).name, p])
+		return false
+	credits -= p
+	return true
+
+
+func _on_removed(id: String, _at: Vector3i, _rot: int) -> void:
+	if state == "workshop":
+		credits += int(price(id) * REFUND)
+
+
+## The entries of the parts that are missing now (kept in `full` across a workshop build: still to buy back).
+func _missing_entries() -> Array:
+	var out := []
+	for d: Dictionary in damage_list():
+		if d.missing:
+			out.append(d.entry)
+	return out
 
 
 func start_run() -> void:
@@ -123,10 +171,11 @@ func _begin_round(i: int) -> void:
 	var b := game.get("builder") as Builder
 	if b.active:
 		b.set_active(false)
-	for e in rivals:
+	for e in rivals + houses:
 		if is_instance_valid(e):
 			e.queue_free()
 	rivals.clear()
+	houses.clear()
 	_still.clear()
 	if Combat.current:
 		Combat.current.clear_debris()
@@ -143,6 +192,21 @@ func _begin_round(i: int) -> void:
 		e.set_physics_process(false) # (held till the countdown's done)
 		rivals.append(e)
 		k += 1
+	if r.get("house", false):
+		for z: Rect2 in CageArena.HOUSE_ZONES:
+			var at := Vector3(z.get_center().x, 0.0, z.get_center().y)
+			at.y = arena.terrain.height_at(at.x, at.z) + 1.5
+			var h: Machine = game.call("_spawn", Designs.house(), Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at), 2, false)
+			h.label = "MUHAFIZ"
+			h.house = true
+			h.invulnerable = true
+			var d := HouseDriver.new()
+			d.zone = z
+			d.home = Vector3(at.x, 0.0, at.z)
+			h.add_child(d)
+			h.set_lights(true)
+			h.set_physics_process(false)
+			houses.append(h)
 	_hp_start.clear()
 	var me: Machine = game.get("machine")
 	_hp_start[me] = me.health()
@@ -150,6 +214,7 @@ func _begin_round(i: int) -> void:
 		_hp_start[e] = e.health()
 	_bind()
 	time_left = TIME
+	_pit_called = false
 	state = "countdown"
 	_count_t = 3.5
 	game.set("player_input", false)
@@ -199,13 +264,19 @@ func _process(dt: float) -> void:
 			if _count_t <= 0.0:
 				state = "fight"
 				game.set("player_input", true)
-				for e in rivals:
+				for e in rivals + houses:
 					if is_instance_valid(e):
 						e.set_physics_process(true)
 				excite = 0.8
 				_shout_out("cheer_02.wav", -2.0)
 		"fight":
 			time_left -= dt
+			if TIME - time_left >= PIT_OPENS and arena.pit.size.x > 0.0 and not arena.pit_open:
+				arena.open_pit()
+				if not _pit_called:
+					_pit_called = true
+					_shout_out("ooh.wav", -2.0)
+					game.call("say", "ÇUKUR AÇILIYOR")
 			_check(dt)
 	_ui.tick(dt)
 
@@ -214,9 +285,12 @@ func _check(dt: float) -> void:
 	var me: Machine = game.get("machine")
 	if not is_instance_valid(me) or not me.alive:
 		return
+	if me.falling:
+		_lost("ÇUKURA DÜŞTÜN")
+		return
 	var standing := 0
 	for e in rivals:
-		if not is_instance_valid(e) or not e.alive:
+		if not is_instance_valid(e) or not e.alive or e.falling:
 			continue
 		var stuck := e.immobile() or e.global_basis.y.y < 0.3 or e.linear_velocity.length() < 0.05 and e.throttle != 0.0
 		_still[e] = (float(_still.get(e, 0.0)) + dt) if stuck else 0.0
@@ -240,7 +314,7 @@ func _round_over(won: bool, how: String) -> void:
 	if is_instance_valid(me):
 		me.throttle = 0.0
 		me.firing = false
-	for e in rivals:
+	for e in rivals + houses:
 		if is_instance_valid(e):
 			e.set_physics_process(false)
 	if not won:
@@ -252,7 +326,7 @@ func _round_over(won: bool, how: String) -> void:
 	# paid: the round's purse, what you tore off them, the time left
 	var torn := 0.0
 	for e in rivals:
-		var h := e.health() if is_instance_valid(e) and e.alive else 0.0
+		var h := e.health() if is_instance_valid(e) and e.alive and not e.falling else 0.0
 		torn += float(_hp_start.get(e, 1.0)) - h
 	var pay := 350 + 120 * round + int(torn * 400.0) + int(maxf(time_left, 0.0) * 1.5)
 	credits += pay
@@ -286,16 +360,44 @@ func _lost(why: String) -> void:
 	finished.emit(false)
 
 
+## The builder's opening over the workshop: the workshop's panel steps aside (it's back when the
+## builder closes).
+func on_build_open() -> void:
+	if _ui.panel_up():
+		_ui.hide_panel()
+
+
+## A panel of its own is up (the start, the workshop, the end): the pointer's for that.
+func panel_up() -> bool:
+	return _ui.panel_up()
+
+
+## Enter: start (before the first round) or on to the next round (in the workshop).
+func _unhandled_key_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if not k or not k.pressed or k.echo or not k.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+		return
+	if (game.get("builder") as Builder).active:
+		return
+	if state == "prep":
+		_ui.close()
+		start_run()
+	elif state == "workshop":
+		_ui.close()
+		next_round()
+
+
 func next_round() -> void:
 	_begin_round(round + 1)
 
 
 ## A new run: a new machine from your saved design in the red corner, the money and the rounds anew.
 func restart() -> void:
-	for e in rivals:
+	for e in rivals + houses:
 		if is_instance_valid(e):
 			e.queue_free()
 	rivals.clear()
+	houses.clear()
 	game.call("_respawn_quiet")
 	_prep()
 

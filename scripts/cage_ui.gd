@@ -97,6 +97,18 @@ func _close_panel() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+func close() -> void:
+	_close_panel()
+
+
+func hide_panel() -> void:
+	_panel.visible = false
+
+
+func panel_up() -> bool:
+	return _panel.visible
+
+
 func _button(text: String, fn: Callable, primary := false) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -134,7 +146,7 @@ func show_prep() -> void:
 	t.custom_minimum_size.x = 510
 	Ui.label(_panel_box, "Aracını şimdi kur (B). Turnuva başladıktan sonra yalnız onarılır.", 15, Ui.INK, "label")
 	Ui.label(_panel_box, "BAŞLANGIÇ KREDİSİ  %d" % cage.credits, 15, Ui.ACCENT, "head")
-	_button("DÖVÜŞE BAŞLA", func() -> void:
+	_button("DÖVÜŞE BAŞLA  ·  ENTER", func() -> void:
 		_close_panel()
 		cage.start_run(), true)
 	_open_panel()
@@ -232,7 +244,9 @@ func show_workshop() -> void:
 			fill.call())
 	row.add_child(cab)
 	var next_name: String = Cage.ROUNDS[mini(cage.round + 1, Cage.ROUNDS.size() - 1)].name
-	_button("SONRAKİ TUR  ·  %s" % next_name, func() -> void:
+	var shop := Ui.label(_panel_box, "B: araçta değişiklik (yeni parça fiyatı kadar, sökülen yarı fiyatına)", 13, Ui.DIM)
+	shop.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_button("SONRAKİ TUR  ·  %s  ·  ENTER" % next_name, func() -> void:
 		_close_panel()
 		cage.next_round(), true)
 	_open_panel()

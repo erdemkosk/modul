@@ -188,7 +188,7 @@ func _build_surface_mask() -> ImageTexture:
 		var surface: Surface = zone.surface
 		var r: Rect2 = zone.rect
 		var cell_rect := Rect2i(Vector2i(r.position) + Vector2i(HALF, HALF), Vector2i(r.size))
-		img.fill_rect(cell_rect, Color(surface.color, 1.0 if surface.is_soft() else 0.0))
+		img.fill_rect(cell_rect, Color(surface.color, 1.0 if surface.is_soft() or surface.label == "pit" else 0.0)) # (a pit: open)
 	return ImageTexture.create_from_image(img)
 
 

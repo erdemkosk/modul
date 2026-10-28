@@ -36,6 +36,12 @@ extends RigidBody3D
 ## It's dead when its cab is gone (the driver's in it); with no engine or nothing to run on it's
 ## `immobile` (the player can have it rebuilt).
 ##
+## What a hurt part does: an engine gives less power as it's hurt (sputtering when badly), a tyre
+## bursts under TYRE_BURST of its hit points (it sits lower, grips half as well, drags and wobbles),
+## a track is thrown under TRACK_THROWN (its side drives no more and slides), a battery hit loses
+## charge and holds less, a hurt gun turns slower and, badly hurt, jams. Each says so (system_hit),
+## and every hit on a part is told to Combat (part_hit) for the HUD's numbers.
+##
 ## Hurt shows: a part darkens with soot and the pocks of rounds as it's hurt (part_wear.gdshader), and
 ## one badly hurt smokes (an engine black and burning) — at most SMOKERS of them, the worst.
 ##
@@ -46,6 +52,8 @@ signal died
 ## It took `amount` hp from `from` (where the shot came from, or the burst or the knock was), by
 ## `kind` (minigun, top, roket, patlama, çarpışma): what the HUD shows you.
 signal damaged(amount: float, from: Vector3, kind: String)
+## One of its systems gave (a tyre burst, the engine weakened, ...): `text` for the screen.
+signal system_hit(text: String, at: Vector3)
 
 const RAY_MASK := 1
 const MAX_STEER := 0.55 ## rad, slow; less going faster
@@ -55,6 +63,11 @@ const BUMP_STIFF := 8.0 ## the bump stop, times the spring
 const TRACTION := 0.6 ## the most the drive pushes at a crawl, times its weight
 const STAMP_STEP := 0.12
 const IMPACT_SAFE := 3.0 ## m/s a knock changes its speed by without harm
+const BLAST_DV := 2.5 ## m/s the most a burst's heave changes its speed by
+const TYRE_BURST := 0.55 ## a wheel's share of hit points under which its tyre's burst
+const TRACK_THROWN := 0.4 ## a track's under which it's thrown
+const MAX_RISE := 9.0 ## m/s up it can be going at most (whatever's gone wrong, it doesn't fly off)
+const MAX_SPIN := 7.0 ## rad/s it can be turning at most
 const IMPACT_HURT := 6.0 ## hp per (m/s past it) squared
 const IMPACT_REACH := 0.8 ## m round where it struck that the parts take it
 const SMOKERS := 4 ## parts that smoke at once at most
@@ -78,6 +91,8 @@ var guns: Array[MachineGun] = []
 var last_hit_by: Machine
 var last_hit_kind := "" ## (what hurt it last: the death card's line)
 var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
+var house := false ## (a cage's house robot: the rivals leave it be)
+var falling := false ## going down the cage's pit: nothing holds it up any more
 var invulnerable := false ## (the proving ground's G) hits push it but take nothing off
 var wet := 0.0 ## 0..1: the ground soaked by rain (Weather.wetness): what the wheels throw
 
@@ -304,12 +319,15 @@ func rebuild() -> void:
 		hi = hi.max(xf.origin + ext * 0.5)
 		match str(d.kind):
 			"wheel":
-				wheels.append(MachineWheel.make(self, node, p.id, xf))
+				var mw := MachineWheel.make(self, node, p.id, xf)
+				mw.flat = bool(p.get("flat", false))
+				wheels.append(mw)
 				rated_kg += float(d.rated)
 			"track":
 				var tr := MachineTrack.make(self, node, p.id, xf)
 				for b in tr.bogies:
 					b.unit = tracks.size()
+					b.thrown = bool(p.get("thrown", false))
 				tracks.append(tr)
 				wheels.append_array(tr.bogies)
 				rated_kg += float(d.rated) * tr.bogies.size()
@@ -317,14 +335,17 @@ func rebuild() -> void:
 				var tsz := Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL
 				_add_shape(Vector3(tsz.x * 0.9, tsz.y * 0.4, tsz.z * 0.95), xf.origin + Vector3.UP * tsz.y * 0.28)
 			"battery":
-				capacity_kj += float(d.kwh) * 3600.0
+				capacity_kj += float(d.kwh) * 3600.0 * (0.4 + 0.6 * clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0))
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
 			"engine":
-				power_kw += float(d.power)
-				alternator_kw += float(d.get("alternator", 0.0))
+				var ef := _engine_eff(p)
+				power_kw += float(d.power) * ef
+				alternator_kw += float(d.get("alternator", 0.0)) * ef
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.9, 0.75, 0.95), xf.origin)
 			"weapon":
-				guns.append(MachineGun.make(self, node, p.id))
+				var mg := MachineGun.make(self, node, p.id)
+				mg.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+				guns.append(mg)
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.8, 0.9, 0.8), xf.origin)
 			"light":
 				_add_lamp(node, xf)
@@ -542,6 +563,15 @@ func set_building(on: bool) -> void:
 func _physics_process(dt: float) -> void:
 	if building or total_mass <= 0.0 or not alive:
 		return
+	if falling:
+		throttle = 0.0
+		firing = false
+		return
+	# nothing real throws it up faster than this or spins it faster: a guard against a bad contact
+	if linear_velocity.y > MAX_RISE:
+		linear_velocity.y = MAX_RISE
+	if angular_velocity.length() > MAX_SPIN:
+		angular_velocity = angular_velocity.normalized() * MAX_SPIN
 	# the knocks felt last step (taken here, not in the middle of the physics step)
 	if not _knocks.is_empty():
 		var ks := _knocks
@@ -557,7 +587,7 @@ func _physics_process(dt: float) -> void:
 		for e: Array in ks:
 			var j := design.find(e[0])
 			if j >= 0 and alive:
-				damage_part(j, float(e[1]))
+				damage_part(j, float(e[1]), _knock_at, last_hit_by)
 		if not alive:
 			return
 	_power(dt)
@@ -575,6 +605,12 @@ func _physics_process(dt: float) -> void:
 	var drive := 0.0
 	if power_kw > 0.0 and not on_ground.is_empty():
 		drive = minf(power_kw * 1000.0 / maxf(absf(speed), 2.5), TRACTION * total_mass * 9.8) / on_ground.size()
+		if power_kw < _full_power * 0.55: # (badly hurt engines miss: the push comes and goes)
+			_sputter_t -= dt
+			if _sputter_t <= 0.0:
+				_sputter_t = randf_range(0.08, 0.3)
+				_sputter = randf_range(0.25, 1.0)
+			drive *= _sputter
 	var steer_angle := steer * MAX_STEER / (1.0 + absf(speed) / 10.0)
 	var grip_sum := 0.0
 	# a track drives through one belt: what its side gets goes to its road wheels by what each carries
@@ -588,7 +624,9 @@ func _physics_process(dt: float) -> void:
 			unit_n[w.unit] += 1
 	for w in on_ground:
 		var push := throttle * drive
-		if w.track:
+		if w.thrown:
+			push = 0.0 # (its belt's off: it runs on nothing)
+		elif w.track:
 			# a track turns by its sides: the outside driven, the inside held back or run backwards
 			# (on the spot with no throttle); slewing round, its belt slides sideways
 			var k := 1.0 if absf(throttle) < 0.1 else 0.8
@@ -649,10 +687,24 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 
 
 var _knocks := []
-var _grace := 0.0 ## s knocks don't hurt (just set down: built, made anew, put back on its wheels)
+var _grace := 0.0
+var _sputter := 1.0
+var _sputter_t := 0.0 ## s knocks don't hurt (just set down: built, made anew, put back on its wheels)
 var _knock_at := Vector3.ZERO
 var _knock_by: Machine
 signal knocked(at: Vector3, dv: float)
+
+
+## Into the cage's pit: it no longer touches the floor or the walls, and drops.
+func fall() -> void:
+	if falling:
+		return
+	falling = true
+	collision_mask = 0
+	collision_layer = 0
+	for w in wheels:
+		w.contact = false
+	linear_velocity.y = minf(linear_velocity.y, -1.0)
 
 
 ## Just put down somewhere (made, built, righted): for a moment it can land without harm.
@@ -773,11 +825,11 @@ func hit(at: Vector3, dir: Vector3, damage: float, push: float, by: Machine = nu
 		last_hit_by = by
 		last_hit_kind = "minigun"
 		damaged.emit(damage, by.global_position if is_instance_valid(by) else at - dir * 20.0, "minigun")
-		damage_part(i, damage)
+		damage_part(i, damage, at, by)
 
 
-## A burst at `at`: every part within `radius` takes damage falling off with distance (half at the
-## edge), the machine is heaved away from it.
+## A burst at `at`: every part within `radius` takes damage falling off with the square of the
+## distance (all of it at the middle, none at the edge), the machine is heaved away from it.
 func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine = null, kind := "patlama") -> void:
 	if not alive:
 		return
@@ -786,10 +838,16 @@ func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine =
 		var c := global_transform * Parts.xform_of(design[i].id, design[i].at, design[i].rot).origin
 		var d := c.distance_to(at)
 		if d < radius:
-			hurt[i] = damage * (1.0 - 0.5 * d / radius)
+			var f := 1.0 - d / radius
+			hurt[i] = damage * f * f # (the fragments thin out fast: a near miss scars, a hit tears)
+	# the heave: away from it and a little up, through the centre of mass mostly (a burst shoves a
+	# machine and can tip it; it doesn't throw a ton of steel into the air: at most BLAST_DV m/s)
 	var away := com_global() - at
 	var k := clampf(1.0 - away.length() / (radius * 2.5), 0.0, 1.0)
-	apply_impulse((away.normalized() + Vector3.UP * 0.5).normalized() * push * k, at - global_position)
+	var j := minf(push * k, BLAST_DV * total_mass)
+	var heave := (away.normalized() * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 0.25).normalized() * j
+	apply_central_impulse(heave * 0.7)
+	apply_impulse(heave * 0.3, at - global_position)
 	if hurt.is_empty():
 		return
 	last_hit_by = by
@@ -806,19 +864,125 @@ func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine =
 	for i: int in keys:
 		parts.append([design[i], hurt[i]])
 	for e: Array in parts:
-		var j := design.find(e[0])
-		if j >= 0 and alive:
-			damage_part(j, float(e[1]))
+		var at_i := design.find(e[0])
+		if at_i >= 0 and alive:
+			damage_part(at_i, float(e[1]), global_transform * Parts.xform_of(e[0].id, e[0].at, e[0].rot).origin, by)
 
 
-func damage_part(i: int, amount: float) -> void:
+## Part `i` takes `amount` (at `at`, by `by`, for the HUD); at none it comes off; on the way, what it
+## does gives (systems).
+func damage_part(i: int, amount: float, at := Vector3.INF, by: Machine = null) -> void:
 	if i < 0 or i >= design.size() or invulnerable:
 		return
-	design[i].hp = float(design[i].hp) - amount
-	if float(design[i].hp) <= 0.0:
+	var p: Dictionary = design[i]
+	if at == Vector3.INF:
+		at = global_transform * Parts.xform_of(p.id, p.at, p.rot).origin
+	p.hp = float(p.hp) - amount
+	var broke := float(p.hp) <= 0.0
+	if Combat.current:
+		Combat.current.part_hit.emit(self, str(p.id), at, amount, by, broke)
+	if broke:
 		break_off(i)
 	else:
+		_systems(i, amount, at)
 		_show_wear()
+		_flash_part(i)
+
+
+## What part `i`'s hurt does to the machine (once each: the flags stay on its design entry).
+func _systems(i: int, amount: float, at: Vector3) -> void:
+	var p: Dictionary = design[i]
+	var frac := clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+	match str(Parts.def(p.id).kind):
+		"engine":
+			_refigure_power()
+			if frac < 0.5 and not bool(p.get("weak", false)):
+				p.weak = true
+				system_hit.emit("MOTOR HASARLI  ·  GÜÇ %%%d" % int(power_kw / maxf(_full_power, 1.0) * 100.0), at)
+			elif frac < 0.35 and not bool(p.get("sputter", false)):
+				p.sputter = true
+				system_hit.emit("MOTOR TEKLİYOR", at)
+		"wheel":
+			if frac < TYRE_BURST and not bool(p.get("flat", false)):
+				p.flat = true
+				for w in wheels:
+					if w.node == part_nodes[i]:
+						w.flat = true
+				system_hit.emit("LASTİK PATLADI", at)
+				if Combat.current:
+					Combat.current.sound("res://assets/audio/impact/tyre_pop.wav", at, 2.0, randf_range(0.9, 1.1))
+					Combat.current.backblast(at, Vector3.UP)
+		"track":
+			if frac < TRACK_THROWN and not bool(p.get("thrown", false)):
+				p.thrown = true
+				rebuild()
+				system_hit.emit("PALET KOPTU", at)
+				if Combat.current:
+					Combat.current.sound("res://assets/audio/explosion/debris_metal_0%d.wav" % randi_range(1, 2), at, 2.0, 0.8)
+		"battery":
+			energy_kj = maxf(energy_kj - amount * 4.0, 0.0)
+			var cap := capacity_kj
+			rebuild()
+			energy_kj = minf(energy_kj, capacity_kj)
+			if capacity_kj < cap - 1.0 and not bool(p.get("hit", false)):
+				p.hit = true
+				system_hit.emit("AKÜ VURULDU  ·  ŞARJ %%%d" % int(charge_frac() * 100.0), at)
+			if Combat.current:
+				Combat.current.muzzle_flash(at, Vector3.UP, 0.8) # (sparks off its terminals)
+		"weapon":
+			for g in guns:
+				if g.node == part_nodes[i]:
+					g.condition = frac
+			if frac < 0.5 and not bool(p.get("weak", false)):
+				p.weak = true
+				system_hit.emit("SİLAH HASARLI", at)
+
+
+## The engines' power and charge as hurt as they are (without making the whole machine anew).
+func _refigure_power() -> void:
+	power_kw = 0.0
+	alternator_kw = 0.0
+	for p: Dictionary in design:
+		var d := Parts.def(p.id)
+		if str(d.kind) == "engine":
+			var ef := _engine_eff(p)
+			power_kw += float(d.power) * ef
+			alternator_kw += float(d.get("alternator", 0.0)) * ef
+
+
+## An engine's share of its power, by its hit points: all of it whole, under a third at the end.
+static func _engine_eff(p: Dictionary) -> float:
+	var frac := clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+	return 0.3 + 0.7 * frac
+
+
+var _full_power := 1.0 ## (its engines' power as built: the HUD's share)
+
+
+## A part just hit shows it: a flash of white over it for a moment.
+func _flash_part(i: int) -> void:
+	if DisplayServer.get_name() == "headless" or i >= part_nodes.size():
+		return
+	if _flash_mat == null:
+		_flash_mat = StandardMaterial3D.new()
+		_flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_flash_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_flash_mat.albedo_color = Color(1.0, 0.9, 0.7, 0.55)
+	var node := part_nodes[i]
+	if not is_instance_valid(node):
+		return
+	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		mi.material_overlay = _flash_mat
+	get_tree().create_timer(0.07).timeout.connect(func() -> void:
+		if is_instance_valid(node):
+			for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+				if mi.material_overlay == _flash_mat:
+					mi.material_overlay = null
+			_show_wear())
+
+
+static var _flash_mat: StandardMaterial3D
 
 
 ## Soot and pocks on each hurt part; smoke from the worst (rebuilt with the parts).
@@ -1030,6 +1194,7 @@ var _built_hp := 1.0 ## (all its parts' hit points as built: set when it's built
 
 
 func _note_built() -> void:
+	_full_power = maxf(power_kw, 1.0)
 	_built_hp = 0.0
 	for p: Dictionary in design:
 		_built_hp += Parts.hp_of(p.id) * (2.0 if p.id == "cab" else 1.0)

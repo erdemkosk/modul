@@ -18,6 +18,13 @@ extends CanvasLayer
 ## and can be undone (Ctrl+Z, Ctrl+Y).
 
 static var save_path := "user://design.json" ## (tests point it elsewhere)
+
+## Asked before a part goes on (id, at, rot) -> may it (the cage's workshop: if you can pay for it).
+var guard: Callable
+## What a part costs here, for the part's card ("" when nothing does).
+var price_note: Callable
+signal removed(id: String, at: Vector3i, rot: int)
+signal closed
 const SLOTS := 3
 const PANEL := Color(0.06, 0.065, 0.06, 0.86)
 const EDGE := Color(0.32, 0.3, 0.26, 0.9)
@@ -565,6 +572,10 @@ func select(id: String, sound := true) -> void:
 		var s: Vector3i = d.size
 		_part_stats.text = "%d kg  ·  %d can  ·  %d×%d×%d hücre%s" % [int(d.mass), int(Parts.hp_of(id)), s.x, s.y, s.z, extra]
 		_part_about.text = d.about
+		if price_note.is_valid():
+			var note := str(price_note.call(id))
+			if note != "":
+				_part_stats.text += "  ·  " + note
 	if sound and active:
 		_play("tick.wav", -6.0, randf_range(0.95, 1.1))
 	_make_ghost()
@@ -619,6 +630,8 @@ func set_active(on: bool) -> void:
 		_ghost2.visible = false
 	_unglow()
 	_floor(on)
+	if not on:
+		closed.emit()
 	if on:
 		_root.modulate.a = 0.0
 		_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.2)
@@ -887,13 +900,17 @@ func _unhandled_input(event: InputEvent) -> void:
 func place_target() -> void:
 	var t := _target
 	var before := machine.to_data()
+	if guard.is_valid() and not bool(guard.call(selected, t.at, t.rot)):
+		_play("tick.wav", -8.0, 0.6)
+		return
 	if not machine.place(selected, t.at, t.rot):
 		return
 	_history.append(before)
 	_future.clear()
 	var placed: Array[Node3D] = [machine.part_nodes.back()]
 	var m: Dictionary = t.get("mirror", {})
-	if not m.is_empty() and machine.place(selected, m.at, m.rot):
+	if not m.is_empty() and machine.can_place(selected, m.at, m.rot) and (not guard.is_valid() or bool(guard.call(selected, m.at, m.rot))) \
+			and machine.place(selected, m.at, m.rot):
 		placed.append(machine.part_nodes.back())
 	# (a rebuild made every part's node anew: the new ones are the last)
 	var n := machine.part_nodes.size()
@@ -907,9 +924,12 @@ func remove_at(i: int) -> void:
 	if i < 0 or i >= machine.design.size() or not machine.can_remove(i):
 		return
 	var id: String = machine.design[i].id
+	var at: Vector3i = machine.design[i].at
+	var r: int = machine.design[i].rot
 	var before := machine.to_data()
 	_fly_off(machine.part_nodes[i], 0.0)
 	if machine.remove(i):
+		removed.emit(id, at, r)
 		_history.append(before)
 		_future.clear()
 		_unglow()

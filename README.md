@@ -10,7 +10,10 @@ are this project's own.
   floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals
   (a rammer among them); win by tearing them apart or leaving them unable to move for 8 s, or on the
   judges' decision at the bell. The damage stays between rounds: each win pays credits, and the
-  workshop buys back what you lost, the cab first. Your cab gone, you're out.
+  workshop buys back what you lost, the cab first, and sells you new parts (B; half back for one
+  taken off). From the third round house robots keep two hatched corners and drive into whatever comes
+  in; some rounds have a pit that opens at 0:45 (what goes over it falls and is out); spinners and
+  floor saws tear at what touches them. Your cab gone, you're out.
 - **Test Alanı**: the proving ground, built as an arena: a ring of jersey barriers under a catch fence,
   grandstands, floodlight masts (lit at night), a gate the other side drives in through, the surface
   zones and ramps, and cover that breaks (concrete blocks, containers, sandbags, crates, drums).
@@ -58,6 +61,11 @@ are this project's own.
   hull, the battery and every consumer, shed or not, the guns).
 - `scripts/arena.gd`: the arena (models: `tools/blender/build_arena.py`); `scripts/breakable.gd`: its
   cover, chipped by rounds, broken into chunks by bursts; `scripts/test_terrain.gd` digs craters.
+- What a hurt part does (`machine.gd` `_systems`): an engine gives less power (sputtering when badly
+  hurt), a tyre under 55% bursts (lower, half the grip, drag, a thump each turn), a track under 40% is
+  thrown, a battery hit loses charge and holds less, a hurt gun turns slower and jams. Your own say so
+  at once; on what you hit, the HUD shows the damage and the part's name where it struck and the
+  target's parts from above (`combat_overlay.gd`).
 - Hurt and death (`machine.gd`): rounds, bursts and knocks (ramming, walls, hard landings: the change
   in speed past 3 m/s) take hit points off the parts where they land; a part at none comes off and
   the machine is worked out anew (mass, centre of mass, wheels, power); the cab gone, it's dead; no
@@ -80,5 +88,6 @@ godot --headless --path . -s res://tests/tracks_test.gd
 godot --headless --path . -s res://tests/build_test.gd
 godot --headless --path . -s res://tests/arena_test.gd
 godot --headless --path . -s res://tests/cage_test.gd
+godot --headless --path . -s res://tests/hazard_test.gd
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage]
 ```

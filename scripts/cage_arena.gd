@@ -5,14 +5,24 @@ extends Node3D
 ## to start from; outside, a grandstand on each side full of people (a MultiMesh of seated figures
 ## that sway, and come up on their feet cheering with `excite`), a floodlight mast at each corner.
 ##
-## Each round lays its own floor (set_round): the ground's zones (mud, bog, ice, gravel, snow), and
-## its hazards — spike strips that bite the parts that run over them, flame vents that roar up every
-## few seconds, chain-link fence islands to fight round, breakable blocks and drums.
+## Two other corners are the house robots' patrol zones, hatched yellow and black (HOUSE_ZONES).
+##
+## Each round lays its own floor (set_round): the ground's zones (mud, bog, ice, gravel, snow), the
+## pit (a steel lid flush with the floor that, at its time, slides away under flashing lights and a
+## siren: what goes over it falls), and its hazards — spike strips that bite the parts that run over them, flame vents that roar up every
+## few seconds, chain-link fence islands to fight round, breakable blocks and drums, spinners (a
+## toothed drum on the floor spinning flat out: what touches it is torn at and flung off sideways) and
+## floor saws (a toothed blade up out of a slot, running to and fro along it, cutting what's over it).
 
 const HALF := 24.0
 const A := "res://assets/arena/"
 const SPIKE_DAMAGE := 22.0 ## hp a bite
 const FIRE_DAMAGE := 26.0 ## hp a lick at the middle
+const HOUSE_ZONES := [Rect2(-24, 16, 8, 8), Rect2(16, -24, 8, 8)] ## (x, z)
+const SPINNER_DAMAGE := 34.0 ## hp a tooth's bite (every BLADE_TICK s while it's touching)
+const SAW_DAMAGE := 26.0
+const BLADE_TICK := 0.15
+const SPINNER_FLING := 1800.0 ## N s sideways a bite flings it off
 
 var terrain: TestTerrain
 var crowd_mat: ShaderMaterial
@@ -21,6 +31,16 @@ var _spikes: Array[Area3D] = []
 var _vents: Array[Dictionary] = [] ## {area, fire, light, t, period, offset}
 var _bite := {} ## Machine -> s till the spikes bite it again
 var _t := 0.0
+var pit := Rect2() ## (x, z) this round's pit (none: no size)
+var pit_open := false
+var _pit_node: Node3D
+var _pit_lid: Node3D
+var _pit_lights: Array[OmniLight3D] = []
+var _pit_warn := 0.0
+var _zones_now := [] ## (this round's zones, the pit added to them when it opens)
+var _spinners: Array[Dictionary] = [] ## {node, area, at, r}
+var _saws: Array[Dictionary] = [] ## {node, blade, area, a, b, u, dir}
+var _cut := {} ## Machine -> s till a blade bites it again
 
 
 func _ready() -> void:
@@ -85,6 +105,18 @@ func _floor_marks() -> void:
 			p = b * p
 			p.y = _h(p.x, p.z) + 0.02
 			_box(Vector3(HALF * 2.0 / n - 0.05, 0.02, 0.6), Transform3D(b, p), yellow if k % 2 == 0 else black)
+	# the house robots' patrol zones: hatched
+	for z: Rect2 in HOUSE_ZONES:
+		var hatch := 8
+		for k in hatch:
+			var c := z.position + Vector2((k + 0.5) * z.size.x / hatch, z.size.y * 0.5)
+			var y := _h(c.x, c.y) + 0.022
+			_box(Vector3(z.size.x / hatch * 0.45, 0.02, z.size.y * 1.38), Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(c.x, y, c.y)),
+				yellow if k % 2 == 0 else black)
+		var cy := _h(z.get_center().x, z.get_center().y) + 0.025
+		for e: Array in [[Vector3(z.size.x, 0.02, 0.3), Vector3(0, 0, -z.size.y * 0.5)], [Vector3(z.size.x, 0.02, 0.3), Vector3(0, 0, z.size.y * 0.5)],
+				[Vector3(0.3, 0.02, z.size.y), Vector3(-z.size.x * 0.5, 0, 0)], [Vector3(0.3, 0.02, z.size.y), Vector3(z.size.x * 0.5, 0, 0)]]:
+			_box(e[0], Transform3D(Basis.IDENTITY, Vector3(z.get_center().x, cy, z.get_center().y) + (e[1] as Vector3)), yellow)
 	for c: Array in [[Vector2(-1, -1), Color(0.75, 0.12, 0.1)], [Vector2(1, 1), Color(0.12, 0.3, 0.75)]]:
 		var at: Vector2 = c[0] * (HALF - 4.5)
 		var y := _h(at.x, at.y) + 0.025
@@ -291,10 +323,20 @@ func set_round(layout: Dictionary) -> void:
 	_spikes.clear()
 	_vents.clear()
 	_bite.clear()
+	_pit_lights.clear()
+	_spinners.clear()
+	_saws.clear()
+	_cut.clear()
 	var zones := []
 	for z: Array in layout.get("zones", []):
 		zones.append([z[0], Surface.preset(z[1])])
+	_zones_now = zones
 	terrain.set_zones(zones)
+	pit = layout.get("pit", Rect2())
+	pit_open = false
+	_pit_warn = 0.0
+	if pit.size.x > 0.0:
+		_build_pit()
 	for r: Rect2 in layout.get("spikes", []):
 		_spike_strip(r)
 	var k := 0
@@ -303,10 +345,99 @@ func set_round(layout: Dictionary) -> void:
 		k += 1
 	for f: Array in layout.get("fences", []):
 		_fence(f[0], f[1])
+	for sp: Vector2 in layout.get("spinners", []):
+		_spinner(sp)
+	for sw: Array in layout.get("saws", []):
+		_saw(sw[0], sw[1])
 	for b: Vector2 in layout.get("blocks", []):
 		_hazards.add_child(Breakable.make("block", Transform3D(Basis(Vector3.UP, randf() * 0.4), Vector3(b.x, _h(b.x, b.y), b.y))))
 	for d: Vector2 in layout.get("drums", []):
 		_hazards.add_child(Breakable.make("drum", Transform3D(Basis(Vector3.UP, randf() * TAU), Vector3(d.x, _h(d.x, d.y), d.y))))
+
+
+## The pit: a deep square shaft under the floor, walled and striped round its lip, a steel lid over
+## it flush with the floor, a lamp at each corner.
+func _build_pit() -> void:
+	_pit_node = Node3D.new()
+	_hazards.add_child(_pit_node)
+	var c := pit.get_center()
+	var y := _h(c.x, c.y)
+	var dark := _mat(Color(0.03, 0.03, 0.035), 0.9)
+	var depth := 6.0
+	for e: Array in [[Vector3(pit.size.x, depth, 0.2), Vector3(0, -depth * 0.5, -pit.size.y * 0.5)],
+			[Vector3(pit.size.x, depth, 0.2), Vector3(0, -depth * 0.5, pit.size.y * 0.5)],
+			[Vector3(0.2, depth, pit.size.y), Vector3(-pit.size.x * 0.5, -depth * 0.5, 0)],
+			[Vector3(0.2, depth, pit.size.y), Vector3(pit.size.x * 0.5, -depth * 0.5, 0)],
+			[Vector3(pit.size.x, 0.2, pit.size.y), Vector3(0, -depth, 0)]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = e[0]
+		bm.material = dark
+		mi.mesh = bm
+		mi.position = Vector3(c.x, y, c.y) + (e[1] as Vector3)
+		_pit_node.add_child(mi)
+	# its lip: yellow and black
+	var yellow := _mat(Color(0.8, 0.6, 0.08), 0.7)
+	var black := _mat(Color(0.05, 0.05, 0.05), 0.7)
+	var n := 10
+	for side in 4:
+		for k in n:
+			var horiz := side < 2
+			var len := pit.size.x if horiz else pit.size.y
+			var along := -len * 0.5 + (k + 0.5) * len / n
+			var off := Vector3(along, 0.0, (-0.5 if side == 0 else 0.5) * pit.size.y + (-0.25 if side == 0 else 0.25)) if horiz \
+				else Vector3((-0.5 if side == 2 else 0.5) * pit.size.x + (-0.25 if side == 2 else 0.25), 0.0, along)
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(len / n - 0.04, 0.025, 0.5) if horiz else Vector3(0.5, 0.025, len / n - 0.04)
+			bm.material = yellow if k % 2 == 0 else black
+			mi.mesh = bm
+			mi.position = Vector3(c.x, y + 0.02, c.y) + off
+			_pit_node.add_child(mi)
+	_pit_lid = MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(pit.size.x, 0.08, pit.size.y)
+	lm.material = _mat(Color(0.32, 0.33, 0.34), 0.45, 0.8)
+	(_pit_lid as MeshInstance3D).mesh = lm
+	_pit_lid.position = Vector3(c.x, y + 0.03, c.y)
+	_pit_node.add_child(_pit_lid)
+	for k in 4:
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.55, 0.1)
+		l.omni_range = 5.0
+		l.light_energy = 0.0
+		l.position = Vector3(c.x + (pit.size.x * 0.5 + 0.5) * (1 if k % 2 == 0 else -1), y + 0.6, c.y + (pit.size.y * 0.5 + 0.5) * (1 if k < 2 else -1))
+		_pit_node.add_child(l)
+		_pit_lights.append(l)
+
+
+## The pit's lights flash for a few seconds, then its lid slides off and the floor's open there.
+func open_pit() -> void:
+	if pit.size.x <= 0.0 or pit_open or _pit_warn > 0.0:
+		return
+	_pit_warn = 3.0
+	if Combat.current:
+		Combat.current.sound("res://assets/audio/build/heavy_01.wav", Vector3(pit.get_center().x, 1.0, pit.get_center().y), 4.0, 0.6)
+
+
+func _pit_opens() -> void:
+	pit_open = true
+	var zones := _zones_now.duplicate()
+	var hole := Surface.new() # (no ground there at all: the floor's mesh opens over it)
+	hole.label = "pit"
+	hole.color = Color(0.03, 0.03, 0.03)
+	zones.append([pit, hole])
+	terrain.set_zones(zones)
+	if _pit_lid:
+		var tw := _pit_lid.create_tween()
+		tw.tween_property(_pit_lid, "position:x", _pit_lid.position.x + pit.size.x + 0.4, 1.2).set_trans(Tween.TRANS_QUAD)
+	if Combat.current:
+		Combat.current.sound("res://assets/audio/build/bolt_off_01.wav", Vector3(pit.get_center().x, 1.0, pit.get_center().y), 6.0, 0.5)
+
+
+## Over the open pit (its middle, a little in from the lip).
+func over_pit(p: Vector3) -> bool:
+	return pit_open and pit.grow(-0.6).has_point(Vector2(p.x, p.z))
 
 
 ## A strip of steel spikes: low enough to drive over, and they bite what does.
@@ -435,6 +566,153 @@ func _vent(at: Vector2, k: int) -> void:
 		"period": 7.0, "offset": k * 2.3, "tick": 0.0, "on": false})
 
 
+## A spinner: a steel drum on a low base, teeth round its rim, spinning flat out; solid to drive
+## into, and it bites and flings what touches it.
+func _spinner(at: Vector2) -> void:
+	var r := 1.5
+	var root := Node3D.new()
+	_hazards.add_child(root)
+	var y := _h(at.x, at.y)
+	root.position = Vector3(at.x, y, at.y)
+	var base := MeshInstance3D.new()
+	var bm := CylinderMesh.new()
+	bm.top_radius = r + 0.4
+	bm.bottom_radius = r + 0.6
+	bm.height = 0.12
+	bm.material = _mat(Color(0.8, 0.6, 0.08), 0.6)
+	base.mesh = bm
+	base.position.y = 0.06
+	root.add_child(base)
+	var drum := Node3D.new()
+	drum.name = "Drum"
+	drum.position.y = 0.42
+	root.add_child(drum)
+	var dm := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = 0.5
+	cm.radial_segments = 24
+	cm.material = _mat(Color(0.22, 0.22, 0.24), 0.35, 0.85)
+	dm.mesh = cm
+	drum.add_child(dm)
+	var steel := _mat(Color(0.7, 0.71, 0.72), 0.25, 0.95)
+	for k in 6: # the teeth
+		var a := k * TAU / 6.0
+		var t := MeshInstance3D.new()
+		var tm := BoxMesh.new()
+		tm.size = Vector3(0.5, 0.36, 0.18)
+		tm.material = steel
+		t.mesh = tm
+		t.position = Vector3(cos(a), 0.0, sin(a)) * (r + 0.12)
+		t.rotation.y = -a
+		drum.add_child(t)
+	var cap := MeshInstance3D.new()
+	var capm := CylinderMesh.new()
+	capm.top_radius = 0.4
+	capm.bottom_radius = 0.4
+	capm.height = 0.1
+	capm.material = _mat(Color(0.8, 0.6, 0.08), 0.6)
+	cap.mesh = capm
+	cap.position.y = 0.28
+	drum.add_child(cap)
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = r
+	cyl.height = 0.6
+	cs.shape = cyl
+	cs.position.y = 0.3
+	body.add_child(cs)
+	root.add_child(body)
+	var area := Area3D.new()
+	area.collision_layer = 0
+	area.collision_mask = 2
+	var acs := CollisionShape3D.new()
+	var acyl := CylinderShape3D.new()
+	acyl.radius = r + 0.45
+	acyl.height = 1.2
+	acs.shape = acyl
+	acs.position.y = 0.5
+	area.add_child(acs)
+	root.add_child(area)
+	var hum := AudioStreamPlayer3D.new()
+	var s := (load("res://assets/audio/weapons/minigun_motor_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
+	s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	s.loop_end = 44100
+	hum.stream = s
+	hum.pitch_scale = 0.45
+	hum.volume_db = -8.0
+	hum.unit_size = 6.0
+	hum.autoplay = true
+	root.add_child(hum)
+	_spinners.append({"node": drum, "area": area, "at": root.position, "r": r})
+
+
+## A floor saw: a slot in the floor from `a` to `b`, a toothed blade standing up out of it and
+## running to and fro along it.
+func _saw(a: Vector2, b: Vector2) -> void:
+	var root := Node3D.new()
+	_hazards.add_child(root)
+	var len := a.distance_to(b)
+	var mid := (a + b) * 0.5
+	var y := _h(mid.x, mid.y)
+	var basis := Basis(Vector3.UP, -atan2(b.y - a.y, b.x - a.x))
+	var slot := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(len + 1.4, 0.03, 0.35)
+	sm.material = _mat(Color(0.03, 0.03, 0.03), 0.9)
+	slot.mesh = sm
+	slot.transform = Transform3D(basis, Vector3(mid.x, y + 0.015, mid.y))
+	root.add_child(slot)
+	for side: float in [-1.0, 1.0]:
+		var rail := MeshInstance3D.new()
+		var rm := BoxMesh.new()
+		rm.size = Vector3(len + 1.4, 0.035, 0.12)
+		rm.material = _mat(Color(0.8, 0.6, 0.08), 0.6)
+		rail.mesh = rm
+		rail.transform = Transform3D(basis, Vector3(mid.x, y + 0.02, mid.y) + basis * Vector3(0, 0, side * 0.25))
+		root.add_child(rail)
+	var blade := Node3D.new()
+	root.add_child(blade)
+	var disc := MeshInstance3D.new()
+	var dm := CylinderMesh.new()
+	dm.top_radius = 0.75
+	dm.bottom_radius = 0.75
+	dm.height = 0.04
+	dm.radial_segments = 28
+	dm.material = _mat(Color(0.75, 0.76, 0.78), 0.2, 0.95)
+	disc.mesh = dm
+	disc.rotation.x = PI * 0.5 # (standing up, its face across the slot)
+	var spin := Node3D.new()
+	spin.name = "Spin"
+	blade.add_child(spin)
+	spin.add_child(disc)
+	var steel := _mat(Color(0.6, 0.61, 0.62), 0.3, 0.9)
+	for k in 16:
+		var ang := k * TAU / 16.0
+		var t := MeshInstance3D.new()
+		var tm := BoxMesh.new()
+		tm.size = Vector3(0.12, 0.12, 0.05)
+		tm.material = steel
+		t.mesh = tm
+		t.position = Vector3(cos(ang), sin(ang), 0.0) * 0.78
+		t.rotation.z = ang + PI * 0.25
+		spin.add_child(t)
+	var area := Area3D.new()
+	area.collision_layer = 0
+	area.collision_mask = 2
+	var acs := CollisionShape3D.new()
+	var ab := BoxShape3D.new()
+	ab.size = Vector3(1.6, 1.4, 0.8)
+	acs.shape = ab
+	acs.position.y = 0.4
+	area.add_child(acs)
+	blade.add_child(area)
+	_saws.append({"node": blade, "spin": spin, "area": area, "a": Vector3(a.x, y, a.y), "b": Vector3(b.x, y, b.y),
+		"u": randf(), "dir": 1.0, "basis": basis, "len": len})
+
+
 ## A chain-link fence between two points on the floor: posts, the net, a rail; it stops things.
 func _fence(a: Vector2, b: Vector2) -> void:
 	var body := StaticBody3D.new()
@@ -487,6 +765,20 @@ func _fence(a: Vector2, b: Vector2) -> void:
 
 func _physics_process(dt: float) -> void:
 	_t += dt
+	# the pit: its warning lights, then open; what's over it then falls
+	if _pit_warn > 0.0:
+		_pit_warn -= dt
+		for l in _pit_lights:
+			l.light_energy = 5.0 if fmod(_t, 0.4) < 0.2 else 0.0
+		if _pit_warn <= 0.0:
+			_pit_opens()
+	elif pit_open:
+		for l in _pit_lights:
+			l.light_energy = 3.0 if fmod(_t, 1.0) < 0.5 else 1.0
+		for n in get_tree().get_nodes_in_group("machines"):
+			var m := n as Machine
+			if m.alive and not m.falling and over_pit(m.com_global()):
+				m.fall()
 	# the spikes: what runs over them is bitten, a part at its bottom, every so often while it's on them
 	for a in _spikes:
 		if not is_instance_valid(a):
@@ -504,6 +796,45 @@ func _physics_process(dt: float) -> void:
 				if Combat.current:
 					Combat.current.sound("res://assets/audio/impact/metal_0%d.wav" % randi_range(1, 3), under, -2.0, randf_range(0.8, 1.0))
 			_bite[m] = left
+	# the blades: spin, run, bite
+	for c in _cut.keys():
+		_cut[c] = float(_cut[c]) - dt
+	for sp: Dictionary in _spinners:
+		(sp.node as Node3D).rotate_y(dt * 14.0)
+		for b in (sp.area as Area3D).get_overlapping_bodies():
+			var m := b as Machine
+			if m and m.alive and float(_cut.get(m, 0.0)) <= 0.0:
+				_cut[m] = BLADE_TICK
+				var c: Vector3 = sp.at
+				var to := m.com_global() - c
+				to.y = 0.0
+				var touch := c + to.normalized() * float(sp.r) + Vector3.UP * 0.45
+				m.hit(touch, -to.normalized(), SPINNER_DAMAGE, 0.0)
+				m.last_hit_kind = "çark"
+				# flung off along the rim's way (it spins about up) and out
+				var tangent := Vector3.UP.cross(to.normalized())
+				m.apply_central_impulse((tangent * 0.8 + to.normalized() * 0.6).normalized() * SPINNER_FLING * BLADE_TICK * 4.0)
+				if Combat.current:
+					Combat.current.muzzle_flash(touch, -to.normalized(), 0.9)
+					Combat.current.sound("res://assets/audio/impact/metal_0%d.wav" % randi_range(1, 3), touch, 0.0, randf_range(0.7, 0.9))
+	for sw: Dictionary in _saws:
+		sw.u = float(sw.u) + float(sw.dir) * dt * 3.5 / maxf(float(sw.len), 1.0)
+		if float(sw.u) > 1.0 or float(sw.u) < 0.0:
+			sw.dir = -float(sw.dir)
+			sw.u = clampf(float(sw.u), 0.0, 1.0)
+		var blade := sw.node as Node3D
+		blade.transform = Transform3D(sw.basis, (sw.a as Vector3).lerp(sw.b, float(sw.u)) + Vector3.UP * 0.15)
+		(sw.spin as Node3D).rotate_z(-dt * 30.0)
+		for b in (sw.area as Area3D).get_overlapping_bodies():
+			var m := b as Machine
+			if m and m.alive and float(_cut.get(m, 0.0)) <= 0.0:
+				_cut[m] = BLADE_TICK
+				var at := blade.global_position + Vector3.UP * 0.7
+				m.hit(at, Vector3.UP, SAW_DAMAGE, 120.0)
+				m.last_hit_kind = "testere"
+				if Combat.current:
+					Combat.current.muzzle_flash(at, Vector3.UP, 0.7)
+					Combat.current.sound("res://assets/audio/impact/metal_0%d.wav" % randi_range(1, 3), at, -2.0, randf_range(1.2, 1.5))
 	# the vents: a cycle each, fire for 2 s of it, a warning second before
 	for v: Dictionary in _vents:
 		var ph := fmod(_t + float(v.offset), float(v.period))
@@ -526,4 +857,4 @@ func _physics_process(dt: float) -> void:
 		for b in (v.area as Area3D).get_overlapping_bodies():
 			var m := b as Machine
 			if m and m.alive:
-				m.blast(v.at + Vector3.UP * 0.8, 2.6, FIRE_DAMAGE, 900.0, null, "ateş")
+				m.blast(v.at + Vector3.UP * 0.8, 2.6, FIRE_DAMAGE, 120.0, null, "ateş") # (it burns; it hardly shoves)

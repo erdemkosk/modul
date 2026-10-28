@@ -6,6 +6,10 @@ extends Control
 ##                from, fading
 ##   the enemy    over each of the other side's machines its name and how far, and a bar of what's
 ##                left of it; one that's off the screen is an arrow at the edge pointing to it
+##   your hits    each part you hurt says so where it was hit: the damage and the part's name rising
+##                off it (a part that comes off, or a system that gives — a tyre bursting, an engine
+##                weakening — bigger and in red); and at the top right the machine you last hit, from
+##                above, each part shaded by what's left of it, the one you just hit flashing
 
 var game: Node
 var _pain := 0.0
@@ -13,6 +17,11 @@ var _marks: Array[Dictionary] = [] ## {from, t}
 var _bound: Machine
 var _veil: TextureRect
 var _t := 0.0
+var _pops: Array[Dictionary] = [] ## {at: Vector3, text, col, size, t, key}
+var _target: Machine
+var _target_t := 0.0
+var _target_key := ""
+var _wired := false
 
 
 func _ready() -> void:
@@ -34,6 +43,61 @@ func _ready() -> void:
 	_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_veil.modulate.a = 0.0
 	add_child(_veil)
+
+
+## Combat's word of a part hit: if it's yours that hit it, a number rises off it.
+func _part_hit(victim: Machine, id: String, at: Vector3, amount: float, by: Machine, broke: bool) -> void:
+	if not is_instance_valid(_bound) or by != _bound or victim == _bound:
+		return
+	var name := Ui.upper(str(Parts.def(id).name))
+	var key := "%d:%s" % [victim.get_instance_id(), id]
+	_target = victim
+	_target_t = 5.0
+	_target_key = id
+	if broke:
+		# parts coming off together (a shell takes several): one line saying how many
+		var bkey := "broke:%d" % victim.get_instance_id()
+		for p: Dictionary in _pops:
+			if p.key == bkey and float(p.t) > 0.7:
+				var names: Dictionary = p.names
+				names[name] = int(names.get(name, 0)) + 1
+				var total := 0
+				for v: int in names.values():
+					total += v
+				p.text = ("%s ×%d KOPTU!" % [name, total]) if names.size() == 1 else "%d PARÇA KOPTU!" % total
+				p.t = 1.4
+				return
+		_pop(at, "%s KOPTU!" % name, Ui.BAD, 22, bkey)
+		_pops.back().names = {name: 1}
+		return
+	# the same part hit again quickly (a minigun's stream): one number adding up
+	for p: Dictionary in _pops:
+		if p.key == key and float(p.t) > 0.45:
+			p.n = float(p.n) + amount
+			p.text = "−%d  %s" % [int(p.n), name]
+			p.t = 1.0
+			p.at = at
+			return
+	_pops.append({"at": at, "text": "−%d  %s" % [int(amount), name], "col": Ui.INK, "size": 15, "t": 1.0, "key": key, "n": amount})
+
+
+func _pop(at: Vector3, text: String, col: Color, size: int, key: String) -> void:
+	_pops.append({"at": at, "text": text, "col": col, "size": size, "t": 1.4, "key": key, "n": 0.0, "big": true})
+	while _pops.size() > 24:
+		_pops.pop_front()
+
+
+## A system that gave on a machine you hit (a tyre burst, ...): said big where it happened (once:
+## said again while it's still up, it's only freshened).
+func _their_system(text: String, at: Vector3, victim: Machine) -> void:
+	if not is_instance_valid(_bound) or not is_instance_valid(victim) or victim.last_hit_by != _bound:
+		return
+	var key := "sys:%d:%s" % [victim.get_instance_id(), text]
+	for p: Dictionary in _pops:
+		if p.key == key:
+			p.t = 1.4
+			return
+	_pop(at + Vector3.UP * 0.6, text + "!", Ui.ACCENT, 20, key)
 
 
 func _hurt(amount: float, from: Vector3, kind: String) -> void:
@@ -60,6 +124,20 @@ func _process(dt: float) -> void:
 		_marks.clear()
 		if m:
 			m.damaged.connect(_hurt)
+	if not _wired and Combat.current:
+		_wired = true
+		Combat.current.part_hit.connect(_part_hit)
+	# the other side's systems giving (wired as they come)
+	for n in get_tree().get_nodes_in_group("machines"):
+		var e := n as Machine
+		if e != m and not e.has_meta("ov_wired"):
+			e.set_meta("ov_wired", true)
+			e.system_hit.connect(_their_system.bind(e))
+	for k in range(_pops.size() - 1, -1, -1):
+		_pops[k].t = float(_pops[k].t) - dt
+		if float(_pops[k].t) <= 0.0:
+			_pops.remove_at(k)
+	_target_t -= dt
 	_pain = maxf(_pain - dt * 1.2, 0.0)
 	var low := 0.0
 	if m and m.cab_frac() < 0.4:
@@ -70,6 +148,41 @@ func _process(dt: float) -> void:
 		if float(_marks[k].t) <= 0.0:
 			_marks.remove_at(k)
 	queue_redraw()
+
+
+## The machine you last hit: its name and what's left of it, its parts from above shaded by their
+## hit points, the one you just hit flashing.
+func _draw_target(r: Rect2, font: Font) -> void:
+	var m := _target
+	var a := clampf(_target_t, 0.0, 1.0)
+	var sb := Ui.glass(false, 8.0)
+	draw_style_box(sb, Rect2(r.position, Vector2(r.size.x, r.size.y + 30.0)))
+	draw_string(font, r.position + Vector2(12.0, 22.0), "HEDEF  ·  %s" % m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Ui.ACCENT, a))
+	draw_string(font, r.position + Vector2(r.size.x - 52.0, 22.0), "%%%d" % int(m.health() * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Ui.INK, a))
+	var area := Rect2(r.position + Vector2(14.0, 34.0), r.size - Vector2(28.0, 10.0))
+	if m.design.is_empty():
+		return
+	var lo := Vector2(INF, INF)
+	var hi := -lo
+	for p: Dictionary in m.design:
+		var s := Parts.size_of(p.id, p.rot)
+		lo = lo.min(Vector2(p.at.x, p.at.z))
+		hi = hi.max(Vector2(p.at.x + s.x, p.at.z + s.z))
+	var span := hi - lo
+	var k := minf(area.size.x / span.x, area.size.y / span.y)
+	var off := area.position + (area.size - span * k) * 0.5
+	var order := range(m.design.size())
+	order.sort_custom(func(x: int, y: int) -> bool: return m.design[x].at.y < m.design[y].at.y)
+	for i: int in order:
+		var p: Dictionary = m.design[i]
+		var s := Parts.size_of(p.id, p.rot)
+		var rr := Rect2(off + (Vector2(p.at.x, p.at.z) - lo) * k, Vector2(s.x, s.z) * k).grow(-0.75)
+		var frac := clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+		var col := Color(0.82, 0.82, 0.78) if frac > 0.66 else (Ui.ACCENT if frac > 0.33 else Ui.BAD)
+		if p.id == _target_key and _target_t > 4.6 and fmod(_t * 10.0, 1.0) < 0.6:
+			col = Color.WHITE
+		col.a = (0.55 + 0.4 * (p.at.y + 2) / 6.0) * a
+		draw_rect(rr, col)
 
 
 func _draw() -> void:
@@ -93,8 +206,35 @@ func _draw() -> void:
 		var side := Vector2.from_angle(a + PI * 0.5) * 9.0
 		draw_colored_polygon(PackedVector2Array([tip, c + Vector2.from_angle(a) * (r + 6.0) + side,
 			c + Vector2.from_angle(a) * (r + 6.0) - side]), col)
-	# the enemy
+	# what you hit: numbers rising off it
 	var font := Ui.font("head")
+	for p: Dictionary in _pops:
+		var at: Vector3 = p.at
+		if cam.is_position_behind(at):
+			continue
+		var big := bool(p.get("big", false))
+		var age := 1.0 - float(p.t) / (1.4 if big else 1.0)
+		# stacked: the ones still up round the same spot each a line above the last
+		var line := 0
+		for q: Dictionary in _pops:
+			if q == p:
+				break
+			if (q.at as Vector3).distance_to(at) < 2.5:
+				line += 1
+		if line > 3:
+			continue # (no more than four lines round one spot)
+		var s := cam.unproject_position(at) + Vector2(0.0, -24.0 - age * 40.0 - line * (p.size as int + 6))
+		var txt: String = p.text
+		var size: int = p.size
+		var ts := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+		var a := clampf(float(p.t) * 3.0, 0.0, 1.0)
+		var col: Color = p.col
+		draw_string_outline(font, s - Vector2(ts.x * 0.5, 0.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color(0, 0, 0, 0.7 * a))
+		draw_string(font, s - Vector2(ts.x * 0.5, 0.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(col, a))
+	# the machine you last hit, from above, at the top right
+	if _target_t > 0.0 and is_instance_valid(_target) and _target.alive:
+		_draw_target(Rect2(Vector2(screen.x - 230.0, 70.0), Vector2(200.0, 200.0)), font)
+	# the enemy
 	var me := _bound.global_position
 	for n in get_tree().get_nodes_in_group("machines"):
 		var e := n as Machine
