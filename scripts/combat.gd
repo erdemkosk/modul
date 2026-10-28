@@ -588,7 +588,7 @@ func dust_ring(at: Vector3, _owner: Machine) -> void:
 # --- Machines coming apart -----------------------------------------------------------------------
 
 ## A part off a machine: its model as a tumbling body, flung by what broke it.
-func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: PackedScene, from: Machine = null, whole := false) -> void:
+func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: PackedScene, from: Machine = null, whole := false) -> RigidBody3D:
 	var b := RigidBody3D.new()
 	b.collision_layer = 4
 	b.collision_mask = 1 | 2 | 4
@@ -615,6 +615,7 @@ func debris(id: String, xf: Transform3D, vel: Vector3, spin: Vector3, scene: Pac
 		var old: RigidBody3D = _debris.pop_front()
 		if is_instance_valid(old):
 			old.queue_free()
+	return b
 
 
 ## A Breakable come apart: chunks of what it was made of, flung from what broke it, dust; a drum

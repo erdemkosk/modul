@@ -61,6 +61,17 @@ func mark(b: RigidBody3D, id: String) -> void:
 			old.queue_free()
 
 
+## A whole part `id` left at `at` to be taken (a robot's wreck, a site's cache): tossed up a little.
+func drop(id: String, at: Vector3) -> void:
+	var c := Combat.current
+	if c == null or not ResourceLoader.exists(Parts.model(id)):
+		return
+	var v := Vector3(randf_range(-1.5, 1.5), randf_range(2.0, 4.0), randf_range(-1.5, 1.5))
+	var b := c.debris(id, Transform3D(Basis(Vector3.UP, randf() * TAU), at + Vector3.UP * 0.8), v,
+		Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 2.0, load(Parts.model(id)) as PackedScene)
+	mark(b, id)
+
+
 func _physics_process(dt: float) -> void:
 	var mv: Variant = game.get("machine")
 	var me: Machine = mv if is_instance_valid(mv) else null

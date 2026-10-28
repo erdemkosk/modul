@@ -34,6 +34,7 @@ var cage: Cage
 var missions: Missions
 var salvage: Salvage
 var wanderers: Wanderers
+var sites: Node ## (the valley's works sites: works_sites.gd)
 var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
@@ -150,7 +151,8 @@ func _ready() -> void:
 
 
 ## The valley's way: you build with what you hold (Inventory), what comes off the other side's
-## machines whole is yours to take (Salvage), and machines come to be hunted (Wanderers).
+## machines whole is yours to take (Salvage), and machines come to be hunted (Wanderers); old works
+## out in the valley are still guarded by their robots, a cache left in each (works_sites.gd).
 func _valley_salvage() -> void:
 	salvage = Salvage.new()
 	salvage.game = self
@@ -159,6 +161,10 @@ func _valley_salvage() -> void:
 	wanderers.game = self
 	wanderers.terrain = terrain
 	add_child(wanderers)
+	sites = (load("res://scripts/works_sites.gd") as GDScript).new()
+	sites.set("game", self)
+	sites.set("terrain", terrain)
+	add_child(sites)
 	builder.guard = func(id: String, _at: Vector3i, _rot: int) -> bool:
 		if Inventory.take(id):
 			return true

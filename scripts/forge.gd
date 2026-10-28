@@ -10,7 +10,8 @@ extends RefCounted
 ##   rammer      no guns, a nose of spikes and wedges, all the power it can carry
 ##   flipper     a flipper out in front and a minigun: it drives under you and throws you over
 ##   spinner     a rotor up front with a bar of plates across it, rams at its ends, spun up as it closes
-## and then, whatever the style: the cab at the front of the bed, the gun on the cab's roof (a
+## and then, whatever the style: the cab at the front of the bed, the gun on the cab's roof (on a
+## turret now and then from the third round; a
 ## second up on an engine, now and then from the third round), armour or plates or rams across the front by the round, a
 ## battery if the guns draw more than the engines charge, the running gear chosen for the weight (road
 ## wheels, off-road wheels, tracks: rated for what it weighs, with a margin), and engines added until
@@ -118,8 +119,14 @@ func _build() -> void:
 			guns.append("rockets")
 		"brawler":
 			guns.append("flamer")
+	# from the third round a gunner's or a heavy one's gun now and then on a turret (it turns the
+	# mount to the mark, the gun lays itself)
+	var gy := 3
+	if not guns.is_empty() and tier >= 2 and style in ["gunner", "artillery", "rocketeer"] and rng.randf() < 0.45:
+		if _put("turret", Vector3i(cx, 3, cz)):
+			gy = 4
 	if not guns.is_empty():
-		_put(guns[0], Vector3i(cx, 3, cz))
+		_put(guns[0], Vector3i(cx, gy, cz))
 	# the nose: rams for those that close in, else wedges or plate (from the second round)
 	var nose := "wedge" if rng.randf() < 0.65 else "plate"
 	if style == "flipper":
@@ -167,7 +174,7 @@ func _build() -> void:
 		if not _add_engine(light, heavy):
 			break
 	# from the second round: an ammo box feeding the roof gun, a barrel kit for a gun that reaches
-	if not guns.is_empty() and tier >= 1:
+	if not guns.is_empty() and tier >= 1 and gy == 3:
 		if rng.randf() < 0.3 + 0.15 * tier:
 			_beside_gun("ammo", guns[0], Vector3i(cx, 3, cz))
 		if guns[0] != "flamer" and rng.randf() < 0.15 + 0.15 * tier:
