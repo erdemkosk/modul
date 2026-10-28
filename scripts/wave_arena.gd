@@ -5,8 +5,8 @@ extends Node3D
 ## behind and go round, lanes to be caught in, cover in the cells (blocks, crates, drums that go
 ## up). A maze cut through every cell (so all of it's reachable), then a share of its walls taken
 ## out again so there are loops to flank by; where two cells are open to each other, sometimes a
-## stub of wall stands at each end. The yard's outer wall is poured concrete, too high to get over,
-## with floodlight masts at its corners.
+## stub of wall stands at each end. The yard's outer wall is poured concrete, too high to get over;
+## over it all round is the stadium (Stadium) and its crowd, floodlights along its roof.
 ##
 ## The cells are also how the other side finds its way to you (route): the next cell on the
 ## shortest way through the open sides, until you're in sight.
@@ -22,11 +22,15 @@ var terrain: Node
 var open := {} ## [Vector2i, Vector2i] (the lower first) -> true: no wall between
 var _layout: Array[Node] = []
 var _lights: Array[SpotLight3D] = []
+var stadium: Stadium
 
 
 func _ready() -> void:
 	add_to_group("wave_arena")
 	_outer()
+	stadium = Stadium.new()
+	stadium.terrain = terrain
+	add_child(stadium)
 
 
 ## The yard's ground for a run (before the terrain's built): concrete, and patches by `seed_` of
@@ -35,7 +39,7 @@ static func ground(t: TestTerrain, seed_: int, cold: bool) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_
 	t.default_surface = Surface.preset("concrete")
-	t.noise_from = HALF * 1.5 + 6.0 # (flat to its corners)
+	t.noise_from = 400.0 # (flat under the stadium too)
 	t.grid_strength = 0.0
 	var kinds := ["snow", "ice", "snow", "gravel"] if cold else ["mud", "mud", "gravel", "wet", "bog", "dirt"]
 	for k in 9:
@@ -115,34 +119,28 @@ func _outer() -> void:
 		cs.shape = box
 		cs.position = at
 		body.add_child(cs)
-	# a floodlight mast at each corner, its lamps on the yard
-	for sx: float in [-1.0, 1.0]:
-		for sz: float in [-1.0, 1.0]:
-			var base := Vector3(sx * (HALF - 2.0), 0.0, sz * (HALF - 2.0))
-			base.y = _h(base.x, base.z)
-			var mast := MeshInstance3D.new()
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.15
-			cm.bottom_radius = 0.25
-			cm.height = 16.0
-			cm.material = concrete
-			mast.mesh = cm
-			mast.position = base + Vector3.UP * 8.0
-			add_child(mast)
-			var l := SpotLight3D.new()
-			l.position = base + Vector3.UP * 16.0
-			add_child(l)
-			l.look_at(Vector3(0.0, 0.0, 0.0), Vector3.UP)
-			l.spot_range = 120.0
-			l.spot_angle = 42.0
-			l.light_energy = 0.0
-			l.light_color = Color(1.0, 0.94, 0.82)
-			_lights.append(l)
+	# the floodlights on the stadium's roof edge: at its corners and its sides' middles, on the yard
+	for k in 8:
+		var a := k * TAU / 8.0
+		var p := Vector3(cos(a), 0.0, sin(a))
+		p = p / maxf(absf(p.x), absf(p.z)) * (Stadium.ROOF_FROM - 1.0)
+		var l := SpotLight3D.new()
+		l.position = p + Vector3.UP * (Stadium.ROOF_H - 1.5)
+		add_child(l)
+		l.look_at(-p * 0.25, Vector3.UP)
+		l.spot_range = 190.0
+		l.spot_angle = 40.0
+		l.spot_attenuation = 0.4
+		l.light_energy = 0.0
+		l.light_color = Color(0.94, 0.97, 1.0)
+		l.light_cull_mask = 0xFFFFF & ~Stadium.LAYER # (the yard only: the stands have their own glow)
+		_lights.append(l)
 
 
 func set_night(on: bool) -> void:
 	for l in _lights:
-		l.light_energy = 7.0 if on else 0.0
+		l.light_energy = 4.5 if on else 0.0
+	stadium.set_night(on)
 
 
 # --- A round's layout ---------------------------------------------------------------------------------

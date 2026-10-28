@@ -5,6 +5,7 @@ shader_type spatial;
 // their arms up, each at its own moment (INSTANCE_CUSTOM.x its phase, .y how keen it is).
 
 uniform float excite = 0.0;
+uniform float lit = 0.0; // (light thrown on them from elsewhere: the stadium's at night)
 uniform vec3 skin : source_color = vec3(0.78, 0.6, 0.48);
 uniform vec3 trousers : source_color = vec3(0.12, 0.13, 0.16);
 
@@ -36,5 +37,6 @@ void fragment() {
 		c = trousers;
 	}
 	ALBEDO = c;
+	EMISSION = c * lit;
 	ROUGHNESS = 0.85;
 }

@@ -19,11 +19,12 @@ static var _fonts := {}
 
 
 ## "display" (condensed bold: big numbers, titles), "head" (condensed semibold: labels), "text"
-## (Barlow medium), "strong" (Barlow semibold).
+## (Barlow medium), "strong" (Barlow semibold), "digital" (Chakra Petch: ARENA's screens and lines).
 static func font(kind := "text") -> Font:
 	if not _fonts.has(kind):
 		var file: String = {"display": "BarlowCondensed-Bold", "head": "BarlowCondensed-SemiBold",
-			"label": "BarlowCondensed-Medium", "text": "Barlow-Medium", "strong": "Barlow-SemiBold"}.get(kind, "Barlow-Medium")
+			"label": "BarlowCondensed-Medium", "text": "Barlow-Medium", "strong": "Barlow-SemiBold",
+			"digital": "ChakraPetch-SemiBold"}.get(kind, "Barlow-Medium")
 		var f := load("res://assets/fonts/%s.ttf" % file) as FontFile
 		if kind in ["head", "label"]:
 			var v := FontVariation.new()

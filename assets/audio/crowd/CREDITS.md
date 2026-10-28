@@ -15,3 +15,4 @@ start over 1.5 s. The cut files are released under CC0 as well.
 | `gasp.wav` | [264376](https://freesound.org/people/HowardV/sounds/264376/) | HowardV | a small crowd's gasp |
 | `ooh.wav` | [494362](https://freesound.org/people/Sandermotions/sounds/494362/) | Sandermotions | a stadium's "oehh", 2.8-6.8 s |
 | `applause.wav` | [583130](https://freesound.org/people/AudioSea/sounds/583130/) | AudioSea | medium crowd applause |
+| `boo_loop.wav` | [264378](https://freesound.org/people/HowardV/sounds/264378/) | HowardV | a crowd booing, 1.0-14.5 s, looped (ARENA's crowd when you hide) |

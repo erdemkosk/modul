@@ -7,6 +7,8 @@ extends SceneTree
 ## 3. Ammunition's limited: a gun emptied only clicks; a supply crate taken fills it again.
 ## 4. The last rival down: the round's won, then it's building again, on a new maze.
 ## 5. Your machine lost: the run's over; a new run starts at round 1.
+## 6. The stadium round it full of people, its screens on; the crowd: hits work its mood up, full
+##    it sends a crate down near you; sitting it out it boos, then the organisers shell you.
 
 var _g: Node
 var _w: Waves
@@ -119,6 +121,42 @@ func _physics_process(_d: float) -> bool:
 			var gun := _me().guns[0]
 			print("after the crate: %.0f / %.0f rounds" % [gun.ammo, gun.ammo_max])
 			_expect(gun.ammo > gun.ammo_max * 0.5, "a supply crate taken fills it again")
+			# 6. the stadium and its crowd
+			var st: Stadium = (_g.get("wave_arena") as WaveArena).stadium
+			print("stadium: %d people, its screen: %s / %s" % [st.people, st.line(0), st.line(1)])
+			_expect(st.people > 20000, "the stadium's full of people")
+			_expect(st.line(0).begins_with("DENEME 01"), "its screens show the trial")
+			var before := _w.mood
+			_w.you_hit(100.0)
+			_expect(_w.mood > before, "a hit works the crowd up")
+			var crates := get_nodes_in_group("supply").size()
+			_w.mood_up(1.0)
+			var near := false
+			for d in get_nodes_in_group("supply"):
+				var sd := d as Node3D
+				if Vector2(sd.global_position.x - _me().global_position.x, sd.global_position.z - _me().global_position.z).length() < 26.0:
+					near = true
+			print("mood full: %d presents, crates %d -> %d, mood now %.2f" % [_w.presents, crates, get_nodes_in_group("supply").size(), _w.mood])
+			_expect(_w.presents == 1 and near and _w.mood < 0.5, "full, the crowd sends a crate down near you")
+			if _w.rivals.is_empty():
+				_w._send_one()
+			_r.hp = _me().health()
+			_me().invulnerable = false
+			_w.camp_t = Waves.CAMP_BOO + 0.1
+			_next("boo")
+		"boo":
+			if since < 0.2:
+				return false
+			if not _r.has("booed"):
+				_r.booed = true
+				_expect(_w.booing, "sitting it out, the crowd boos")
+				_w.camp_t = Waves.CAMP_SHELL
+				return false
+			if since < 6.5:
+				return false
+			print("shelled %d, health %.2f -> %.2f" % [_w.shelled, _r.hp, _me().health()])
+			_expect(_w.shelled == 1 and _me().health() < _r.hp, "then the organisers shell you")
+			_me().invulnerable = true
 			# 4. the round won
 			_w.to_come = 0
 			for e in _w.rivals:
