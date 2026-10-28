@@ -240,7 +240,8 @@ func _draw() -> void:
 		_draw_target(Rect2(Vector2(screen.x - 230.0, 70.0), Vector2(200.0, 200.0)), font)
 	var ms: Variant = game.get("missions")
 	var cg: Variant = game.get("cage")
-	if (ms and (ms as Missions).panel_up()) or (cg and (cg as Cage).panel_up()):
+	var wv: Variant = game.get("waves")
+	if (ms and (ms as Missions).panel_up()) or (cg and (cg as Cage).panel_up()) or (wv and (wv as Waves).panel_up()):
 		return # (a start or end panel's up: nothing over the world)
 	# the enemy: the nearest first, each name nudged up off any already there
 	var me := _bound.global_position
@@ -317,6 +318,36 @@ func _draw() -> void:
 		draw_string(font, s + Vector2(-ts.x * 0.5, -8.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Ui.INK)
 		draw_rect(Rect2(s + Vector2(-w * 0.5 - 1.0, -1.0), Vector2(w + 2.0, 6.0)), Color(0, 0, 0, 0.5))
 		Ui.segments(self, Rect2(s + Vector2(-w * 0.5, 0.0), Vector2(w, 4.0)), 8, h, Ui.BAD if h < 0.35 else Ui.ACCENT, Color(1, 1, 1, 0.15), 0.6)
+	# supply crates: what each is and how far; off the screen an arrow at its edge
+	for n in get_tree().get_nodes_in_group("supply"):
+		var sd := n as Node3D
+		var dist := me.distance_to(sd.global_position)
+		var top := sd.global_position + Vector3.UP * 2.0
+		var name := "%s  %d m" % [str(sd.call("title")), int(dist)]
+		var col := Color(0.55, 0.85, 1.0)
+		var s := Vector2.ZERO
+		var inside := not cam.is_position_behind(top)
+		if inside:
+			s = cam.unproject_position(top)
+			inside = Rect2(Vector2(40, 40), screen - Vector2(80, 80)).has_point(s)
+		if inside:
+			var ts := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+			draw_string_outline(font, s + Vector2(-ts.x * 0.5, -8.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.6))
+			draw_string(font, s + Vector2(-ts.x * 0.5, -8.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+			draw_circle(s + Vector2(0.0, 2.0), 4.0, col)
+		else:
+			var v := cam.global_basis.inverse() * (sd.global_position - cam.global_position)
+			var dir := Vector2(v.x, -v.y)
+			if v.z > 0.0:
+				dir = Vector2(v.x if absf(v.x) > 0.01 else 0.01, absf(v.x) * 0.6 + 0.2)
+			dir = dir.normalized()
+			var edge := c + dir * minf((screen.x * 0.5 - 70.0) / maxf(absf(dir.x), 0.01), (screen.y * 0.5 - 70.0) / maxf(absf(dir.y), 0.01))
+			var a := dir.angle()
+			var p := PackedVector2Array([edge + Vector2.from_angle(a) * 12.0, edge + Vector2.from_angle(a + 2.4) * 9.0,
+				edge + Vector2.from_angle(a - 2.4) * 9.0])
+			draw_colored_polygon(p, Color(0, 0, 0, 0.5))
+			draw_colored_polygon(p, col)
+			draw_string(font, edge - dir * 24.0 + Vector2(-16.0, 4.0), "İKMAL %d m" % int(dist), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
 	# what you hit: numbers rising off it
 	for p: Dictionary in _pops:
 		var at: Vector3 = p.at

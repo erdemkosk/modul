@@ -45,6 +45,7 @@ var _slow := false
 var _detour_t := 0.0
 var _part_t := 0.0
 var _arena: Node
+var route: Callable ## (a maze's: (machine, target, goal) -> where to head for now; WaveArena.route)
 const AIM_ERR_BASE := 0.6 ## m off its mark however close
 const AIM_ERR_PER_M := 0.035 ## and this much more a metre off (about 2 m at 50 m)
 ## How much each kind of part is worth going for (times how hurt it already is).
@@ -81,7 +82,7 @@ func _physics_process(dt: float) -> void:
 	var me := machine.global_position
 	var to := target.com_global() - me
 	var dist := to.length()
-	var rams := machine.guns.is_empty() or not machine.flippers.is_empty() # (a flipper has to get under you)
+	var rams := machine.guns.is_empty() or not machine.armed_any() or not machine.flippers.is_empty() # (a flipper has to get under you; out of rounds, it rams)
 	var hurt := machine.health() < 0.35 and not rams
 	var near := range_near * (1.6 if hurt else 1.0)
 	var far := range_far * (1.4 if hurt else 1.0)
@@ -109,6 +110,8 @@ func _physics_process(dt: float) -> void:
 		var inside := CageArena.HALF - 5.0
 		goal.x = clampf(goal.x, -inside, inside)
 		goal.z = clampf(goal.z, -inside, inside)
+	if route.is_valid() and not shoving:
+		goal = route.call(machine, target, goal) # (round the walls: the next cell on the way)
 	var fwd := -machine.global_basis.z
 	var want := _steer_round(goal - me, shoving)
 	var ang := fwd.signed_angle_to(want, Vector3.UP) # (+: to the left)

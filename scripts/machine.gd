@@ -102,6 +102,8 @@ var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
 var house := false ## (a cage's house robot: the rivals leave it be)
 var falling := false ## going down the cage's pit: nothing holds it up any more
 var invulnerable := false ## (the proving ground's G) hits push it but take nothing off
+var ammo_limited := false ## its guns' ammunition runs out (Game: everywhere but the proving ground)
+var ammo_k := 1.0 ## how many loads its guns carry (a crew's: more)
 var wet := 0.0 ## 0..1: the ground soaked by rain (Weather.wetness): what the wheels throw
 
 var power_kw := 0.0
@@ -367,6 +369,7 @@ func rebuild() -> void:
 			"weapon":
 				var mg := MachineGun.make(self, node, p.id, mini(_beside(i, "ammo"), 2), mini(_beside(i, "barrel"), 2))
 				mg.key = int(p.get("key", 0))
+				mg.supply(ammo_limited, ammo_k, p)
 				mg.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				guns.append(mg)
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.8, 0.9, 0.8), xf.origin)
@@ -921,6 +924,41 @@ func _power(dt: float) -> void:
 		consumers.append({"name": "Kule dönüşü", "kw": turn_kw, "on": powered, "off_why": "" if powered else "akü bitti"})
 
 
+## All its guns' ammunition taken up by `frac` of a full load; true if any took some.
+func resupply(frac: float) -> bool:
+	var any := false
+	for g in guns:
+		if g.limited and g.ammo < g.ammo_max - 0.01:
+			g.refill(frac)
+			any = true
+	return any
+
+
+## Every part given back `frac` of its hit points (a burst tyre or a thrown track mended once it's
+## sound enough); a part that's gone stays gone.
+func repair(frac: float) -> void:
+	for p: Dictionary in design:
+		var full := Parts.hp_of(p.id)
+		p.hp = minf(float(p.hp) + full * frac, full)
+		var f := float(p.hp) / full
+		if f >= 0.5:
+			p.erase("weak")
+			p.erase("sputter")
+		if f >= TYRE_BURST:
+			p.erase("flat")
+		if f >= TRACK_THROWN:
+			p.erase("thrown")
+	rebuild()
+
+
+## Any of its guns can still fire.
+func armed_any() -> bool:
+	for g in guns:
+		if g.has_ammo():
+			return true
+	return false
+
+
 func charge_frac() -> float:
 	return energy_kj / capacity_kj if capacity_kj > 0.0 else 0.0
 
@@ -1279,7 +1317,7 @@ func break_off(i: int) -> void:
 	if design[i].id == "ammo" and c:
 		# its rounds go up: a burst where it was, after this part's come away (what it takes with it, it takes then)
 		var at := global_transform * part_xform(i).origin
-		c.call_deferred("explode", at, AMMO_RADIUS, AMMO_DAMAGE, AMMO_PUSH, last_hit_by, true)
+		c.call_deferred("explode", at, AMMO_RADIUS, AMMO_DAMAGE, AMMO_PUSH, last_hit_by if is_instance_valid(last_hit_by) else null, true)
 		system_hit.emit("CEPHANE PATLADI", at)
 	for j in gone:
 		var p: Dictionary = design[j]
@@ -1329,6 +1367,8 @@ func _die() -> void:
 	alive = false
 	firing = false
 	throttle = 0.0
+	if not is_instance_valid(last_hit_by):
+		last_hit_by = null # (what hit it last may be gone already)
 	if Combat.current:
 		Combat.current.explode(com_global(), 3.5, 0.0, 6000.0, last_hit_by, true)
 	_engine_sound.stop()

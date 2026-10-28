@@ -218,6 +218,7 @@ func _begin_round(i: int) -> void:
 			houses.append(h)
 	_hp_start.clear()
 	var me: Machine = game.get("machine")
+	me.resupply(1.0) # (each round on full racks)
 	_hp_start[me] = me.health()
 	for e in rivals:
 		_hp_start[e] = e.health()

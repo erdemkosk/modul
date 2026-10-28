@@ -243,7 +243,7 @@ func _chip(g: MachineGun, i: int) -> PanelContainer:
 	# what's bolted beside it: a box feeding it, a long barrel
 	var extras := PackedStringArray()
 	if g.feed > 0:
-		extras.append("BESLEME" + ("×2" if g.feed > 1 else ""))
+		extras.append("+CEPHANE" + ("×2" if g.feed > 1 else ""))
 	if g.kit > 0:
 		extras.append("UZUN NAMLU" + ("×2" if g.kit > 1 else ""))
 	if not extras.is_empty():
@@ -401,12 +401,16 @@ func _weapons(m: Machine) -> void:
 			"flamer":
 				frac = 1.0
 				text = "YAKIYOR" if g._spin > 0.5 else "HAZIR  ·  14 M"
+		if g.limited:
+			# what it has left: rounds (the flamer's fuel in seconds); none, it's said plainly
+			var left := ("%d SN" % ceili(g.ammo)) if g.kind == "flamer" else str(int(g.ammo))
+			text = "CEPHANE YOK" if not g.has_ammo() else "%s  ·  %s" % [text, left]
 		if not m.powered:
 			text = "AKÜ BİTTİ"
 		var lit := g.armed
 		var st := plate.get_meta("state") as Label
 		st.text = text if lit else "KAPALI  ·  %d İLE AÇ" % (i + 1)
-		st.add_theme_color_override("font_color", (Ui.BAD if ("KAPALI" in text or not m.powered) else (Ui.GOOD if frac >= 1.0 else Ui.ACCENT)) if lit else Ui.DIM)
+		st.add_theme_color_override("font_color", (Ui.BAD if ("KAPALI" in text or "YOK" in text or not m.powered) else (Ui.GOOD if frac >= 1.0 else Ui.ACCENT)) if lit else Ui.DIM)
 		plate.set_meta("frac", frac)
 		(plate.get_meta("bar") as Control).queue_redraw()
 		var sb := plate.get_theme_stylebox("panel") as StyleBoxFlat

@@ -3,7 +3,7 @@ extends SceneTree
 ##   godot --headless --path . -s res://tests/blocks_test.gd
 ## 1. A turret on the cab's roof with a minigun on it: it carries the gun, follows the aim round to
 ##    the right on its own, E doesn't touch it; given a key, that key brings it to the front.
-## 2. A minigun with an ammo box and a barrel kit beside it: fed and long-barrelled (quicker, truer,
+## 2. A minigun with an ammo box and a barrel kit beside it: twice the rounds, long-barrelled (truer,
 ##    the barrel's end further out), and a cannon's shell gets there sooner with a kit.
 ## 3. The ammo box shot through: it goes up and hurts what's beside it.
 
@@ -91,10 +91,10 @@ func _physics_process(_d: float) -> bool:
 			# 2. fed and long-barrelled
 			_m.from_data(_with([["minigun", 0, 3, 0, 0], ["ammo", 0, 3, 2, 0], ["barrel", 1, 3, 2, 0]]))
 			var g := _m.guns[0]
-			print("minigun: feed %d, kit %d, rate x%.2f, spread x%.2f, barrel end %s" % [g.feed, g.kit, g.rate_k(), g.spread_k(),
+			print("minigun: feed %d, kit %d, carries %.0f, spread x%.2f, barrel end %s" % [g.feed, g.kit, g.ammo_max, g.spread_k(),
 				g._kit_muzzle.position if g._kit_muzzle else Vector3.ZERO])
 			_expect(g.feed == 1 and g.kit == 1, "the box and the kit beside it count")
-			_expect(g.rate_k() > 1.1 and g.spread_k() < 0.7, "fed it's quicker, kitted truer")
+			_expect(is_equal_approx(g.ammo_max, 2.0 * float(MachineGun.AMMO.minigun)) and g.spread_k() < 0.7, "a box carries as much again, a kit makes it truer")
 			_expect(g._kit_muzzle != null and g._kit_muzzle.position.z < -0.2, "the long barrel's end is further out")
 			_expect(MachineGun.flight_time("cannon", 200.0, 1.3) < MachineGun.flight_time("cannon", 200.0) * 0.8,
 				"a kitted shell gets there sooner")

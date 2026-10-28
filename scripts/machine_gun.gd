@@ -22,9 +22,11 @@ extends RefCounted
 ## fall on the way there (its time of flight from the range, as a tank's ballistic computer does), so
 ## the shot lands where you look.
 ##
-## What's bolted beside it: an ammo box (cephane, at most two) feeds it, quicker loading and a quicker
-## rate; a barrel kit (namlu takımı) gives it a longer barrel, its round faster and truer, a flame
-## further, a heavier gun turning slower. The long barrel shows on the gun.
+## What it carries (where ammunition's limited: everywhere but the proving ground): AMMO rounds of its
+## own (the flamethrower: seconds of fuel), and as many again for each ammo box (cephane) bolted beside
+## it (two at most); spent, it only clicks. It's taken up again from a supply crate (Supply). A barrel
+## kit (namlu takımı) beside it gives it a longer barrel, its round faster and truer, a flame further,
+## a heavier gun turning slower. The long barrel shows on the gun.
 ##
 ## Electric: the minigun's motor, the turrets' traverse and the loaders draw on the machine's battery
 ## (draw_kw); with it flat (`powered` false) nothing turns, spins up or loads.
@@ -41,7 +43,7 @@ const FLAME_RANGE := 14.0 ## m
 const FLAME_DPS := 90.0 ## hp a second at the stream's heart
 const MINIGUN_RATE := 40.0
 const MINIGUN_SPREAD := 0.012 ## rad
-const MINIGUN_DAMAGE := 5.0
+const MINIGUN_DAMAGE := 4.0
 const MINIGUN_PUSH := 18.0 ## N s a round
 const MINIGUN_RANGE := 450.0
 const SPIN_UP := 0.5
@@ -95,6 +97,12 @@ var armed := true ## (you pick which of your guns fire: 1-9, 0 all)
 var key := 0 ## the key it fires on (0: the mouse's left button, with the rest)
 var key_down := false
 var feed := 0 ## ammo boxes beside it
+const AMMO := {"minigun": 360.0, "cannon": 10.0, "rockets": 18.0, "flamer": 12.0} ## its own (rounds; the flamer s of fuel)
+var limited := false ## (its ammunition runs out)
+var ammo := 0.0 ## left (rockets: the ones in the pod too)
+var ammo_max := 0.0
+var entry: Dictionary ## (its part's design entry: what's left of its ammunition is kept on it)
+var _dry_t := 0.0
 var kit := 0 ## barrel kits beside it
 var _kit_muzzle: Node3D ## (the long barrel's end)
 var condition := 1.0 ## its share of hit points left: hurt, it turns slower; badly, it jams
@@ -135,13 +143,58 @@ static func make(m: Machine, part: Node3D, id: String, feed_ := 0, kit_ := 0) ->
 	return g
 
 
-## How the boxes beside it change it.
+## How the boxes beside it change it (a box only carries more: see supply()).
 func reload_k() -> float:
-	return 1.0 / (1.0 + 0.35 * feed)
+	return 1.0
 
 
 func rate_k() -> float:
-	return 1.0 + 0.2 * feed
+	return 1.0
+
+
+## Its ammunition set up: limited or not, `k` times its load (a crew's carry more), what's left kept
+## on its design entry (`e`) if it's been fighting.
+func supply(limited_: bool, k: float, e: Dictionary) -> void:
+	limited = limited_
+	entry = e
+	ammo_max = float(AMMO[kind]) * (1.0 + feed) * k
+	ammo = minf(float(e.get("ammo", ammo_max)), ammo_max) if limited else ammo_max
+	if kind == "rockets":
+		loaded = mini(loaded, int(ammo))
+		_rockets_shown()
+
+
+## Its ammunition taken up by `frac` of a full load (a supply crate).
+func refill(frac: float) -> void:
+	ammo = minf(ammo + ammo_max * frac, ammo_max)
+	_keep()
+
+
+func has_ammo() -> bool:
+	return not limited or ammo >= (0.05 if kind == "flamer" else 1.0)
+
+
+func ammo_frac() -> float:
+	return ammo / ammo_max if ammo_max > 0.0 else 1.0
+
+
+func _spend(n: float) -> void:
+	if limited:
+		ammo = maxf(ammo - n, 0.0)
+		_keep()
+
+
+func _keep() -> void:
+	if limited:
+		entry["ammo"] = ammo
+
+
+## Out, and the trigger's pulled: the click of an empty gun, now and then.
+func _dry(dt: float) -> void:
+	_dry_t -= dt
+	if _dry_t <= 0.0 and Combat.current and muzzle:
+		_dry_t = 0.6
+		Combat.current.sound("res://assets/audio/build/tick.wav", muzzle.global_position, -6.0, 0.7)
 
 
 func speed_k() -> float:
@@ -383,6 +436,9 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	_slew = clampf(0.5 * (absf(dyaw) / (k.yaw_rate * dt) + absf(dpitch) / (k.pitch_rate * dt)), 0.0, 1.0)
 	if not powered:
 		firing = false
+	if firing and not has_ammo():
+		_dry(dt)
+		firing = false
 	# badly hurt, it jams now and then: a second and a half of nothing while it's cleared
 	_jam_t = maxf(_jam_t - dt, 0.0)
 	if _jam_t > 0.0:
@@ -423,8 +479,9 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 		if barrels:
 			barrels.transform = Transform3D(_barrels_rest.basis * Basis(Vector3.BACK, _spin_angle), _barrels_rest.origin)
 		if firing and on_target and _spin > 0.95:
-			while _cool <= 0.0:
+			while _cool <= 0.0 and has_ammo():
 				_cool += 1.0 / (MINIGUN_RATE * rate_k())
+				_spend(1.0)
 				_minigun_round()
 		elif _cool < 0.0:
 			_cool = 0.0
@@ -440,6 +497,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 			elif _spin <= 0.05 and _motor.playing:
 				_motor.stop()
 		if _spin > 0.5:
+			_spend(dt)
 			if _cool <= 0.0:
 				_cool = 0.1
 				if Combat.current:
@@ -447,10 +505,11 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	elif kind == "rockets":
 		if firing and on_target and loaded > 0 and _cool <= 0.0:
 			_cool = ROCKET_GAP
+			_spend(1.0)
 			_rocket_shot()
 		elif _cool < 0.0:
 			_cool = 0.0
-		if loaded < ROCKETS and powered and can_load and (not firing or loaded == 0):
+		if loaded < ROCKETS and loaded < int(ammo) and powered and can_load and (not firing or loaded == 0):
 			_reload_t += dt
 			if _reload_t >= ROCKET_RELOAD * reload_k():
 				_reload_t = 0.0
@@ -465,6 +524,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	elif firing and on_target and _cool <= 0.0:
 		_cool = CANNON_RELOAD * reload_k()
 		_loaded_sound = false
+		_spend(1.0)
 		_cannon_shot()
 	if kind == "cannon" and not _loaded_sound and _cool <= 0.0:
 		_loaded_sound = true # (the breech closes on the next round)

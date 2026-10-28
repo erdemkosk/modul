@@ -65,7 +65,7 @@ const DEFS := {
 	"turret": {"name": "Taret", "size": Vector3i(2, 1, 2), "mass": 130.0, "kind": "joint", "joint": "turret", "hp": 300.0,
 		"about": "Kendi kendine nişana döner: üstüne ne takarsan (silah, zırh, alev, diken) baktığın yere çevirir. Yük arttıkça yavaşlar. Tuş verirsen o tuşla önde kilitlenir."},
 	"ammo": {"name": "Cephane sandığı", "size": Vector3i(1, 1, 1), "mass": 60.0, "kind": "ammo", "hp": 90.0,
-		"about": "Yanına değen silahı besler: daha hızlı dolar, daha sık atar (en çok iki sandık). Kırılırsa patlar: yanındakileri de götürür."},
+		"about": "Yanına değen silahın taşıdığı cephaneyi bir kat artırır (en çok iki sandık). Cephane sınırlı: sandıksız silah çabuk biter. Kırılırsa patlar, yanındakileri de götürür."},
 	"barrel": {"name": "Namlu takımı", "size": Vector3i(1, 1, 1), "mass": 45.0, "kind": "barrel", "hp": 140.0,
 		"about": "Yanına değen silaha uzun namlu takar: mermi daha hızlı ve daha isabetli, alev daha uzağa gider; ama silah daha yavaş döner."},
 	"plate": {"name": "Çelik plaka", "size": Vector3i(1, 1, 1), "mass": 22.0, "kind": "block", "hp": 150.0,
