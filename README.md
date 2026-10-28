@@ -24,7 +24,10 @@ are this project's own.
 - **Test Alanı**: the proving ground, built as an arena: a ring of jersey barriers under a catch fence,
   grandstands, floodlight masts (lit at night), a gate the other side drives in through, the surface
   zones and ramps, and cover that breaks (concrete blocks, containers, sandbags, crates, drums).
-- **Vadi**: the 2 km valley, to explore.
+- **Vadi**: the 2 km valley, the Terra Tech way: machines roam it to be hunted (Forge's, sized to
+  yours), and what comes off them whole lies lit where it falls; drive up to it and it's yours. You
+  build only with what you hold (a ready design or a slot loads if your parts cover it), and the
+  valley's machine and parts are kept apart from the other modes'.
 
 | Key | |
 |---|---|
@@ -104,6 +107,9 @@ are this project's own.
   `assets/audio/crowd` (CC0, see its CREDITS).
 - Fire control (`machine_gun.gd`): the cannon and the pod lay themselves over for their round's drop at
   the aim's range; the crosshair's rings show where each would land.
+- Salvage: `inventory.gd` (what you hold, user://valley_inventory.cfg), `salvage.gd` (the lit parts
+  and taking them), `wanderers.gd` (the valley's hunters); the builder's guard, removed and
+  swap_guard hooks keep the building to what's held.
 - Missions: `missions.gd` (the list, the yard, the flow, the record in user://missions.cfg),
   `mission_ui.gd` (the brief, the clock and targets, markers, done and failed), `structure.gd` and
   `structure_piece.gd` (what stands on what, falling, hit points by stuff, fire), `structures.gd`
@@ -125,5 +131,6 @@ godot --headless --path . -s res://tests/designs_test.gd
 godot --headless --path . -s res://tests/flipper_test.gd
 godot --headless --path . -s res://tests/structures_test.gd
 godot --headless --path . -s res://tests/missions_test.gd
+godot --headless --path . -s res://tests/salvage_test.gd
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id>]
 ```

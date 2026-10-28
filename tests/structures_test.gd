@@ -125,6 +125,11 @@ func _physics_process(_d: float) -> bool:
 			_next("wet")
 		"wet":
 			Weather.rain_now = 1.0
+			if since >= 6.0 and not _r.has("wet_lit"):
+				var n := 0
+				for p in (_s.scaffold_wet as Structure).pieces:
+					n += 1 if p.burning or p.hp <= 0.0 else 0
+				_r.wet_lit = n
 			var m: Machine = _r.ram
 			if is_instance_valid(m):
 				m.throttle = 1.0
@@ -132,10 +137,7 @@ func _physics_process(_d: float) -> bool:
 				m.steer = clampf(-(-m.global_basis.z).signed_angle_to(to * Vector3(1, 0, 1), Vector3.UP) * 1.5, -1.0, 1.0)
 			if since < 8.0:
 				return false
-			var sw: Structure = _s.scaffold_wet
-			var lit := 0
-			for p in sw.pieces:
-				lit += 1 if p.burning or p.hp <= 0.0 else 0
+			var lit := int(_r.wet_lit) # (after the same 6 s the dry one had)
 			print("scaffold in the rain: %d burning or burnt" % lit)
 			_expect(lit * 2 < int(_r.dry), "in the rain the fire spreads less than half as far (%d to %d)" % [lit, _r.dry])
 			var after := _hp_of(_s.wh2)

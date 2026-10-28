@@ -1,0 +1,98 @@
+class_name Salvage
+extends Node
+## Wrecks you can take from (the valley, the cage's floor): a part that comes off the other side's
+## machine whole lies where it falls with a light over it; drive up to it (within REACH) and it's
+## yours (Inventory). Parts shot to nothing leave nothing to take. They lie LIFE s, then they're
+## gone (the oldest first past MAX).
+
+const REACH := 4.5 ## m
+const LIFE := 240.0 ## s
+const MAX := 40
+
+static var current: Salvage
+
+var game: Node
+var _items: Array[RigidBody3D] = []
+
+
+func _ready() -> void:
+	current = self
+	name = "Salvage"
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
+
+
+## A piece of debris (`b`, part `id`) to take: lit, kept out of the debris pool's culling.
+func mark(b: RigidBody3D, id: String) -> void:
+	b.set_meta("salvage", id)
+	b.set_meta("age", 0.0)
+	b.add_to_group("salvage")
+	if Combat.current:
+		Combat.current._debris.erase(b)
+	if DisplayServer.get_name() != "headless":
+		var beam := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.06
+		cm.bottom_radius = 0.18
+		cm.height = 3.5
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.albedo_color = Color(1.0, 0.6, 0.15, 0.35)
+		cm.material = m
+		beam.mesh = cm
+		beam.top_level = true
+		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		b.add_child(beam)
+		b.set_meta("beam", beam)
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.6, 0.2)
+		l.light_energy = 1.2
+		l.omni_range = 3.5
+		beam.add_child(l)
+	_items.append(b)
+	while _items.size() > MAX:
+		var old: RigidBody3D = _items.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+
+
+func _physics_process(dt: float) -> void:
+	var mv: Variant = game.get("machine")
+	var me: Machine = mv if is_instance_valid(mv) else null
+	for k in range(_items.size() - 1, -1, -1):
+		var b := _items[k]
+		if not is_instance_valid(b):
+			_items.remove_at(k)
+			continue
+		var age := float(b.get_meta("age", 0.0)) + dt
+		b.set_meta("age", age)
+		var beam := b.get_meta("beam") as MeshInstance3D if b.has_meta("beam") else null
+		if beam:
+			beam.global_position = b.global_position + Vector3.UP * 1.9
+			beam.scale = Vector3.ONE * (1.0 + 0.12 * sin(age * 4.0))
+		if age > LIFE:
+			b.queue_free()
+			_items.remove_at(k)
+			continue
+		if me and me.alive and not me.building and me.global_position.distance_to(b.global_position) < REACH:
+			_take(b)
+			_items.remove_at(k)
+
+
+func _take(b: RigidBody3D) -> void:
+	var id := str(b.get_meta("salvage"))
+	Inventory.add(id)
+	if Combat.current:
+		Combat.current.sound("res://assets/audio/build/bolt_on_0%d.wav" % randi_range(1, 3), b.global_position, 2.0, 1.1)
+	if game.has_method("say"):
+		game.call("say", "+ %s  ·  elde %d" % [Parts.def(id).name, Inventory.count(id)])
+	b.queue_free()
+
+
+func count() -> int:
+	return _items.size()

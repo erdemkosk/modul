@@ -32,6 +32,8 @@ var arena := false
 var arena_node: Arena
 var cage: Cage
 var missions: Missions
+var salvage: Salvage
+var wanderers: Wanderers
 var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
@@ -56,6 +58,8 @@ func _ready() -> void:
 	var mission := Mode.current == "mission"
 	var md := Missions.find(Mode.mission) if mission else {}
 	place_name = "KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ"))
+	if Mode.current == "valley" and Builder.save_path == "user://design.json":
+		Builder.save_path = "user://valley_design.json" # (the valley's machine is its own: built from what you hold)
 	weather = Weather.new()
 	weather.hour = 21.6 if caged else (float(md.hour) if mission else 11.0) # (the cage fights at night, under its lights)
 	weather.day_length_minutes = 0.0 if arena or caged or mission else 40.0
@@ -129,6 +133,8 @@ func _ready() -> void:
 	add_child(_death)
 	if cage:
 		add_child(cage)
+	if Mode.current == "valley":
+		_valley_salvage()
 	if mission:
 		missions = Missions.new()
 		missions.game = self
@@ -141,6 +147,33 @@ func _ready() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
+
+
+## The valley's way: you build with what you hold (Inventory), what comes off the other side's
+## machines whole is yours to take (Salvage), and machines come to be hunted (Wanderers).
+func _valley_salvage() -> void:
+	salvage = Salvage.new()
+	salvage.game = self
+	add_child(salvage)
+	wanderers = Wanderers.new()
+	wanderers.game = self
+	wanderers.terrain = terrain
+	add_child(wanderers)
+	builder.guard = func(id: String, _at: Vector3i, _rot: int) -> bool:
+		if Inventory.take(id):
+			return true
+		say("Elinde %s yok: parçalanan araçlardan topla" % Parts.def(id).name)
+		return false
+	builder.removed.connect(func(id: String, _at: Vector3i, _rot: int) -> void: Inventory.add(id))
+	builder.price_note = func(id: String) -> String: return "elde %d" % Inventory.count(id)
+	builder.swap_guard = func(old: Array, new: Array) -> bool:
+		var r := Inventory.swap(old, new)
+		if not bool(r.ok):
+			var need := []
+			for id: String in r.short:
+				need.append("%s ×%d" % [Parts.def(id).name, r.short[id]])
+			say("Eksik parça: " + ", ".join(need))
+		return bool(r.ok)
 
 
 func _start_xform() -> Transform3D:

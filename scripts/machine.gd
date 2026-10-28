@@ -1195,7 +1195,8 @@ func break_off(i: int) -> void:
 		var xf := global_transform * Parts.xform_of(p.id, p.at, p.rot)
 		if c:
 			var v := velocity_at(xf.origin) + (xf.origin - com_global()).normalized() * randf_range(2.0, 6.0) + Vector3.UP * randf_range(2.0, 5.0)
-			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id], self)
+			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id], self,
+				float(p.hp) > 0.0 and p.id != "cab") # (whole: it came away with another, or the cab went)
 	gone.sort()
 	gone.reverse()
 	for j in gone:

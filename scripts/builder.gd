@@ -23,6 +23,7 @@ static var save_path := "user://design.json" ## (tests point it elsewhere)
 var guard: Callable
 ## What a part costs here, for the part's card ("" when nothing does).
 var price_note: Callable
+var swap_guard: Callable ## (old rows, new rows) -> bool: may the machine become `new`? (the valley: if what you hold covers it)
 signal removed(id: String, at: Vector3i, rot: int)
 signal closed
 const SLOTS := 3
@@ -614,15 +615,23 @@ func _remember() -> void:
 func undo() -> void:
 	if _history.is_empty():
 		return
-	_future.append(machine.to_data())
-	_swap_design(_history.pop_back(), false)
+	var now := machine.to_data()
+	var back: Array = _history.pop_back()
+	if _swap_design(back, false):
+		_future.append(now)
+	else:
+		_history.append(back) # (refused: as it was)
 
 
 func redo() -> void:
 	if _future.is_empty():
 		return
-	_history.append(machine.to_data())
-	_swap_design(_future.pop_back(), false)
+	var now := machine.to_data()
+	var on: Array = _future.pop_back()
+	if _swap_design(on, false):
+		_history.append(now)
+	else:
+		_future.append(on)
 
 
 ## A new machine to build on (the old one came apart): its signals, the ghost under it.
@@ -846,7 +855,10 @@ func load_preset(i: int) -> void:
 
 
 ## A whole new design: the old parts lift away, the new ones drop in (undoable unless it's the undo).
-func _swap_design(data: Array, remember := true) -> void:
+func _swap_design(data: Array, remember := true) -> bool:
+	if swap_guard.is_valid() and not bool(swap_guard.call(machine.to_data(), data)):
+		_play("tick.wav", -4.0, 0.6)
+		return false
 	if remember:
 		_remember()
 	for n in machine.part_nodes:
@@ -858,6 +870,7 @@ func _swap_design(data: Array, remember := true) -> void:
 	_play("heavy_01.wav", -6.0)
 	_play("bolt_on_0%d.wav" % randi_range(1, 3), -4.0)
 	save()
+	return true
 	_refresh()
 
 

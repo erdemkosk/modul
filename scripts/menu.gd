@@ -63,7 +63,7 @@ func _ready() -> void:
 	_item(col, "GÖREVLER", "Endüstriyel sahalar: bacayı, su kulesini, yakıt tanklarını indir. Çamur, kar, yağmur hepsine işler", "missions", 0)
 	_item(col, "KAFES", "Seyirci önünde turnuva: her turda yeni zemin, yeni rakip, turlar arası onarım", "cage", 1)
 	_item(col, "TEST ALANI", "Arenada kur, dene, dövüş: rakip araçlar, kırılan siper, çamur çukurları", "arena", 2)
-	_item(col, "VADİ", "İki kilometrelik vadi: yollar, çamur, kar ve orman", "valley", 3)
+	_item(col, "VADİ", "İki kilometrelik vadi: avcı araçlar dolaşır; parçaladığının sağlam parçalarını topla, onlarla kur", "valley", 3)
 	_item(col, "AYARLAR", "", "settings", 4)
 	_item(col, "ÇIKIŞ", "", "", 5)
 	Settings.apply(get_tree())

@@ -14,6 +14,8 @@ const CARDS := {
 	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
 		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],
 		["Ayaklar, dipler", "taşıyanı kır: üstündeki devrilir"], ["R", "baştan başla"]]],
+	"valley": ["VADİ", [["Elindekiyle kur", "inşa sadece envanterindeki parçalarla"], ["Işıklı parçalar", "parçalanan araçların sağlam parçaları: üstünden geç, alırsın"],
+		["Avcılar", "vadide dolaşır; aracın büyüdükçe onlar da büyür"], ["Hazır tasarımlar", "parçaların yetiyorsa yüklenir"]]],
 	"cage": ["KAFES", [["B", "önce aracını kur: turnuvada sadece atölyede değişir"], ["DÖVÜŞE BAŞLA · Enter", "ilk tura çık"],
 		["Kazanmak", "rakibi parçala ya da 8 sn hareketsiz bırak"], ["Turlar arası", "atölyede hasarı kredinle onar"],
 		["Ters dönmek", "8 sn'de sayılırsın; ancak çeviriciyle (F) doğrulursun"],
@@ -54,6 +56,8 @@ func _process(dt: float) -> void:
 	elif (cage == null or cage.state == "fight") and (ms == null or ms.state == "run") and game.get("player_input") \
 			and is_instance_valid(game.get("machine")):
 		_show("drive")
+		if Mode.current == "valley" and _card == null:
+			_show("valley")
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
