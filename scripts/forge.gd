@@ -9,6 +9,7 @@ extends RefCounted
 ##   brawler     a flamethrower and a spiked nose: it closes in and burns
 ##   rammer      no guns, a nose of spikes and wedges, all the power it can carry
 ##   flipper     a flipper out in front and a minigun: it drives under you and throws you over
+##   spinner     a rotor up front with a bar of plates across it, rams at its ends, spun up as it closes
 ## and then, whatever the style: the cab at the front of the bed, the gun on the cab's roof (a
 ## second up on an engine, now and then from the third round), armour or plates or rams across the front by the round, a
 ## battery if the guns draw more than the engines charge, the running gear chosen for the weight (road
@@ -17,12 +18,13 @@ extends RefCounted
 ##
 ##   make(seed_, tier, style = "")  -> {name, style, data}  (data: the [id, x, y, z, rot] rows)
 
-const STYLES := ["skirmisher", "gunner", "artillery", "rocketeer", "brawler", "rammer", "flipper"]
+const STYLES := ["skirmisher", "gunner", "artillery", "rocketeer", "brawler", "rammer", "flipper", "spinner"]
 const NAMES := {
 	"skirmisher": ["PASLI", "SİNEK", "ÇAKAL", "SERÇE"], "gunner": ["AVCI", "ŞAHİN", "KARABİBER", "DOĞAN"],
 	"artillery": ["TOPÇU", "GÜRZ", "BALYOZ", "DEMİRYUMRUK"], "rocketeer": ["YILDIRIM", "KATYUŞA", "ŞİMŞEK"],
 	"brawler": ["ATEŞBÖCEĞİ", "EJDER", "KIVILCIM"], "rammer": ["KOÇBAŞI", "BOĞA", "MANDA", "TOSUN"],
 	"flipper": ["MANCINIK", "FIRLATAN", "KALDIRAÇ", "ÇAPA"],
+	"spinner": ["GİRDAP", "PERVANE", "DEĞİRMEN", "KASIRGA"],
 }
 
 
@@ -30,7 +32,7 @@ static func make(seed_: int, tier: int, style := "") -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_
 	if style == "":
-		var pool := ["skirmisher", "gunner", "brawler", "rammer", "flipper"]
+		var pool := ["skirmisher", "gunner", "brawler", "rammer", "flipper", "spinner"]
 		if tier >= 1:
 			pool.append_array(["artillery", "rocketeer"])
 		style = pool[rng.randi() % pool.size()]
@@ -96,9 +98,14 @@ func _build() -> void:
 	for x in range(x0, x1 + 1):
 		for z in range(z0, z1 + 1):
 			_put("plate" if plated and (x == x0 or x == x1) else "frame", Vector3i(x, 0, z))
-	# the cab at the front, in the middle, its gun on its roof
+	# the cab at the front, in the middle, its gun on its roof (a spinner's a little back: its rotor's in front)
 	var cx := x0 + (w - 2) / 2
-	_put("cab", Vector3i(cx, 1, z0))
+	var cz := z0 + 2 if style == "spinner" else z0
+	_put("cab", Vector3i(cx, 1, cz))
+	if style == "spinner":
+		_put("rotor", Vector3i(cx, 1, z0))
+		for x in range(x0 - 1, x1 + 2):
+			_put("spike" if x == x0 - 1 or x == x1 + 1 else "plate", Vector3i(x, 2, z0)) # (the bar: rams at its ends)
 	var guns: Array[String] = []
 	match style:
 		"skirmisher", "gunner", "flipper":
@@ -110,7 +117,7 @@ func _build() -> void:
 		"brawler":
 			guns.append("flamer")
 	if not guns.is_empty():
-		_put(guns[0], Vector3i(cx, 3, z0))
+		_put(guns[0], Vector3i(cx, 3, cz))
 	# the nose: rams for those that close in, else wedges or plate (from the second round)
 	var nose := "wedge" if rng.randf() < 0.65 else "plate"
 	if style == "flipper":
@@ -124,13 +131,13 @@ func _build() -> void:
 	for x in range(x0, x1 + 1):
 		if x >= cx and x <= cx + 1:
 			continue # (the cab's there)
-		if style == "rammer" or tier >= 2 and not light:
+		if (style == "rammer" or tier >= 2 and not light) and style != "spinner": # (nothing by a spinner's rotor: its bar turns over it)
 			_put(face, Vector3i(x, 1, z0))
 	if style == "rammer":
 		for x in range(cx, cx + 2):
 			_put("spike", Vector3i(x, 1, z0 - 1)) # (in front of the cab)
 	# the cab's windscreen plated over (armour later on): it's what everyone shoots at
-	if (not light or tier >= 2) and style != "flipper":
+	if (not light or tier >= 2) and not style in ["flipper", "spinner"]:
 		for x in range(cx, cx + 2):
 			for y: int in [1, 2]:
 				_put("armor" if tier >= 3 and not light else "plate", Vector3i(x, y, z0 - 1))
@@ -159,7 +166,8 @@ func _build() -> void:
 			break
 	# lights at the front corners (or on the roof of a cab with no gun)
 	for x: int in [x0, x1]:
-		_put("light", Vector3i(x, 1, z0))
+		if style != "spinner":
+			_put("light", Vector3i(x, 1, z0))
 	if guns.is_empty():
 		_put("light", Vector3i(cx, 3, z0))
 	_running_gear(_gear_kind(light, heavy))

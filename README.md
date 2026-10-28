@@ -39,6 +39,7 @@ are this project's own.
 | Esc · K held | pause (go on, settings, the start menu) · rebuild a machine that can't move |
 | L · T | lights · back on its wheels (in the cage only with a flipper) |
 | F | fire the flipper |
+| E | the hinges, rotors and pistons with no key of their own (each press: up/down, spin/stop, out/in) |
 | F1 F2 F3 F5 F4 | raider (minigun) · tank (cannon) · target · tracked rocket carrier · a wave (proving ground) |
 | F7 | a new rival from Forge, any style and strength (proving ground) |
 | F6 | clear the other side's machines and the wreckage away (proving ground) |
@@ -84,6 +85,14 @@ are this project's own.
   air from the battery in 3 s. In the cage there's no crane: on your back, only a flipper gets you
   up, and 8 s on your back counts you out, rival or you. Forge has a flipper style (a flipper out
   in front, a minigun), whose crew drives under you and fires it.
+- Joints (`machine_joint.gd`, the HAREKET tab): a hinge swings what's bolted on its top up 90°, a
+  rotor spins it (16 rad/s), a piston pushes it out half a metre, each on its key (E if none). What
+  a joint carries is everything on its top that doesn't reach the cab another way (if it does, the
+  joint's locked); joints on joints move together. The carried parts' models and boxes move with
+  it, hits find them where they are, and where a moving part strikes something the blow is by that
+  point's speed and the weight moving (a ram on it bites harder): a bar of plates on a rotor is a
+  spinner. Forge has a spinner style; crews spin their rotors up as they close, work hinges and
+  pistons up close.
 - Parts added: the V8 (200 kW) and the small petrol engine (40 kW), steel plate (light armour), the ram
   head (spikes: knocks it deals bite 1.7× harder) and the flamethrower (a 14 m cone that burns parts).
 - `scripts/builder.gd`: the build screen (its layout after Besiege's builder: part groups as tabs over
@@ -135,5 +144,6 @@ godot --headless --path . -s res://tests/structures_test.gd
 godot --headless --path . -s res://tests/missions_test.gd
 godot --headless --path . -s res://tests/salvage_test.gd
 godot --headless --path . -s res://tests/keys_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id>]
+godot --headless --path . -s res://tests/joints_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id> | --spin]
 ```

@@ -159,6 +159,15 @@ func _physics_process(dt: float) -> void:
 	# a flipper and its target over it: throw it
 	if is_instance_valid(target) and machine.can_flip(target):
 		machine.flip()
+	# joints: a rotor spun up when it's near (a spinner), a hinge or a piston worked when it's close
+	for jt in machine.joints:
+		if jt.kind == "rotor":
+			if jt.on != (dist < 16.0):
+				jt.toggle()
+		elif dist < 4.0 and not jt.on:
+			jt.toggle()
+		elif jt.on and (dist > 6.0 or absf(jt.angle) >= (MachineJoint.SWING if jt.kind == "hinge" else MachineJoint.STROKE) - 0.01):
+			jt.toggle()
 	# on its side or its roof: a few seconds, then back on its wheels (in the cage only its own
 	# flipper can do that: no crane there, it's counted out)
 	if machine.global_basis.y.y < 0.3:

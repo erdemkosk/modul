@@ -56,13 +56,19 @@ const DEFS := {
 		"weapon": "flamer", "about": "14 m'ye alev püskürtür: önündeki her parçayı yakar. Yakın dövüş için."},
 	"flipper": {"name": "Çevirici", "size": Vector3i(2, 1, 3), "mass": 160.0, "kind": "flipper", "hp": 240.0,
 		"about": "Pnömatik kol (F): üstündeki aracı havaya atıp ters çevirir. Ters dönünce seni de doğrultur. Aküden hava basar, 3 sn'de dolar."},
+	"hinge": {"name": "Menteşe", "size": Vector3i(1, 1, 1), "mass": 40.0, "kind": "joint", "joint": "hinge", "hp": 220.0,
+		"about": "Üstüne taktığını tuşla (yoksa E) 90° kaldırır, tekrar basınca indirir. Kapak, rampa, kepçe, kol."},
+	"rotor": {"name": "Döner tabla", "size": Vector3i(2, 1, 2), "mass": 110.0, "kind": "joint", "joint": "rotor", "hp": 280.0,
+		"about": "Üstüne taktığını tuşla döndürür (16 rad/sn). Bıçak takarsan dönen silah olur: hızla vuran yer ağır hasar alır."},
+	"piston": {"name": "Piston", "size": Vector3i(1, 1, 1), "mass": 55.0, "kind": "joint", "joint": "piston", "hp": 200.0,
+		"about": "Üstüne taktığını tuşla bir hücre iter, tekrar basınca çeker. Hızlı iter: üstündekini fırlatır."},
 	"plate": {"name": "Çelik plaka", "size": Vector3i(1, 1, 1), "mass": 22.0, "kind": "block", "hp": 150.0,
 		"about": "Hafif zırh: bloktan çok daha hafif, kafesten çok daha sağlam."},
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
 const ORDER := ["frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
-	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "cab"]
+	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
 ## Hit points by part (what a hit takes off; at 0 it comes off), if a part doesn't say its own.

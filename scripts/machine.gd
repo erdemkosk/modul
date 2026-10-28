@@ -90,6 +90,11 @@ var aim_point := Vector3.ZERO
 var firing := false
 var guns: Array[MachineGun] = []
 var flippers: Array[MachineFlipper] = []
+var joints: Array[MachineJoint] = []
+var _chain := {} ## part index -> the joints that carry it, outermost first
+var _shapes := {} ## part index -> [[its CollisionShape3D, its box at rest]]
+var _cur := -1 ## (rebuilding: the part whose boxes are being made)
+var _struck := {} ## (a moving part's blows: what it struck -> s till it can again)
 var keyed := false ## (yours: its parts answer to the keys they're given)
 var last_hit_by: Machine
 var last_hit_kind := "" ## (what hurt it last: the death card's line)
@@ -210,7 +215,7 @@ const _NEIGHBOURS := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), 
 
 
 static func _structural(id: String) -> bool:
-	return Parts.def(id).kind in ["cab", "block", "wedge", "engine"] # (nothing bolts on through a wheel, a light or a gun)
+	return Parts.def(id).kind in ["cab", "block", "wedge", "engine", "joint"] # (nothing bolts on through a wheel, a light or a gun)
 
 
 func place(id: String, at: Vector3i, rot: int) -> bool:
@@ -303,6 +308,9 @@ func rebuild() -> void:
 	tracks.clear()
 	guns.clear()
 	flippers.clear()
+	joints.clear()
+	_chain.clear()
+	_shapes.clear()
 	_lamps.clear()
 	_glows.clear()
 	power_kw = 0.0
@@ -319,6 +327,7 @@ func rebuild() -> void:
 		for c in Parts.cells_of(p.id, p.at, p.rot):
 			_occ[c] = i
 		var xf := Parts.xform_of(p.id, p.at, p.rot)
+		_cur = i
 		var node := _instance(p.id)
 		node.transform = xf
 		_root.add_child(node)
@@ -365,6 +374,11 @@ func rebuild() -> void:
 				_add_shape(Vector3(0.3, 0.3, 0.3), xf.origin)
 			"wedge":
 				_add_wedge(xf)
+			"joint":
+				var jt := MachineJoint.make(self, node, i, p.id, xf)
+				jt.key = int(p.get("key", 0))
+				joints.append(jt)
+				_add_shape(ext * Vector3(0.95, 0.95, 0.95), xf.origin)
 			"flipper":
 				var fl := MachineFlipper.make(self, node)
 				fl.key = int(p.get("key", 0))
@@ -373,6 +387,8 @@ func rebuild() -> void:
 				_add_shape(ext * Vector3(0.95, 0.8, 0.95), xf.origin)
 			_:
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
+	_cur = -1
+	_sections()
 	if total_mass <= 0.0:
 		return
 	com = moment / total_mass
@@ -432,6 +448,15 @@ func _add_shape(size: Vector3, at: Vector3) -> void:
 	cs.shape = b
 	cs.position = at
 	add_child(cs)
+	_note_shape(cs)
+
+
+## (which part a box belongs to: a joint moves it with the part)
+func _note_shape(cs: CollisionShape3D) -> void:
+	if _cur >= 0:
+		if not _shapes.has(_cur):
+			_shapes[_cur] = []
+		_shapes[_cur].append([cs, cs.transform])
 
 
 ## A wedge: high at its back (+z of the part, as the model: Blender -Y), down to its front edge.
@@ -446,6 +471,7 @@ func _add_wedge(xf: Transform3D) -> void:
 	cs.shape = s
 	cs.transform = xf
 	add_child(cs)
+	_note_shape(cs)
 
 
 func _add_lamp(node: Node3D, xf: Transform3D) -> void:
@@ -584,6 +610,9 @@ static func wheel_rot_for(normal: Vector3i, rot: int) -> int:
 ## Up for building: held still, level, high enough off the ground for its wheels.
 func set_building(on: bool) -> void:
 	building = on
+	for jt in joints:
+		jt.reset()
+	_place_moving()
 	if on:
 		var yaw := global_basis.get_euler().y
 		var at := global_position
@@ -644,6 +673,14 @@ func _physics_process(dt: float) -> void:
 		g.update(dt, aim_point, trig and g.armed, powered)
 	for f in flippers:
 		f.update(dt, powered)
+	if not joints.is_empty():
+		for jt in joints:
+			jt.update(dt, powered)
+		_place_moving()
+		for k: Variant in _struck.keys():
+			_struck[k] = float(_struck[k]) - dt
+			if float(_struck[k]) <= 0.0 or not is_instance_valid(k):
+				_struck.erase(k) # (its time's up, or it's gone)
 	var fwd := -global_basis.z
 	speed = linear_velocity.dot(fwd)
 	var on_ground: Array[MachineWheel] = []
@@ -707,6 +744,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		return
 	var worst := {}
 	for i in state.get_contact_count():
+		if not joints.is_empty():
+			_moving_blow(state, i)
 		var dv := state.get_contact_impulse(i).length() / total_mass
 		if dv <= IMPACT_SAFE:
 			continue
@@ -730,7 +769,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		# not one bolt)
 		var local := global_transform.affine_inverse() * at
 		for j in design.size():
-			var c := Parts.xform_of(design[j].id, design[j].at, design[j].rot).origin
+			var c := part_xform(j).origin
 			var ext := Vector3(Parts.size_of(design[j].id, design[j].rot)) * Parts.CELL * 0.5
 			var d := ((local - c).abs() - ext).max(Vector3.ZERO).length() # (to its box, not its middle)
 			if d < IMPACT_REACH:
@@ -819,6 +858,8 @@ func _power(dt: float) -> void:
 		loads = loads or float(d[2]) > 0.0
 	for f in flippers:
 		load_kw += f.draw_kw()
+	for jt in joints:
+		load_kw += jt.draw_kw()
 	draw_kw = 0.1 + lamps_kw + spin_kw + turn_kw + load_kw
 	energy_kj = clampf(energy_kj + (charge_kw - draw_kw) * dt, 0.0, capacity_kj)
 	var was := powered
@@ -946,7 +987,7 @@ func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine =
 	for e: Array in parts:
 		var at_i := design.find(e[0])
 		if at_i >= 0 and alive:
-			damage_part(at_i, float(e[1]), global_transform * Parts.xform_of(e[0].id, e[0].at, e[0].rot).origin, by)
+			damage_part(at_i, float(e[1]), global_transform * part_xform(at_i).origin, by)
 
 
 ## Part `i` takes `amount` (at `at`, by `by`, for the HUD); at none it comes off; on the way, what it
@@ -956,7 +997,7 @@ func damage_part(i: int, amount: float, at := Vector3.INF, by: Machine = null) -
 		return
 	var p: Dictionary = design[i]
 	if at == Vector3.INF:
-		at = global_transform * Parts.xform_of(p.id, p.at, p.rot).origin
+		at = global_transform * part_xform(i).origin
 	p.hp = float(p.hp) - amount
 	var broke := float(p.hp) <= 0.0
 	if Combat.current:
@@ -1205,7 +1246,7 @@ func break_off(i: int) -> void:
 	var spin_scale := 3.0
 	for j in gone:
 		var p: Dictionary = design[j]
-		var xf := global_transform * Parts.xform_of(p.id, p.at, p.rot)
+		var xf := global_transform * part_xform(j)
 		if c:
 			var v := velocity_at(xf.origin) + (xf.origin - com_global()).normalized() * randf_range(2.0, 6.0) + Vector3.UP * randf_range(2.0, 5.0)
 			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id], self,
@@ -1261,7 +1302,16 @@ func _die() -> void:
 
 ## The part at (or nearest to) a world point, or -1.
 func _part_near(p: Vector3) -> int:
-	var l := global_transform.affine_inverse() * p / Parts.CELL
+	# a part a joint's moved: where it would be at rest
+	var lm := global_transform.affine_inverse() * p
+	for i: int in _chain:
+		if not _moved(i):
+			continue
+		var r := _joint_xform(i).affine_inverse() * lm / Parts.CELL
+		var rc := Vector3i(floori(r.x), floori(r.y), floori(r.z))
+		if _occ.get(rc, -1) == i:
+			return i
+	var l := lm / Parts.CELL
 	var cell := Vector3i(floori(l.x), floori(l.y), floori(l.z))
 	if _occ.has(cell):
 		return _occ[cell]
@@ -1356,3 +1406,160 @@ func _track_wheels() -> int:
 	for t in tracks:
 		n += t.bogies.size()
 	return n
+
+
+
+# --- Joints -----------------------------------------------------------------------------------------
+
+## What each joint carries: what's bolted to its top and doesn't reach the cab another way (then it
+## can't move: it's locked); a joint within what another carries is carried by it too.
+func _sections() -> void:
+	var cab := cab_index()
+	for jt in joints:
+		jt.members.clear()
+		jt.locked = false
+		var own := Parts.cells_of(design[jt.index].id, design[jt.index].at, design[jt.index].rot)
+		var n := jt.out_normal()
+		var seeds: Array[int] = []
+		for c in own:
+			var k: int = _occ.get(c + n, -1)
+			if k >= 0 and k != jt.index and not k in seeds:
+				seeds.append(k)
+		if seeds.is_empty():
+			continue
+		var carried := _reach(seeds, jt.index)
+		var main := _reach([cab] as Array[int], jt.index) if cab >= 0 and cab != jt.index else {}
+		for k: int in carried:
+			if main.has(k) and _structural(design[k].id):
+				jt.locked = true # (bolted round it to the rest: it can't move)
+				break
+		if jt.locked:
+			continue
+		for k: int in carried:
+			if not main.has(k): # (a light or a gun touching both stays with the rest)
+				jt.members.append(k)
+	# the chain of joints that carry each part, outermost (carrying most) first
+	var order := joints.duplicate()
+	order.sort_custom(func(a: MachineJoint, b: MachineJoint) -> bool: return a.members.size() > b.members.size())
+	for jt: MachineJoint in order:
+		for k in jt.members:
+			if not _chain.has(k):
+				_chain[k] = []
+			_chain[k].append(jt)
+	for jt in joints:
+		jt.depth = (_chain.get(jt.index, []) as Array).size()
+
+
+## Every part reached from `from` through bolted faces, not through `but`.
+func _reach(from: Array[int], but: int) -> Dictionary:
+	var seen := {}
+	var queue: Array[int] = []
+	for f in from:
+		if f >= 0 and f != but and not seen.has(f):
+			seen[f] = true
+			queue.append(f)
+	while not queue.is_empty():
+		var i: int = queue.pop_back()
+		if not _structural(design[i].id) and not i in from:
+			continue
+		for c in Parts.cells_of(design[i].id, design[i].at, design[i].rot):
+			for nb in _NEIGHBOURS:
+				var j: int = _occ.get(c + nb, -1)
+				if j >= 0 and j != but and not seen.has(j):
+					seen[j] = true
+					queue.append(j)
+	return seen
+
+
+## The joints' motion that's on part `i` (machine space).
+func _joint_xform(i: int) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	for jt: MachineJoint in _chain.get(i, []):
+		t = t * jt.motion()
+	return t
+
+
+func _moved(i: int) -> bool:
+	for jt: MachineJoint in _chain.get(i, []):
+		if absf(jt.angle) > 1e-4:
+			return true
+	return false
+
+
+## Where part `i` is now on the machine (a joint may have moved it).
+func part_xform(i: int) -> Transform3D:
+	var p: Dictionary = design[i]
+	var rest := Parts.xform_of(p.id, p.at, p.rot)
+	return _joint_xform(i) * rest if _chain.has(i) else rest
+
+
+## The carried parts' models and boxes where their joints have them.
+func _place_moving() -> void:
+	for i: int in _chain:
+		if i >= part_nodes.size() or not is_instance_valid(part_nodes[i]):
+			continue
+		var t := _joint_xform(i)
+		part_nodes[i].transform = t * Parts.xform_of(design[i].id, design[i].at, design[i].rot)
+		for e: Array in _shapes.get(i, []):
+			if is_instance_valid(e[0]):
+				(e[0] as CollisionShape3D).transform = t * (e[1] as Transform3D)
+
+
+## How fast a point on part `i` (machine space, now) is going from its joints.
+func _joint_velocity(i: int, local: Vector3) -> Vector3:
+	var v := Vector3.ZERO
+	var t := Transform3D.IDENTITY
+	for jt: MachineJoint in _chain.get(i, []):
+		# (each joint's motion about where its carriers have put it)
+		var rest := t.affine_inverse() * local
+		v += t.basis * jt.velocity_at(rest)
+		t = t * jt.motion()
+	return v
+
+
+## A moving part striking something: the blow by how fast that point's going and how much is moving
+## (a spike or a blade on it bites the harder); what it strikes is thrown along, and this one pushed
+## back a little. Once a moment per thing struck.
+func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
+	var at := state.get_contact_local_position(c)
+	var other := state.get_contact_collider_object(c)
+	if other == null or _struck.has(other) or not (other is Machine or other is StructurePiece or other is Breakable or other is RigidBody3D):
+		return
+	var i := _part_near(at)
+	if i < 0 or not _chain.has(i):
+		return
+	var local := global_transform.affine_inverse() * at
+	var v := global_basis * _joint_velocity(i, local)
+	var speed := v.length()
+	if speed < 2.0:
+		return
+	var moving := 0.0
+	for k: int in (_chain[i] as Array).back().members:
+		moving += float(Parts.def(design[k].id).mass)
+	var bite := RAM_BITE if str(Parts.def(design[i].id).kind) == "ram" else 1.0
+	var blow := moving * speed * 0.035 * bite
+	var push := v.normalized() * moving * speed * 0.6
+	_struck[other] = 0.18
+	if other is Machine:
+		(other as Machine).hit.call_deferred(at, v.normalized(), blow, push.length(), self)
+		(other as Machine).set_deferred("last_hit_kind", "koç" if bite > 1.0 else "çarpışma")
+	elif other is StructurePiece:
+		(other as StructurePiece).hit.call_deferred(blow * 1.5, at, v.normalized(), true)
+	elif other is Breakable:
+		(other as Breakable).hit.call_deferred(blow, at, v.normalized())
+	elif other is RigidBody3D:
+		(other as RigidBody3D).apply_impulse.call_deferred(push * 0.3, at - (other as RigidBody3D).global_position)
+	apply_impulse.call_deferred(-push * 0.25, at - global_position)
+	if Combat.current:
+		Combat.current.call_deferred("_impact", at, -v.normalized(), "metal", clampf(speed / 10.0, 0.3, 1.0))
+		Combat.current.call_deferred("sound", "res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), at, 4.0, randf_range(0.7, 0.9))
+
+
+## The joints on `code` (E for those with no key of their own) toggled. True if any answers to it.
+func joint_key(code: int) -> bool:
+	var any := false
+	for jt in joints:
+		if (jt.key if jt.key != 0 else KEY_E) == code:
+			jt.toggle()
+			any = true
+	return any

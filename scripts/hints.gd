@@ -6,7 +6,7 @@ extends CanvasLayer
 
 const CARDS := {
 	"drive": ["SÜRÜŞ", [["W  S", "ileri · geri"], ["A  D", "direksiyon · Space fren"], ["Fare · sol tık", "nişan al · ateş et"],
-		["Sağ tık", "uzağa nişan (görüş daralır)"], ["1-9 · 0", "silahları aç / kapat · hepsi"], ["F", "çevirici (varsa): üstündekini ters çevirir"],
+		["Sağ tık", "uzağa nişan (görüş daralır)"], ["1-9 · 0", "silahları aç / kapat · hepsi"], ["F", "çevirici (varsa): üstündekini ters çevirir"], ["E", "menteşe, döner tabla, piston (tuşu yoksa)"],
 		["B", "inşa ekranı"], ["C", "kamera"]]],
 	"build": ["İNŞA", [["Sol tık · sağ tık", "parça tak · sök"], ["1-0, Q E Z X C F H", "parça seç (üstteki sekmeler de)"],
 		["R · T · M", "çevir · devir (yan, ters) · ayna"], ["K", "fare üstteki silaha / çeviriciye tuş ver"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],

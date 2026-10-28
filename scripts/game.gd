@@ -268,8 +268,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("right_up") and not builder.active:
 		right_up()
 	elif event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo and not builder.active \
-			and player_input and _fire_flippers((event as InputEventKey).physical_keycode):
-		pass
+			and player_input:
+		var code := (event as InputEventKey).physical_keycode
+		_fire_flippers(code)
+		machine.joint_key(code)
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and not builder.active:
 		if key.keycode >= KEY_0 and key.keycode <= KEY_9:

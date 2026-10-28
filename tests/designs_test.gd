@@ -64,14 +64,21 @@ func _check(data: Array, what: String, style := "", tier := 0) -> void:
 	var kwt: float = s.power / (s.mass / 1000.0)
 	_expect(kwt >= 55.0 + 8.0 * tier, "%s: power for its weight %.0f kW/t (%.0f kg, %.0f kW)" % [what, kwt, s.mass, s.power])
 	_expect(s.rated >= s.mass * 1.05, "%s: running gear rated %.0f for %.0f kg" % [what, s.rated, s.mass])
-	if style == "rammer":
-		_expect((s.guns as Array).is_empty(), "%s: a rammer carries no gun" % what)
+	if style == "rammer" or style == "spinner":
+		_expect((s.guns as Array).is_empty(), "%s: a rammer or a spinner carries no gun" % what)
 	elif style != "":
 		_expect(not (s.guns as Array).is_empty(), "%s: armed" % what)
 	if style in ["rammer", "brawler"]:
 		_expect(s.spikes >= 2, "%s: a spiked nose (%d)" % [what, s.spikes])
 	if style == "brawler":
 		_expect("flamer" in s.guns, "%s: the flamethrower" % what)
+	if style == "spinner":
+		var m := Machine.new()
+		_g.add_child(m)
+		m.from_data(data)
+		_expect(m.joints.size() == 1 and not m.joints[0].locked and m.joints[0].members.size() >= 4, "%s: a rotor free to turn its bar (%s)" % [what,
+			"none" if m.joints.is_empty() else "%d carried, locked %s" % [m.joints[0].members.size(), m.joints[0].locked]])
+		m.queue_free()
 	if style == "flipper":
 		var has := false
 		for e: Array in data:

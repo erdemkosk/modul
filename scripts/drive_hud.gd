@@ -272,7 +272,7 @@ func _flip_chip(f: MachineFlipper) -> PanelContainer:
 	key.add_theme_stylebox_override("panel", ks)
 	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(key)
-	Ui.label(key, OS.get_keycode_string(f.key) if f.key != 0 else "F", 18, Color(0.08, 0.05, 0.02), "display").horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	Ui.label(key, OS.get_keycode_string(f.key) if f and f.key != 0 else "F", 18, Color(0.08, 0.05, 0.02), "display").horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var pic := TextureRect.new()
 	if ResourceLoader.exists("res://assets/parts/icons/flipper.png"):
 		pic.texture = load("res://assets/parts/icons/flipper.png")
@@ -295,14 +295,32 @@ func _flip_chip(f: MachineFlipper) -> PanelContainer:
 	return plate
 
 
+## A joint's plate: its key (E if it has none of its own), what it is, where it is.
+func _joint_chip(jt: MachineJoint) -> PanelContainer:
+	var plate := _flip_chip(null)
+	plate.set_meta("flipper", null)
+	plate.set_meta("joint", jt)
+	var row := plate.get_child(0)
+	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = OS.get_keycode_string(jt.key) if jt.key != 0 else "E"
+	var id: String = {"hinge": "hinge", "rotor": "rotor", "piston": "piston"}[jt.kind]
+	if ResourceLoader.exists("res://assets/parts/icons/%s.png" % id):
+		(row.get_child(1) as TextureRect).texture = load("res://assets/parts/icons/%s.png" % id)
+	((row.get_child(2) as VBoxContainer).get_child(0) as Label).text = Ui.upper(str(Parts.def(id).name))
+	return plate
+
+
 func _weapons(m: Machine) -> void:
-	var stale := _chips.get_child_count() != m.guns.size() + m.flippers.size()
+	var shown := m.joints.slice(0, 4) # (four at most: more and they'd crowd the guns)
+	var stale := _chips.get_child_count() != m.guns.size() + m.flippers.size() + shown.size()
 	if not stale:
 		for i in m.guns.size():
 			if _chips.get_child(i).get_meta("gun") != m.guns[i]:
 				stale = true
 		for k in m.flippers.size():
 			if _chips.get_child(m.guns.size() + k).get_meta("flipper") != m.flippers[k]:
+				stale = true
+		for k in shown.size():
+			if _chips.get_child(m.guns.size() + m.flippers.size() + k).get_meta("joint", null) != shown[k]:
 				stale = true
 	if stale:
 		for c in _chips.get_children():
@@ -312,6 +330,28 @@ func _weapons(m: Machine) -> void:
 			_chips.add_child(_chip(m.guns[i], i))
 		for f in m.flippers:
 			_chips.add_child(_flip_chip(f))
+		for jt in shown:
+			_chips.add_child(_joint_chip(jt))
+	for k in shown.size():
+		var jt: MachineJoint = shown[k]
+		var plate := _chips.get_child(m.guns.size() + m.flippers.size() + k) as PanelContainer
+		var st := plate.get_meta("state") as Label
+		var frac := 0.0
+		match jt.kind:
+			"hinge":
+				frac = jt.angle / MachineJoint.SWING
+				st.text = "KİLİTLİ" if jt.locked else ("KALKIK" if frac > 0.98 else ("İNİK" if frac < 0.02 else "HAREKETTE"))
+			"rotor":
+				frac = absf(jt.rate) / MachineJoint.SPIN
+				st.text = "KİLİTLİ" if jt.locked else ("%d DEV/DK" % int(absf(jt.rate) * 60.0 / TAU) if frac > 0.02 else "DURUYOR")
+			"piston":
+				frac = jt.angle / MachineJoint.STROKE
+				st.text = "KİLİTLİ" if jt.locked else ("DIŞARIDA" if frac > 0.98 else ("İÇERİDE" if frac < 0.02 else "HAREKETTE"))
+		if not m.powered:
+			st.text = "AKÜ BİTTİ"
+		st.add_theme_color_override("font_color", Ui.BAD if jt.locked or not m.powered else (Ui.GOOD if jt.on else Ui.DIM))
+		plate.set_meta("frac", frac)
+		(plate.get_meta("bar") as Control).queue_redraw()
 	for k in m.flippers.size():
 		var f := m.flippers[k]
 		var plate := _chips.get_child(m.guns.size() + k) as PanelContainer

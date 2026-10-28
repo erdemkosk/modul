@@ -18,6 +18,7 @@ var _forge := false
 var _flip := false
 var _sites := false
 var _mission := ""
+var _spin := false
 var _st := {}
 var _cage := false
 var _t := 0.0
@@ -49,6 +50,8 @@ func _initialize() -> void:
 			_flip = true
 		if a == "--sites":
 			_sites = true
+		if a == "--spin":
+			_spin = true
 		if a.begins_with("--mission="):
 			_mission = a.substr(10)
 	DirAccess.make_dir_recursive_absolute(_out)
@@ -94,7 +97,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else _arena_steps()))))))))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else (_spin_steps() if _spin else _arena_steps())))))))))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -246,6 +249,32 @@ func _mission_steps() -> Array:
 				p.hit(99999.0, p.global_position, Vector3.RIGHT, true)],
 		[3.0, func(_s: float) -> void:
 			_cam(PI, -0.18, 14.0), func() -> void: _shoot("mission_done")],
+	]
+
+
+## The joints: a spinner's bar turning, a hinge up; the builder's HAREKET tab.
+func _spin_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			var d := Designs.starter().filter(func(e: Array) -> bool: return e[0] != "light")
+			d.append_array([["rotor", -1, 1, -2, 0], ["spike", -3, 2, -2, 0], ["plate", -2, 2, -2, 0], ["plate", -1, 2, -2, 0],
+				["plate", 0, 2, -2, 0], ["plate", 1, 2, -2, 0], ["spike", 2, 2, -2, 0], ["hinge", 2, 1, 1, 0], ["plate", 2, 2, 1, 0],
+				["minigun", 0, 3, 0, 0]])
+			_m.from_data(d)
+			_m.joint_key(KEY_E)],
+		[2.5, func(_s: float) -> void:
+			_m.brake = 1.0
+			_cam(PI * 0.8, -0.25, 8.0), func() -> void: _shoot("spin_running")],
+		[0.5, _noop, func() -> void:
+			var b: Builder = _g.get("builder")
+			b.set_active(true)
+			b._show_group(4, false)
+			b.select("rotor", false)],
+		[2.0, func(_s: float) -> void:
+			_cam(PI * 0.75, -0.5, 9.0), func() -> void: _shoot("spin_builder")],
 	]
 
 

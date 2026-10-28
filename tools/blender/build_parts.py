@@ -51,7 +51,7 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "wheel_l": (2, 3, 3), "engine": (2, 2, 2), "light": (1, 1, 1),
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
-         "plate": (1, 1, 1), "flipper": (2, 1, 3)}
+         "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1)}
 
 
 def materials():
@@ -963,12 +963,69 @@ def build_flipper():
     PIVOTS["Flap"] = tuple(hinge)
 
 
+def build_hinge():
+    """A heavy hinge: the lower leaf bolted to what it's on, the upper leaf to what it carries, the
+    knuckles and pin along the back top edge (node Top: the upper leaf, its pivot on the pin; it
+    swings forward and up), a small actuator ram behind."""
+    s = CELL
+    h = s / 2
+    pin = Vector((0, -(h - 0.06), h - 0.06))  # (Godot: the back top edge)
+    box("Lower", (s - 0.04, s - 0.04, 0.12), (0, 0, -h + 0.06), "Paint", bev=0.01, grp="Part")
+    bolts("LowBolt", (0, 0, -h), (0, 0, -1), 0.3, 0.3, grp="Part")
+    box("Web", (0.08, s - 0.14, s - 0.22), (0, 0.02, -0.04), "SteelDark", bev=0.006, grp="Part")
+    for x in (-0.17, 0.17):
+        box(f"Cheek{x}", (0.06, 0.16, s - 0.16), (x, pin.y + 0.02, -0.02), "Paint", bev=0.006, grp="Part")
+        cyl(f"KnuckleL{x}", 0.055, 0.1, (x, pin.y, pin.z), axis="X", segs=16, mat="SteelDark", grp="Part")
+    cyl("Pin", 0.022, s - 0.02, tuple(pin), axis="X", segs=10, mat="Steel", grp="Part")
+    cyl("Ram", 0.03, 0.22, (0.0, -0.12, -0.05), axis="Y", segs=12, mat="Spring", grp="Part")
+    box("Upper", (s - 0.04, s - 0.04, 0.1), (0, 0, h - 0.05), "Paint", bev=0.01, grp="Top")
+    cyl("KnuckleU", 0.055, 0.2, tuple(pin), axis="X", segs=16, mat="SteelDark", grp="Top")
+    bolts("UpBolt", (0, 0, h), (0, 0, 1), 0.3, 0.3, grp="Top")
+    box("Stripe", (s - 0.12, 0.05, 0.004), (0, h - 0.1, h + 0.002), "Hazard", grp="Top")
+    PIVOTS["Top"] = tuple(pin)
+
+
+def build_rotor():
+    """A turntable: a drum bolted down holding the bearing and its motor; on it the table (node Top,
+    turning about its middle), bolt holes round its rim for whatever's put on it."""
+    sx, sy, sz = ext(PARTS["rotor"])
+    hz = sz / 2
+    box("Base", (sx - 0.04, sy - 0.04, 0.06), (0, 0, -hz + 0.03), "SteelDark", bev=0.006, grp="Part")
+    bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.8, sy * 0.8, grp="Part")
+    cyl("Drum", 0.4, 0.14, (0, 0, -hz + 0.13), segs=32, mat="Paint", bev=0.01, grp="Part")
+    cyl("Bearing", 0.36, 0.03, (0, 0, -hz + 0.215), segs=32, mat="Steel", grp="Part")
+    cyl("Motor", 0.08, 0.16, (0.34, 0.34, -hz + 0.12), segs=16, mat="SteelDark", grp="Part")
+    cyl("Table", 0.47, 0.06, (0, 0, hz - 0.03), segs=40, mat="Paint", bev=0.008, grp="Top")
+    cyl("Hub", 0.1, 0.03, (0, 0, hz + 0.0), segs=20, mat="Steel", grp="Top")
+    for k in range(8):
+        a = k * 2 * PI / 8
+        cyl(f"Hole{k}", 0.025, 0.012, (math.cos(a) * 0.38, math.sin(a) * 0.38, hz + 0.001), segs=8, mat="SteelDark", grp="Top")
+    box("Mark", (0.06, 0.3, 0.005), (0, 0.24, hz + 0.003), "Hazard", grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
+def build_piston():
+    """A hydraulic ram standing up: its barrel on a foot, the rod and the plate on top (node Top:
+    pushed out a cell along it), its hose."""
+    s = CELL
+    h = s / 2
+    box("Foot", (s - 0.04, s - 0.04, 0.08), (0, 0, -h + 0.04), "Paint", bev=0.008, grp="Part")
+    bolts("FootBolt", (0, 0, -h), (0, 0, -1), 0.3, 0.3, grp="Part")
+    cyl("Barrel", 0.14, s - 0.18, (0, 0, -h + 0.08 + (s - 0.18) / 2), segs=24, mat="Spring", bev=0.01, grp="Part")
+    cyl("Gland", 0.16, 0.04, (0, 0, h - 0.12), segs=24, mat="SteelDark", grp="Part")
+    tube("Hose", [(0.14, 0.0, -h + 0.12), (0.22, 0.05, -h + 0.2), (0.16, 0.0, h - 0.16)], 0.016, mat="Rubber", nring=8, sub=4, grp="Part")
+    cyl("Rod", 0.05, s * 1.1, (0, 0, h - 0.06 - s * 0.55), segs=16, mat="Steel", grp="Top")
+    box("Head", (s - 0.04, s - 0.04, 0.08), (0, 0, h - 0.04), "Paint", bev=0.008, grp="Top")
+    bolts("HeadBolt", (0, 0, h), (0, 0, 1), 0.3, 0.3, grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
             "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
             "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
-            "flipper": build_flipper}
+            "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston}
 
 
 def icon(pid):
@@ -1020,6 +1077,8 @@ def main():
             nodes += turret_nodes()
         if any(o.get("grp") == "Flap" for o in bpy.data.objects):
             nodes.append(bt.bake_group("Flap", "Flap", PIVOTS["Flap"]))
+        if any(o.get("grp") == "Top" for o in bpy.data.objects):
+            nodes.append(bt.bake_group("Top", "Top", PIVOTS["Top"]))
         vk.export(nodes, os.path.join(OUT_DIR, pid + ".glb"))
         if "--icons" in argv:
             icon(pid)
