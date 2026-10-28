@@ -35,11 +35,11 @@ const BAD := Color(1.0, 0.42, 0.32)
 const GOOD := Color(0.55, 0.9, 0.5)
 ## The keys that pick the parts, in Parts.ORDER (the cab left out).
 const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_Q, KEY_E, KEY_Z, KEY_X,
-	KEY_C, KEY_F, KEY_H]
-const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H"]
+	KEY_C, KEY_F, KEY_H, KEY_N]
+const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N"]
 ## The cards' groups.
 const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
-	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer"]]]
+	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "flipper"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine

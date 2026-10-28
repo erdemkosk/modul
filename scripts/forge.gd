@@ -8,6 +8,7 @@ extends RefCounted
 ##   rocketeer   the rocket pod, a battery, tracks when it's heavy
 ##   brawler     a flamethrower and a spiked nose: it closes in and burns
 ##   rammer      no guns, a nose of spikes and wedges, all the power it can carry
+##   flipper     a flipper out in front and a minigun: it drives under you and throws you over
 ## and then, whatever the style: the cab at the front of the bed, the gun on the cab's roof (a
 ## second up on an engine, now and then from the third round), armour or plates or rams across the front by the round, a
 ## battery if the guns draw more than the engines charge, the running gear chosen for the weight (road
@@ -16,11 +17,12 @@ extends RefCounted
 ##
 ##   make(seed_, tier, style = "")  -> {name, style, data}  (data: the [id, x, y, z, rot] rows)
 
-const STYLES := ["skirmisher", "gunner", "artillery", "rocketeer", "brawler", "rammer"]
+const STYLES := ["skirmisher", "gunner", "artillery", "rocketeer", "brawler", "rammer", "flipper"]
 const NAMES := {
 	"skirmisher": ["PASLI", "SİNEK", "ÇAKAL", "SERÇE"], "gunner": ["AVCI", "ŞAHİN", "KARABİBER", "DOĞAN"],
 	"artillery": ["TOPÇU", "GÜRZ", "BALYOZ", "DEMİRYUMRUK"], "rocketeer": ["YILDIRIM", "KATYUŞA", "ŞİMŞEK"],
 	"brawler": ["ATEŞBÖCEĞİ", "EJDER", "KIVILCIM"], "rammer": ["KOÇBAŞI", "BOĞA", "MANDA", "TOSUN"],
+	"flipper": ["MANCINIK", "FIRLATAN", "KALDIRAÇ", "ÇAPA"],
 }
 
 
@@ -28,7 +30,7 @@ static func make(seed_: int, tier: int, style := "") -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_
 	if style == "":
-		var pool := ["skirmisher", "gunner", "brawler", "rammer"]
+		var pool := ["skirmisher", "gunner", "brawler", "rammer", "flipper"]
 		if tier >= 1:
 			pool.append_array(["artillery", "rocketeer"])
 		style = pool[rng.randi() % pool.size()]
@@ -99,7 +101,7 @@ func _build() -> void:
 	_put("cab", Vector3i(cx, 1, z0))
 	var guns: Array[String] = []
 	match style:
-		"skirmisher", "gunner":
+		"skirmisher", "gunner", "flipper":
 			guns.append("minigun")
 		"artillery":
 			guns.append("cannon")
@@ -111,6 +113,8 @@ func _build() -> void:
 		_put(guns[0], Vector3i(cx, 3, z0))
 	# the nose: rams for those that close in, else wedges or plate (from the second round)
 	var nose := "wedge" if rng.randf() < 0.65 else "plate"
+	if style == "flipper":
+		_put("flipper", Vector3i(cx, 0, z0 - 3)) # (out in front, under the cab: it gets under what it meets)
 	for x in range(x0, x1 + 1):
 		if style == "rammer" or style == "brawler" and (x < cx or x > cx + 1):
 			_put("spike", Vector3i(x, 0, z0 - 1))
@@ -126,7 +130,7 @@ func _build() -> void:
 		for x in range(cx, cx + 2):
 			_put("spike", Vector3i(x, 1, z0 - 1)) # (in front of the cab)
 	# the cab's windscreen plated over (armour later on): it's what everyone shoots at
-	if not light or tier >= 2:
+	if (not light or tier >= 2) and style != "flipper":
 		for x in range(cx, cx + 2):
 			for y: int in [1, 2]:
 				_put("armor" if tier >= 3 and not light else "plate", Vector3i(x, y, z0 - 1))

@@ -15,6 +15,7 @@ var _tracks := false
 var _arena := false
 var _polish := false
 var _forge := false
+var _flip := false
 var _cage := false
 var _t := 0.0
 var _step := 0
@@ -41,6 +42,8 @@ func _initialize() -> void:
 			_cage = true
 		if a == "--forge":
 			_forge = true
+		if a == "--flip":
+			_flip = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
@@ -80,7 +83,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else _arena_steps())))))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else _arena_steps()))))))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -131,6 +134,31 @@ func _forge_steps() -> Array:
 				_m.throttle = 0.6 if _m.global_position.distance_to(e.global_position) > 9.0 else 0.0
 				_m.firing = _m.global_position.distance_to(e.global_position) < 13.0
 			_cam(PI * 0.8, -0.2, 9.0), func() -> void: _shoot("forge_flame")],
+	]
+
+
+## The flipper: a rival across the flap, thrown (in the air, then on its back).
+func _flip_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			var data := Designs.starter()
+			data.append(["flipper", 0, 0, -5, 0])
+			data.append(["minigun", 0, 3, 0, 0])
+			_m.from_data(data)
+			_m.invulnerable = true
+			var bt := _m.global_transform * Vector3(0.3, 1.2, -3.2)
+			var e: Machine = _g.call("_spawn", Designs.raider(), Transform3D(_m.global_basis.rotated(Vector3.UP, PI * 0.5), bt), 1, false)
+			e.label = "PASLI"],
+		[3.0, func(_s: float) -> void:
+			_cam(PI * 0.62, -0.16, 9.5), func() -> void: _shoot("flip_before")],
+		[0.3, _noop, func() -> void:
+			_m.flip()],
+		[0.28, func(_s: float) -> void:
+			_cam(PI * 0.62, -0.16, 9.5), func() -> void: _shoot("flip_air")],
+		[3.0, func(_s: float) -> void:
+			_cam(PI * 0.7, -0.22, 11.0), func() -> void: _shoot("flip_after")],
 	]
 
 

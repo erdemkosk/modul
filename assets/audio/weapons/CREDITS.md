@@ -192,3 +192,5 @@ a water plip and splash, gravel grains. GunFoley plays them all by name.
   modal-synthesis casings (CC0).
 - `flame_loop.wav`: synthesized (a Python one-off): low-passed noise for the roar of burning fuel, a
   little unfiltered hiss and sparse crackles; its ends crossfaded over 0.3 s so it loops. CC0.
+
+- `flip_air.wav`: synthesized for this project (filtered noise burst, a low thump, a metallic stop). CC0.

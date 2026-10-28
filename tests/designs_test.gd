@@ -72,6 +72,11 @@ func _check(data: Array, what: String, style := "", tier := 0) -> void:
 		_expect(s.spikes >= 2, "%s: a spiked nose (%d)" % [what, s.spikes])
 	if style == "brawler":
 		_expect("flamer" in s.guns, "%s: the flamethrower" % what)
+	if style == "flipper":
+		var has := false
+		for e: Array in data:
+			has = has or e[0] == "flipper"
+		_expect(has, "%s: a flipper" % what)
 	if style != "" and s.draw > 2.8:
 		_expect(s.battery, "%s: a battery for guns drawing %.1f kW" % [what, s.draw])
 	# nothing loose: what reaches the cab is everything

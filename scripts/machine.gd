@@ -89,6 +89,7 @@ var alive := true
 var aim_point := Vector3.ZERO
 var firing := false
 var guns: Array[MachineGun] = []
+var flippers: Array[MachineFlipper] = []
 var last_hit_by: Machine
 var last_hit_kind := "" ## (what hurt it last: the death card's line)
 var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
@@ -292,6 +293,7 @@ func rebuild() -> void:
 	part_nodes.clear()
 	tracks.clear()
 	guns.clear()
+	flippers.clear()
 	_lamps.clear()
 	_glows.clear()
 	power_kw = 0.0
@@ -353,6 +355,11 @@ func rebuild() -> void:
 				_add_shape(Vector3(0.3, 0.3, 0.3), xf.origin)
 			"wedge":
 				_add_wedge(xf)
+			"flipper":
+				var fl := MachineFlipper.make(self, node)
+				fl.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+				flippers.append(fl)
+				_add_shape(ext * Vector3(0.95, 0.8, 0.95), xf.origin)
 			_:
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
 	if total_mass <= 0.0:
@@ -622,6 +629,8 @@ func _physics_process(dt: float) -> void:
 	_power(dt)
 	for g in guns:
 		g.update(dt, aim_point, firing and g.armed, powered)
+	for f in flippers:
+		f.update(dt, powered)
 	var fwd := -global_basis.z
 	speed = linear_velocity.dot(fwd)
 	var on_ground: Array[MachineWheel] = []
@@ -749,6 +758,22 @@ func set_down() -> void:
 
 
 ## True with no engine left or nothing left to run on.
+## Fires a flipper that's ready (throwing what's on it, or righting itself on its back). True if one did.
+func flip() -> bool:
+	for f in flippers:
+		if f.fire():
+			return true
+	return false
+
+
+## A flipper's ready and `m` is over it.
+func can_flip(m: Machine) -> bool:
+	for f in flippers:
+		if f.ready() and m in f.over_it():
+			return true
+	return false
+
+
 func immobile() -> bool:
 	return alive and (power_kw <= 0.0 or wheels.is_empty())
 
@@ -775,6 +800,8 @@ func _power(dt: float) -> void:
 		load_kw += g.draw_kw() - float(d[0]) * g._spin - float(d[1]) * g._slew
 		spins = spins or float(d[0]) > 0.0
 		loads = loads or float(d[2]) > 0.0
+	for f in flippers:
+		load_kw += f.draw_kw()
 	draw_kw = 0.1 + lamps_kw + spin_kw + turn_kw + load_kw
 	energy_kj = clampf(energy_kj + (charge_kw - draw_kw) * dt, 0.0, capacity_kj)
 	var was := powered
@@ -965,6 +992,13 @@ func _systems(i: int, amount: float, at: Vector3) -> void:
 				system_hit.emit("AKÜ VURULDU  ·  ŞARJ %%%d" % int(charge_frac() * 100.0), at)
 			if Combat.current:
 				Combat.current.muzzle_flash(at, Vector3.UP, 0.8) # (sparks off its terminals)
+		"flipper":
+			for f in flippers:
+				if f.node == part_nodes[i]:
+					f.condition = frac
+			if frac < 0.5 and not bool(p.get("weak", false)):
+				p.weak = true
+				system_hit.emit("ÇEVİRİCİ HAVA KAÇIRIYOR", at)
 		"weapon":
 			for g in guns:
 				if g.node == part_nodes[i]:

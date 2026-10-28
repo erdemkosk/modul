@@ -81,7 +81,7 @@ func _physics_process(dt: float) -> void:
 	var me := machine.global_position
 	var to := target.com_global() - me
 	var dist := to.length()
-	var rams := machine.guns.is_empty()
+	var rams := machine.guns.is_empty() or not machine.flippers.is_empty() # (a flipper has to get under you)
 	var hurt := machine.health() < 0.35 and not rams
 	var near := range_near * (1.6 if hurt else 1.0)
 	var far := range_far * (1.4 if hurt else 1.0)
@@ -156,10 +156,17 @@ func _physics_process(dt: float) -> void:
 	machine.steer = steer
 	machine.brake = 0.0
 	_aim(dt, dist)
-	# on its side or its roof: a few seconds, then back on its wheels
+	# a flipper and its target over it: throw it
+	if is_instance_valid(target) and machine.can_flip(target):
+		machine.flip()
+	# on its side or its roof: a few seconds, then back on its wheels (in the cage only its own
+	# flipper can do that: no crane there, it's counted out)
 	if machine.global_basis.y.y < 0.3:
 		_flip_t += dt
-		if _flip_t > 4.0:
+		if _flip_t > 1.0 and not machine.flippers.is_empty():
+			if machine.flip():
+				_flip_t = 0.0
+		elif _flip_t > 4.0 and _arena == null:
 			_flip_t = 0.0
 			var yaw := machine.global_basis.get_euler().y
 			machine.linear_velocity = Vector3.ZERO

@@ -252,11 +252,57 @@ func _chip(g: MachineGun, i: int) -> PanelContainer:
 	return plate
 
 
+## The flipper's plate: like a gun's, its key F, its bar the air in its bottle.
+func _flip_chip(f: MachineFlipper) -> PanelContainer:
+	var plate := PanelContainer.new()
+	plate.add_theme_stylebox_override("panel", Ui.glass(true, 8.0))
+	plate.custom_minimum_size = Vector2(196, 0)
+	plate.set_meta("flipper", f)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	plate.add_child(row)
+	var key := PanelContainer.new()
+	var ks := StyleBoxFlat.new()
+	ks.bg_color = Ui.ACCENT
+	ks.set_corner_radius_all(2)
+	ks.content_margin_left = 6
+	ks.content_margin_right = 6
+	ks.skew = Vector2(-Ui.SKEW, 0.0)
+	key.add_theme_stylebox_override("panel", ks)
+	key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(key)
+	Ui.label(key, "F", 18, Color(0.08, 0.05, 0.02), "display").horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var pic := TextureRect.new()
+	if ResourceLoader.exists("res://assets/parts/icons/flipper.png"):
+		pic.texture = load("res://assets/parts/icons/flipper.png")
+	pic.custom_minimum_size = Vector2(52, 52)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(pic)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 1)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(col)
+	Ui.label(col, "ÇEVİRİCİ", 16, Ui.INK, "head")
+	var st := Ui.label(col, "", 12, Ui.DIM, "label")
+	var bar := _canvas(col, Vector2(92, 5), func(c: Control) -> void:
+		var fr := float(plate.get_meta("frac", 1.0))
+		Ui.segments(c, Rect2(Vector2.ZERO, c.size), 12, fr, Ui.GOOD if fr >= 0.999 else Ui.ACCENT, Ui.FAINT, 0.6))
+	plate.set_meta("state", st)
+	plate.set_meta("bar", bar)
+	return plate
+
+
 func _weapons(m: Machine) -> void:
-	var stale := _chips.get_child_count() != m.guns.size()
+	var stale := _chips.get_child_count() != m.guns.size() + m.flippers.size()
 	if not stale:
 		for i in m.guns.size():
 			if _chips.get_child(i).get_meta("gun") != m.guns[i]:
+				stale = true
+		for k in m.flippers.size():
+			if _chips.get_child(m.guns.size() + k).get_meta("flipper") != m.flippers[k]:
 				stale = true
 	if stale:
 		for c in _chips.get_children():
@@ -264,6 +310,19 @@ func _weapons(m: Machine) -> void:
 			c.queue_free()
 		for i in m.guns.size():
 			_chips.add_child(_chip(m.guns[i], i))
+		for f in m.flippers:
+			_chips.add_child(_flip_chip(f))
+	for k in m.flippers.size():
+		var f := m.flippers[k]
+		var plate := _chips.get_child(m.guns.size() + k) as PanelContainer
+		var st := plate.get_meta("state") as Label
+		var up := f._t >= 0.0
+		st.text = "FIRLATTI" if up else ("HAZIR  ·  F" if f.ready() else ("HAVA DOLUYOR" if f.condition > 0.25 else "BOZUK"))
+		if not m.powered:
+			st.text = "AKÜ BİTTİ"
+		st.add_theme_color_override("font_color", Ui.GOOD if f.ready() and m.powered else (Ui.BAD if not m.powered or f.condition <= 0.25 else Ui.ACCENT))
+		plate.set_meta("frac", f.air)
+		(plate.get_meta("bar") as Control).queue_redraw()
 	for i in m.guns.size():
 		var g := m.guns[i]
 		var plate := _chips.get_child(i) as PanelContainer

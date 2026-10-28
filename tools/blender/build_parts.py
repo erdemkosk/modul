@@ -51,7 +51,7 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "wheel_l": (2, 3, 3), "engine": (2, 2, 2), "light": (1, 1, 1),
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
-         "plate": (1, 1, 1)}
+         "plate": (1, 1, 1), "flipper": (2, 1, 3)}
 
 
 def materials():
@@ -913,11 +913,62 @@ def build_plate():
     bolts("BackBolt", (0, -h, 0), (0, -1, 0), 0.3, 0.3, grp="Part")
 
 
+def build_flipper():
+    """A flipper: a steel tray (bolted on at its back) holding a pneumatic ram and its air bottle;
+    over it the flap (node Flap, hinged at the back, its pivot at the hinge pin): a thick plate with
+    a sharpened, hardened front lip, ribbed underneath, the ram's rod eye under it."""
+    sx, sy, sz = ext(PARTS["flipper"])
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    base = -hz
+    # the tray: floor, sides, the back where it bolts on
+    box("Floor", (sx - 0.04, sy - 0.04, 0.03), (0, 0, base + 0.015), "SteelDark", bev=0.005, grp="Part")
+    for s in (-1, 1):
+        box(f"Side{s}", (0.03, sy - 0.1, sz - 0.12), (s * (hx - 0.03), -0.03, base + (sz - 0.12) / 2), "Paint", bev=0.006, grp="Part")
+        for k in range(4):
+            box(f"Lightening{s}{k}", (0.034, 0.16, 0.12), (s * (hx - 0.03), -0.45 + k * 0.3, base + 0.2), "SteelDark", grp="Part")
+    box("Back", (sx - 0.04, 0.05, sz - 0.1), (0, -hy + 0.03, base + (sz - 0.1) / 2), "Paint", bev=0.008, grp="Part")
+    bolts("BackBolt", (0, -hy, base + 0.12), (0, -1, 0), 0.6, 0.1, grp="Part")
+    # the ram: its cylinder lying in the tray, trunnioned at the back, an air bottle and its line
+    cyl("Ram", 0.06, 0.62, (0, -0.2, base + 0.1), axis="Y", segs=18, mat="Spring", bev=0.008, grp="Part")
+    cyl("RamCap", 0.07, 0.04, (0, -0.52, base + 0.1), axis="Y", segs=18, mat="SteelDark", grp="Part")
+    cyl("Bottle", 0.07, 0.5, (-0.28, -0.1, base + 0.1), axis="Y", segs=16, mat="Steel", bev=0.02, grp="Part")
+    cyl("Valve", 0.03, 0.06, (-0.28, -0.38, base + 0.1), axis="Y", segs=10, mat="Exhaust", grp="Part")
+    tube("AirLine", [(-0.28, -0.42, base + 0.1), (-0.15, -0.5, base + 0.14), (0, -0.5, base + 0.12)], 0.012,
+         mat="Rubber", nring=8, sub=4, grp="Part")
+    # hinge knuckles at the back of the tray
+    hinge = Vector((0, -hy + 0.08, hz - 0.05))
+    for x in (-0.38, 0.0, 0.38):
+        cyl(f"Knuckle{x}", 0.04, 0.12, (x, hinge.y, hinge.z), axis="X", segs=14, mat="SteelDark", grp="Part")
+    cyl("Pin", 0.018, sx - 0.06, tuple(hinge), axis="X", segs=10, mat="Steel", grp="Part")
+    # the flap: a plate down to a sharp lip at the front, ribs underneath, the rod's eye
+    L = sy - 0.12
+    t = 0.05
+    prof = [(hinge.y - 0.04, hinge.z + t / 2), (hinge.y + L - 0.12, hinge.z + t / 2), (hinge.y + L, hinge.z - t),
+            (hinge.y + L - 0.12, hinge.z - t / 2), (hinge.y - 0.04, hinge.z - t / 2)]
+    verts = [(x, y, z) for x in (-hx + 0.01, hx - 0.01) for (y, z) in prof]
+    n = len(prof)
+    faces = [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))]
+    for k in range(n):
+        faces.append((k, (k + 1) % n, n + (k + 1) % n, n + k))
+    ob = bt.mk("Plate", verts, faces, ("Paint",), grp="Flap", smooth=0)
+    bt.bevel(ob, 0.008, 2)
+    box("Lip", (sx - 0.04, 0.1, 0.02), (0, hinge.y + L - 0.06, hinge.z - 0.035), "Steel", rot=(-0.3, 0, 0), grp="Flap")
+    for x in (-0.3, 0.0, 0.3):
+        box(f"Rib{x}", (0.03, L - 0.2, 0.05), (x, hinge.y + L * 0.45, hinge.z - 0.05), "SteelDark", grp="Flap")
+    cyl("Eye", 0.035, 0.08, (0, hinge.y + 0.5, hinge.z - 0.07), axis="X", segs=12, mat="Steel", grp="Flap")
+    cyl("Rod", 0.025, 0.3, (0, hinge.y + 0.3, hinge.z - 0.08), axis="Y", segs=10, mat="Steel", grp="Flap")
+    box("Stripe", (sx - 0.2, 0.08, 0.004), (0, hinge.y + L - 0.25, hinge.z + t / 2 + 0.002), "Hazard", grp="Flap")
+    for k in range(3):
+        box(f"Tread{k}", (sx - 0.16, 0.03, 0.006), (0, hinge.y + 0.2 + k * 0.22, hinge.z + t / 2 + 0.003), "SteelDark", grp="Flap")
+    PIVOTS["Flap"] = tuple(hinge)
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
             "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
-            "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate}
+            "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
+            "flipper": build_flipper}
 
 
 def icon(pid):
@@ -967,6 +1018,8 @@ def main():
                 nodes.append(bt.bake_group(g, g, PIVOTS[g]))
         if any(o.get("grp") == "Turret" for o in bpy.data.objects):
             nodes += turret_nodes()
+        if any(o.get("grp") == "Flap" for o in bpy.data.objects):
+            nodes.append(bt.bake_group("Flap", "Flap", PIVOTS["Flap"]))
         vk.export(nodes, os.path.join(OUT_DIR, pid + ".glb"))
         if "--icons" in argv:
             icon(pid)

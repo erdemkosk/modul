@@ -190,7 +190,7 @@ const LABELS := {"raider": "AKINCI", "tank": "TANK", "dummy": "HEDEF", "tracked"
 
 func _bind_keys() -> void:
 	var keys := {"throttle": [KEY_W, KEY_UP], "reverse": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT],
-		"right": [KEY_D, KEY_RIGHT], "brake": [KEY_SPACE], "build": [KEY_TAB, KEY_B], "lights": [KEY_L], "right_up": [KEY_T]}
+		"right": [KEY_D, KEY_RIGHT], "brake": [KEY_SPACE], "build": [KEY_TAB, KEY_B], "lights": [KEY_L], "right_up": [KEY_T], "flip": [KEY_F]}
 	for a: String in keys:
 		if InputMap.has_action(a):
 			continue
@@ -215,6 +215,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		machine.set_lights(not machine.lights_on)
 	elif event.is_action_pressed("right_up") and not builder.active:
 		right_up()
+	elif event.is_action_pressed("flip") and not builder.active and player_input:
+		if machine.flippers.is_empty():
+			say("Çevirici yok: inşada SİLAH sekmesinden takılır")
+		elif not machine.flip():
+			say("Çevirici dolmadı" if machine.powered else "Akü bitti: çevirici çalışmaz")
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and not builder.active:
 		if key.keycode >= KEY_0 and key.keycode <= KEY_9:
@@ -295,6 +300,11 @@ func clear_enemies() -> int:
 
 ## Back on its wheels where it is (rolled over, or stuck nose-down).
 func right_up() -> void:
+	if cage and cage.state == "fight":
+		# in the cage there's no crane: on your back, only your own flipper gets you up
+		if not machine.flip():
+			say("Kafeste ters dönersen ancak çeviriciyle doğrulursun (F)" if machine.flippers.is_empty() else "Çevirici dolmadı")
+		return
 	var p := machine.global_position
 	var yaw := machine.global_basis.get_euler().y
 	machine.linear_velocity = Vector3.ZERO

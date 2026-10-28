@@ -27,7 +27,8 @@ are this project's own.
 | 1-9 · 0 | turn that gun on or off (the others stay as they are: any of them fire together) · all on |
 | C | the camera: chase (behind, up, looking where you aim) · high (over the fight) · from the turret |
 | Esc · K held | pause (go on, settings, the start menu) · rebuild a machine that can't move |
-| L · T | lights · back on its wheels |
+| L · T | lights · back on its wheels (in the cage only with a flipper) |
+| F | fire the flipper |
 | F1 F2 F3 F5 F4 | raider (minigun) · tank (cannon) · target · tracked rocket carrier · a wave (proving ground) |
 | F7 | a new rival from Forge, any style and strength (proving ground) |
 | F6 | clear the other side's machines and the wreckage away (proving ground) |
@@ -66,6 +67,11 @@ are this project's own.
   and the nose; then the cab at the front, a battery if the guns draw more than an engine charges,
   engines until its kW per tonne reaches the round's mark, and wheels or tracks rated for its weight;
   everything checked to bolt to the cab.
+- The flipper (`machine_flipper.gd`): a hinged plate on a pneumatic ram (F). It throws what's
+  standing on it up and over onto its back, and rights its own machine on its back; it fills with
+  air from the battery in 3 s. In the cage there's no crane: on your back, only a flipper gets you
+  up, and 8 s on your back counts you out, rival or you. Forge has a flipper style (a flipper out
+  in front, a minigun), whose crew drives under you and fires it.
 - Parts added: the V8 (200 kW) and the small petrol engine (40 kW), steel plate (light armour), the ram
   head (spikes: knocks it deals bite 1.7× harder) and the flamethrower (a 14 m cone that burns parts).
 - `scripts/builder.gd`: the build screen (its layout after Besiege's builder: part groups as tabs over
@@ -105,5 +111,6 @@ godot --headless --path . -s res://tests/cage_test.gd
 godot --headless --path . -s res://tests/hazard_test.gd
 godot --headless --path . -s res://tests/ai_test.gd
 godot --headless --path . -s res://tests/designs_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge]
+godot --headless --path . -s res://tests/flipper_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip]
 ```

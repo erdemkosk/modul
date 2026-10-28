@@ -297,6 +297,12 @@ func _check(dt: float) -> void:
 	if me.falling:
 		_lost("ÇUKURA DÜŞTÜN")
 		return
+	# you on your back (or unable to move) as long as a rival would be counted out: you are
+	var down := me.immobile() or me.global_basis.y.y < 0.3
+	_still[me] = (float(_still.get(me, 0.0)) + dt) if down else 0.0
+	if float(_still[me]) >= COUNT_OUT:
+		_lost("TERS DÖNDÜN" if me.global_basis.y.y < 0.3 else "HAREKETSİZ KALDIN")
+		return
 	var standing := 0
 	for e in rivals:
 		if not is_instance_valid(e) or not e.alive or e.falling:
