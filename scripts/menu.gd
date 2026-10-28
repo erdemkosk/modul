@@ -7,6 +7,8 @@ extends Control
 ## the proving ground (the arena), the valley, the settings, out.
 
 static var open_missions := false ## (back from a mission: its list again)
+## GÖREVLER on the menu (off for now: the missions are kept, to be taken up again later).
+const MISSIONS_SHOWN := false
 
 var _settings: SettingsPanel
 var _list: PanelContainer
@@ -60,10 +62,11 @@ func _ready() -> void:
 	var gap := Control.new()
 	gap.custom_minimum_size.y = 34
 	col.add_child(gap)
-	_item(col, "GÖREVLER", "Endüstriyel sahalar: bacayı, su kulesini, yakıt tanklarını indir. Çamur, kar, yağmur hepsine işler", "missions", 0)
+	if MISSIONS_SHOWN:
+		_item(col, "GÖREVLER", "Endüstriyel sahalar: bacayı, su kulesini, yakıt tanklarını indir. Çamur, kar, yağmur hepsine işler", "missions", 0)
 	_item(col, "KAFES", "Seyirci önünde turnuva: her turda yeni zemin, yeni rakip, turlar arası onarım", "cage", 1)
 	_item(col, "TEST ALANI", "Arenada kur, dene, dövüş: rakip araçlar, kırılan siper, çamur çukurları", "arena", 2)
-	_item(col, "VADİ", "İki kilometrelik vadi: avcı araçlar dolaşır; parçaladığının sağlam parçalarını topla, onlarla kur", "valley", 3)
+	_item(col, "VADİ", "İki kilometrelik vadi: avcı araçlar dolaşır, eski sahaları robotlar korur; parçaladığının sağlam parçalarını topla, onlarla kur", "valley", 3)
 	_item(col, "AYARLAR", "", "settings", 4)
 	_item(col, "ÇIKIŞ", "", "", 5)
 	Settings.apply(get_tree())

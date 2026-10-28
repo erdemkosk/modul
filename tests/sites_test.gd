@@ -1,7 +1,7 @@
 extends SceneTree
 ## Headless check of the valley's works sites (works_sites.gd, Mode "valley"):
 ##   godot --headless --path . -s res://tests/sites_test.gd
-## 1. There are six, the same each time, on dry, flat ground, far enough from the start and apart.
+## 1. There are four to six (as many as open ground allows), the same each time, on dry, flat ground, far enough from the start and apart.
 ## 2. Come near one, it's put up: its building and its robots; gone far, it's taken away.
 ## 3. Its robots killed, they stay dead (put up again, they're not there); the last one clears it and
 ##    its cache lies out lit to take; cleared and dead are kept (a new valley reads them back).
@@ -81,14 +81,14 @@ func _physics_process(_d: float) -> bool:
 			var sites: Array = _s.get("sites")
 			var t: Node = _g.get("terrain")
 			var start: Vector3 = (t.get("spawn") as Transform3D).origin
-			var ok := sites.size() == 6
+			var ok := sites.size() >= 4 and sites.size() <= 6
 			for a: Dictionary in sites:
 				ok = ok and Vector2(a.at.x - start.x, a.at.z - start.z).length() >= 220.0 and not bool(t.call("is_water", a.at.x, a.at.z))
 				for b: Dictionary in sites:
 					if a != b:
 						ok = ok and (a.at as Vector3).distance_to(b.at) >= 300.0
 			print("sites: %s" % ", ".join(sites.map(func(a: Dictionary) -> String: return "%s at (%.0f, %.0f) %d robots" % [a.name, a.at.x, a.at.z, a.robots.size()])))
-			_expect(ok, "six, on dry ground, away from the start and apart")
+			_expect(ok, "four to six, on dry ground, away from the start and apart")
 			_r.first = (sites[0].at as Vector3)
 			_me().invulnerable = true
 			_go(0, 60.0)
@@ -99,7 +99,7 @@ func _physics_process(_d: float) -> bool:
 			var rs := _robots(0)
 			var n: int = _s.get("sites")[0].robots.size()
 			print("near: %d nodes, %d robots of %d" % [_s.get("sites")[0].nodes.size(), rs.size(), n])
-			_expect(rs.size() == n and _s.get("sites")[0].nodes.size() == n + 2, "come near, it's put up: its building, its lamp, its robots")
+			_expect(rs.size() == n and _s.get("sites")[0].nodes.size() >= n + 2, "come near, it's put up: its building, its lamp, its yard, its robots")
 			# kill one, go away, come back: it stays dead
 			rs[0].call("take_hit", 5000.0, (rs[0] as Node3D).global_position, Vector3.FORWARD)
 			_go(0, 500.0)

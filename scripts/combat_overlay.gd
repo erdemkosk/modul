@@ -292,6 +292,31 @@ func _draw() -> void:
 			draw_colored_polygon(p, hc)
 			var txt := "%d m" % int(dist)
 			draw_string(font, edge - dir * 22.0 + Vector2(-12.0, 4.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.INK)
+	# the works robots near you: what each is, how far, what's left of it (on the screen only)
+	for n in get_tree().get_nodes_in_group("robots"):
+		var rb := n as Node3D
+		if not bool(rb.get("alive")):
+			continue
+		var dist := me.distance_to(rb.global_position)
+		var top := rb.global_position + Vector3.UP * 2.4
+		if dist > 120.0 or cam.is_position_behind(top):
+			continue
+		var s := cam.unproject_position(top)
+		if not Rect2(Vector2(40, 40), screen - Vector2(80, 80)).has_point(s):
+			continue
+		var w := 54.0
+		var name := "%s  %d m" % [str(rb.call("title")), int(dist)]
+		var ts := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+		var box := Rect2(s + Vector2(-maxf(ts.x, w) * 0.5 - 2.0, -10.0 - ts.y), Vector2(maxf(ts.x, w) + 4.0, ts.y + 16.0))
+		var dy := _clear_of(box, taken)
+		s.y += dy
+		box.position.y += dy
+		taken.append(box)
+		var h := float(rb.call("hp_frac"))
+		draw_string_outline(font, s + Vector2(-ts.x * 0.5, -8.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.6))
+		draw_string(font, s + Vector2(-ts.x * 0.5, -8.0), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Ui.INK)
+		draw_rect(Rect2(s + Vector2(-w * 0.5 - 1.0, -1.0), Vector2(w + 2.0, 6.0)), Color(0, 0, 0, 0.5))
+		Ui.segments(self, Rect2(s + Vector2(-w * 0.5, 0.0), Vector2(w, 4.0)), 8, h, Ui.BAD if h < 0.35 else Ui.ACCENT, Color(1, 1, 1, 0.15), 0.6)
 	# what you hit: numbers rising off it
 	for p: Dictionary in _pops:
 		var at: Vector3 = p.at

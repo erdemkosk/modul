@@ -19,6 +19,8 @@ var _flip := false
 var _sites := false
 var _mission := ""
 var _spin := false
+var _robots := false
+var _worksite := false
 var _st := {}
 var _cage := false
 var _t := 0.0
@@ -52,6 +54,13 @@ func _initialize() -> void:
 			_sites = true
 		if a == "--spin":
 			_spin = true
+		if a == "--robots":
+			_robots = true
+		if a == "--worksite":
+			_worksite = true
+			_valley = true
+			(load("res://scripts/works_sites.gd") as GDScript).set("path", "user://shots_sites.cfg")
+			Inventory.path = "user://shots_inventory.cfg"
 		if a.begins_with("--mission="):
 			_mission = a.substr(10)
 	DirAccess.make_dir_recursive_absolute(_out)
@@ -97,7 +106,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else (_spin_steps() if _spin else _arena_steps())))))))))
+	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else _all_steps())
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -109,6 +118,10 @@ func _process(dt: float) -> bool:
 	_step += 1
 	_mark = _t
 	return false
+
+
+func _all_steps() -> Array:
+	return _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else (_spin_steps() if _spin else _arena_steps())))))))))
 
 
 ## Forge's rivals, one of each style, side by side; the builder's ready designs; the flamethrower.
@@ -275,6 +288,94 @@ func _spin_steps() -> Array:
 			b.select("rotor", false)],
 		[2.0, func(_s: float) -> void:
 			_cam(PI * 0.75, -0.5, 9.0), func() -> void: _shoot("spin_builder")],
+	]
+
+
+var _rb := {}
+
+
+## The new blocks (a minigun on a turret turned aside; one fed and long-barrelled) and the works
+## robots: a sentry and a warden by day, fighting, the warden a wreck, the sentry's lamp at night.
+func _robot_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_g.set("player_input", false)
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			var d := Designs.starter()
+			d.append_array([["turret", 0, 3, 0, 0], ["minigun", 0, 4, 0, 0], ["ammo", 0, 3, 2, 0], ["barrel", 1, 3, 2, 0]])
+			_m.from_data(d)],
+		[2.0, func(_s: float) -> void:
+			_m.brake = 1.0
+			_m.aim_point = _m.global_transform * Vector3(-20.0, 2.0, -8.0)
+			_cam(PI * 0.78, -0.35, 7.0), func() -> void: _shoot("blocks_turret")],
+		[0.3, _noop, func() -> void:
+			var d := Designs.starter()
+			d.append_array([["minigun", 0, 3, 0, 0], ["ammo", 0, 3, 2, 0], ["barrel", 1, 3, 2, 0]])
+			_m.from_data(d)],
+		[1.5, func(_s: float) -> void:
+			_m.aim_point = _m.global_transform * Vector3(0.0, 1.5, -30.0)
+			_cam(PI * 0.6, -0.4, 6.0), func() -> void: _shoot("blocks_kit")],
+		[0.3, _noop, func() -> void:
+			var t: Node = _g.get("terrain")
+			for e: Array in [["sentry", Vector3(-4.0, 0.0, -11.0)], ["warden", Vector3(3.5, 0.0, -9.0)]]:
+				var at: Vector3 = _m.global_transform * (e[1] as Vector3)
+				at.y = float(t.call("height_at", at.x, at.z))
+				var r: CharacterBody3D = (load("res://scripts/robot.gd") as GDScript).call("make", e[0], Transform3D(Basis.IDENTITY, at), _g, t)
+				_g.add_child(r)
+				r.set_physics_process(false)
+				_rb[e[0]] = r],
+		[1.5, func(_s: float) -> void:
+			_cam(0.25, -0.22, 9.0), func() -> void: _shoot("robots_day")],
+		[0.2, _noop, func() -> void:
+			for r: Node in _rb.values():
+				r.set_physics_process(true)],
+		[2.6, func(_s: float) -> void:
+			_cam(0.5, -0.25, 10.0), func() -> void: _shoot("robots_fight")],
+		[0.2, _noop, func() -> void:
+			var w: Node3D = _rb["warden"]
+			w.call("take_hit", 9999.0, w.global_position + Vector3.UP, Vector3.LEFT)],
+		[2.0, func(_s: float) -> void:
+			_cam(0.5, -0.3, 9.0), func() -> void: _shoot("robots_wreck")],
+		[0.2, _noop, func() -> void:
+			# close: a fresh pair just behind the machine, between it and the camera
+			var t: Node = _g.get("terrain")
+			for e: Array in [["sentry", Vector3(-2.5, 0.0, 5.5)], ["warden", Vector3(2.5, 0.0, 6.0)]]:
+				var at: Vector3 = _m.global_transform * (e[1] as Vector3)
+				at.y = float(t.call("height_at", at.x, at.z))
+				var r: CharacterBody3D = (load("res://scripts/robot.gd") as GDScript).call("make", e[0], Transform3D(Basis(Vector3.UP, PI * 0.8), at), _g, t)
+				_g.add_child(r)
+				r.set_physics_process(false)
+				_rb["close_" + str(e[0])] = r],
+		[1.5, func(_s: float) -> void:
+			_cam(0.0, -0.18, 13.0), func() -> void: _shoot("robots_close")],
+		[0.2, _noop, func() -> void:
+			(_g.get("weather") as Weather).hour = 22.5
+			for k: String in ["close_sentry", "close_warden"]:
+				(_rb[k] as Node).set_physics_process(true)],
+		[2.5, func(_s: float) -> void:
+			_cam(0.1, -0.15, 9.0), func() -> void: _shoot("robots_night")],
+	]
+
+
+## The valley: a works site, its building and its robots, from where you'd come on it.
+func _worksite_steps() -> Array:
+	return [
+		[8.0, func(_s: float) -> void: _g.set("player_input", false), func() -> void:
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			var ws: Node = _g.get("sites")
+			var at: Vector3 = ws.get("sites")[2].at
+			var t: Node = _g.get("terrain")
+			var p := at + Vector3(0.0, 0.0, 30.0)
+			p.y = float(t.call("height_at", p.x, p.z)) + 1.5
+			_m.linear_velocity = Vector3.ZERO
+			_m.global_transform = Transform3D(Basis.IDENTITY, p)],
+		[3.0, func(_s: float) -> void:
+			_m.brake = 1.0
+			_cam(0.0, -0.2, 11.0), func() -> void: _shoot("worksite_near")],
+		[4.0, func(_s: float) -> void:
+			_cam(0.0, -0.2, 11.0), func() -> void: _shoot("worksite_fight")],
 	]
 
 

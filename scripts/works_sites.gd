@@ -1,15 +1,16 @@
 extends Node
 ## The valley's works sites: old works out in the valley (a pump house's tower, a transformer yard,
 ## a store, a silo), each still guarded by its robots (robot.gd) turned on whoever comes. They're
-## where they are for good (seeded: the same valley, the same sites), on dry, flat ground away from
-## where you start and from each other.
+## where they are for good (seeded: the same valley, the same sites), on open ground (no trees or
+## rocks on it), dry (no water, mud or deep snow) and flat, away from where you start and from each
+## other; the grass on a site is worn away.
 ##
 ## A site is there while you're within NEAR of it (taken away past FAR, as it was left); its robots
 ## that die stay dead (kept in `path`). A robot's wreck now and then leaves a part to take (Salvage);
 ## kill the last of a site's robots and it's cleared: its cache is left out to take (three or four
 ## parts, the better ones: turrets, ammo, barrels, guns, an engine), once.
 
-const COUNT := 6
+const COUNT := 6 ## (at most: as many as there's open ground for)
 const NEAR := 280.0
 const FAR := 380.0
 const NAMES := ["ESKİ POMPA İSTASYONU", "TRAFO SAHASI", "TERK EDİLMİŞ DEPO", "SİLO SAHASI", "SU DEPOSU", "MAKİNE ATÖLYESİ"]
@@ -23,10 +24,13 @@ static var path := "user://valley_sites.cfg" ## (tests point it elsewhere)
 var game: Node
 var terrain: Node
 var sites: Array[Dictionary] = [] ## {name, at, yaw, building, robots: [[kind, offset]], dead, cleared, nodes}
+var _props: Node ## (WorldProps: the valley's trees and rocks)
 
 
 func _ready() -> void:
 	name = "WorksSites"
+	var found := game.find_children("*", "WorldProps", true, false)
+	_props = found[0] if not found.is_empty() else null
 	_place()
 	var cf := ConfigFile.new()
 	cf.load(path)
@@ -49,7 +53,7 @@ func _place() -> void:
 	rng.seed = 4711
 	var lim := float(terrain.get("half")) - 120.0 if terrain.get("half") != null else 900.0
 	var start: Vector3 = (terrain.get("spawn") as Transform3D).origin if terrain.get("spawn") != null else Vector3.ZERO
-	for tries in 600:
+	for tries in 3000:
 		if sites.size() >= COUNT:
 			break
 		var p := Vector3(rng.randf_range(-lim, lim), 0.0, rng.randf_range(-lim, lim))
@@ -79,17 +83,43 @@ func _place() -> void:
 			"robots": robots, "cache": cache, "dead": [], "cleared": false, "nodes": []})
 
 
-## Flat, dry ground for a site: no water within it, the ground within 18 m less than 2.5 m up or down.
+## Open, flat, dry ground for a site: within 18 m no water, mud or deep snow and the ground less than
+## 2.5 m up or down; no tree or rock within 24 m.
 func _fits(p: Vector3) -> bool:
 	var h := float(terrain.call("height_at", p.x, p.z))
-	for k in 8:
+	for k in 9:
 		var a := k * TAU / 8.0
-		var q := p + Vector3(cos(a), 0.0, sin(a)) * 18.0
+		var q := p + (Vector3(cos(a), 0.0, sin(a)) * 18.0 if k < 8 else Vector3.ZERO)
 		if terrain.has_method("is_water") and bool(terrain.call("is_water", q.x, q.z)):
 			return false
 		if absf(float(terrain.call("height_at", q.x, q.z)) - h) > 2.5:
 			return false
-	return not (terrain.has_method("is_water") and bool(terrain.call("is_water", p.x, p.z)))
+		if terrain.has_method("soft_at"):
+			var soft: Vector2 = terrain.call("soft_at", q.x, q.z)
+			if soft.x > 0.25 or soft.y > 0.4:
+				return false
+	return not _props_near(p, 24.0)
+
+
+## A tree or a rock (standing) within `r` m of `p`.
+func _props_near(p: Vector3, r: float) -> bool:
+	if _props == null:
+		return false
+	var grid: Dictionary = _props.get("_grid")
+	var xf: Array = _props.get("_xf")
+	var cut: Dictionary = _props.get("cut")
+	var cell := WorldProps.CELL
+	var c0 := Vector2i(floori((p.x - r) / cell), floori((p.z - r) / cell))
+	var c1 := Vector2i(floori((p.x + r) / cell), floori((p.z + r) / cell))
+	for cx in range(c0.x, c1.x + 1):
+		for cz in range(c0.y, c1.y + 1):
+			for i: int in grid.get(Vector2i(cx, cz), []):
+				if cut.has(i):
+					continue
+				var o: Vector3 = (xf[i] as Transform3D).origin
+				if Vector2(o.x - p.x, o.z - p.z).length() < r:
+					return true
+	return false
 
 
 func _physics_process(_dt: float) -> void:
@@ -113,9 +143,29 @@ func _physics_process(_dt: float) -> void:
 func _raise(i: int) -> void:
 	var s: Dictionary = sites[i]
 	var at: Vector3 = s.at
+	if terrain.has_method("clear_grass"):
+		terrain.call("clear_grass", at, 16.0) # (a works yard: trodden bare)
+		terrain.call("commit_digs")
 	var b := Structures.make(s.building, Transform3D(Basis(Vector3.UP, float(s.yaw)), at), terrain)
 	game.add_child(b)
 	s.nodes.append(b)
+	# the yard round it: containers, drums, barriers (where they were left: the same each time)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 977 + i
+	for k in 7:
+		var a := rng.randf() * TAU
+		var o := Vector3(cos(a), 0.0, sin(a)) * rng.randf_range(9.0, 15.0)
+		var clash := false
+		for r: Array in s.robots:
+			clash = clash or Vector2(o.x, o.z).distance_to(r[1]) < 3.5
+		if clash:
+			continue # (not on top of a robot's post)
+		var q := at + o
+		q.y = float(terrain.call("height_at", q.x, q.z))
+		var kind: String = ["container", "drum", "drum", "barrier", "crate", "barrier", "drum"][k]
+		var br := Breakable.make(kind, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), q))
+		game.add_child(br)
+		s.nodes.append(br)
 	var lamp := Structures.make("lamp", Transform3D(Basis(Vector3.UP, float(s.yaw)), at + Vector3(7.0, 0.0, -5.0)), terrain)
 	lamp.position.y = float(terrain.call("height_at", lamp.position.x, lamp.position.z))
 	game.add_child(lamp)

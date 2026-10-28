@@ -54,6 +54,8 @@ var _knock := Vector3.ZERO
 var _spark_t := 0.0
 var _heading := 0.0
 var _arm := 0.0
+var _detour_t := 0.0 ## (going round something it ran into)
+var _detour := 1.0
 
 
 static func make(kind_: String, at: Transform3D, game_: Node, terrain_: Node) -> CharacterBody3D:
@@ -189,10 +191,10 @@ func _build_sentry() -> void:
 	_lamp = SpotLight3D.new()
 	_lamp.position = Vector3(0, 0.3, -0.3)
 	_lamp.spot_range = 45.0
-	_lamp.spot_angle = 14.0
-	_lamp.light_energy = 6.0
+	_lamp.spot_angle = 20.0
+	_lamp.light_energy = 9.0
 	_lamp.light_color = Color(1.0, 0.95, 0.85)
-	_lamp.shadow_enabled = true
+	_lamp.shadow_enabled = false # (a site has several: their shadows cost too much)
 	gun.add_child(_lamp)
 	_beacon_on(_head, Vector3(0, 0.38, 0.18))
 
@@ -378,7 +380,10 @@ func _warden(dt: float, t: Machine) -> void:
 		to.y = 0.0
 		var d := to.length()
 		if d < CHASE:
-			_heading = lerp_angle(_heading, atan2(-to.x, -to.z), clampf(dt * 2.5, 0.0, 1.0))
+			# straight at you; run into something (a wall, a container), it goes round it a while
+			_detour_t = maxf(_detour_t - dt, 0.0)
+			var way := atan2(-to.x, -to.z) + (_detour * 1.1 if _detour_t > 0.0 else 0.0)
+			_heading = lerp_angle(_heading, way, clampf(dt * 2.5, 0.0, 1.0))
 			close = d < WARDEN_REACH + _radius_of(t)
 			if not close:
 				want = Vector3(-sin(_heading), 0.0, -cos(_heading)) * WARDEN_SPEED * slow
@@ -393,6 +398,9 @@ func _warden(dt: float, t: Machine) -> void:
 		_knock = Vector3.ZERO
 	velocity.y = velocity.y - 9.8 * dt if not is_on_floor() else maxf(velocity.y, -0.5)
 	move_and_slide()
+	if is_on_wall() and _detour_t <= 0.0 and want.length() > 1.0:
+		_detour_t = 1.4
+		_detour = 1.0 if randf() < 0.5 else -1.0
 	# the arm: raised as it comes, brought down on what it reaches, the disc always running
 	_disc.rotate_object_local(Vector3.RIGHT, dt * 40.0)
 	_arm = move_toward(_arm, (1.0 if fmod(Time.get_ticks_msec() / 1000.0, WARDEN_CUT_T) < WARDEN_CUT_T * 0.5 else -0.2) if close else 0.5, dt * 6.0)
@@ -425,6 +433,15 @@ func _ground() -> Surface:
 	if terrain and terrain.has_method("surface_at"):
 		return terrain.call("surface_at", global_position) as Surface
 	return null
+
+
+## What it's called on the screen, and what's left of it 0..1 (CombatOverlay).
+func title() -> String:
+	return "NÖBETÇİ" if kind == "sentry" else "BEKÇİ ROBOT"
+
+
+func hp_frac() -> float:
+	return clampf(hp / float(HP[kind]), 0.0, 1.0)
 
 
 # --- Hurt -----------------------------------------------------------------------------------------
