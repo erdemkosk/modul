@@ -14,7 +14,9 @@ extends RefCounted
 ## second up on an engine, now and then from the third round), armour or plates or rams across the front by the round, a
 ## battery if the guns draw more than the engines charge, the running gear chosen for the weight (road
 ## wheels, off-road wheels, tracks: rated for what it weighs, with a margin), and engines added until
-## its power for its weight reaches the round's mark. Everything's checked to bolt to the cab.
+## its power for its weight reaches the round's mark; from the second round now and then an ammo box
+## or a barrel kit beside the roof gun, where something holds it up. Everything's checked to bolt to
+## the cab.
 ##
 ##   make(seed_, tier, style = "")  -> {name, style, data}  (data: the [id, x, y, z, rot] rows)
 
@@ -164,6 +166,12 @@ func _build() -> void:
 			break
 		if not _add_engine(light, heavy):
 			break
+	# from the second round: an ammo box feeding the roof gun, a barrel kit for a gun that reaches
+	if not guns.is_empty() and tier >= 1:
+		if rng.randf() < 0.3 + 0.15 * tier:
+			_beside_gun("ammo", guns[0], Vector3i(cx, 3, cz))
+		if guns[0] != "flamer" and rng.randf() < 0.15 + 0.15 * tier:
+			_beside_gun("barrel", guns[0], Vector3i(cx, 3, cz))
 	# lights at the front corners (or on the roof of a cab with no gun)
 	for x: int in [x0, x1]:
 		if style != "spinner":
@@ -193,6 +201,20 @@ func _place_on_bed(id: String) -> bool:
 					continue
 				if _put(id, at):
 					return true
+	return false
+
+
+## A box beside the gun at `at`, on its level, standing on something that holds it (it bolts down there).
+func _beside_gun(id: String, gun: String, at: Vector3i) -> bool:
+	var own := Parts.cells_of(gun, at, 0)
+	for c in own:
+		for n: Vector3i in [Vector3i(0, 0, 1), Vector3i(1, 0, 0), Vector3i(-1, 0, 0)]:
+			var p := c + n
+			if p in own or _occ.has(p):
+				continue
+			var under: String = _occ.get(p + Vector3i.DOWN, "")
+			if under in ["cab", "block", "engine", "wedge"] and _put(id, p):
+				return true
 	return false
 
 

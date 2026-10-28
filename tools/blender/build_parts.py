@@ -51,7 +51,8 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "wheel_l": (2, 3, 3), "engine": (2, 2, 2), "light": (1, 1, 1),
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
-         "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1)}
+         "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1),
+         "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1)}
 
 
 def materials():
@@ -1020,12 +1021,88 @@ def build_piston():
     PIVOTS["Top"] = (0, 0, 0)
 
 
+def build_turret():
+    """A slewing ring: a square steel base bolted down, the toothed ring and the drive motor's pinion
+    in it; on it the deck (node Top, turning about its middle) with a bolt grid for what's put on it,
+    a low skirt round it and a chevron to show where its front is."""
+    sx, sy, sz = ext(PARTS["turret"])
+    hz = sz / 2
+    box("Base", (sx - 0.04, sy - 0.04, 0.08), (0, 0, -hz + 0.04), "SteelDark", bev=0.008, grp="Part")
+    bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.8, sy * 0.8, grp="Part")
+    for x in (-1, 1):
+        for y in (-1, 1):
+            box(f"Gusset{x}{y}", (0.12, 0.12, 0.1), (x * (sx / 2 - 0.1), y * (sy / 2 - 0.1), -hz + 0.13), "Paint", bev=0.006, grp="Part")
+    cyl("Ring", 0.44, 0.1, (0, 0, -hz + 0.13), segs=48, mat="Steel", grp="Part")
+    for k in range(36):
+        a = k * 2 * PI / 36
+        box(f"Tooth{k}", (0.03, 0.02, 0.08), (math.cos(a) * 0.455, math.sin(a) * 0.455, -hz + 0.13), "SteelDark",
+            rot=(0, 0, a), grp="Part")
+    box("MotorBox", (0.14, 0.2, 0.14), (0.36, -0.36, -hz + 0.15), "Paint", bev=0.01, grp="Part")
+    cyl("Pinion", 0.04, 0.06, (0.33, -0.3, -hz + 0.13), segs=10, mat="SteelDark", grp="Part")
+    tube("Cable", [(0.43, -0.36, -hz + 0.12), (0.47, -0.3, -hz + 0.1), (0.47, -0.1, -hz + 0.09)], 0.012,
+         mat="Rubber", nring=8, sub=3, grp="Part")
+    # the deck
+    box("Deck", (sx - 0.08, sy - 0.08, 0.07), (0, 0, hz - 0.035), "Paint", bev=0.012, grp="Top")
+    box("Skirt", (sx - 0.12, sy - 0.12, 0.08), (0, 0, hz - 0.11), "PaintDark", bev=0.008, grp="Top")
+    for i in range(3):
+        for j in range(3):
+            cyl(f"Hole{i}{j}", 0.022, 0.012, ((i - 1) * 0.3, (j - 1) * 0.3, hz + 0.001), segs=8, mat="SteelDark", grp="Top")
+    for k, sgn in enumerate((-1, 1)):
+        box(f"Chevron{k}", (0.2, 0.05, 0.005), (sgn * 0.07, sy / 2 - 0.16, hz + 0.003), "Hazard",
+            rot=(0, 0, sgn * 0.6), grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
+def build_ammo():
+    """An ammunition box: pressed steel in olive, ribbed, its lid clamped shut by two latches, a
+    carrying handle, a stencilled band; bolted down through its feet."""
+    s = CELL
+    h = s / 2
+    box("Body", (s - 0.08, s - 0.14, s - 0.1), (0, 0, -0.04), "Olive", bev=0.012, grp="Part")
+    for y in (-0.11, 0.0, 0.11):
+        box(f"Rib{y}", (s - 0.06, 0.025, s - 0.2), (0, y, -0.05), "Olive", bev=0.006, grp="Part")
+    box("Lid", (s - 0.06, s - 0.12, 0.05), (0, 0, h - 0.07), "Olive", bev=0.01, grp="Part")
+    box("Seal", (s - 0.09, s - 0.15, 0.012), (0, 0, h - 0.1), "Rubber", grp="Part")
+    for x in (-0.13, 0.13):
+        box(f"Latch{x}", (0.06, 0.03, 0.12), (x, -(s - 0.14) / 2 - 0.012, h - 0.12), "Steel", bev=0.004, grp="Part")
+    cyl_between("Handle", (-0.09, 0, h - 0.02), (0.09, 0, h - 0.02), 0.012, mat="SteelDark", grp="Part")
+    for x in (-0.09, 0.09):
+        cyl_between(f"HandlePost{x}", (x, 0, h - 0.05), (x, 0, h - 0.02), 0.012, mat="SteelDark", grp="Part")
+    box("Band", (s - 0.079, 0.004, 0.06), (0, -(s - 0.14) / 2 - 0.001, 0.02), "Spring", grp="Part")
+    box("Stencil", (0.22, 0.003, 0.03), (0, -(s - 0.14) / 2 - 0.004, -0.06), "Hazard", grp="Part")
+    for x in (-1, 1):
+        box(f"Foot{x}", (0.06, s - 0.06, 0.04), (x * 0.17, 0, -h + 0.02), "SteelDark", bev=0.004, grp="Part")
+    bolts("FootBolt", (0, 0, -h), (0, 0, -1), 0.34, 0.34, grp="Part")
+
+
+def build_barrel():
+    """A barrel kit: two spare barrels with their cooling jackets laid in a cradle on a bolted base,
+    held by straps, a clamp and a coupling ready to go on."""
+    s = CELL
+    h = s / 2
+    box("Base", (s - 0.04, s - 0.04, 0.05), (0, 0, -h + 0.025), "SteelDark", bev=0.006, grp="Part")
+    bolts("BaseBolt", (0, 0, -h), (0, 0, -1), 0.3, 0.3, grp="Part")
+    for y in (-0.16, 0.16):
+        box(f"Cradle{y}", (s - 0.08, 0.05, 0.16), (0, y, -h + 0.13), "Paint", bev=0.008, grp="Part")
+    for x in (-0.1, 0.1):
+        z = -h + 0.25
+        cyl(f"Tube{x}", 0.045, s - 0.04, (x, 0, z), axis="Y", segs=18, mat="SteelDark", grp="Part")
+        for k in range(5):
+            cyl(f"Jacket{x}{k}", 0.058, 0.025, (x, -0.18 + k * 0.09, z), axis="Y", segs=18, mat="Steel", grp="Part")
+        cyl(f"Bore{x}", 0.02, 0.01, (x, (s - 0.04) / 2 + 0.001, z), axis="Y", segs=10, mat="Slot", grp="Part")
+    for y in (-0.16, 0.16):
+        box(f"Strap{y}", (s - 0.1, 0.035, 0.012), (0, y, -h + 0.31), "Rubber", grp="Part")
+    cyl("Coupling", 0.07, 0.09, (0, 0, h - 0.07), segs=18, mat="Steel", grp="Part")
+    box("Tag", (0.12, 0.003, 0.05), (0.13, -(s - 0.08) / 2, -h + 0.13), "Hazard", grp="Part")
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
             "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
             "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
-            "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston}
+            "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston,
+            "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel}
 
 
 def icon(pid):

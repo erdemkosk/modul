@@ -236,7 +236,19 @@ func _chip(g: MachineGun, i: int) -> PanelContainer:
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(col)
-	Ui.label(col, NAME.get(g.kind, g.kind), 16, Ui.INK, "head")
+	var title := HBoxContainer.new()
+	title.add_theme_constant_override("separation", 6)
+	col.add_child(title)
+	Ui.label(title, NAME.get(g.kind, g.kind), 16, Ui.INK, "head")
+	# what's bolted beside it: a box feeding it, a long barrel
+	var extras := PackedStringArray()
+	if g.feed > 0:
+		extras.append("BESLEME" + ("×2" if g.feed > 1 else ""))
+	if g.kit > 0:
+		extras.append("UZUN NAMLU" + ("×2" if g.kit > 1 else ""))
+	if not extras.is_empty():
+		var ex := Ui.label(title, " · ".join(extras), 11, Ui.ACCENT, "label")
+		ex.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var st := Ui.label(col, "", 12, Ui.DIM, "label")
 	var bar := _canvas(col, Vector2(92, 5), func(c: Control) -> void:
 		var f := float(plate.get_meta("frac", 1.0))
@@ -301,8 +313,8 @@ func _joint_chip(jt: MachineJoint) -> PanelContainer:
 	plate.set_meta("flipper", null)
 	plate.set_meta("joint", jt)
 	var row := plate.get_child(0)
-	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = OS.get_keycode_string(jt.key) if jt.key != 0 else "E"
-	var id: String = {"hinge": "hinge", "rotor": "rotor", "piston": "piston"}[jt.kind]
+	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = OS.get_keycode_string(jt.key) if jt.key != 0 else ("OTO" if jt.kind == "turret" else "E")
+	var id: String = jt.kind # (the part's id is its kind)
 	if ResourceLoader.exists("res://assets/parts/icons/%s.png" % id):
 		(row.get_child(1) as TextureRect).texture = load("res://assets/parts/icons/%s.png" % id)
 	((row.get_child(2) as VBoxContainer).get_child(0) as Label).text = Ui.upper(str(Parts.def(id).name))
@@ -344,6 +356,9 @@ func _weapons(m: Machine) -> void:
 			"rotor":
 				frac = absf(jt.rate) / MachineJoint.SPIN
 				st.text = "KİLİTLİ" if jt.locked else ("%d DEV/DK" % int(absf(jt.rate) * 60.0 / TAU) if frac > 0.02 else "DURUYOR")
+			"turret":
+				frac = 1.0 - clampf(jt.aim_err / PI, 0.0, 1.0)
+				st.text = "KİLİTLİ" if jt.locked else ("ÖNDE SABİT" if not jt.on else ("NİŞANDA" if jt.aim_err < 0.05 else "DÖNÜYOR"))
 			"piston":
 				frac = jt.angle / MachineJoint.STROKE
 				st.text = "KİLİTLİ" if jt.locked else ("DIŞARIDA" if frac > 0.98 else ("İÇERİDE" if frac < 0.02 else "HAREKETTE"))

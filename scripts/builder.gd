@@ -36,12 +36,13 @@ const BAD := Color(1.0, 0.42, 0.32)
 const GOOD := Color(0.55, 0.9, 0.5)
 ## The keys that pick the parts, in Parts.ORDER (the cab left out).
 const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_Q, KEY_E, KEY_Z, KEY_X,
-	KEY_C, KEY_F, KEY_H, KEY_N, KEY_U, KEY_I, KEY_O]
-const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N", "U", "I", "O"]
+	KEY_C, KEY_F, KEY_H, KEY_N, KEY_U, KEY_I, KEY_O, KEY_J, KEY_P, KEY_G]
+const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N", "U", "I", "O",
+	"J", "P", "G"]
 ## The cards' groups.
 const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
-	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "flipper"]],
-	["HAREKET", ["hinge", "rotor", "piston"]]]
+	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel", "flipper"]],
+	["HAREKET", ["turret", "hinge", "rotor", "piston"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine
@@ -721,7 +722,7 @@ func _make_ghost() -> void:
 
 
 func _ghost_of(id: String) -> Node3D:
-	var g := (load(Parts.model(id)) as PackedScene).instantiate() as Node3D
+	var g := ((load(Parts.model(id)) if ResourceLoader.exists(Parts.model(id)) else Machine._stand_in(id)) as PackedScene).instantiate() as Node3D
 	for mi: MeshInstance3D in g.find_children("*", "MeshInstance3D", true, false):
 		mi.material_override = _ghost_mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1204,7 +1205,7 @@ func _bind_key(key: InputEventKey) -> void:
 	var code := key.physical_keycode
 	if code == KEY_ESCAPE:
 		p.erase("key")
-		_hint_say("%s: tuşu kaldırıldı (%s)" % [Parts.def(p.id).name, "F" if p.id == "flipper" else ("E" if str(Parts.def(p.id).kind) == "joint" else "farenin sol tuşu")])
+		_hint_say("%s: tuşu kaldırıldı (%s)" % [Parts.def(p.id).name, "F" if p.id == "flipper" else ("nişanı kendi izler" if p.id == "turret" else ("E" if str(Parts.def(p.id).kind) == "joint" else "farenin sol tuşu"))])
 	else:
 		p.key = code
 		var name := OS.get_keycode_string(code)

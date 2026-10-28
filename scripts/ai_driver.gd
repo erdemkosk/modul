@@ -161,7 +161,10 @@ func _physics_process(dt: float) -> void:
 		machine.flip()
 	# joints: a rotor spun up when it's near (a spinner), a hinge or a piston worked when it's close
 	for jt in machine.joints:
-		if jt.kind == "rotor":
+		if jt.kind == "turret":
+			if not jt.on:
+				jt.toggle() # (a crew keeps its turret on the mark)
+		elif jt.kind == "rotor":
 			if jt.on != (dist < 16.0):
 				jt.toggle()
 		elif dist < 4.0 and not jt.on:

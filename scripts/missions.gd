@@ -3,7 +3,7 @@ extends Node
 ## GÖREVLER: an industrial site to bring down. Each mission lays a yard (its ground: gravel and
 ## concrete pads, its mud, snow or bog; its weather and hour), puts up what's to be destroyed (the
 ## targets, marked) and what's only in the way, and sometimes guards (Forge's machines, with
-## crews). You build first (B), then start: the clock runs until every target's down (it's done,
+## crews) and the works' own robots turned on you (robot.gd: sentry guns, wardens with cutters). You build first (B), then start: the clock runs until every target's down (it's done,
 ## stars by the time it took) or your machine's gone or can't move (it's failed: try again).
 ##
 ## Progress (the best time and stars of each, and how far it's open) is kept in user://missions.cfg:
@@ -19,30 +19,36 @@ const LIST := [
 		"zones": [["mud", Rect2(-14, 6, 10, 10)]],
 		"targets": [["scaffold", Vector2(-10, 24), 0.0], ["scaffold", Vector2(8, 30), 0.4]],
 		"props": [["crate", Vector2(-4, 20)], ["crate", Vector2(-3, 21.5)], ["drum", Vector2(12, 22)], ["drum", Vector2(12.8, 22.4)]]},
-	{"id": "su", "name": "SU KULELERİ", "brief": "Çamurlu avluda iki su kulesi. Ayaklarını kır: dört ayaktan ikisi giderse tank devrilir. Çamura dikkat, teker gömülür.",
+	{"id": "su", "name": "SU KULELERİ", "brief": "Çamurlu avluda iki su kulesi. Ayaklarını kır: dört ayaktan ikisi giderse tank devrilir. Çamura dikkat, teker gömülür. Avluda iki bekçi robot dolaşıyor: kesici kollarıyla yaklaşırlar, üstlerinden geç.",
 		"weather": "overcast", "hour": 15.0, "stars": [60.0, 130.0],
+		"robots": [["warden", Vector2(-4, 34)], ["warden", Vector2(6, 38)]],
 		"zones": [["mud", Rect2(-22, 10, 44, 26)], ["bog", Rect2(-4, 18, 8, 8)]],
 		"targets": [["water_tower", Vector2(-12, 28), 0.0], ["water_tower", Vector2(13, 32), 0.3]],
 		"props": [["container", Vector2(0, 42)], ["barrier", Vector2(-6, 14)], ["barrier", Vector2(6, 14)]]},
-	{"id": "baca", "name": "FABRİKA BACASI", "brief": "Karlı fabrika avlusu: baca ve yanındaki depo. Bacayı dibinden kır, deponun iskeletini çökert. Karda ahşap zor tutuşur.",
+	{"id": "baca", "name": "FABRİKA BACASI", "brief": "Karlı fabrika avlusu: baca ve yanındaki depo. Bacayı dibinden kır, deponun iskeletini çökert. Karda ahşap zor tutuşur. Depo kapısında bir nöbetçi taret var.",
 		"weather": "snow", "hour": 9.0, "stars": [90.0, 180.0],
+		"robots": [["sentry", Vector2(4, 26)], ["warden", Vector2(-2, 40)]],
 		"zones": [["snow", Rect2(-40, -10, 80, 60)], ["ice", Rect2(-8, 8, 16, 6)]],
 		"targets": [["chimney", Vector2(-10, 34), 0.0], ["warehouse", Vector2(12, 34), 0.0]],
 		"props": [["container", Vector2(-24, 22)], ["block", Vector2(2, 20)], ["block", Vector2(-2, 22)]]},
-	{"id": "yakit", "name": "YAKIT SAHASI", "brief": "Üç yakıt tankı ve bir trafo. Delinen ya da tutuşan tank patlar ve çevresini yakar. İki bekçi araç sahayı koruyor.",
+	{"id": "yakit", "name": "YAKIT SAHASI", "brief": "Üç yakıt tankı ve bir trafo. Delinen ya da tutuşan tank patlar ve çevresini yakar. İki bekçi araç ve iki nöbetçi taret sahayı koruyor; yağmurda taretlerin nişanı kayar.",
 		"weather": "rain", "hour": 16.5, "stars": [80.0, 170.0],
+		"robots": [["sentry", Vector2(-20, 36)], ["sentry", Vector2(16, 36)]],
 		"zones": [["mud", Rect2(-6, 14, 12, 12)]],
 		"targets": [["fuel_tank", Vector2(-14, 30), 0.0], ["fuel_tank", Vector2(-2, 34), 0.0], ["fuel_tank", Vector2(10, 30), 0.0],
 			["transformer", Vector2(22, 40), 0.0]],
 		"guards": [["gunner", 1, Vector2(-6, 44)], ["skirmisher", 1, Vector2(16, 48)]],
 		"props": [["container", Vector2(-26, 40)], ["sandbags", Vector2(0, 22)], ["drum", Vector2(4, 24)], ["drum", Vector2(4.8, 24.3)]]},
-	{"id": "santiye", "name": "ŞANTİYE", "brief": "Bataklığa kurulmuş şantiye: kule vinç ve silo. Vincin direğini kır, siloyu ayaklarından devir. Bekçiler sert.",
+	{"id": "santiye", "name": "ŞANTİYE", "brief": "Bataklığa kurulmuş şantiye: kule vinç ve silo. Vincin direğini kır, siloyu ayaklarından devir. Bekçiler sert. Bataklıkta robotlar ağır kalır: onları oraya çek.",
 		"weather": "fog", "hour": 7.5, "stars": [110.0, 220.0],
+		"robots": [["warden", Vector2(-10, 30)], ["warden", Vector2(12, 22)], ["sentry", Vector2(4, 42)]],
 		"zones": [["mud", Rect2(-40, 0, 80, 50)], ["bog", Rect2(-18, 20, 14, 12)], ["bog", Rect2(8, 12, 10, 8)]],
 		"targets": [["crane", Vector2(-4, 36), 0.6], ["silo", Vector2(18, 30), 0.0], ["scaffold", Vector2(-20, 18), 1.2]],
 		"guards": [["rammer", 2, Vector2(-14, 48)], ["flipper", 2, Vector2(10, 46)]],
 		"props": [["container", Vector2(26, 44)], ["crate", Vector2(-10, 14)], ["crate", Vector2(-9, 15.4)]]},
-	{"id": "vardiya", "name": "SON VARDİYA", "brief": "Bütün fabrika: baca, iki su kulesi, iki yakıt tankı, depo. Gece, yağmurda; dört bekçi. Ne varsa kullan.",
+	{"id": "vardiya", "name": "SON VARDİYA", "brief": "Bütün fabrika: baca, iki su kulesi, iki yakıt tankı, depo. Gece, yağmurda; dört bekçi, nöbetçi taretler ve bekçi robotlar. Ne varsa kullan.",
+		"robots": [["sentry", Vector2(-14, 38)], ["sentry", Vector2(12, 50)], ["sentry", Vector2(22, 32)],
+			["warden", Vector2(0, 34)], ["warden", Vector2(-20, 50)]],
 		"weather": "rain", "hour": 22.0, "stars": [200.0, 400.0],
 		"zones": [["mud", Rect2(-10, 16, 20, 14)], ["bog", Rect2(24, 20, 10, 10)]],
 		"targets": [["chimney", Vector2(-24, 44), 0.0], ["water_tower", Vector2(-8, 30), 0.0], ["water_tower", Vector2(26, 46), 0.0],
@@ -58,6 +64,8 @@ var state := "prep" ## prep, run, done, failed
 var time := 0.0
 var targets: Array[Structure] = []
 var guards: Array[Machine] = []
+var robots: Array[Node] = []
+const ROBOT := preload("res://scripts/robot.gd")
 var stars := 0
 var best := -1.0
 var _ui: MissionUi
@@ -154,6 +162,13 @@ func _lay_out() -> void:
 		e.label = "BEKÇİ · %s" % made.name
 		e.set_physics_process(false) # (held till you start)
 		guards.append(e)
+	for rb: Array in def.get("robots", []):
+		var p: Vector2 = rb[1]
+		var at := Vector3(p.x, float(terrain.call("height_at", p.x, p.y)), p.y)
+		var r := ROBOT.make(str(rb[0]), Transform3D(Basis.IDENTITY, at), game, terrain) # (facing the pad)
+		game.add_child(r)
+		r.set_physics_process(false) # (held till you start)
+		robots.append(r)
 
 
 func start() -> void:
@@ -167,6 +182,8 @@ func start() -> void:
 	for e in guards:
 		if is_instance_valid(e):
 			e.set_physics_process(true)
+	for r in robots:
+		r.set_physics_process(true)
 	_ui.show_run()
 
 
@@ -229,6 +246,8 @@ func _done() -> void:
 	for e in guards:
 		if is_instance_valid(e):
 			e.set_physics_process(false)
+	for r in robots:
+		r.set_physics_process(false)
 	_ui.show_done(record_time)
 	finished.emit(true)
 

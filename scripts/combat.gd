@@ -133,6 +133,11 @@ func hitscan(from: Vector3, dir: Vector3, reach: float, damage: float, push: flo
 		elif body is RigidBody3D:
 			(body as RigidBody3D).apply_impulse(dir * push, end - (body as RigidBody3D).global_position)
 			_impact(end, hit.normal, "metal", 0.3)
+		elif body.has_method("take_hit"): # (a site's robot)
+			body.call("take_hit", damage, end, dir)
+			_impact(end, hit.normal, "metal", 0.35)
+			if is_instance_valid(owner):
+				hit_confirmed.emit(owner, false)
 		else:
 			_impact(end, hit.normal, "dirt", 0.35)
 	if tracer:
@@ -311,6 +316,9 @@ func flame(from: Vector3, dir: Vector3, reach: float, damage: float, owner: Mach
 			(body as StructurePiece).heat(heat * 5.0)
 		elif body is Breakable:
 			(body as Breakable).hit(heat * 2.0, at, d)
+		elif body.has_method("take_hit") and not burned.has(body):
+			burned[body] = true
+			body.call("take_hit", heat * 4.0, at, d)
 		elif randf() < 0.04 and not on_cooldown(at):
 			scorch(at, 0.8)
 
@@ -447,6 +455,12 @@ func explode(at: Vector3, radius: float, damage: float, push: float, owner: Mach
 		if d < radius:
 			br.hit(damage * (1.0 - 0.5 * d / radius), at, (br.center() - at).normalized(), true)
 	_burst_pieces(at, radius, damage, push)
+	for n: Node in get_tree().get_nodes_in_group("robots"):
+		var rb := n as Node3D
+		var d := rb.global_position.distance_to(at)
+		if d < radius + 0.8:
+			var f := clampf(1.0 - maxf(d - 0.8, 0.0) / radius, 0.0, 1.0)
+			rb.call("take_hit", damage * f, at, (rb.global_position - at).normalized(), push * f)
 	for d in _debris:
 		if is_instance_valid(d) and d.global_position.distance_to(at) < radius * 2.0:
 			var away := (d.global_position - at)

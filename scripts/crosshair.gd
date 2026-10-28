@@ -71,7 +71,7 @@ func _draw() -> void:
 		var reach := clampf(b.origin.distance_to(m.aim_point), 5.0, 600.0)
 		var p := b.origin - b.basis.z * reach
 		if g.kind != "minigun":
-			var t := MachineGun.flight_time(g.kind, reach)
+			var t := MachineGun.flight_time(g.kind, reach, g.speed_k())
 			p.y -= 0.5 * MachineGun.SHELL_DROP * t * t
 		if cam.is_position_behind(p):
 			continue
@@ -98,7 +98,7 @@ func _draw() -> void:
 				if g.reload_frac() > 0.0 and g.armed:
 					_arc(s, r + 7.0, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - g.reload_frac()), Color(1, 1, 1, 0.75), 2.0)
 			"flamer":
-				# a wide broken ring: the stream's spread, its reach the aim's (14 m)
+				# a wide broken ring: the stream's spread, its reach the aim's (14 m, more with a long barrel)
 				for k in 8:
 					var a := k * TAU / 8.0
 					_arc(s, 24.0, a + 0.12, a + TAU / 8.0 - 0.12, ring, 1.6)

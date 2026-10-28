@@ -22,6 +22,10 @@ extends RefCounted
 ## fall on the way there (its time of flight from the range, as a tank's ballistic computer does), so
 ## the shot lands where you look.
 ##
+## What's bolted beside it: an ammo box (cephane, at most two) feeds it, quicker loading and a quicker
+## rate; a barrel kit (namlu takımı) gives it a longer barrel, its round faster and truer, a flame
+## further, a heavier gun turning slower. The long barrel shows on the gun.
+##
 ## Electric: the minigun's motor, the turrets' traverse and the loaders draw on the machine's battery
 ## (draw_kw); with it flat (`powered` false) nothing turns, spins up or loads.
 
@@ -90,6 +94,9 @@ var can_load := true ## the loader
 var armed := true ## (you pick which of your guns fire: 1-9, 0 all)
 var key := 0 ## the key it fires on (0: the mouse's left button, with the rest)
 var key_down := false
+var feed := 0 ## ammo boxes beside it
+var kit := 0 ## barrel kits beside it
+var _kit_muzzle: Node3D ## (the long barrel's end)
 var condition := 1.0 ## its share of hit points left: hurt, it turns slower; badly, it jams
 var _jam_t := 0.0
 var _recoil := 0.0 ## 0..1 how far back the barrel or the pod is
@@ -102,10 +109,12 @@ var _flash_t := 0.0
 const RECOIL := {"minigun": 0.006, "cannon": 0.28, "rockets": 0.05, "flamer": 0.002} ## m back at full recoil
 
 
-static func make(m: Machine, part: Node3D, id: String) -> MachineGun:
+static func make(m: Machine, part: Node3D, id: String, feed_ := 0, kit_ := 0) -> MachineGun:
 	var g := MachineGun.new()
 	g.machine = m
 	g.node = part
+	g.feed = feed_
+	g.kit = kit_
 	g.kind = str(Parts.def(id).weapon)
 	g.turret = part.find_child("Turret", true, false) as Node3D
 	g.gun = part.find_child("Gun", true, false) as Node3D
@@ -121,8 +130,78 @@ static func make(m: Machine, part: Node3D, id: String) -> MachineGun:
 		var r := part.find_child("Rocket%d" % k, true, false) as Node3D
 		if r:
 			g._rockets.append(r)
+	g._fit_kit()
 	g._dress()
 	return g
+
+
+## How the boxes beside it change it.
+func reload_k() -> float:
+	return 1.0 / (1.0 + 0.35 * feed)
+
+
+func rate_k() -> float:
+	return 1.0 + 0.2 * feed
+
+
+func speed_k() -> float:
+	return 1.0 + 0.3 * kit
+
+
+func spread_k() -> float:
+	return 1.0 / (1.0 + 0.7 * kit)
+
+
+func flame_range() -> float:
+	return FLAME_RANGE + 4.0 * kit
+
+
+## The long barrel: a jacketed sleeve out of the muzzle (its end where the rounds now leave).
+const KIT_LEN := {"minigun": 0.3, "cannon": 0.55, "rockets": 0.25, "flamer": 0.35} ## m a kit
+const KIT_R := {"minigun": 0.055, "cannon": 0.075, "rockets": 0.0, "flamer": 0.045}
+
+
+func _fit_kit() -> void:
+	if kit <= 0 or muzzle == null:
+		return
+	var l: float = float(KIT_LEN[kind]) * kit
+	_kit_muzzle = Node3D.new()
+	_kit_muzzle.name = "KitMuzzle"
+	_kit_muzzle.position = Vector3(0, 0, -l)
+	muzzle.add_child(_kit_muzzle)
+	if DisplayServer.get_name() == "headless" or float(KIT_R[kind]) <= 0.0:
+		return # (a pod's rails are longer: nothing that shows past its tubes)
+	var rad := float(KIT_R[kind])
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.13, 0.13, 0.14)
+	mat.metallic = 0.75
+	mat.roughness = 0.45
+	var sleeve := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = rad
+	cm.bottom_radius = rad * 1.15
+	cm.height = l
+	cm.radial_segments = 14
+	cm.rings = 1
+	cm.material = mat
+	sleeve.mesh = cm
+	sleeve.rotation.x = -PI * 0.5
+	sleeve.position = Vector3(0, 0, -l * 0.5)
+	muzzle.add_child(sleeve)
+	# the cooling jacket's rings along it
+	for k in maxi(int(l / 0.12), 1):
+		var ring := MeshInstance3D.new()
+		var rm := CylinderMesh.new()
+		rm.top_radius = rad * 1.35
+		rm.bottom_radius = rad * 1.35
+		rm.height = 0.025
+		rm.radial_segments = 14
+		rm.rings = 1
+		rm.material = mat
+		ring.mesh = rm
+		ring.rotation.x = -PI * 0.5
+		ring.position = Vector3(0, 0, -0.06 - k * 0.12)
+		muzzle.add_child(ring)
 
 
 ## The minigun's motor and brass, a muzzle flash for each gun (not on a headless run).
@@ -145,7 +224,7 @@ func _dress() -> void:
 	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flash.visible = false
 	_flash.position = Vector3(0, 0, -0.25 if big else -0.08)
-	muzzle.add_child(_flash)
+	(_kit_muzzle if _kit_muzzle else muzzle).add_child(_flash)
 	if kind == "flamer":
 		_flame_dress()
 		return
@@ -202,8 +281,8 @@ func _flame_dress() -> void:
 	var pm := ParticleProcessMaterial.new()
 	pm.direction = Vector3(0, 0, -1)
 	pm.spread = 7.0
-	pm.initial_velocity_min = 17.0
-	pm.initial_velocity_max = 21.0
+	pm.initial_velocity_min = 17.0 * (1.0 + 0.25 * kit)
+	pm.initial_velocity_max = 21.0 * (1.0 + 0.25 * kit)
 	pm.damping_min = 6.0
 	pm.damping_max = 9.0
 	pm.gravity = Vector3(0, 2.5, 0)
@@ -240,7 +319,7 @@ func _flame_dress() -> void:
 	_fire.local_coords = false
 	_fire.emitting = false
 	_fire.visibility_aabb = AABB(Vector3(-10, -6, -20), Vector3(20, 14, 24))
-	muzzle.add_child(_fire)
+	(_kit_muzzle if _kit_muzzle else muzzle).add_child(_fire)
 	var l := OmniLight3D.new()
 	l.light_color = Color(1.0, 0.55, 0.2)
 	l.omni_range = 7.0
@@ -286,7 +365,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 		return
 	var k: Dictionary = KINDS[kind]
 	if kind != "minigun":
-		var t := flight_time(kind, aim.distance_to(turret.global_position))
+		var t := flight_time(kind, aim.distance_to(turret.global_position), speed_k())
 		aim.y += 0.5 * SHELL_DROP * t * t
 	var local := node.global_transform.basis.inverse() * (aim - turret.global_position)
 	var want_yaw := atan2(-local.x, -local.z)
@@ -296,7 +375,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	var dyaw := 0.0
 	var dpitch := 0.0
 	if powered:
-		var hurt := 0.35 + 0.65 * condition
+		var hurt := (0.35 + 0.65 * condition) / (1.0 + 0.2 * kit) # (a long barrel's heavier to swing)
 		dyaw = clampf(angle_difference(yaw, want_yaw), -k.yaw_rate * hurt * dt, k.yaw_rate * hurt * dt)
 		dpitch = clampf(want_pitch - pitch, -k.pitch_rate * hurt * dt, k.pitch_rate * hurt * dt)
 	yaw += dyaw
@@ -345,7 +424,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 			barrels.transform = Transform3D(_barrels_rest.basis * Basis(Vector3.BACK, _spin_angle), _barrels_rest.origin)
 		if firing and on_target and _spin > 0.95:
 			while _cool <= 0.0:
-				_cool += 1.0 / MINIGUN_RATE
+				_cool += 1.0 / (MINIGUN_RATE * rate_k())
 				_minigun_round()
 		elif _cool < 0.0:
 			_cool = 0.0
@@ -364,7 +443,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 			if _cool <= 0.0:
 				_cool = 0.1
 				if Combat.current:
-					Combat.current.flame(_bore().origin, -_bore().basis.z, FLAME_RANGE, FLAME_DPS * 0.1, machine)
+					Combat.current.flame(_bore().origin, -_bore().basis.z, flame_range(), FLAME_DPS * 0.1 * rate_k(), machine)
 	elif kind == "rockets":
 		if firing and on_target and loaded > 0 and _cool <= 0.0:
 			_cool = ROCKET_GAP
@@ -373,7 +452,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 			_cool = 0.0
 		if loaded < ROCKETS and powered and can_load and (not firing or loaded == 0):
 			_reload_t += dt
-			if _reload_t >= ROCKET_RELOAD:
+			if _reload_t >= ROCKET_RELOAD * reload_k():
 				_reload_t = 0.0
 				loaded += 1
 				_rockets_shown()
@@ -384,7 +463,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	elif not powered or (not can_load and _cool > 0.0):
 		_cool += dt # (the loader stops)
 	elif firing and on_target and _cool <= 0.0:
-		_cool = CANNON_RELOAD
+		_cool = CANNON_RELOAD * reload_k()
 		_loaded_sound = false
 		_cannon_shot()
 	if kind == "cannon" and not _loaded_sound and _cool <= 0.0:
@@ -394,6 +473,8 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 
 
 func _bore() -> Transform3D:
+	if _kit_muzzle:
+		return _kit_muzzle.global_transform
 	return muzzle.global_transform if muzzle else gun.global_transform
 
 
@@ -403,10 +484,10 @@ func _minigun_round() -> void:
 		return
 	var b := _bore()
 	var fwd := -b.basis.z
-	var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * MINIGUN_SPREAD
+	var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * MINIGUN_SPREAD * spread_k()
 	var dir := (fwd + spread).normalized()
 	_round += 1
-	c.hitscan(b.origin, dir, MINIGUN_RANGE, MINIGUN_DAMAGE, MINIGUN_PUSH, machine, _round % 2 == 0)
+	c.hitscan(b.origin, dir, MINIGUN_RANGE, MINIGUN_DAMAGE * (1.0 + 0.15 * kit), MINIGUN_PUSH, machine, _round % 2 == 0)
 	machine.apply_impulse(-dir * MINIGUN_PUSH * 0.3, b.origin - machine.global_position)
 	if _round % 3 == 0:
 		c.sound("res://assets/audio/weapons/close_0%d.wav" % randi_range(1, 3), b.origin, -4.0, randf_range(1.2, 1.35))
@@ -425,7 +506,7 @@ func _cannon_shot() -> void:
 		return
 	var b := _bore()
 	var dir := -b.basis.z
-	c.fire_shell(b.origin + dir * 0.1, dir * CANNON_SPEED + machine.velocity_at(b.origin), machine)
+	c.fire_shell(b.origin + dir * 0.1, dir * CANNON_SPEED * speed_k() + machine.velocity_at(b.origin), machine)
 	machine.apply_impulse(-dir * CANNON_RECOIL, b.origin - machine.global_position)
 	c.sound("res://assets/audio/explosion/close_0%d.wav" % randi_range(1, 3), b.origin, 2.0, randf_range(1.5, 1.7))
 	c.sound("res://assets/audio/weapons/tail_01.wav", b.origin, 0.0, 0.7)
@@ -449,9 +530,9 @@ func _rocket_shot() -> void:
 	var from := _bore().origin
 	if tube < _rockets.size():
 		from = _rockets[tube].global_position
-	var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * ROCKET_SPREAD
+	var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * ROCKET_SPREAD * spread_k()
 	dir = (dir + spread).normalized()
-	c.fire_rocket(from + dir * 0.15, dir, machine.velocity_at(from), machine)
+	c.fire_rocket(from + dir * 0.15, dir, machine.velocity_at(from) + dir * ROCKET_SPEED * (speed_k() - 1.0), machine) # (longer rails: off them faster)
 	c.shake(from, 0.18, machine, 1.5)
 	_recoil_v = 18.0
 	c.sound("res://assets/audio/rocket/launch.wav", from, 0.0, randf_range(0.92, 1.08))
@@ -460,15 +541,16 @@ func _rocket_shot() -> void:
 
 
 ## Seconds a round of `kind` takes to go `dist` m: a shell at its muzzle speed; a rocket off the rail,
-## speeding up while its motor burns, then on at the speed it had.
-static func flight_time(kind: String, dist: float) -> float:
+## speeding up while its motor burns, then on at the speed it had. (k: a barrel kit's speed-up.)
+static func flight_time(kind: String, dist: float, k := 1.0) -> float:
 	if kind == "cannon":
-		return dist / CANNON_SPEED
+		return dist / (CANNON_SPEED * k)
 	if kind == "rockets":
-		var burn_d := ROCKET_SPEED * ROCKET_BURN + 0.5 * ROCKET_THRUST * ROCKET_BURN * ROCKET_BURN
+		var v0 := ROCKET_SPEED * k
+		var burn_d := v0 * ROCKET_BURN + 0.5 * ROCKET_THRUST * ROCKET_BURN * ROCKET_BURN
 		if dist <= burn_d:
-			return (-ROCKET_SPEED + sqrt(ROCKET_SPEED * ROCKET_SPEED + 2.0 * ROCKET_THRUST * dist)) / ROCKET_THRUST
-		return ROCKET_BURN + (dist - burn_d) / (ROCKET_SPEED + ROCKET_THRUST * ROCKET_BURN)
+			return (-v0 + sqrt(v0 * v0 + 2.0 * ROCKET_THRUST * dist)) / ROCKET_THRUST
+		return ROCKET_BURN + (dist - burn_d) / (v0 + ROCKET_THRUST * ROCKET_BURN)
 	return dist / 900.0
 
 
@@ -492,7 +574,7 @@ func draw_kw() -> float:
 ## Reloading: 0 ready .. 1 just fired / empty (the HUD).
 func reload_frac() -> float:
 	if kind == "cannon":
-		return clampf(_cool / CANNON_RELOAD, 0.0, 1.0)
+		return clampf(_cool / (CANNON_RELOAD * reload_k()), 0.0, 1.0)
 	if kind == "rockets":
 		return 1.0 - float(loaded) / ROCKETS
 	return 0.0

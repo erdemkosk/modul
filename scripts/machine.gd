@@ -322,10 +322,11 @@ func rebuild() -> void:
 	var lo := Vector3(INF, INF, INF)
 	var hi := -lo
 	for i in design.size():
+		for c in Parts.cells_of(design[i].id, design[i].at, design[i].rot):
+			_occ[c] = i # (all of it first: a gun asks what's beside it)
+	for i in design.size():
 		var p: Dictionary = design[i]
 		var d := Parts.def(p.id)
-		for c in Parts.cells_of(p.id, p.at, p.rot):
-			_occ[c] = i
 		var xf := Parts.xform_of(p.id, p.at, p.rot)
 		_cur = i
 		var node := _instance(p.id)
@@ -364,7 +365,7 @@ func rebuild() -> void:
 				alternator_kw += float(d.get("alternator", 0.0)) * ef
 				_add_shape(Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * Vector3(0.9, 0.75, 0.95), xf.origin)
 			"weapon":
-				var mg := MachineGun.make(self, node, p.id)
+				var mg := MachineGun.make(self, node, p.id, mini(_beside(i, "ammo"), 2), mini(_beside(i, "barrel"), 2))
 				mg.key = int(p.get("key", 0))
 				mg.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				guns.append(mg)
@@ -406,14 +407,40 @@ func rebuild() -> void:
 	changed.emit()
 
 
+## How many parts of `kind` touch part `i` face to face.
+func _beside(i: int, kind: String) -> int:
+	var found := {}
+	for c in Parts.cells_of(design[i].id, design[i].at, design[i].rot):
+		for n in _NEIGHBOURS:
+			var k: int = _occ.get(c + n, -1)
+			if k >= 0 and k != i and str(Parts.def(design[k].id).kind) == kind:
+				found[k] = true
+	return found.size()
+
+
 func _instance(id: String) -> Node3D:
 	if not _scenes.has(id):
-		_scenes[id] = load(Parts.model(id))
+		_scenes[id] = load(Parts.model(id)) if ResourceLoader.exists(Parts.model(id)) else _stand_in(id)
 	var n := (_scenes[id] as PackedScene).instantiate() as Node3D
 	PaintedLook.apply(n)
 	if TEAM_PAINT.has(team):
 		_team_paint(n)
 	return n
+
+
+## A part whose model isn't built yet: a plain box its size (so a new part works before its model's made).
+static func _stand_in(id: String) -> PackedScene:
+	var root := Node3D.new()
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(Parts.def(id).size) * Parts.CELL * 0.94
+	mi.mesh = bm
+	root.add_child(mi)
+	mi.owner = root
+	var ps := PackedScene.new()
+	ps.pack(root)
+	root.free()
+	return ps
 
 
 ## The other side's colours, on the parts' paint (yours stays the works yellow): the rivals oxide red,
@@ -1234,7 +1261,12 @@ func _make_smoke() -> GPUParticles3D:
 	return p
 
 
-## Part `i` off, and whatever hung on only through it; the cab: all of it.
+const AMMO_RADIUS := 2.6 ## m: an ammo box going up
+const AMMO_DAMAGE := 170.0
+const AMMO_PUSH := 3200.0
+
+
+## Part `i` off, and whatever hung on only through it; the cab: all of it (an ammo box goes up).
 func break_off(i: int) -> void:
 	var gone: Array[int] = []
 	if design[i].id == "cab":
@@ -1244,6 +1276,11 @@ func break_off(i: int) -> void:
 		gone = _cut_off_by(i)
 	var c := Combat.current
 	var spin_scale := 3.0
+	if design[i].id == "ammo" and c:
+		# its rounds go up: a burst where it was, after this part's come away (what it takes with it, it takes then)
+		var at := global_transform * part_xform(i).origin
+		c.call_deferred("explode", at, AMMO_RADIUS, AMMO_DAMAGE, AMMO_PUSH, last_hit_by, true)
+		system_hit.emit("CEPHANE PATLADI", at)
 	for j in gone:
 		var p: Dictionary = design[j]
 		var xf := global_transform * part_xform(j)
@@ -1418,6 +1455,7 @@ func _sections() -> void:
 	for jt in joints:
 		jt.members.clear()
 		jt.locked = false
+		jt.carried_kg = 0.0
 		var own := Parts.cells_of(design[jt.index].id, design[jt.index].at, design[jt.index].rot)
 		var n := jt.out_normal()
 		var seeds: Array[int] = []
@@ -1438,6 +1476,7 @@ func _sections() -> void:
 		for k: int in carried:
 			if not main.has(k): # (a light or a gun touching both stays with the rest)
 				jt.members.append(k)
+				jt.carried_kg += float(Parts.def(design[k].id).mass)
 	# the chain of joints that carry each part, outermost (carrying most) first
 	var order := joints.duplicate()
 	order.sort_custom(func(a: MachineJoint, b: MachineJoint) -> bool: return a.members.size() > b.members.size())
@@ -1559,7 +1598,7 @@ func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
 func joint_key(code: int) -> bool:
 	var any := false
 	for jt in joints:
-		if (jt.key if jt.key != 0 else KEY_E) == code:
+		if (jt.key if jt.key != 0 else (0 if jt.kind == "turret" else KEY_E)) == code: # (a turret with no key just follows the aim)
 			jt.toggle()
 			any = true
 	return any

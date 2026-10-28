@@ -7,6 +7,8 @@ extends RefCounted
 ## out a cell along it (again: draws it back), fast enough to throw what's on it. A joint inside what
 ## another carries moves with it. What it carries keeps its parts' boxes and hit points; where a
 ## moving part strikes something, the blow is by how fast that point's going (Machine works it out).
+## A turret needs no key: it turns what it carries about its up toward where the machine aims
+## (slower the more it carries); given a key, that key brings it round to the front and holds it there.
 
 const SWING := 1.5708 ## rad a hinge comes up
 const SWING_RATE := 3.2 ## rad/s
@@ -15,7 +17,9 @@ const SPIN_UP := 1.4 ## s to get there
 const STROKE := 0.5 ## m a piston pushes out
 const PUSH_RATE := 5.0 ## m/s out
 const DRAW_RATE := 1.6 ## m/s back
-const DRAW := {"hinge": 1.5, "rotor": 4.0, "piston": 2.5} ## kW while it moves
+const TURN_RATE := 2.2 ## rad/s a turret turns, carrying nothing
+const TURN_LOAD := 500.0 ## kg on it that halves that
+const DRAW := {"hinge": 1.5, "rotor": 4.0, "piston": 2.5, "turret": 1.6} ## kW while it moves
 
 var machine: Machine
 var kind := "hinge"
@@ -31,6 +35,8 @@ var axis := Vector3.UP
 var on := false ## where it's been told to be: up, spinning, out
 var angle := 0.0 ## rad (hinge, rotor) or m (piston)
 var rate := 0.0 ## rad/s or m/s it's moving at now
+var carried_kg := 0.0 ## (what's on it: Machine sets it)
+var aim_err := 0.0 ## rad a turret is off where it's told to look
 var _top_rest: Transform3D
 var _node_rest: Transform3D
 
@@ -45,6 +51,7 @@ static func make(m: Machine, part: Node3D, i: int, id: String, xf: Transform3D) 
 	j.top = part.find_child("Top", true, false) as Node3D
 	if j.top:
 		j._top_rest = j.top.transform
+	j.on = j.kind == "turret"
 	var h := Parts.CELL * 0.5
 	match j.kind:
 		"hinge":
@@ -92,11 +99,29 @@ func update(dt: float, powered: bool) -> void:
 			rate = r
 			_show_top()
 			return
+		"turret":
+			var want := _look() if on else 0.0
+			var turn := TURN_RATE / (1.0 + carried_kg / TURN_LOAD) * dt if powered else 0.0
+			var d := angle_difference(angle, want)
+			angle = wrapf(angle + clampf(d, -turn, turn), -PI, PI)
+			aim_err = absf(angle_difference(angle, want))
+			rate = angle_difference(was, angle) / maxf(dt, 1e-4)
+			_show_top()
+			return
 		"piston":
 			var want := STROKE if on else 0.0
 			angle = move_toward(angle, want, (PUSH_RATE if on else DRAW_RATE) * dt) if powered else angle
 	rate = (angle - was) / maxf(dt, 1e-4)
 	_show_top()
+
+
+## The turn (about its up) that faces its front where the machine aims, from where its carriers have it.
+func _look() -> float:
+	var at := machine.global_transform.affine_inverse() * machine.aim_point
+	var local := machine.part_xform(index).affine_inverse() * at
+	if Vector2(local.x, local.z).length() < 0.3:
+		return angle
+	return atan2(-local.x, -local.z)
 
 
 ## How fast a point (machine space, where it is at rest) on what it carries is going, from this joint.
@@ -118,7 +143,7 @@ func _show_top() -> void:
 
 
 func reset() -> void:
-	on = false
+	on = kind == "turret"
 	angle = 0.0
 	rate = 0.0
 	_show_top()
