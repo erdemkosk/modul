@@ -89,5 +89,6 @@ godot --headless --path . -s res://tests/build_test.gd
 godot --headless --path . -s res://tests/arena_test.gd
 godot --headless --path . -s res://tests/cage_test.gd
 godot --headless --path . -s res://tests/hazard_test.gd
+godot --headless --path . -s res://tests/ai_test.gd
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage]
 ```

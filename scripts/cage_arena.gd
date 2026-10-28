@@ -44,6 +44,7 @@ var _cut := {} ## Machine -> s till a blade bites it again
 
 
 func _ready() -> void:
+	add_to_group("cage_arena")
 	_floor_marks()
 	_walls()
 	_stands()
@@ -433,6 +434,52 @@ func _pit_opens() -> void:
 		tw.tween_property(_pit_lid, "position:x", _pit_lid.position.x + pit.size.x + 0.4, 1.2).set_trans(Tween.TRANS_QUAD)
 	if Combat.current:
 		Combat.current.sound("res://assets/audio/build/bolt_off_01.wav", Vector3(pit.get_center().x, 1.0, pit.get_center().y), 6.0, 0.5)
+
+
+## Where it's dangerous to drive, for the AI: [{c: Vector2 (the nearest point to `p` on it), r: m to
+## keep off it, hole: true for the pit}] — the spinners, the saws' slots, the vents, the spikes, the pit
+## (open or about to be), and, for any but a house robot, the house robots' zones.
+func dangers(p: Vector2, house := false) -> Array:
+	var out := []
+	for sp: Dictionary in _spinners:
+		var c := Vector2((sp.at as Vector3).x, (sp.at as Vector3).z)
+		out.append({"c": c, "r": float(sp.r) + 1.6})
+	for sw: Dictionary in _saws:
+		var a := Vector2((sw.a as Vector3).x, (sw.a as Vector3).z)
+		var b := Vector2((sw.b as Vector3).x, (sw.b as Vector3).z)
+		out.append({"c": Geometry2D.get_closest_point_to_segment(p, a, b), "r": 1.8})
+	for v: Dictionary in _vents:
+		out.append({"c": Vector2((v.at as Vector3).x, (v.at as Vector3).z), "r": 2.4})
+	for a in _spikes:
+		if is_instance_valid(a):
+			var cs := a.get_child(0) as CollisionShape3D
+			var size := (cs.shape as BoxShape3D).size
+			var r := Rect2(Vector2(cs.position.x, cs.position.z) - Vector2(size.x, size.z) * 0.5, Vector2(size.x, size.z))
+			out.append({"c": p.clamp(r.position, r.end), "r": 1.4})
+	if pit.size.x > 0.0 and (pit_open or _pit_warn > 0.0):
+		out.append({"c": p.clamp(pit.position, pit.end), "r": 2.0, "hole": true, "mid": pit.get_center()})
+	if not house:
+		for z: Rect2 in HOUSE_ZONES:
+			out.append({"c": p.clamp(z.position, z.end), "r": 1.5})
+	# the walls: kept off, slid along
+	for w: Vector2 in [Vector2(p.x, -HALF), Vector2(p.x, HALF), Vector2(-HALF, p.y), Vector2(HALF, p.y)]:
+		out.append({"c": w.clamp(Vector2(-HALF, -HALF), Vector2(HALF, HALF)), "r": 2.0})
+	return out
+
+
+## Where a machine could be shoved to come to harm, for the AI: [{c: Vector2, r: m round it}] — the
+## open pit first, the spinners, the spikes.
+func shove_spots() -> Array:
+	var out := []
+	if pit_open:
+		out.append({"c": pit.get_center(), "r": pit.size.x * 0.5})
+	for sp: Dictionary in _spinners:
+		out.append({"c": Vector2((sp.at as Vector3).x, (sp.at as Vector3).z), "r": float(sp.r)})
+	for a in _spikes:
+		if is_instance_valid(a):
+			var cs := a.get_child(0) as CollisionShape3D
+			out.append({"c": Vector2(cs.position.x, cs.position.z), "r": 1.5})
+	return out
 
 
 ## Over the open pit (its middle, a little in from the lip).
