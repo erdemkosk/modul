@@ -78,6 +78,10 @@ func _physics_process(dt: float) -> void:
 	var hurt := machine.health() < 0.35 and not rams
 	var near := range_near * (1.6 if hurt else 1.0)
 	var far := range_far * (1.4 if hurt else 1.0)
+	if _arena:
+		# the cage is 48 m across: it fights close (the rocket pod a little further, its burst reaches)
+		near = (11.0 if _has("rockets") else 7.0) * (1.4 if hurt else 1.0)
+		far = (20.0 if _has("rockets") or _has("cannon") else 15.0) * (1.2 if hurt else 1.0)
 	if _only("flamer"): # (a flamethrower's got to be close: it fights at 5-11 m)
 		near = 5.0
 		far = 11.0
@@ -88,11 +92,16 @@ func _physics_process(dt: float) -> void:
 	elif dist < far:
 		# round it: a point off to the side at the middle of its range
 		var side := to.cross(Vector3.UP).normalized() * circle
-		goal = target.global_position - to.normalized() * ((near + far) * 0.5) + side * 12.0
+		goal = target.global_position - to.normalized() * ((near + far) * 0.5) + side * (6.0 if _arena else 12.0)
 	var shove := _shove_goal(rams)
 	shoving = shove != Vector3.INF
 	if shoving:
 		goal = shove
+	if _arena:
+		# never a goal past the walls (it'd only drive into them and sit there)
+		var inside := CageArena.HALF - 5.0
+		goal.x = clampf(goal.x, -inside, inside)
+		goal.z = clampf(goal.z, -inside, inside)
 	var fwd := -machine.global_basis.z
 	var want := _steer_round(goal - me, shoving)
 	var ang := fwd.signed_angle_to(want, Vector3.UP) # (+: to the left)

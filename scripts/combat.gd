@@ -22,7 +22,7 @@ signal part_hit(victim: Machine, id: String, at: Vector3, amount: float, by: Mac
 const RAY_MASK := 1 | 2 | 4 ## the ground, machines, debris
 const MAX_DEBRIS := 140
 const DEBRIS_LIFE := 30.0
-const TRACERS := 24
+const TRACERS := 48
 const SOUNDS := 24
 const SHELL_GRAVITY := MachineGun.SHELL_DROP
 const ROCKET_VIS := 18
@@ -41,6 +41,9 @@ var _scorch_i := 0
 static var _scorch_tex: ImageTexture
 var _tracers: Array[MeshInstance3D] = []
 var _tracer_life: Array[float] = []
+var _tracer_path: Array[PackedVector3Array] = [] ## (each tracer's from and to: it flies along it)
+const TRACER_SPEED := 420.0 ## m/s the streak flies at (the round itself hits at once; this is what you see)
+const TRACER_LEN := 5.0 ## m long
 var _tracer_i := 0
 var _players: Array[AudioStreamPlayer3D] = []
 var _player_i := 0
@@ -62,9 +65,9 @@ func _ready() -> void:
 	tmat.albedo_color = Color(1.0, 0.75, 0.35)
 	tmat.emission_enabled = true
 	tmat.emission = Color(1.0, 0.6, 0.2)
-	tmat.emission_energy_multiplier = 6.0
+	tmat.emission_energy_multiplier = 9.0
 	var tmesh := BoxMesh.new()
-	tmesh.size = Vector3(0.025, 0.025, 1.0)
+	tmesh.size = Vector3(0.1, 0.1, 1.0)
 	tmesh.material = tmat
 	for i in TRACERS:
 		var t := MeshInstance3D.new()
@@ -75,6 +78,7 @@ func _ready() -> void:
 		add_child(t)
 		_tracers.append(t)
 		_tracer_life.append(0.0)
+		_tracer_path.append(PackedVector3Array([Vector3.ZERO, Vector3.ZERO]))
 	for i in SOUNDS:
 		var p := AudioStreamPlayer3D.new()
 		p.unit_size = 14.0
@@ -466,6 +470,8 @@ func _process(dt: float) -> void:
 			_tracer_life[i] -= dt
 			if _tracer_life[i] <= 0.0:
 				_tracers[i].visible = false
+			else:
+				_tracer_at(i)
 	if _flash_t > 0.0:
 		_flash_t -= dt
 		_flash.light_energy *= 0.8
@@ -483,17 +489,34 @@ func _process(dt: float) -> void:
 			_debris.remove_at(i)
 
 
+## A glowing streak flying from `a` to `b` (at TRACER_SPEED: gone when it's there). `life` is the
+## least it shows for (a short one, close up, is still seen).
 func _tracer(a: Vector3, b: Vector3, life := 0.05) -> void:
-	var t := _tracers[_tracer_i]
-	_tracer_life[_tracer_i] = life
-	_tracer_i = (_tracer_i + 1) % TRACERS
 	var len := a.distance_to(b)
 	if len < 0.1:
 		return
-	t.global_transform = Transform3D(Basis.looking_at(b - a, Vector3.UP if absf((b - a).normalized().y) < 0.99 else Vector3.RIGHT),
-		(a + b) * 0.5)
-	t.scale = Vector3(1.0, 1.0, minf(len, 30.0))
-	t.visible = true
+	var i := _tracer_i
+	_tracer_i = (_tracer_i + 1) % TRACERS
+	_tracer_path[i] = PackedVector3Array([a, b])
+	_tracer_life[i] = maxf(len / TRACER_SPEED, life)
+	_tracers[i].set_meta("t0", len / TRACER_SPEED)
+	_tracers[i].visible = true
+	_tracer_at(i)
+
+
+## Where tracer `i` is now along its way: its head going from a to b, its tail TRACER_LEN behind.
+func _tracer_at(i: int) -> void:
+	var a := _tracer_path[i][0]
+	var b := _tracer_path[i][1]
+	var len := a.distance_to(b)
+	var total := maxf(float(_tracers[i].get_meta("t0", 0.05)), 0.001)
+	var gone := clampf(1.0 - maxf(_tracer_life[i], 0.0) / maxf(total, _tracer_life[i]), 0.0, 1.0)
+	var head := minf(len * gone + TRACER_LEN, len)
+	var tail := maxf(head - TRACER_LEN, 0.0)
+	var d := (b - a) / len
+	var t := _tracers[i]
+	t.global_transform = Transform3D(Basis.looking_at(d, Vector3.UP if absf(d.y) < 0.99 else Vector3.RIGHT), a + d * (head + tail) * 0.5)
+	t.scale = Vector3(1.0, 1.0, maxf(head - tail, 0.05))
 
 
 func muzzle_flash(at: Vector3, dir: Vector3, size: float) -> void:

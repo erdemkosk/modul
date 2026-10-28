@@ -404,7 +404,7 @@ func _minigun_round() -> void:
 	var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * MINIGUN_SPREAD
 	var dir := (fwd + spread).normalized()
 	_round += 1
-	c.hitscan(b.origin, dir, MINIGUN_RANGE, MINIGUN_DAMAGE, MINIGUN_PUSH, machine, _round % 3 == 0)
+	c.hitscan(b.origin, dir, MINIGUN_RANGE, MINIGUN_DAMAGE, MINIGUN_PUSH, machine, _round % 2 == 0)
 	machine.apply_impulse(-dir * MINIGUN_PUSH * 0.3, b.origin - machine.global_position)
 	if _round % 3 == 0:
 		c.sound("res://assets/audio/weapons/close_0%d.wav" % randi_range(1, 3), b.origin, -4.0, randf_range(1.2, 1.35))
