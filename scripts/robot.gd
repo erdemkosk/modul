@@ -238,7 +238,7 @@ func _target() -> Machine:
 	if game == null:
 		return null
 	var m: Variant = game.get("machine")
-	if m is Machine and is_instance_valid(m) and (m as Machine).alive:
+	if is_instance_valid(m) and m is Machine and (m as Machine).alive: # (a freed one can't even be asked what it is)
 		return m as Machine
 	return null
 

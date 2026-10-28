@@ -332,7 +332,8 @@ func _weapons(m: Machine) -> void:
 			if _chips.get_child(m.guns.size() + k).get_meta("flipper") != m.flippers[k]:
 				stale = true
 		for k in shown.size():
-			if _chips.get_child(m.guns.size() + m.flippers.size() + k).get_meta("joint", null) != shown[k]:
+			var c := _chips.get_child(m.guns.size() + m.flippers.size() + k)
+			if not c.has_meta("joint") or c.get_meta("joint") != shown[k]:
 				stale = true
 	if stale:
 		for c in _chips.get_children():
