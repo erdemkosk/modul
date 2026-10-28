@@ -458,7 +458,7 @@ func _slow(m: Machine) -> void:
 			((_shed_row.get_child(k) as PanelContainer).get_child(0) as Label).text = tags[k]
 	# the top
 	var arena: bool = game.get("arena")
-	_where.text = "TEST ALANI" if arena else "VADİ"
+	_where.text = str(game.get("place_name"))
 	var enemies := 0
 	for n in m.get_tree().get_nodes_in_group("machines"):
 		if n != m and (n as Machine).team != 0:

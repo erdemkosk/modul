@@ -77,6 +77,8 @@ func _draw() -> void:
 	if cam == null or not is_instance_valid(_bound):
 		return
 	var screen := get_viewport_rect().size # (the screen's, whatever this control's been laid out to)
+	if screen.x < 200.0 or screen.y < 200.0:
+		return # (no real screen: a headless run)
 	var c := screen * 0.5
 	# where the hurt came from: a wedge round the middle
 	for mk: Dictionary in _marks:

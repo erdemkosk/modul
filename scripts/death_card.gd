@@ -8,7 +8,7 @@ signal respawn
 
 const WAIT := 6.0 ## s before it's built anyway
 const KIND := {"minigun": "MİNİGUN ATEŞİ", "top": "TOP ATIŞI", "roket": "ROKET", "patlama": "PATLAMA",
-	"çarpışma": "ÇARPIŞMA"}
+	"çarpışma": "ÇARPIŞMA", "diken": "DİKENLER", "ateş": "ATEŞ KAPANI"}
 
 var _veil: TextureRect
 var _card: PanelContainer

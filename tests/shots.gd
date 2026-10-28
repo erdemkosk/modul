@@ -14,6 +14,7 @@ var _valley := false
 var _tracks := false
 var _arena := false
 var _polish := false
+var _cage := false
 var _t := 0.0
 var _step := 0
 var _mark := 0.0
@@ -35,10 +36,12 @@ func _initialize() -> void:
 			_arena = true
 		if a == "--polish":
 			_polish = true
+		if a == "--cage":
+			_cage = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
-	Mode.current = "valley" if _valley else "arena"
+	Mode.current = "valley" if _valley else ("cage" if _cage else "arena")
 	_g = load("res://scenes/game.tscn").instantiate()
 	root.add_child(_g)
 
@@ -74,7 +77,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else _arena_steps())))
+	var steps := _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else _arena_steps()))))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -234,6 +237,43 @@ func _arena2_steps() -> Array:
 
 ## The polish: a hurt machine smoking and sooted, enemies marked, a hit from the side, the pause
 ## menu, the death card.
+## KAFES: the start panel, the cage from above with its crowd, the countdown, the fight, the crowd up
+## close on its feet, the workshop.
+func _cage_steps() -> Array:
+	return [
+		[3.0, _noop, func() -> void:
+			_m = _g.get("machine")
+			var data := Designs.starter()
+			data.append(["minigun", 0, 3, 0, 0])
+			data.append(["cannon", 0, 1, -2, 0])
+			_m.from_data(data)
+			_cam(PI * 1.25, -0.3, 12.0)
+			_shoot("cage_prep")],
+		[1.0, _noop, func() -> void:
+			(_g.get("cage") as Cage).start_run()],
+		[1.6, func(_s: float) -> void: _cam(PI * 1.25, -0.25, 12.0), func() -> void: _shoot("cage_countdown")],
+		[6.0, func(_s: float) -> void:
+			_g.set("player_input", false)
+			var c: Cage = _g.get("cage")
+			if not c.rivals.is_empty() and is_instance_valid(c.rivals[0]):
+				_m.aim_point = c.rivals[0].com_global()
+				_m.firing = _s > 2.0
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
+			_cam(PI * 1.25, -0.35, 14.0), func() -> void: _shoot("cage_fight")],
+		[2.0, func(_s: float) -> void:
+			(_g.get("cage") as Cage).excite = 1.0
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.CHASE
+			_cam(PI * 0.25, 0.25, 6.0), func() -> void: _shoot("cage_crowd")],
+		[0.5, _noop, func() -> void:
+			_m.firing = false
+			var c: Cage = _g.get("cage")
+			for e in c.rivals:
+				if is_instance_valid(e):
+					e.damage_part(e.cab_index(), 99999.0)],
+		[5.0, func(_s: float) -> void: _cam(PI * 1.25, -0.3, 12.0), func() -> void: _shoot("cage_workshop")],
+	]
+
+
 func _polish_steps() -> Array:
 	return [
 		[3.0, _noop, func() -> void:

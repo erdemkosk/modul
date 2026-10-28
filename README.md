@@ -6,6 +6,11 @@ are this project's own.
 
 ## Play
 
+- **Kafes**: a six-round tournament in a small walled cage before a crowd. Each round lays its own
+  floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals
+  (a rammer among them); win by tearing them apart or leaving them unable to move for 8 s, or on the
+  judges' decision at the bell. The damage stays between rounds: each win pays credits, and the
+  workshop buys back what you lost, the cab first. Your cab gone, you're out.
 - **Test Alanı**: the proving ground, built as an arena: a ring of jersey barriers under a catch fence,
   grandstands, floodlight masts (lit at night), a gate the other side drives in through, the surface
   zones and ramps, and cover that breaks (concrete blocks, containers, sandbags, crates, drums).
@@ -59,6 +64,9 @@ are this project's own.
   engine or nothing to run on, it can't move. Hurt parts soot over and smoke (`shaders/part_wear`).
   `combat_overlay.gd` shows being hurt and where from, and marks the enemy; `death_card.gd` says what
   did it. `pause_menu.gd`, `settings.gd` (user://settings.cfg), `settings_panel.gd`.
+- KAFES: `cage.gd` (the rounds, the judges, the credits, the workshop), `cage_arena.gd` (the cage, its
+  stands and crowd (`shaders/crowd.gdshader`), its hazards), `cage_ui.gd`; crowd sounds in
+  `assets/audio/crowd` (CC0, see its CREDITS).
 - Fire control (`machine_gun.gd`): the cannon and the pod lay themselves over for their round's drop at
   the aim's range; the crosshair's rings show where each would land.
 - `scripts/game.gd`: both modes. `scripts/menu.gd`: the start.
@@ -71,5 +79,6 @@ godot --headless --path . -s res://tests/combat_test.gd
 godot --headless --path . -s res://tests/tracks_test.gd
 godot --headless --path . -s res://tests/build_test.gd
 godot --headless --path . -s res://tests/arena_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena]
+godot --headless --path . -s res://tests/cage_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage]
 ```

@@ -52,6 +52,28 @@ func _ready() -> void:
 			zone.patch = patch
 
 
+## The zones anew while it's running (the cage's floor changing between rounds): the old soft
+## patches go, the new ones are made, the ground's colours repainted.
+func set_zones(zones: Array) -> void:
+	for zone in _zones:
+		if zone.patch:
+			(zone.patch as Node).queue_free()
+	_zones.clear()
+	for z: Array in zones:
+		_zones.append({"rect": z[0], "surface": z[1], "patch": null})
+	for zone in _zones:
+		var surface: Surface = zone.surface
+		if surface.is_soft():
+			var patch := SoftPatch.new()
+			patch.setup(zone.rect, surface, sample_height)
+			add_child(patch)
+			zone.patch = patch
+	if _mat:
+		var mask := _build_surface_mask()
+		_mat.set_shader_parameter("surface_mask", mask)
+		_mat.set_shader_parameter("surface_soft", mask)
+
+
 ## Analytic height; matches the collision samples at whole-metre coordinates.
 func height_at(x: float, z: float) -> float:
 	var h := _noise.get_noise_2d(x, z) * 6.0

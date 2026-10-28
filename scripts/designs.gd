@@ -41,6 +41,19 @@ static func tracked() -> Array:
 	return out
 
 
+## The rammer: no guns, a wedge nose of armour, two engines on big wheels; it drives into you.
+## ~1.9 t, 180 kW.
+static func rammer() -> Array:
+	var out := _bed(-1, 2, -2, 2)
+	out.append_array([["cab", 0, 1, -1, 0], ["engine", -1, 1, 1, 0], ["engine", 1, 1, 1, 0],
+		["wheel_l", 3, -1, -2, 0], ["wheel_l", 3, -1, 1, 0], ["wheel_l", -3, -1, -2, 2], ["wheel_l", -3, -1, 1, 2]])
+	for x in range(-1, 3):
+		out.append(["wedge", x, 0, -3, 0])
+		out.append(["armor", x, 1, -2, 0])
+		out.append(["wedge", x, 1, -3, 0])
+	return out
+
+
 ## A target that doesn't move: a cab behind an armour wall on a bed, no engine.
 static func dummy() -> Array:
 	var out := _bed(-1, 2, -1, 1)

@@ -1,5 +1,6 @@
 extends Node3D
-## İnşa: a machine you put together from parts and drive and fight with. Two places (Mode):
+## İnşa: a machine you put together from parts and drive and fight with. Three places (Mode):
+##   cage     KAFES: a tournament of rounds in a small walled arena before a crowd (Cage, CageArena)
 ##   valley   the open valley (WorldTerrain: its mud, snow, roads; WorldDecor's trees; Weather's sky)
 ##   arena    the proving ground (TestTerrain): asphalt, gravel, mud pits, a bog, snow, ice, ramps;
 ##            build on the spot and set the other side's machines on yourself
@@ -29,6 +30,8 @@ var builder: Builder
 var combat: Combat
 var arena := false
 var arena_node: Arena
+var cage: Cage
+var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
 var disarmed: Array[int] = [] ## your guns (by their order) turned off: the rest fire together
@@ -48,12 +51,27 @@ var _banner_t := 0.0
 func _ready() -> void:
 	_bind_keys()
 	arena = Mode.current == "arena"
+	var caged := Mode.current == "cage"
+	place_name = "KAFES" if caged else ("TEST ALANI" if arena else "VADİ")
 	weather = Weather.new()
-	weather.hour = 11.0
-	weather.day_length_minutes = 0.0 if arena else 40.0
+	weather.hour = 21.6 if caged else 11.0 # (the cage fights at night, under its lights)
+	weather.day_length_minutes = 0.0 if arena or caged else 40.0
 	weather.preset = "clear"
 	add_child(weather)
-	if arena:
+	if caged:
+		var ct := TestTerrain.new()
+		ct.default_surface = Surface.preset("asphalt")
+		ct.noise_from = 52.0
+		ct.grid_strength = 0.0
+		terrain = ct
+		add_child(ct)
+		var ca := CageArena.new()
+		ca.terrain = ct
+		add_child(ca)
+		cage = Cage.new()
+		cage.arena = ca
+		cage.game = self
+	elif arena:
 		var t := TestTerrain.new()
 		t.default_surface = Surface.preset("grass") # (a meadow round the zones)
 		t.noise_from = Arena.R + 12.0 # (the arena's floor flat out to its stands)
@@ -101,6 +119,8 @@ func _ready() -> void:
 	_death = DeathCard.new()
 	_death.respawn.connect(_respawn)
 	add_child(_death)
+	if cage:
+		add_child(cage)
 	Settings.apply(get_tree())
 	machine.label = "SEN"
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -109,6 +129,9 @@ func _ready() -> void:
 
 
 func _start_xform() -> Transform3D:
+	if Mode.current == "cage":
+		var at := Vector3(-CageArena.HALF + 4.5, float(terrain.call("height_at", -CageArena.HALF + 4.5, -CageArena.HALF + 4.5)) + 1.5, -CageArena.HALF + 4.5)
+		return Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at)
 	if arena:
 		return Transform3D(Basis.IDENTITY, Vector3(0.0, terrain.call("height_at", 0.0, -40.0) + 2.0, -40.0))
 	var at: Transform3D = terrain.get("spawn")
@@ -130,7 +153,7 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 	if team != 0:
 		m.died.connect(func() -> void:
 			kills += 1
-			say("%s parçalandı  ·  %d" % [m.label.capitalize(), kills]))
+			say("%s PARÇALANDI  ·  %d" % [m.label, kills]))
 	return m
 
 
@@ -178,7 +201,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_instance_valid(machine):
 		return
 	if event.is_action_pressed("build"):
-		builder.set_active(not builder.active)
+		if cage and not cage.can_build() and not builder.active:
+			say("Turnuva başladı: araç artık yalnız atölyede onarılır")
+		else:
+			builder.set_active(not builder.active)
 	elif event.is_action_pressed("lights"):
 		machine.set_lights(not machine.lights_on)
 	elif event.is_action_pressed("right_up") and not builder.active:
@@ -292,7 +318,7 @@ func _physics_process(dt: float) -> void:
 	_apply_armed() # (a rebuild makes the guns anew)
 	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
 	# is rebuilt where it started
-	if Input.is_physical_key_pressed(KEY_K):
+	if Input.is_physical_key_pressed(KEY_K) and cage == null:
 		_recover_t += dt
 		if _recover_t >= 1.5:
 			_recover_t = 0.0
@@ -320,6 +346,9 @@ func aim_point() -> Vector3:
 ## Your cab's gone: the moment slowed right down, the wreck flying, and a card says what did it and
 ## how you did; Space (or a few seconds) and a new one's built where you start.
 func _on_player_died() -> void:
+	if cage:
+		cage.on_player_died()
+		return
 	var by := machine.last_hit_by
 	var who := by.label if is_instance_valid(by) and by != machine else ""
 	_death.show_card(who, machine.last_hit_kind, _life_t, kills - _kills_at_spawn)
@@ -327,6 +356,15 @@ func _on_player_died() -> void:
 	var tw := create_tween().set_ignore_time_scale(true)
 	tw.tween_interval(0.5)
 	tw.tween_property(Engine, "time_scale", 1.0, 1.0)
+
+
+## A new machine from the saved design where you start, without a word (the cage's new run).
+func _respawn_quiet() -> void:
+	if is_instance_valid(machine):
+		if machine.died.is_connected(_on_player_died):
+			machine.died.disconnect(_on_player_died)
+		machine.queue_free()
+	_respawn()
 
 
 ## A new machine from the saved design where you start.
@@ -381,7 +419,7 @@ func _make_hud() -> void:
 	# a row across the top, the plate in its middle as wide as its words
 	var top := HBoxContainer.new()
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	top.offset_top = 70
+	top.offset_top = 70 if Mode.current != "cage" else 150 # (under the cage's own bar)
 	top.alignment = BoxContainer.ALIGNMENT_CENTER
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(top)

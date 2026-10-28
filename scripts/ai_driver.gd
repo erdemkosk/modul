@@ -39,9 +39,12 @@ func _physics_process(dt: float) -> void:
 	var me := machine.global_position
 	var to := target.com_global() - me
 	var dist := to.length()
-	# steer: where to drive this moment
+	# steer: where to drive this moment (one with no guns drives straight at it: a rammer)
 	var goal := target.global_position
-	if dist < range_far:
+	var rams := machine.guns.is_empty()
+	if rams:
+		goal = target.global_position + target.linear_velocity * clampf(dist / 15.0, 0.0, 1.5) # (where it'll be)
+	elif dist < range_far:
 		# round it: a point off to the side at the middle of its range
 		var side := to.cross(Vector3.UP).normalized() * circle
 		goal = target.global_position - to.normalized() * ((range_near + range_far) * 0.5) + side * 12.0
@@ -50,8 +53,8 @@ func _physics_process(dt: float) -> void:
 	want.y = 0.0
 	var ang := fwd.signed_angle_to(want.normalized(), Vector3.UP) # (+: to the left)
 	var steer := clampf(-ang * 1.5, -1.0, 1.0)
-	var throttle := 1.0 if dist > range_near else -0.6
-	if absf(ang) > 2.2 and dist > range_near:
+	var throttle := 1.0 if dist > range_near or rams else -0.6
+	if absf(ang) > 2.2 and (dist > range_near or rams):
 		throttle = 0.5 # (turning round)
 	# stuck: backs out, turned the other way
 	if _back_t > 0.0:
