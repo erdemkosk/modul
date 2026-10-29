@@ -65,6 +65,7 @@ func _physics_process(_d: float) -> bool:
 				return false
 			_c = _g.get("cage")
 			_a = _c.arena
+			(_g.get("builder") as Builder).set_active(false) # (the cage opens on the builder)
 			_m = _g.get("machine")
 			_g.set("player_input", false)
 			_m.invulnerable = true
@@ -79,8 +80,8 @@ func _physics_process(_d: float) -> bool:
 			_r.closest = minf(float(_r.closest), Vector2(p.x, p.z).length())
 			if OS.get_environment("TRACE") != "" and _frame % 60 == 0:
 				var ai0: AiDriver = _e.find_children("*", "AiDriver", false, false)[0]
-				print("   s %.1f rammer %s fwd %s throttle %.1f steer %.1f rev %s speed %.1f" % [since, p, -_e.global_basis.z, _e.throttle, _e.steer, ai0._reversing, _e.speed])
-			if since < 9.0 and _e.global_position.distance_to(_m.global_position) > 6.0:
+				print("   s %.1f rammer %s throttle %.1f steer %.1f rev %s speed %.1f stuck %.2f back %.2f" % [since, p, _e.throttle, _e.steer, ai0._reversing, _e.speed, ai0._stuck_t, ai0._back_t])
+			if since < 13.0 and _e.global_position.distance_to(_m.global_position) > 6.0: # (time to back off a spinner it caught and go round)
 				return false
 			print("rammer at you past a spinner: came within %.1f m of its middle, %.1f m from you after %.1f s" % [
 				_r.closest, _e.global_position.distance_to(_m.global_position), since])

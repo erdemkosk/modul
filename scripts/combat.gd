@@ -176,7 +176,7 @@ func _physics_process(dt: float) -> void:
 		var hit := space.intersect_ray(q)
 		s.life = float(s.life) - dt
 		if not hit.is_empty():
-			explode(hit.position, MachineGun.CANNON_RADIUS, MachineGun.CANNON_DAMAGE, MachineGun.CANNON_PUSH, s.owner,
+			explode(hit.position, MachineGun.CANNON_RADIUS, MachineGun.CANNON_DAMAGE, MachineGun.CANNON_PUSH, s.owner if is_instance_valid(s.owner) else null,
 				hit.collider != terrain, v.normalized())
 			_shells.remove_at(i)
 			continue
@@ -213,7 +213,7 @@ func _fly_rockets(space: PhysicsDirectSpaceState3D, dt: float) -> void:
 		var vis: int = r.vis
 		if not hit.is_empty() or float(r.life) <= 0.0:
 			if not hit.is_empty():
-				explode(hit.position, MachineGun.ROCKET_RADIUS, MachineGun.ROCKET_DAMAGE, MachineGun.ROCKET_PUSH, r.owner,
+				explode(hit.position, MachineGun.ROCKET_RADIUS, MachineGun.ROCKET_DAMAGE, MachineGun.ROCKET_PUSH, r.owner if is_instance_valid(r.owner) else null,
 					hit.collider != terrain, v.normalized())
 			if vis >= 0:
 				_rocket_vis[vis].visible = false

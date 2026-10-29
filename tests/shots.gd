@@ -66,6 +66,7 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
+	CageRecord.save_path = "user://shots_cage_record.cfg"
 	Mode.current = "valley" if _valley else ("cage" if _cage else "arena")
 	if _mission != "":
 		Mode.current = "mission"
@@ -525,7 +526,7 @@ func _arena2_steps() -> Array:
 
 ## The polish: a hurt machine smoking and sooted, enemies marked, a hit from the side, the pause
 ## menu, the death card.
-## KAFES: the start panel, the cage from above with its crowd, the countdown, the fight, the crowd up
+## KAFES: the start panel, the round's maze from above and from in it, the cage with its crowd, the countdown, the fight, the crowd up
 ## close on its feet, the workshop.
 func _cage_steps() -> Array:
 	return [
@@ -537,6 +538,10 @@ func _cage_steps() -> Array:
 			_m.from_data(data)
 			_cam(PI * 1.25, -0.3, 12.0)
 			_shoot("cage_prep")],
+		[1.0, func(_s: float) -> void:
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
+			_cam(PI * 1.25, -1.1, 125.0), func() -> void: _shoot("cage_maze")],
+		[1.0, func(_s: float) -> void: _cam(PI * 1.1, -0.35, 30.0), func() -> void: _shoot("cage_maze_low")],
 		[1.0, _noop, func() -> void:
 			(_g.get("cage") as Cage).start_run()],
 		[1.6, func(_s: float) -> void: _cam(PI * 1.25, -0.25, 12.0), func() -> void: _shoot("cage_countdown")],
@@ -554,7 +559,7 @@ func _cage_steps() -> Array:
 			_cam(PI * 0.25, 0.25, 6.0), func() -> void: _shoot("cage_crowd")],
 		[2.0, func(_s: float) -> void:
 			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
-			_cam(PI * 1.25, -0.42, 58.0), func() -> void: _shoot("cage_stadium")],
+			_cam(PI * 1.25, -0.42, 110.0), func() -> void: _shoot("cage_stadium")],
 		[2.0, func(_s: float) -> void:
 			if _once("shell"):
 				(_g.get("cage") as Cage).camp_t = Cage.CAMP_SHELL

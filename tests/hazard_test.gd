@@ -65,6 +65,7 @@ func _physics_process(_d: float) -> bool:
 				return false
 			_c = _g.get("cage")
 			_a = _c.arena
+			(_g.get("builder") as Builder).set_active(false) # (the cage opens on the builder)
 			_m = _g.get("machine")
 			_g.set("player_input", false)
 			_a.set_round({})

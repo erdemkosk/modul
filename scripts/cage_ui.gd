@@ -6,7 +6,10 @@ extends CanvasLayer
 ##   the middle  3, 2, 1, DÖVÜŞ!; KAZANDIN and what it paid
 ##   panels      before the first round (build, then start), the workshop between rounds (what's
 ##               broken and missing and what it costs, repair all or only the cab, on to the next),
-##               the end (out or champion: again, or the start menu)
+##               the end (out or champion: again, or the start menu), the record and the fame earned
+##   top right   the maze's map: its walls, the hazards, the corners, you and which way you face;
+##               a rival exactly when it's near, else only the cell it was in a moment ago, pulsing
+##               (refreshed every SCAN s), and where lobbed rounds are coming down
 
 var cage: Cage
 var _top: VBoxContainer
@@ -22,6 +25,13 @@ var _sub: Label
 var _panel: PanelContainer
 var _panel_box: VBoxContainer
 var _big_t := 0.0
+var _map: Control
+var _seen := {} ## Machine -> the cell it was last placed in on the map
+var _scan_t := 0.0
+var _t := 0.0
+const MAP := 236.0 ## px
+const SCAN := 2.5 ## s
+const NEAR := 30.0 ## m: a rival this near is shown where it is
 
 
 func _ready() -> void:
@@ -93,6 +103,20 @@ func _ready() -> void:
 	_panel_box.add_theme_constant_override("separation", 8)
 	_panel.add_child(_panel_box)
 	_panel.visible = false
+	# the map
+	var mp := PanelContainer.new()
+	mp.add_theme_stylebox_override("panel", Ui.glass(false, 8.0))
+	mp.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	mp.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	mp.offset_right = -26
+	mp.offset_top = 78
+	mp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(mp)
+	_map = Control.new()
+	_map.custom_minimum_size = Vector2(MAP, MAP)
+	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_map.draw.connect(_draw_map)
+	mp.add_child(_map)
 
 
 func _clear_panel() -> void:
@@ -161,11 +185,18 @@ func show_prep() -> void:
 	Ui.label(_panel_box, "KAFES", 15, Ui.ACCENT, "head")
 	Ui.label(_panel_box, "%d TURLUK TURNUVA" % Cage.ROUNDS.size(), 48, Ui.INK, "display")
 	Ui.rule(_panel_box, 80.0)
-	var t := Ui.label(_panel_box, "Her turda zemin ve rakip değişir: çamur, buz, ateş kapanları, dikenler, bataklık. Rakibi parçala ya da hareketsiz bırak (8 sn sayılır); süre biterse jüri az hasar alana verir. Kazandıkça kredi kazanırsın, turlar arasında atölyede aracını onarırsın. Kabinin giderse elenirsin. Kafes bir stadyumun ortasında: seyirci kavga ister, vurdukça coşar, coşku dolunca yanına hediye sandık yollar; savaşmadan saklanırsan yuhalar, sonra organizasyon topçu ateşi açar.", 16, Ui.DIM)
+	var t := Ui.label(_panel_box, "Her tur ayrı bir labirent, her oynayışta yeniden çizilir; zemini, tuzakları (çamur, buz, ateş kapanları, dikenler, çukur) ve rakipleri değişir, rakipler labirentte yolunu bulup sana gelir. Rakibi parçala ya da hareketsiz bırak (8 sn sayılır); süre biterse jüri az hasar alana verir. Kazandıkça kredi kazanırsın, turlar arasında atölyede aracını onarırsın. Kabinin giderse elenirsin. Kafes bir stadyumun ortasında: seyirci kavga ister, vurdukça coşar, coşku dolunca yanına hediye sandık yollar; savaşmadan saklanırsan yuhalar, sonra organizasyon topçu ateşi açar.", 16, Ui.DIM)
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	t.custom_minimum_size.x = 510
-	Ui.label(_panel_box, "Aracını şimdi kur (B). Turnuva başladıktan sonra yalnız onarılır.", 15, Ui.INK, "label")
+	Ui.label(_panel_box, "Her tur inşayla başlar: labirente göre aracını kur (B). Turlar arası yeni parça kredi ister.", 15, Ui.INK, "label")
 	Ui.label(_panel_box, "BAŞLANGIÇ KREDİSİ  %d" % cage.credits, 15, Ui.ACCENT, "head")
+	var rec := cage.record
+	Ui.label(_panel_box, "ŞÖHRET %d   ·   EN İYİ %d TUR   ·   ŞAMPİYONLUK %d   ·   %d DENEME" % [rec.fame, rec.best_round, rec.titles, rec.runs], 14, Ui.INK, "label")
+	var nx := rec.next_unlock()
+	var nl := Ui.label(_panel_box, "Bütün parçalar açık." if nx.is_empty() else "Sıradaki kilit %d şöhrette: %s. Kazandığın her tur şöhret getirir, ilerideki turlar daha çok." % [int(nx[0]),
+		", ".join((nx[1] as Array).map(func(i: String) -> String: return str(Parts.def(i).name)))], 13, Ui.DIM)
+	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	nl.custom_minimum_size.x = 510
 	_button("DÖVÜŞE BAŞLA  ·  ENTER", func() -> void:
 		_close_panel()
 		cage.start_run(), true)
@@ -280,6 +311,11 @@ func show_final(champion: bool, rounds_won: int, credits: int, why := "") -> voi
 	Ui.label(_panel_box, "ŞAMPİYON!" if champion else "ELENDİN", 58, Ui.INK, "display")
 	Ui.rule(_panel_box, 80.0, Ui.ACCENT if champion else Ui.BAD)
 	Ui.label(_panel_box, "Kazanılan tur %d / %d   ·   Kredi %d" % [rounds_won, Cage.ROUNDS.size(), credits], 17, Ui.INK, "label")
+	var lr := cage.last_run
+	if not lr.is_empty():
+		Ui.label(_panel_box, "+%d ŞÖHRET   ·   toplam %d   ·   en iyi %d tur" % [int(lr.gained), cage.record.fame, cage.record.best_round], 17, Ui.ACCENT, "head")
+		if not (lr.opened as Array).is_empty():
+			Ui.label(_panel_box, "YENİ PARÇA AÇILDI: " + ", ".join((lr.opened as Array).map(func(i: String) -> String: return str(Parts.def(i).name))), 16, Ui.GOOD, "head")
 	_button("YENİDEN DENE", func() -> void:
 		_close_panel()
 		cage.restart(), true)
@@ -306,3 +342,66 @@ func tick(dt: float) -> void:
 	for row in _bars.get_children():
 		if row.get_child_count() > 1:
 			(row.get_child(1) as Control).queue_redraw()
+	_t += dt
+	_scan_t -= dt
+	if _scan_t <= 0.0:
+		_scan_t = SCAN
+		for e in cage.rivals:
+			if is_instance_valid(e):
+				_seen[e] = cage.arena.cell_of(e.global_position)
+	_map.get_parent().visible = not panel_up() and cage.state in ["prep", "countdown", "fight", "won", "workshop"]
+	_map.queue_redraw()
+
+
+# --- The map --------------------------------------------------------------------------------------
+
+func _mp(x: float, z: float) -> Vector2:
+	return Vector2(x + CageArena.HALF, z + CageArena.HALF) * MAP / (CageArena.HALF * 2.0)
+
+
+func _draw_map() -> void:
+	var a := cage.arena
+	var s := MAP / (CageArena.HALF * 2.0)
+	_map.draw_rect(Rect2(Vector2.ZERO, Vector2(MAP, MAP)), Color(0.06, 0.07, 0.08, 0.8))
+	for z: Rect2 in CageArena.HOUSE_ZONES:
+		_map.draw_rect(Rect2(_mp(z.position.x, z.position.y), z.size * s), Color(0.85, 0.65, 0.1, 0.5), false, 1.0)
+	_map.draw_rect(Rect2(_mp(-CageArena.HALF, -CageArena.HALF), Vector2(9, 9)), Color(0.8, 0.15, 0.1, 0.8))
+	_map.draw_rect(Rect2(_mp(CageArena.HALF, CageArena.HALF) - Vector2(9, 9), Vector2(9, 9)), Color(0.15, 0.35, 0.85, 0.8))
+	var lay := a.layout
+	if lay.has("pit") and (lay.pit as Rect2).size.x > 0.0:
+		var pr: Rect2 = lay.pit
+		_map.draw_rect(Rect2(_mp(pr.position.x, pr.position.y), pr.size * s), Color(0.0, 0.0, 0.0, 0.9) if a.pit_open else Color(0.25, 0.25, 0.25))
+		_map.draw_rect(Rect2(_mp(pr.position.x, pr.position.y), pr.size * s), Color(0.95, 0.7, 0.1), false, 1.0)
+	for r: Rect2 in lay.get("spikes", []):
+		_map.draw_rect(Rect2(_mp(r.position.x, r.position.y), r.size * s), Color(0.6, 0.6, 0.62, 0.9))
+	for v: Vector2 in lay.get("vents", []):
+		_map.draw_circle(_mp(v.x, v.y), 2.6, Color(1.0, 0.45, 0.1))
+	for sp: Vector2 in lay.get("spinners", []):
+		_map.draw_arc(_mp(sp.x, sp.y), 3.2, 0.0, TAU, 12, Color(0.95, 0.75, 0.1), 1.5)
+	for sw: Array in lay.get("saws", []):
+		_map.draw_line(_mp((sw[0] as Vector2).x, (sw[0] as Vector2).y), _mp((sw[1] as Vector2).x, (sw[1] as Vector2).y), Color(0.95, 0.75, 0.1), 1.5)
+	for w: Array in a.walls:
+		_map.draw_line(_mp((w[0] as Vector2).x, (w[0] as Vector2).y), _mp((w[1] as Vector2).x, (w[1] as Vector2).y), Color(0.78, 0.82, 0.86), 2.5)
+	_map.draw_rect(Rect2(Vector2.ZERO, Vector2(MAP, MAP)), Color(0.78, 0.82, 0.86), false, 2.0)
+	for rg in get_tree().get_nodes_in_group("lob_rings"):
+		var p := (rg as Node3D).global_position
+		_map.draw_arc(_mp(p.x, p.z), 4.0, 0.0, TAU, 16, Color(1.0, 0.2, 0.15, 0.6 + 0.4 * sin(_t * 12.0)), 2.0)
+	var me: Machine = cage.game.get("machine")
+	for e in cage.rivals:
+		if not is_instance_valid(e) or not e.alive:
+			continue
+		var near := is_instance_valid(me) and e.global_position.distance_to(me.global_position) < NEAR
+		if near:
+			_map.draw_circle(_mp(e.global_position.x, e.global_position.z), 4.0, Color(1.0, 0.25, 0.2))
+		elif _seen.has(e):
+			# where it was a moment ago: its cell, pulsing
+			var c: Vector2i = _seen[e]
+			var r := Rect2(_mp(-CageArena.HALF + c.x * CageArena.CELL, -CageArena.HALF + c.y * CageArena.CELL), Vector2.ONE * CageArena.CELL * s)
+			_map.draw_rect(r.grow(-2.0), Color(1.0, 0.2, 0.15, 0.18 + 0.14 * sin(_t * 4.0)))
+			_map.draw_rect(r.grow(-2.0), Color(1.0, 0.25, 0.2, 0.7), false, 1.0)
+	if is_instance_valid(me):
+		var p := _mp(me.global_position.x, me.global_position.z)
+		var f := -me.global_basis.z
+		var d := Vector2(f.x, f.z).normalized() * 7.0
+		var sd := Vector2(-d.y, d.x) * 0.6
+		_map.draw_colored_polygon(PackedVector2Array([p + d, p - d * 0.6 + sd, p - d * 0.6 - sd]), Color(1.0, 0.6, 0.15))

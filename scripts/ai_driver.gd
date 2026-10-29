@@ -18,6 +18,11 @@ extends Node
 ##                when it's so close their burst would reach it too), a moment after it first sees it
 ##   trouble      stuck (pushing and not moving), it backs out and turns; on its side, it rights
 ##                itself after a few seconds (a crew would winch it back over)
+##   its temper   (the cage's rivals, TEMPERS) a hunter comes straight for you through the maze; a
+##                lurker (pusucu) waits at its lair, still, till you come near or into its sight, or
+##                it's hit or has waited WAIT_MAX s; a flanker (kuşatıcı) comes round to the side of
+##                you before it closes; a lobber (topçu) stands off and, when it can't see you, lobs
+##                a mortar round over the walls every LOB_EVERY s, a red ring where it'll come down
 
 var machine: Machine
 var target: Machine
@@ -28,6 +33,8 @@ var circle := 1.0 ## which way it circles (+1 right)
 var shoving := false ## (this moment: going round to shove its target into harm)
 
 var _stuck_t := 0.0
+var _went_from := Vector3.ZERO ## (where it was _went_t s ago: pinned and jolted, it goes nowhere)
+var _went_t := 0.0
 var _back_t := 0.0
 var _flip_t := 0.0
 var _retarget_t := 0.0
@@ -46,6 +53,16 @@ var _detour_t := 0.0
 var _part_t := 0.0
 var _arena: Node
 var route: Callable ## (a maze's, if it's in one: (machine, target, goal) -> where to head for now)
+var temper := "" ## "" a hunter; "pusucu", "kusatici", "topcu" (TEMPERS)
+var lair := Vector3.INF ## (a lurker's: where it waits)
+var waiting := true ## (a lurker, till it's roused)
+var _wait_t := 0.0
+var _hp0 := -1.0
+var _lob_t := 3.0
+const TEMPERS := {"": "AVCI", "pusucu": "PUSUCU", "kusatici": "KUŞATICI", "topcu": "TOPÇU"}
+const WAIT_MAX := 70.0
+const LOB_EVERY := 6.5 ## s
+const LOB_FLIGHT := 3.2 ## s a lobbed round's in the air
 const AIM_ERR_BASE := 0.6 ## m off its mark however close
 const AIM_ERR_PER_M := 0.035 ## and this much more a metre off (about 2 m at 50 m)
 ## How much each kind of part is worth going for (times how hurt it already is).
@@ -93,6 +110,13 @@ func _physics_process(dt: float) -> void:
 	if _only("flamer"): # (a flamethrower's got to be close: it fights at 5-11 m)
 		near = 5.0
 		far = 11.0
+	if temper == "topcu":
+		near = 26.0
+		far = 48.0
+	if temper == "pusucu" and _lurk(dt, dist):
+		return
+	if temper == "topcu":
+		_lob(dt, dist)
 	# where to drive this moment
 	var goal := target.global_position
 	if rams:
@@ -101,6 +125,10 @@ func _physics_process(dt: float) -> void:
 		# round it: a point off to the side at the middle of its range
 		var side := to.cross(Vector3.UP).normalized() * circle
 		goal = target.global_position - to.normalized() * ((near + far) * 0.5) + side * (6.0 if _arena else 12.0)
+	if temper == "kusatici" and dist > 26.0:
+		# round to its side first: a point off to the side of it, the way it circles
+		var side := to.cross(Vector3.UP).normalized() * circle
+		goal = target.global_position + side * 22.0 - to.normalized() * 6.0
 	var shove := _shove_goal(rams)
 	shoving = shove != Vector3.INF
 	if shoving:
@@ -147,7 +175,14 @@ func _physics_process(dt: float) -> void:
 			_back_t = 1.8
 			circle = -circle
 	else:
-		_stuck_t = 0.0
+		_stuck_t = maxf(_stuck_t - dt, 0.0) # (a jolt, a spinner's fling, doesn't free it)
+	_went_t += dt
+	if _went_t > 3.0:
+		if _back_t <= 0.0 and absf(throttle) > 0.4 and machine.global_position.distance_to(_went_from) < 1.5:
+			_back_t = 1.8 # (pushing three seconds and still where it was)
+			circle = -circle
+		_went_t = 0.0
+		_went_from = machine.global_position
 	if _slow and throttle > 0.5:
 		throttle = 0.5
 	_slow = false
@@ -215,7 +250,7 @@ func _steer_round(to: Vector3, _shoving_now: bool) -> Vector3:
 		var r: float = d.r
 		var off := p - c
 		var dist := off.length()
-		var seen := 5.0 + absf(machine.speed) * 1.0 # (the faster, the further ahead it looks)
+		var seen := 5.0 + absf(machine.speed) * 1.4 # (the faster, the further ahead it looks)
 		if dist > r + seen or dist < 0.001:
 			continue
 		var radial := off / dist
@@ -231,7 +266,7 @@ func _steer_round(to: Vector3, _shoving_now: bool) -> Vector3:
 		_detour_t = 1.0
 		var w := (1.0 - (dist - r) / seen) * (0.4 + toward)
 		out += tangent * _detour * w * 2.4 + radial * w * 0.6
-		if dist < r + 3.0 and toward > 0.5:
+		if dist < r + 3.0 + absf(machine.speed) * 0.4 and toward > 0.5:
 			_slow = true # (close and dead ahead: ease off while it gets round)
 	return Vector3(out.x, 0.0, out.y).normalized()
 
@@ -393,3 +428,87 @@ func _pick_target() -> Machine:
 			best_s = s
 			best = m
 	return best
+
+
+# --- Tempers -------------------------------------------------------------------------------------
+
+## A lurker: to its lair and still there, guns on the mark, till it's roused (you near, in its
+## sight, a hit on it, or it's waited long enough). True while it's lurking (its moment's done).
+func _lurk(dt: float, dist: float) -> bool:
+	if not waiting:
+		return false
+	if _hp0 < 0.0:
+		_hp0 = machine.health()
+	_wait_t += dt
+	if dist < 32.0 or (dist < 70.0 and _sees(target)) or machine.health() < _hp0 - 0.01 or _wait_t > WAIT_MAX or lair == Vector3.INF:
+		waiting = false
+		return false
+	var me := machine.global_position
+	var to_lair := Vector3(lair.x - me.x, 0.0, lair.z - me.z)
+	if to_lair.length() > 3.0:
+		var g := lair
+		if route.is_valid():
+			g = route.call(machine, target, lair)
+		var want := _steer_round(g - me, false)
+		var ang := (-machine.global_basis.z).signed_angle_to(want, Vector3.UP)
+		machine.steer = clampf(-ang * 1.5, -1.0, 1.0)
+		machine.throttle = 1.0 if absf(ang) < 2.2 else 0.5
+		machine.brake = 0.0
+	else:
+		machine.throttle = 0.0
+		machine.steer = 0.0
+		machine.brake = 1.0
+	_stuck_t = 0.0
+	_aim(dt, dist)
+	machine.firing = false
+	return true
+
+
+## A lobber that can't see its target: every LOB_EVERY s a round lobbed high over the walls to come
+## down where it'll be (a crew's guess: off by a few metres), a red ring on the ground there.
+func _lob(dt: float, dist: float) -> void:
+	_lob_t -= dt
+	if _lob_t > 0.0 or _wake > 0.0 or dist > 120.0 or dist < 15.0 or Combat.current == null:
+		return
+	_lob_t = LOB_EVERY
+	if _sees(target):
+		return # (in its sight its guns do it)
+	var a := randf() * TAU
+	var land := target.global_position + target.linear_velocity * LOB_FLIGHT * 0.6 		+ Vector3(cos(a), 0.0, sin(a)) * randf_range(1.5, 6.0) * clumsy
+	if _arena:
+		var inside := CageArena.HALF - 2.0
+		land.x = clampf(land.x, -inside, inside)
+		land.z = clampf(land.z, -inside, inside)
+		land.y = float(_arena.get("terrain").call("height_at", land.x, land.z))
+	var from := machine.com_global() + Vector3.UP * (machine.top_y + 1.0)
+	var t := LOB_FLIGHT
+	var g := Combat.SHELL_GRAVITY
+	var vel := Vector3((land.x - from.x) / t, (land.y - from.y + 0.5 * g * t * t) / t, (land.z - from.z) / t)
+	Combat.current.fire_shell(from, vel, machine)
+	Combat.current.muzzle_flash(from, vel.normalized(), 1.2)
+	Combat.current.sound("res://assets/audio/explosion/distant_01.wav", from, 2.0, 1.4)
+	_ring(land, t)
+
+
+## A red ring on the ground where a round's coming down, for `secs`.
+func _ring(at: Vector3, secs: float) -> void:
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 2.6
+	tm.outer_radius = 3.0
+	tm.rings = 32
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.15, 0.1, 0.85)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	tm.material = mat
+	ring.mesh = tm
+	ring.scale = Vector3(1.0, 0.05, 1.0)
+	ring.add_to_group("lob_rings")
+	machine.get_parent().add_child(ring)
+	ring.global_position = at + Vector3.UP * 0.08
+	var tw := ring.create_tween()
+	tw.set_loops(int(secs / 0.4))
+	tw.tween_property(mat, "albedo_color:a", 0.25, 0.2)
+	tw.tween_property(mat, "albedo_color:a", 0.9, 0.2)
+	ring.get_tree().create_timer(secs).timeout.connect(ring.queue_free)

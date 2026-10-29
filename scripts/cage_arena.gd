@@ -14,12 +14,24 @@ extends Node3D
 ## few seconds, chain-link fence islands to fight round, breakable blocks and drums, spinners (a
 ## toothed drum on the floor spinning flat out: what touches it is torn at and flung off sideways) and
 ## floor saws (a toothed blade up out of a slot, running to and fro along it, cutting what's over it).
+##
+## A round's floor is also a maze (plan): N x N cells of CELL m, a walk cut through every one of them
+## (so all of it's reachable) and a share of the walls taken out again for loops to flank by, the
+## walls containers end to end, double rows of concrete barriers or sandbags and blocks, a block for a
+## pillar where walls meet; the round's hazards in cells of their own, cover in the rest. New each
+## round and each run (by its seed). The rivals find their way through it by the cells (route).
 
-const HALF := 40.0
+const HALF := 80.0
+const N := 7
+const CELL := HALF * 2.0 / N ## m (about 23)
+const OPEN := 0.3 ## of the maze's walls taken out again (loops)
+const RED := Vector2i(0, 0) ## your corner's cell
+const BLUE := Vector2i(N - 1, N - 1) ## the rivals'
+const _DIRS := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 const A := "res://assets/arena/"
 const SPIKE_DAMAGE := 22.0 ## hp a bite
 const FIRE_DAMAGE := 26.0 ## hp a lick at the middle
-const HOUSE_ZONES := [Rect2(-HALF, HALF - 12.0, 12, 12), Rect2(HALF - 12.0, -HALF, 12, 12)] ## (x, z)
+const HOUSE_ZONES := [Rect2(-HALF, HALF - 14.0, 14, 14), Rect2(HALF - 14.0, -HALF, 14, 14)] ## (x, z)
 const SPINNER_DAMAGE := 34.0 ## hp a tooth's bite (every BLADE_TICK s while it's touching)
 const SAW_DAMAGE := 26.0
 const BLADE_TICK := 0.15
@@ -43,6 +55,9 @@ var _zones_now := [] ## (this round's zones, the pit added to them when it opens
 var _spinners: Array[Dictionary] = [] ## {node, area, at, r}
 var _saws: Array[Dictionary] = [] ## {node, blade, area, a, b, u, dir}
 var _cut := {} ## Machine -> s till a blade bites it again
+var layout := {} ## this round's (what set_round was given)
+var open := {} ## the maze's: [Vector2i, Vector2i] (the lower first) -> true: no wall between
+var walls: Array = [] ## the maze's closed sides: [Vector2 from, Vector2 to]
 
 
 func _ready() -> void:
@@ -102,7 +117,7 @@ func _box(size: Vector3, xf: Transform3D, mat: Material, body: StaticBody3D = nu
 func _floor_marks() -> void:
 	var yellow := _mat(Color(0.8, 0.6, 0.08), 0.7)
 	var black := _mat(Color(0.05, 0.05, 0.05), 0.7)
-	var n := 40
+	var n := 80
 	for side in 4:
 		for k in n:
 			var along := -HALF + (k + 0.5) * HALF * 2.0 / n
@@ -154,8 +169,8 @@ func _walls() -> void:
 		cs.shape = bs
 		cs.transform = Transform3D(b, mid + Vector3.UP * 3.35)
 		body.add_child(cs)
-		for k in 21:
-			var p := b * Vector3(-HALF + k * HALF * 2.0 / 20.0, 0.0, -HALF - 0.2)
+		for k in 41:
+			var p := b * Vector3(-HALF + k * HALF * 2.0 / 40.0, 0.0, -HALF - 0.2)
 			p.y = _h(p.x, p.z)
 			var post := MeshInstance3D.new()
 			var cm := CylinderMesh.new()
@@ -196,16 +211,16 @@ func _walls() -> void:
 ## The floodlights on the stadium's roof edge, at its corners and its sides' middles, on the floor
 ## (not the stands: they've their own glow).
 func _floodlights() -> void:
-	for k in 8:
-		var a := k * TAU / 8.0 + PI * 0.25
+	for k in 12:
+		var a := k * TAU / 12.0 + PI * 0.25
 		var p := Vector3(cos(a), 0.0, sin(a))
 		p = p / maxf(absf(p.x), absf(p.z)) * (stadium.roof_from - 1.0)
 		var l := SpotLight3D.new()
 		l.position = p + Vector3.UP * (Stadium.ROOF_H - 1.5)
 		add_child(l)
 		l.look_at(-p * 0.2, Vector3.UP)
-		l.spot_range = 130.0
-		l.spot_angle = 38.0
+		l.spot_range = 210.0
+		l.spot_angle = 42.0
 		l.spot_attenuation = 0.45
 		l.light_energy = 0.0
 		l.light_color = Color(0.94, 0.97, 1.0)
@@ -217,7 +232,7 @@ func _floodlights() -> void:
 ## Night: the floodlights on, the stadium lit.
 func set_night(on: bool) -> void:
 	for l in _lights:
-		l.light_energy = 6.0 if on else 0.0
+		l.light_energy = 8.0 if on else 0.0
 	stadium.set_night(on)
 
 
@@ -230,8 +245,11 @@ func set_excite(v: float) -> void:
 # --- A round's floor -----------------------------------------------------------------------------
 
 ## Lays the floor for a round: {zones: [[Rect2, preset]], spikes: [Rect2], vents: [Vector2],
-## fences: [[Vector2 from, Vector2 to]], blocks: [Vector2], drums: [Vector2]}.
-func set_round(layout: Dictionary) -> void:
+## fences: [[Vector2 from, Vector2 to]], blocks: [Vector2], drums: [Vector2], spinners: [Vector2],
+## saws: [[Vector2, Vector2]], pit: Rect2} and a maze's (plan): open, walls: [[Vector2, Vector2, kind]],
+## cover: [[kind, Vector2, yaw]].
+func set_round(p_layout: Dictionary) -> void:
+	layout = p_layout
 	for c in _hazards.get_children():
 		c.queue_free()
 	_spikes.clear()
@@ -267,6 +285,14 @@ func set_round(layout: Dictionary) -> void:
 		_hazards.add_child(Breakable.make("block", Transform3D(Basis(Vector3.UP, randf() * 0.4), Vector3(b.x, _h(b.x, b.y), b.y))))
 	for d: Vector2 in layout.get("drums", []):
 		_hazards.add_child(Breakable.make("drum", Transform3D(Basis(Vector3.UP, randf() * TAU), Vector3(d.x, _h(d.x, d.y), d.y))))
+	open = layout.get("open", {})
+	walls.clear()
+	for w: Array in layout.get("walls", []):
+		walls.append([w[0], w[1]])
+		_wall(w[0], w[1], str(w[2]))
+	for c: Array in layout.get("cover", []):
+		var at: Vector2 = c[1]
+		_hazards.add_child(Breakable.make(str(c[0]), Transform3D(Basis(Vector3.UP, float(c[2])), Vector3(at.x, _h(at.x, at.y), at.y))))
 
 
 ## The pit: a deep square shaft under the floor, walled and striped round its lip, a steel lid over
@@ -374,9 +400,13 @@ func dangers(p: Vector2, house := false) -> Array:
 	if not house:
 		for z: Rect2 in HOUSE_ZONES:
 			out.append({"c": p.clamp(z.position, z.end), "r": 1.5})
-	# the walls: kept off, slid along
+	# the walls: kept off, slid along (the maze's too, those near)
 	for w: Vector2 in [Vector2(p.x, -HALF), Vector2(p.x, HALF), Vector2(-HALF, p.y), Vector2(HALF, p.y)]:
 		out.append({"c": w.clamp(Vector2(-HALF, -HALF), Vector2(HALF, HALF)), "r": 2.0})
+	for w: Array in walls:
+		var c := Geometry2D.get_closest_point_to_segment(p, w[0], w[1])
+		if c.distance_squared_to(p) < 100.0:
+			out.append({"c": c, "r": 2.2})
 	return out
 
 
@@ -818,3 +848,253 @@ func _physics_process(dt: float) -> void:
 			var m := b as Machine
 			if m and m.alive:
 				m.blast(v.at + Vector3.UP * 0.8, 2.6, FIRE_DAMAGE, 120.0, null, "ateş") # (it burns; it hardly shoves)
+
+
+# --- The maze --------------------------------------------------------------------------------------
+
+## A round's floor by its theme and `seed_`: the maze, the theme's hazards in cells of their own, cover
+## in the rest. A theme: {ground: preset, middle: preset for the middle cell, patches: [[preset, n]],
+## pit: bool, vents, spinners, saws, spikes, fences, drums: how many of each}.
+static func plan(theme: Dictionary, seed_: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_
+	var opened := {}
+	# the maze: a walk that cuts through to every cell
+	var start := Vector2i(rng.randi() % N, rng.randi() % N)
+	var seen := {start: true}
+	var stack: Array[Vector2i] = [start]
+	while not stack.is_empty():
+		var c: Vector2i = stack.back()
+		var next: Array[Vector2i] = []
+		for d: Vector2i in _DIRS:
+			if _inside(c + d) and not seen.has(c + d):
+				next.append(c + d)
+		if next.is_empty():
+			stack.pop_back()
+			continue
+		var pick := next[rng.randi() % next.size()]
+		opened[_edge(c, pick)] = true
+		seen[pick] = true
+		stack.append(pick)
+	# loops: some of the walls taken out again; the corners always open both ways (no dead end to start in)
+	var corners := [RED, BLUE, Vector2i(0, N - 1), Vector2i(N - 1, 0)]
+	for x in N:
+		for y in N:
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var a := Vector2i(x, y)
+				if _inside(a + d) and (rng.randf() < OPEN or a in corners or (a + d) in corners):
+					opened[_edge(a, a + d)] = true
+	var out := {"open": opened, "walls": [], "cover": [], "zones": [], "spikes": [], "vents": [], "spinners": [],
+		"saws": [], "fences": [], "drums": []}
+	out.zones.append([Rect2(-HALF, -HALF, HALF * 2.0, HALF * 2.0), str(theme.get("ground", "asphalt"))])
+	# the walls, stubs at the ends of some open sides, a pillar where walls meet
+	var posts := {}
+	for x in N:
+		for y in N:
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var a := Vector2i(x, y)
+				var b := a + d
+				if not _inside(b):
+					continue
+				var s := _side(a, b)
+				if not opened.has(_edge(a, b)):
+					var r := rng.randf()
+					out.walls.append([s[0], s[1], "container" if r < 0.55 else ("barrier" if r < 0.85 else "sandbags")])
+					posts[s[0]] = true
+					posts[s[1]] = true
+				elif rng.randf() < 0.3 and not a in corners and not b in corners:
+					var kind := "container" if rng.randf() < 0.5 else "block"
+					var along := ((s[1] as Vector2) - (s[0] as Vector2)).normalized()
+					var off := 4.3 if kind == "container" else 2.3
+					var yaw := -along.angle()
+					out.cover.append([kind, (s[0] as Vector2) + along * off, yaw])
+					out.cover.append([kind, (s[1] as Vector2) - along * off, yaw])
+	for p: Vector2 in posts:
+		if absf(p.x) < HALF - 1.0 and absf(p.y) < HALF - 1.0:
+			out.cover.append(["block", p, 0.0])
+	# the hazards, each in a cell of its own (never a corner's, nor the middle's for anything but the pit)
+	var free: Array[Vector2i] = []
+	for x in N:
+		for y in N:
+			var c := Vector2i(x, y)
+			if not c in corners and c != Vector2i(N / 2, N / 2):
+				free.append(c)
+	_shuffle(free, rng)
+	var mid := Vector2i(N / 2, N / 2)
+	if theme.get("middle", "") != "":
+		out.zones.append([_cell_rect(mid), str(theme.middle)])
+	for pr: Array in theme.get("patches", []):
+		for k in int(pr[1]):
+			var c := Vector2i(rng.randi() % N, rng.randi() % N)
+			if c in corners:
+				continue
+			var r := _cell_rect(c)
+			if rng.randf() < 0.5: # (two cells long now and then)
+				r = r.merge(_cell_rect(c + (Vector2i(1, 0) if c.x < N - 1 else Vector2i(-1, 0))))
+			out.zones.append([r.grow(-1.0), str(pr[0])])
+	var used := {}
+	var take := func() -> Vector2i:
+		var c: Vector2i = free.pop_back() if not free.is_empty() else mid
+		used[c] = true
+		return c
+	if theme.get("pit", false):
+		var c: Vector2i = take.call() if rng.randf() < 0.6 else mid
+		used[c] = true
+		out.pit = Rect2(_cell_mid(c) - Vector2(4, 4), Vector2(8, 8))
+	for k in int(theme.get("vents", 0)):
+		out.vents.append(_cell_mid(take.call()) + Vector2(rng.randf_range(-3, 3), rng.randf_range(-3, 3)))
+	for k in int(theme.get("spinners", 0)):
+		out.spinners.append(_cell_mid(take.call()))
+	for k in int(theme.get("saws", 0)):
+		var m := _cell_mid(take.call())
+		var ax := Vector2(6, 0) if rng.randf() < 0.5 else Vector2(0, 6)
+		out.saws.append([m - ax, m + ax])
+	for k in int(theme.get("spikes", 0)):
+		var m := _cell_mid(take.call())
+		out.spikes.append(Rect2(m - Vector2(6, 1.5), Vector2(12, 3)) if rng.randf() < 0.5 else Rect2(m - Vector2(1.5, 6), Vector2(3, 12)))
+	for k in int(theme.get("fences", 0)):
+		var m := _cell_mid(take.call())
+		var a := rng.randf() * PI
+		var ax := Vector2(cos(a), sin(a)) * 5.0
+		out.fences.append([m - ax, m + ax])
+	for k in int(theme.get("drums", 0)):
+		var m := _cell_mid(take.call())
+		for j in 3:
+			out.drums.append(m + Vector2(rng.randf_range(-1.5, 1.5), rng.randf_range(-1.5, 1.5)))
+	# cover in the cells left: nothing, a pair of blocks, a crate stack, a sandbag nest, drums, barriers
+	for x in N:
+		for y in N:
+			var c := Vector2i(x, y)
+			if c in corners or used.has(c) or c == mid:
+				continue
+			var at := _cell_mid(c)
+			var a := rng.randf() * TAU
+			var o := Vector2(cos(a), sin(a)) * rng.randf_range(4.0, 6.5)
+			match rng.randi() % 6:
+				1:
+					out.cover.append(["block", at + o, a])
+					out.cover.append(["block", at + o + Vector2(cos(a + 1.57), sin(a + 1.57)) * 2.2, a])
+				2:
+					for k in 3:
+						out.cover.append(["crate", at + o + Vector2(k * 1.3, 0.0), 0.0])
+				3:
+					for k in 3:
+						out.cover.append(["sandbags", at + o + Vector2(cos(a + k * 0.8), sin(a + k * 0.8)) * 2.4, -(a + k * 0.8)])
+				4:
+					for k in 4:
+						out.drums.append(at + o + Vector2(rng.randf_range(-0.8, 0.8), rng.randf_range(-0.8, 0.8)))
+				5:
+					out.cover.append(["barrier", at + o, -a + PI * 0.5])
+					out.cover.append(["barrier", at - o, -a + PI * 0.5])
+	return out
+
+
+static func _shuffle(a: Array, rng: RandomNumberGenerator) -> void:
+	for i in range(a.size() - 1, 0, -1):
+		var j := rng.randi() % (i + 1)
+		var t: Variant = a[i]
+		a[i] = a[j]
+		a[j] = t
+
+
+static func _inside(c: Vector2i) -> bool:
+	return c.x >= 0 and c.y >= 0 and c.x < N and c.y < N
+
+
+static func _edge(a: Vector2i, b: Vector2i) -> Array:
+	return [a, b] if (a.x < b.x or (a.x == b.x and a.y < b.y)) else [b, a]
+
+
+## A cell's middle (x, z).
+static func _cell_mid(c: Vector2i) -> Vector2:
+	return Vector2(-HALF + (c.x + 0.5) * CELL, -HALF + (c.y + 0.5) * CELL)
+
+
+static func _cell_rect(c: Vector2i) -> Rect2:
+	return Rect2(-HALF + c.x * CELL, -HALF + c.y * CELL, CELL, CELL)
+
+
+## The side between cells `a` and `b` (b to the right of or below a), end to end.
+static func _side(a: Vector2i, b: Vector2i) -> Array:
+	if b.x != a.x:
+		var x := -HALF + b.x * CELL
+		return [Vector2(x, -HALF + a.y * CELL), Vector2(x, -HALF + (a.y + 1) * CELL)]
+	var z := -HALF + b.y * CELL
+	return [Vector2(-HALF + a.x * CELL, z), Vector2(-HALF + (a.x + 1) * CELL, z)]
+
+
+## A wall from `a` to `b`: containers end to end, a double row of concrete barriers, or sandbags
+## and blocks.
+func _wall(a: Vector2, b: Vector2, kind: String) -> void:
+	var along := (b - a).normalized()
+	var mid := (a + b) * 0.5
+	var yaw := -along.angle() # (a box's length is its x)
+	var put := func(k: String, at: Vector2) -> void:
+		_hazards.add_child(Breakable.make(k, Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, _h(at.x, at.y), at.y))))
+	match kind:
+		"container":
+			for k in 3:
+				put.call("container", mid + along * (k - 1) * 6.4)
+		"barrier":
+			var side := Vector2(-along.y, along.x)
+			for k in 7:
+				for row: float in [-0.35, 0.35]:
+					put.call("barrier", mid + along * (k - 3) * 3.05 + side * row)
+		_:
+			for k in 6:
+				put.call("sandbags" if k % 2 == 0 else "block", mid + along * (k - 2.5) * 3.5)
+
+
+func cell_of(p: Vector3) -> Vector2i:
+	return Vector2i(clampi(floori((p.x + HALF) / CELL), 0, N - 1), clampi(floori((p.z + HALF) / CELL), 0, N - 1))
+
+
+## A cell's middle on the ground.
+func center(c: Vector2i) -> Vector3:
+	var m := _cell_mid(c)
+	return Vector3(m.x, _h(m.x, m.y), m.y)
+
+
+## Is there a maze wall within `r` of `p` (x, z)?
+func near_wall(p: Vector2, r: float) -> bool:
+	for w: Array in walls:
+		if Geometry2D.get_closest_point_to_segment(p, w[0], w[1]).distance_to(p) < r:
+			return true
+	return false
+
+
+## The cells' way from where `from` is to where `to` is, through the open sides (the cells in order,
+## the first the next one to go to); empty if they're in the same cell (or there's no maze).
+func path(from: Vector3, to: Vector3) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var a := cell_of(from)
+	var b := cell_of(to)
+	if a == b or open.is_empty():
+		return out
+	var came := {a: a}
+	var q: Array[Vector2i] = [a]
+	while not q.is_empty():
+		var c: Vector2i = q.pop_front()
+		if c == b:
+			break
+		for d: Vector2i in _DIRS:
+			var n2 := c + d
+			if _inside(n2) and not came.has(n2) and open.has(_edge(c, n2)):
+				came[n2] = c
+				q.append(n2)
+	if not came.has(b):
+		return out
+	var c2 := b
+	while c2 != a:
+		out.push_front(c2)
+		c2 = came[c2]
+	return out
+
+
+## Where a machine at `m` making for `goal` should head this moment (AiDriver's route): straight for
+## it in the same or the next open cell, else the middle of the next cell on the way.
+func route(m: Machine, _target: Machine, goal: Vector3) -> Vector3:
+	var p := path(m.global_position, goal)
+	if p.size() <= 1:
+		return goal
+	return center(p[0])

@@ -1,17 +1,20 @@
 class_name Cage
 extends Node
 ## KAFES: rounds in the cage (CageArena), one after another, like the robot fights on television.
-## Each round lays its own floor (mud, ice, fire vents, spikes, fences) and sends its own rivals in
-## from the blue corner; you start from the red one, and the crowd's on its feet as it goes.
+## Each round is a maze of its own, new every run (its theme's ground and hazards: mud, ice, fire
+## vents, spikes, a pit), and sends its own rivals in from the blue corner, built for it from the
+## run's seed, finding their way to you through the maze; you start from the red one, and the
+## crowd's on its feet as it goes.
 ##
-##   before    you build what you'll fight with (B), and start when it's ready (it's fixed after that:
-##             only the workshop's repairs, paid for, change it)
+##   before    the first maze is laid and the builder's open: you build what you'll fight with, and
+##             start when it's ready (after that it's the workshop's, paid for)
 ##   a round   3, 2, 1 and in; it's yours when every rival's in pieces, or has sat there unable to
 ##             move for COUNT_OUT seconds (counted out); at TIME it goes to the judges, who give it
 ##             to whoever's lost the smaller share of their machine
-##   between   the damage stays: you're paid for the round (more for what you tore off them, quicker),
-##             and in the workshop you buy back what you lost — the cab first, then the engines, what
-##             it runs on, the battery, the guns, the rest — as far as the money goes
+##   between   the damage stays: you're paid for the round (more for what you tore off them, quicker);
+##             the next maze is laid, you're back in the red corner with the builder open to build
+##             for it, and in the workshop you buy back what you lost — the cab first, then the
+##             engines, what it runs on, the battery, the guns, the rest — as far as the money goes
 ##   the end   your cab gone, you're out (or down the pit); win them all and you're the champion
 ##
 ## From the third round two house robots keep the hatched corners (CageArena.HOUSE_ZONES): they
@@ -25,43 +28,35 @@ extends Node
 ## CAMP_BOO s and not CAMP_MOVE m from where you were) and they boo you, the mood draining; go on
 ## (CAMP_SHELL s) and the organisers shell your corner: a warning, then SHELLS rounds coming down round
 ## where you're sitting. The stadium's screens show the round, its clock and the mood.
+##
+## Each rival has a temper (AiDriver.temper, in its name on the bars): a hunter, a lurker waiting in
+## a cell along the way (its lair), a flanker, or a lobber (the artillery and rocket crews) that
+## lobs rounds over the walls. A run over, its fame goes into the record (CageRecord): the parts it
+## opens are the only ones you can build with here (the cage keeps its own design: cage_design.json).
 
 signal finished(won_all: bool)
 
-const TIME := 180.0 ## s a round
+const TIME := 240.0 ## s a round
 const PIT_OPENS := 45.0 ## s into a round the pit (if it has one) opens
 const REFUND := 0.5 ## of its price a part taken off in the workshop pays back
 const COUNT_OUT := 8.0 ## s a rival can't move before it's counted out
 const START_CREDITS := 300
 const CREW := [2.2, 1.7, 1.3, 1.0] ## by round: how far the rivals' aim wanders (x a seasoned crew's)
+## Each round's theme (CageArena.plan lays a maze for it, new each run): its ground, the hazards in it,
+## and who comes in (a style picked from the ones given, "" any; a name, or Forge's).
 const ROUNDS := [
-	{"name": "ÇAMUR ÇUKURU", "rivals": [["skirmisher", ""]],
-		"layout": {"zones": [[Rect2(-15, -15, 30, 30), "mud"]],
-			"blocks": [Vector2(-23, 20), Vector2(23, -20), Vector2(-20, -24), Vector2(20, 24)],
-			"spinners": [Vector2(-22, 22), Vector2(22, -22)]}},
-	{"name": "BUZ PİSTİ", "rivals": [["", ""]],
-		"layout": {"zones": [[Rect2(-37, -12, 74, 24), "ice"]],
-			"spikes": [Rect2(-22, -28, 15, 3), Rect2(7, 25, 15, 3)],
-			"saws": [[Vector2(-17, 17), Vector2(17, 17)], [Vector2(-17, -17), Vector2(17, -17)]],
-			"blocks": [Vector2(-30, 0), Vector2(30, 0)]}},
-	{"name": "ATEŞ KAPANLARI", "rivals": [["", ""]], "house": true,
-		"layout": {"zones": [[Rect2(-40, -40, 80, 80), "gravel"]],
-			"vents": [Vector2(-15, -15), Vector2(15, 15), Vector2(-15, 15), Vector2(15, -15), Vector2(0, 0)],
-			"drums": [Vector2(0, -27), Vector2(1, -27.5), Vector2(0, 27), Vector2(-1, 27.4), Vector2(-27, 0), Vector2(27, 0.6)]}},
-	{"name": "BATAKLIK", "rivals": [["", ""], ["skirmisher", ""]], "house": true,
-		"layout": {"zones": [[Rect2(-40, -40, 24, 24), "bog"], [Rect2(16, 16, 24, 24), "bog"], [Rect2(-10, -10, 20, 20), "mud"]],
-			"pit": Rect2(-4, 13, 8, 8),
-			"fences": [[Vector2(-24, 0), Vector2(-8, 0)], [Vector2(8, 0), Vector2(24, 0)]]}},
-	{"name": "DİKENLİ ÇİT", "rivals": [["", ""]], "house": true,
-		"layout": {"zones": [[Rect2(-40, -40, 80, 80), "dirt"]], "spikes": [Rect2(-3, -20, 6, 40)],
-			"fences": [[Vector2(-25, -15), Vector2(-25, 15)], [Vector2(25, -15), Vector2(25, 15)]],
-			"blocks": [Vector2(-13, 27), Vector2(13, -27)], "pit": Rect2(10, 10, 8, 8),
-			"spinners": [Vector2(-15, -15)]}},
-	{"name": "FİNAL", "rivals": [["artillery", "ŞAMPİYON"], ["rammer", ""]], "house": true,
-		"layout": {"zones": [[Rect2(-40, -40, 80, 80), "wet"], [Rect2(-10, -10, 20, 20), "mud"]],
-			"vents": [Vector2(-25, 25), Vector2(25, -25)], "spikes": [Rect2(-33, -2.5, 12, 5), Rect2(21, -2.5, 12, 5)],
-			"fences": [[Vector2(-7, -25), Vector2(7, -25)], [Vector2(-7, 25), Vector2(7, 25)]], "pit": Rect2(-4, -4, 8, 8),
-			"spinners": [Vector2(-20, 0), Vector2(20, 0)], "saws": [[Vector2(-13, -33), Vector2(13, -33)]]}},
+	{"name": "ÇAMUR LABİRENTİ", "rivals": [["skirmisher|gunner", ""]],
+		"theme": {"ground": "asphalt", "middle": "mud", "patches": [["mud", 4]], "spinners": 2, "drums": 1}},
+	{"name": "BUZ PİSTİ", "rivals": [["rammer|flipper|spinner", ""]],
+		"theme": {"ground": "concrete", "middle": "ice", "patches": [["ice", 6]], "spikes": 3, "saws": 2}},
+	{"name": "ATEŞ KAPANLARI", "rivals": [["brawler|gunner", ""]], "house": true,
+		"theme": {"ground": "gravel", "vents": 6, "drums": 4}},
+	{"name": "BATAKLIK", "rivals": [["", ""], ["skirmisher|rammer", ""]], "house": true,
+		"theme": {"ground": "dirt", "middle": "mud", "patches": [["bog", 4], ["mud", 3]], "pit": true, "fences": 2}},
+	{"name": "DİKENLİ ÇİT", "rivals": [["artillery|rocketeer", ""]], "house": true,
+		"theme": {"ground": "dirt", "spikes": 5, "fences": 3, "pit": true, "spinners": 2}},
+	{"name": "FİNAL", "rivals": [["artillery", "ŞAMPİYON"], ["rammer|spinner|flipper", ""]], "house": true,
+		"theme": {"ground": "wet", "middle": "mud", "vents": 3, "spikes": 2, "pit": true, "spinners": 2, "saws": 1}},
 ]
 const CAMP_MOVE := 12.0 ## m
 const CAMP_BOO := 18.0 ## s
@@ -105,6 +100,9 @@ var _camp_at := Vector3.ZERO
 var _shells: Array = [] ## [s till it lands, where]
 var _boo: AudioStreamPlayer
 var _board_t := 0.0
+var _staged := -1 ## the round whose maze is laid
+var record: CageRecord
+var last_run := {} ## (the run just over: {gained, opened})
 
 
 func _ready() -> void:
@@ -116,14 +114,24 @@ func _ready() -> void:
 	_boo = _loop("res://assets/audio/crowd/boo_loop.wav", -60.0, 12.0)
 	_shout = AudioStreamPlayer.new()
 	add_child(_shout)
+	record = CageRecord.load_record()
 	var b := game.get("builder") as Builder
+	b.lock_note = record.lock_note
+	b.swap_guard = func(_old: Array, new: Array) -> bool:
+		var shut := record.locked_in(new)
+		if not shut.is_empty():
+			game.call("say", "Kilitli parça var: %s (şöhretle açılır)" % ", ".join(shut.map(func(i: String) -> String: return str(Parts.def(i).name))))
+			return false
+		return true
 	b.guard = _may_build
 	b.price_note = func(id: String) -> String: return "%d kredi" % int(price(id)) if state == "workshop" else ""
 	b.removed.connect(_on_removed)
 	b.closed.connect(func() -> void:
 		if state == "workshop":
 			full = (game.get("machine") as Machine).to_data() + _missing_entries()
-			_ui.show_workshop())
+			_ui.show_workshop()
+		elif state == "prep":
+			_ui.show_prep())
 	_prep()
 
 
@@ -152,9 +160,42 @@ func _prep() -> void:
 	state = "prep"
 	round = 0
 	credits = START_CREDITS
-	_place_player()
-	arena.set_round(ROUNDS[0].layout)
+	run_seed = randi() | 1 # (a new run: new mazes, new rivals)
+	_stage(0)
 	_ui.show_prep()
+	_open_build.call_deferred()
+
+
+## The round's maze (its floor, by the run's seed and its theme).
+func layout_for(i: int) -> Dictionary:
+	return CageArena.plan(ROUNDS[i].theme, run_seed * 7919 + i * 104729)
+
+
+## Round `i`'s maze laid, the cage cleared of the last one's, you in the red corner.
+func _stage(i: int) -> void:
+	for e in rivals + houses:
+		if is_instance_valid(e):
+			e.queue_free()
+	rivals.clear()
+	houses.clear()
+	_still.clear()
+	if Combat.current:
+		Combat.current.clear_debris()
+	for d in get_tree().get_nodes_in_group("supply"):
+		d.queue_free()
+	arena.set_round(layout_for(i))
+	_staged = i
+	_place_player()
+
+
+## Each round starts with building: the builder opened on the new maze.
+func _open_build() -> void:
+	var b := game.get("builder") as Builder
+	if not can_build() or b.active or not is_instance_valid(game.get("machine")):
+		return
+	on_build_open()
+	b.set_active(true)
+	game.call("say", "TUR %d · %s: labirent hazır. Aracını ona göre kur, bitince B, sonra ENTER" % [_staged + 1, ROUNDS[_staged].name])
 
 
 ## You build before the first round for nothing, and in the workshop for credits.
@@ -164,6 +205,9 @@ func can_build() -> bool:
 
 ## A part going on: free before the first round; in the workshop, if you can pay its price.
 func _may_build(id: String, _at: Vector3i, _rot: int) -> bool:
+	if not record.is_open(id):
+		game.call("say", "%s kilitli: %d şöhretle açılır" % [Parts.def(id).name, CageRecord.needs(id)])
+		return false
 	if state != "workshop":
 		return true
 	var p := int(price(id))
@@ -191,8 +235,6 @@ func _missing_entries() -> Array:
 func start_run() -> void:
 	var m: Machine = game.get("machine")
 	full = m.to_data()
-	if run_seed == 0:
-		run_seed = randi() | 1
 	_begin_round(0)
 
 
@@ -202,35 +244,39 @@ func _begin_round(i: int) -> void:
 	var b := game.get("builder") as Builder
 	if b.active:
 		b.set_active(false)
-	for e in rivals + houses:
-		if is_instance_valid(e):
-			e.queue_free()
-	rivals.clear()
-	houses.clear()
-	_still.clear()
-	if Combat.current:
-		Combat.current.clear_debris()
-	for d in get_tree().get_nodes_in_group("supply"):
-		d.queue_free()
+	if _staged != i:
+		_stage(i)
+	else:
+		_place_player()
 	mood = MOOD_START
 	booing = false
 	camp_t = 0.0
 	_shells.clear()
-	arena.set_round(r.layout)
-	_place_player()
+	var pick := RandomNumberGenerator.new()
+	pick.seed = run_seed * 31 + i
+	var way := arena.path(arena.center(CageArena.BLUE), arena.center(CageArena.RED))
 	var k := 0
 	for rv: Array in r.rivals:
+		var styles := str(rv[0]).split("|")
+		var style := styles[pick.randi() % styles.size()]
+		var tempers := ["topcu"] if style in ["artillery", "rocketeer"] else (["", "kusatici"] if style in ["rammer", "spinner", "flipper"] else ["", "pusucu", "kusatici"])
+		var temper: String = tempers[pick.randi() % tempers.size()]
 		var at := Vector3(CageArena.HALF - 5.0 - k * 6.0, 0.0, CageArena.HALF - 5.0 + k * 1.5)
 		at.y = arena.terrain.height_at(at.x, at.z) + 1.5
 		# built for this round from the run's seed: a style (the round's, or any), stronger each round
-		var made := Forge.make(run_seed * 977 + i * 31 + k, maxi(i - k, 0), str(rv[0])) # (a second one a round weaker)
+		var made := Forge.make(run_seed * 977 + i * 31 + k, maxi(i - k, 0), style) # (a second one a round weaker)
 		var e: Machine = game.call("_spawn", made.data, Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at), 1, true)
-		e.label = str(rv[1]) if str(rv[1]) != "" else str(made.name)
+		e.label = (str(rv[1]) if str(rv[1]) != "" else str(made.name)) + " · " + AiDriver.TEMPERS[temper]
 		for d in e.get_children():
 			if d is AiDriver:
 				# green crews early on (their aim wanders), seasoned by the fourth round; slower to open fire too
 				(d as AiDriver).clumsy = CREW[mini(i, CREW.size() - 1)]
 				(d as AiDriver)._wake = 1.2 + maxf(2.0 - i, 0.0) * 0.8
+				(d as AiDriver).route = arena.route # (through the maze: the next cell on the way)
+				(d as AiDriver).temper = temper
+				if temper == "pusucu" and way.size() > 4:
+					# its lair: a cell about halfway along the way between the corners
+					(d as AiDriver).lair = arena.center(way[clampi(int(way.size() * pick.randf_range(0.35, 0.6)), 0, way.size() - 1)])
 		e.set_physics_process(false) # (held till the countdown's done)
 		rivals.append(e)
 		k += 1
@@ -348,7 +394,7 @@ func drop(kind: String) -> SupplyDrop:
 		var a := randf() * TAU
 		at = m.global_position + Vector3(cos(a), 0.0, sin(a)) * randf_range(8.0, 22.0)
 		at.y = 0.0
-		if absf(at.x) > inside or absf(at.z) > inside or arena.over_pit(at):
+		if absf(at.x) > inside or absf(at.z) > inside or arena.over_pit(at) or arena.near_wall(Vector2(at.x, at.z), 3.5):
 			continue
 		var clear := true
 		for d: Dictionary in arena.dangers(Vector2(at.x, at.z)):
@@ -393,7 +439,7 @@ func shell(at: Vector3) -> void:
 	game.call("say", "ORGANİZASYON: SAKLANAN SAHADAN ÇIKARILIR  ·  topçu ateşi, kaç")
 	for k in SHELLS:
 		var a := randf() * TAU
-		var p := at + Vector3(cos(a), 0.0, sin(a)) * randf_range(0.0, 9.0)
+		var p := at + Vector3(cos(a), 0.0, sin(a)) * randf_range(0.0, 2.0 if k == 0 else 7.0) # (the first ranged on you)
 		_shells.append([2.5 + k * 0.45, p])
 
 
@@ -546,11 +592,14 @@ func _round_over(won: bool, how: String) -> void:
 		return
 	if last:
 		state = "champion"
+		last_run = record.add_run(ROUNDS.size(), true)
 		_ui.show_final(true, round + 1, credits)
 		finished.emit(true)
 	else:
 		state = "workshop"
+		_stage(round + 1)
 		_ui.show_workshop()
+		_open_build()
 
 
 ## Your cab's gone (or the judges went against you): out.
@@ -562,6 +611,7 @@ func _lost(why: String) -> void:
 	if state in ["lost", "champion"]:
 		return
 	state = "lost"
+	last_run = record.add_run(round, false)
 	booing = false
 	_shells.clear()
 	excite = 1.0

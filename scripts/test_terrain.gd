@@ -15,6 +15,7 @@ const HALF := (SIZE - 1) / 2
 
 var default_surface := Surface.preset("dirt")
 var noise_from := 70.0 ## m from the middle the rolling noise starts (the arena keeps its floor flat)
+var features := true ## the mogul field and the two hills (the cage, 160 m across, has none)
 var grid_strength := 0.08 ## how much of the metre grid shows on it (the arena: none)
 const CHUNK := 32 ## m a mesh piece
 
@@ -78,6 +79,8 @@ func set_zones(zones: Array) -> void:
 func height_at(x: float, z: float) -> float:
 	var h := _noise.get_noise_2d(x, z) * 6.0
 	h *= smoothstep(noise_from, noise_from + 30.0, Vector2(x, z).length())
+	if not features:
+		return h
 	# Mogul field: alternating bumps that twist the chassis and unload wheels.
 	if x > 40.0 and x < 100.0 and absf(z) < 25.0:
 		var edge := minf(minf(x - 40.0, 100.0 - x), 25.0 - absf(z))
