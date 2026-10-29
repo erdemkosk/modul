@@ -1,6 +1,6 @@
 class_name SupplyDrop
 extends Node3D
-## A supply crate dropped in under a parachute (the arena's, as a fight goes on): it comes down
+## A supply crate dropped in under a parachute (the cage crowd's present): it comes down
 ## slowly, swaying, from DROP_H m; on the ground the chute falls over it and a red flare burns
 ## beside it so it can be found. Drive up to it (REACH) and it's yours:
 ##

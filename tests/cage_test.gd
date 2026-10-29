@@ -113,7 +113,7 @@ func _physics_process(_d: float) -> bool:
 				return false
 			print("shelled %d, health %.2f -> %.2f" % [_c.shelled, _r.hh, _m.health()])
 			_expect(_c.shelled == 1 and _m.health() < float(_r.hh), "then the organisers shell you")
-			_c.full = _m.to_data() # (what the shells did isn't the workshop's to check)
+			_m.from_data(_c.full) # (made whole again: what the shells did isn't the workshop's to check)
 			var e: Machine = _c.rivals[0]
 			_r.cr0 = _c.credits
 			# your machine hurt a little meanwhile (for the workshop): a light off, a frame hit

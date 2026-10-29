@@ -21,7 +21,6 @@ var _mission := ""
 var _spin := false
 var _robots := false
 var _worksite := false
-var _waves := false
 var _st := {}
 var _cage := false
 var _t := 0.0
@@ -57,9 +56,6 @@ func _initialize() -> void:
 			_spin = true
 		if a == "--robots":
 			_robots = true
-		if a == "--waves":
-			_waves = true
-			Waves.save_path = "user://shots_arena.cfg"
 		if a == "--worksite":
 			_worksite = true
 			_valley = true
@@ -70,7 +66,7 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
-	Mode.current = "valley" if _valley else ("cage" if _cage else ("waves" if _waves else "arena"))
+	Mode.current = "valley" if _valley else ("cage" if _cage else "arena")
 	if _mission != "":
 		Mode.current = "mission"
 		Mode.mission = _mission
@@ -110,7 +106,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _waves_steps() if _waves else _robot_steps() if _robots else (_worksite_steps() if _worksite else _all_steps())
+	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else _all_steps())
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -359,40 +355,6 @@ func _robot_steps() -> Array:
 				(_rb[k] as Node).set_physics_process(true)],
 		[2.5, func(_s: float) -> void:
 			_cam(0.1, -0.15, 9.0), func() -> void: _shoot("robots_night")],
-	]
-
-
-## ARENA: the build screen, the maze from above, a round being fought, a supply crate coming down.
-func _waves_steps() -> Array:
-	return [
-		[3.0, func(_s: float) -> void: pass, func() -> void:
-			_m = _g.get("machine")
-			_m.from_data(Designs.raider())
-			(_g.get("builder") as Builder).save()
-			_shoot("waves_build")],
-		[0.5, _noop, func() -> void:
-			var w: Waves = _g.get("waves")
-			(_g.get("builder") as Builder).set_active(false)
-			w._show_build()],
-		[1.0, _noop, func() -> void: _shoot("waves_panel")],
-		[0.3, _noop, func() -> void:
-			var w: Waves = _g.get("waves")
-			w.start()
-			_g.set("player_input", false)
-			_m.invulnerable = true],
-		[2.0, func(_s: float) -> void:
-			_cam(0.6, -1.15, 60.0), func() -> void: _shoot("waves_maze")],
-		[7.0, func(_s: float) -> void:
-			_m.brake = 1.0
-			_cam(0.4, -0.3, 11.0), func() -> void: _shoot("waves_fight")],
-		[0.2, _noop, func() -> void:
-			var w: Waves = _g.get("waves")
-			var d := w.drop("ammo")
-			d.global_position = _m.global_position + Vector3(4.0, 14.0, -10.0)],
-		[1.2, func(_s: float) -> void:
-			_cam(0.2, -0.1, 12.0), func() -> void: _shoot("waves_chute")],
-		[2.5, func(_s: float) -> void:
-			_cam(0.2, -0.25, 12.0), func() -> void: _shoot("waves_crate")],
 	]
 
 

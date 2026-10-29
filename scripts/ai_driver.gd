@@ -45,7 +45,7 @@ var _slow := false
 var _detour_t := 0.0
 var _part_t := 0.0
 var _arena: Node
-var route: Callable ## (a maze's: (machine, target, goal) -> where to head for now; WaveArena.route)
+var route: Callable ## (a maze's, if it's in one: (machine, target, goal) -> where to head for now)
 const AIM_ERR_BASE := 0.6 ## m off its mark however close
 const AIM_ERR_PER_M := 0.035 ## and this much more a metre off (about 2 m at 50 m)
 ## How much each kind of part is worth going for (times how hurt it already is).

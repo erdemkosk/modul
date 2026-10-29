@@ -240,8 +240,7 @@ func _draw() -> void:
 		_draw_target(Rect2(Vector2(screen.x - 230.0, 70.0), Vector2(200.0, 200.0)), font)
 	var ms: Variant = game.get("missions")
 	var cg: Variant = game.get("cage")
-	var wv: Variant = game.get("waves")
-	if (ms and (ms as Missions).panel_up()) or (cg and (cg as Cage).panel_up()) or (wv and (wv as Waves).panel_up()):
+	if (ms and (ms as Missions).panel_up()) or (cg and (cg as Cage).panel_up()):
 		return # (a start or end panel's up: nothing over the world)
 	# the enemy: the nearest first, each name nudged up off any already there
 	var me := _bound.global_position

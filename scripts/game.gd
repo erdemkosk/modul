@@ -1,7 +1,5 @@
 extends Node3D
 ## İnşa: a machine you put together from parts and drive and fight with. Three places (Mode):
-##   waves    ARENA: round after round in a walled maze, new each round: build, then fight off what
-##            comes, supply crates coming down (Waves, WaveArena)
 ##   cage     KAFES: a tournament of rounds in a walled cage inside a stadium, before its crowd (Cage, CageArena, Stadium)
 ##   valley   the open valley (WorldTerrain: its mud, snow, roads; WorldDecor's trees; Weather's sky)
 ##   arena    the proving ground (TestTerrain): asphalt, gravel, mud pits, a bog, snow, ice, ramps;
@@ -33,8 +31,6 @@ var combat: Combat
 var arena := false
 var arena_node: Arena
 var cage: Cage
-var waves: Waves
-var wave_arena: WaveArena
 var missions: Missions
 var salvage: Salvage
 var wanderers: Wanderers
@@ -61,39 +57,20 @@ func _ready() -> void:
 	arena = Mode.current == "arena"
 	var caged := Mode.current == "cage"
 	var mission := Mode.current == "mission"
-	var walled := Mode.current == "waves"
-	var run_seed := randi()
 	var md := Missions.find(Mode.mission) if mission else {}
-	place_name = "ARENA" if walled else ("KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ")))
+	place_name = "KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ"))
 	if Mode.current == "valley" and Builder.save_path == "user://design.json":
 		Builder.save_path = "user://valley_design.json" # (the valley's machine is its own: built from what you hold)
 	weather = Weather.new()
 	weather.hour = 21.6 if caged else (float(md.hour) if mission else 11.0) # (the cage fights at night, under its lights)
-	weather.day_length_minutes = 0.0 if arena or caged or mission or walled else 40.0
+	weather.day_length_minutes = 0.0 if arena or caged or mission else 40.0
 	weather.preset = str(md.weather) if mission else "clear"
-	var cold := false
-	if walled:
-		# each run its own weather and hour (now and then under the floodlights)
-		var rng := RandomNumberGenerator.new()
-		rng.seed = run_seed
-		var sky: String = ["clear", "clear", "overcast", "rain", "fog", "snow"][rng.randi() % 6]
-		weather.preset = sky
-		weather.hour = [10.0, 13.0, 16.5, 18.5, 21.5][rng.randi() % 5]
-		cold = sky == "snow"
 	add_child(weather)
 	if mission:
 		var mt := TestTerrain.new()
 		Missions.ground(Mode.mission, mt)
 		terrain = mt
 		add_child(mt)
-	elif walled:
-		var wt := TestTerrain.new()
-		WaveArena.ground(wt, run_seed, cold)
-		terrain = wt
-		add_child(wt)
-		wave_arena = WaveArena.new()
-		wave_arena.terrain = wt
-		add_child(wave_arena)
 	elif caged:
 		var ct := TestTerrain.new()
 		ct.default_surface = Surface.preset("asphalt")
@@ -158,13 +135,6 @@ func _ready() -> void:
 	if cage:
 		cage.arena.set_night(weather.is_night())
 		add_child(cage)
-	if walled:
-		wave_arena.set_night(weather.is_night())
-		waves = Waves.new()
-		waves.game = self
-		waves.arena = wave_arena
-		waves.run_seed = run_seed
-		add_child(waves)
 	if Mode.current == "valley":
 		_valley_salvage()
 	if mission:
@@ -175,7 +145,7 @@ func _ready() -> void:
 		add_child(missions)
 	Settings.apply(get_tree())
 	machine.label = "SEN"
-	if cage == null and missions == null and waves == null: # (the cage, a mission and the arena open on their start panels: the pointer stays free)
+	if cage == null and missions == null: # (the cage and a mission open on their start panels: the pointer stays free)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
@@ -217,8 +187,6 @@ func _start_xform() -> Transform3D:
 	if Mode.current == "mission":
 		var mp := Vector3(0.0, float(terrain.call("height_at", 0.0, -6.0)) + 1.5, -6.0)
 		return Transform3D(Basis(Vector3.UP, PI), mp) # (on the pad, facing the site)
-	if wave_arena:
-		return Transform3D(Basis.IDENTITY, wave_arena.center(WaveArena.START) + Vector3.UP * 1.5)
 	if Mode.current == "cage":
 		var at := Vector3(-CageArena.HALF + 4.5, float(terrain.call("height_at", -CageArena.HALF + 4.5, -CageArena.HALF + 4.5)) + 1.5, -CageArena.HALF + 4.5)
 		return Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at)
@@ -301,8 +269,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			say("Dövüş sırasında araç değiştirilemez: turlar arası atölyede")
 		elif missions and not missions.can_build() and not builder.active:
 			say("Görev sürerken araç değiştirilemez: R ile baştan başla")
-		elif waves and not waves.can_build() and not builder.active:
-			say("Bölüm sürerken araç değiştirilemez: bölüm bitince inşa")
 		else:
 			if cage and not builder.active:
 				cage.on_build_open()
@@ -355,7 +321,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				spawn_enemy("tracked")
 				say("Dalga: iki akıncı, bir tank, bir paletli roketatar")
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active \
-			and not (cage and cage.panel_up()) and not (missions and missions.panel_up()) and not (waves and waves.panel_up()):
+			and not (cage and cage.panel_up()) and not (missions and missions.panel_up()):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -449,7 +415,7 @@ func _physics_process(dt: float) -> void:
 	_apply_armed() # (a rebuild makes the guns anew)
 	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
 	# is rebuilt where it started
-	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null and waves == null:
+	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null:
 		_recover_t += dt
 		if _recover_t >= 1.5:
 			_recover_t = 0.0
@@ -485,9 +451,6 @@ func _on_player_died() -> void:
 		return
 	if missions:
 		missions.on_player_died()
-		return
-	if waves:
-		waves.on_player_died()
 		return
 	var by := machine.last_hit_by
 	var who := by.label if is_instance_valid(by) and by != machine else ""

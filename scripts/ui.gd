@@ -19,7 +19,7 @@ static var _fonts := {}
 
 
 ## "display" (condensed bold: big numbers, titles), "head" (condensed semibold: labels), "text"
-## (Barlow medium), "strong" (Barlow semibold), "digital" (Chakra Petch: ARENA's screens and lines).
+## (Barlow medium), "strong" (Barlow semibold), "digital" (Chakra Petch: the stadium's screens, the crowd's mood).
 static func font(kind := "text") -> Font:
 	if not _fonts.has(kind):
 		var file: String = {"display": "BarlowCondensed-Bold", "head": "BarlowCondensed-SemiBold",
