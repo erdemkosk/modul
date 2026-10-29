@@ -277,7 +277,7 @@ func _begin_round(i: int) -> void:
 				if temper == "pusucu" and way.size() > 4:
 					# its lair: a cell about halfway along the way between the corners
 					(d as AiDriver).lair = arena.center(way[clampi(int(way.size() * pick.randf_range(0.35, 0.6)), 0, way.size() - 1)])
-		e.set_physics_process(false) # (held till the countdown's done)
+		hold(e, true) # (held till the countdown's done)
 		rivals.append(e)
 		k += 1
 	if r.get("house", false):
@@ -293,7 +293,7 @@ func _begin_round(i: int) -> void:
 			d.home = Vector3(at.x, 0.0, at.z)
 			h.add_child(d)
 			h.set_lights(true)
-			h.set_physics_process(false)
+			hold(h, true)
 			houses.append(h)
 	_hp_start.clear()
 	var me: Machine = game.get("machine")
@@ -308,6 +308,19 @@ func _begin_round(i: int) -> void:
 	_count_t = 3.5
 	game.set("player_input", false)
 	_ui.show_round(r.name, i + 1, ROUNDS.size())
+
+
+## A machine held still (the countdown, a round over) or let go: its crew's hands off, its brakes
+## on. Only its crew stops: the machine itself goes on (stopped altogether its springs would let it
+## sink onto the floor, and throw it into the air when they came back).
+static func hold(m: Machine, on: bool) -> void:
+	for d in m.get_children():
+		if d is AiDriver or d is HouseDriver:
+			d.set_physics_process(not on)
+	m.throttle = 0.0
+	m.steer = 0.0
+	m.firing = false
+	m.brake = 1.0 if on else 0.0
 
 
 ## Your machine to the red corner, its nose to the middle.
@@ -509,7 +522,7 @@ func _process(dt: float) -> void:
 				game.set("player_input", true)
 				for e in rivals + houses:
 					if is_instance_valid(e):
-						e.set_physics_process(true)
+						hold(e, false)
 				excite = 0.8
 				_shout_out("cheer_02.wav", -2.0)
 				var me: Machine = game.get("machine")
@@ -569,7 +582,7 @@ func _round_over(won: bool, how: String) -> void:
 		me.firing = false
 	for e in rivals + houses:
 		if is_instance_valid(e):
-			e.set_physics_process(false)
+			hold(e, true)
 	booing = false
 	_shells.clear()
 	if not won:
