@@ -773,14 +773,22 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		_grace -= state.step
 		return
 	var worst := {}
+	var sums := {} ## what it struck -> [its contacts' impulse summed (as dv), where the hardest was, that one's dv]
 	for i in state.get_contact_count():
 		if not joints.is_empty():
 			_moving_blow(state, i)
 		var dv := state.get_contact_impulse(i).length() / total_mass
-		if dv <= IMPACT_SAFE:
-			continue
 		var at := state.get_contact_local_position(i)
 		var other := state.get_contact_collider_object(i)
+		if dv > 0.05:
+			var sm: Array = sums.get(other, [0.0, at, 0.0])
+			sm[0] = float(sm[0]) + dv
+			if dv > float(sm[2]):
+				sm[1] = at
+				sm[2] = dv
+			sums[other] = sm
+		if dv <= IMPACT_SAFE:
+			continue
 		if other is RigidBody3D and not other is Machine and (other as RigidBody3D).mass < total_mass * 0.05:
 			continue # (debris rattling on it)
 		var felt_dv := dv
@@ -807,6 +815,26 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 				if felt > float(worst.get(j, 0.0)):
 					worst[j] = felt
 		_knock_at = at
+	# the hardest knock this step, all its contacts together (debris rattling on it aside)
+	var hardest := 0.0
+	var hard_at := Vector3.ZERO
+	var hard_on: Object = null
+	for o: Object in sums:
+		if is_instance_valid(o) and o is RigidBody3D and not o is Machine and (o as RigidBody3D).mass < total_mass * 0.05:
+			continue
+		if float(sums[o][0]) > hardest:
+			hardest = float(sums[o][0])
+			hard_at = sums[o][1]
+			hard_on = o
+	if hardest > IMPACT_SAFE:
+		struck.emit(hard_at, hardest, hard_on)
+	# the cage's cover driven into: the blow lands on it (its weight times how hard it stopped, all its
+	# contacts together; more on a ram's spikes)
+	for o: Object in sums:
+		if o is Breakable and float(sums[o][0]) > IMPACT_SAFE:
+			var pn := _part_near(sums[o][1])
+			var bite := RAM_BITE if pn >= 0 and design[pn].id == "spike" else 1.0
+			(o as Breakable).hit.call_deferred(float(sums[o][0]) * total_mass * 0.06 * bite, sums[o][1], linear_velocity.normalized(), false)
 	if worst.is_empty():
 		return
 	for part: int in worst:
@@ -824,6 +852,10 @@ var _knock_at := Vector3.ZERO
 var _knock_by: Machine
 var _rammed := false
 signal knocked(at: Vector3, dv: float)
+## The hardest knock this step and what it struck (HitFeel: sparks, the sound, the view).
+signal struck(at: Vector3, dv: float, other: Object)
+## Part `id` torn off at `at` (HitFeel).
+signal torn(at: Vector3, id: String)
 
 
 ## Into the cage's pit: it no longer touches the floor or the walls, and drops.
@@ -1319,6 +1351,7 @@ func break_off(i: int) -> void:
 		var at := global_transform * part_xform(i).origin
 		c.call_deferred("explode", at, AMMO_RADIUS, AMMO_DAMAGE, AMMO_PUSH, last_hit_by if is_instance_valid(last_hit_by) else null, true)
 		system_hit.emit("CEPHANE PATLADI", at)
+	torn.emit(global_transform * part_xform(i).origin, str(design[i].id))
 	for j in gone:
 		var p: Dictionary = design[j]
 		var xf := global_transform * part_xform(j)

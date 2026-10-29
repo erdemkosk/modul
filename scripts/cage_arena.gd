@@ -19,7 +19,8 @@ extends Node3D
 ## (so all of it's reachable) and a share of the walls taken out again for loops to flank by, the
 ## walls containers end to end, double rows of concrete barriers or sandbags and blocks, a block for a
 ## pillar where walls meet; the round's hazards in cells of their own, cover in the rest. New each
-## round and each run (by its seed). The rivals find their way through it by the cells (route).
+## round and each run (by its seed). The rivals find their way through it by the cells (route). The
+## walls break like any cover (Breakable): a third of a wall's pieces gone and it's a way through.
 
 const HALF := 80.0
 const N := 7
@@ -57,7 +58,8 @@ var _saws: Array[Dictionary] = [] ## {node, blade, area, a, b, u, dir}
 var _cut := {} ## Machine -> s till a blade bites it again
 var layout := {} ## this round's (what set_round was given)
 var open := {} ## the maze's: [Vector2i, Vector2i] (the lower first) -> true: no wall between
-var walls: Array = [] ## the maze's closed sides: [Vector2 from, Vector2 to]
+var walls: Array = [] ## the maze's closed sides: [Vector2 from, Vector2 to, [its Breakables]]
+var _walls_frame := -1
 
 
 func _ready() -> void:
@@ -288,8 +290,7 @@ func set_round(p_layout: Dictionary) -> void:
 	open = layout.get("open", {})
 	walls.clear()
 	for w: Array in layout.get("walls", []):
-		walls.append([w[0], w[1]])
-		_wall(w[0], w[1], str(w[2]))
+		walls.append([w[0], w[1], _wall(w[0], w[1], str(w[2]))])
 	for c: Array in layout.get("cover", []):
 		var at: Vector2 = c[1]
 		_hazards.add_child(Breakable.make(str(c[0]), Transform3D(Basis(Vector3.UP, float(c[2])), Vector3(at.x, _h(at.x, at.y), at.y))))
@@ -1025,12 +1026,15 @@ static func _side(a: Vector2i, b: Vector2i) -> Array:
 
 ## A wall from `a` to `b`: containers end to end, a double row of concrete barriers, or sandbags
 ## and blocks.
-func _wall(a: Vector2, b: Vector2, kind: String) -> void:
+func _wall(a: Vector2, b: Vector2, kind: String) -> Array:
 	var along := (b - a).normalized()
 	var mid := (a + b) * 0.5
 	var yaw := -along.angle() # (a box's length is its x)
+	var pieces := []
 	var put := func(k: String, at: Vector2) -> void:
-		_hazards.add_child(Breakable.make(k, Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, _h(at.x, at.y), at.y))))
+		var br := Breakable.make(k, Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, _h(at.x, at.y), at.y)))
+		_hazards.add_child(br)
+		pieces.append(br)
 	match kind:
 		"container":
 			for k in 3:
@@ -1043,6 +1047,33 @@ func _wall(a: Vector2, b: Vector2, kind: String) -> void:
 		_:
 			for k in 6:
 				put.call("sandbags" if k % 2 == 0 else "block", mid + along * (k - 2.5) * 3.5)
+	return pieces
+
+
+## Walls broken through (a third of their pieces gone): open between their cells from now on, no
+## longer kept off (once a physics step at most).
+func _walls_broken() -> void:
+	var f := Engine.get_physics_frames()
+	if f == _walls_frame:
+		return
+	_walls_frame = f
+	for k in range(walls.size() - 1, -1, -1):
+		var w: Array = walls[k]
+		var pieces: Array = w[2] if w.size() > 2 else []
+		if pieces.is_empty():
+			continue
+		var gone := 0
+		for br: Variant in pieces:
+			if not is_instance_valid(br) or (br as Breakable).broken:
+				gone += 1
+		if gone * 3 < pieces.size():
+			continue
+		var mid: Vector2 = ((w[0] as Vector2) + (w[1] as Vector2)) * 0.5
+		var across := ((w[1] as Vector2) - (w[0] as Vector2)).normalized().orthogonal() * CELL * 0.5
+		var ca := cell_of(Vector3(mid.x - across.x, 0.0, mid.y - across.y))
+		var cb := cell_of(Vector3(mid.x + across.x, 0.0, mid.y + across.y))
+		open[_edge(ca, cb)] = true
+		walls.remove_at(k)
 
 
 func cell_of(p: Vector3) -> Vector2i:
@@ -1053,6 +1084,10 @@ func cell_of(p: Vector3) -> Vector2i:
 func center(c: Vector2i) -> Vector3:
 	var m := _cell_mid(c)
 	return Vector3(m.x, _h(m.x, m.y), m.y)
+
+
+func is_open_between(a: Vector2i, b: Vector2i) -> bool:
+	return open.has(_edge(a, b))
 
 
 ## Is there a maze wall within `r` of `p` (x, z)?
@@ -1071,6 +1106,7 @@ func path(from: Vector3, to: Vector3) -> Array[Vector2i]:
 	var b := cell_of(to)
 	if a == b or open.is_empty():
 		return out
+	_walls_broken()
 	var came := {a: a}
 	var q: Array[Vector2i] = [a]
 	while not q.is_empty():

@@ -31,6 +31,7 @@ var combat: Combat
 var arena := false
 var arena_node: Arena
 var cage: Cage
+var hit_feel: HitFeel
 var missions: Missions
 var salvage: Salvage
 var wanderers: Wanderers
@@ -111,6 +112,10 @@ func _ready() -> void:
 	add_child(combat)
 	combat.shook.connect(_on_shook)
 	combat.hit_confirmed.connect(_on_hit_confirmed)
+	hit_feel = HitFeel.new()
+	hit_feel.game = self
+	hit_feel.process_mode = Node.PROCESS_MODE_ALWAYS # (it lets go of a hit-stop even paused)
+	add_child(hit_feel)
 	machine = _spawn(Builder.load_saved(), _start_xform(), 0)
 	if machine.design.is_empty():
 		machine.from_data(Designs.starter())

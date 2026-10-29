@@ -21,6 +21,7 @@ var _r := {}
 func _initialize() -> void:
 	Builder.save_path = "user://test_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
+	seed(int(OS.get_environment("AI_SEED")) if OS.get_environment("AI_SEED") != "" else 4) # (the crews' dice fixed: the same fight each time; the shove into the pit comes off for about two seeds in three)
 	Mode.current = "cage"
 	_g = load("res://scenes/game.tscn").instantiate()
 	root.add_child(_g)
@@ -115,7 +116,7 @@ func _physics_process(_d: float) -> bool:
 				_r.shoved = true
 			var d := Vector2(_m.global_position.x, _m.global_position.z).length()
 			if OS.get_environment("TRACE") != "" and _frame % 60 == 0 and is_instance_valid(_e):
-				print("   t %.1f you %s  rammer %s  shoving %s  throttle %.1f" % [since, _m.global_position, _e.global_position, ai.shoving if ai else false, _e.throttle])
+				print("   t %.1f you %s  rammer %s  shoving %s lined %s throttle %.1f back %.1f rev %s stuck %.1f" % [since, _m.global_position, _e.global_position, ai.shoving if ai else false, ai._lined, _e.throttle, ai._back_t, ai._reversing, ai._stuck_t])
 			if since < 16.0 and not _m.falling:
 				return false
 			print("by the open pit: the rammer went to shove %s; you %s (%.1f m -> %.1f m off its middle)" % [

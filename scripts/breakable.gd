@@ -1,6 +1,7 @@
 class_name Breakable
 extends StaticBody3D
-## Something in the arena that rounds chip and bursts break: a concrete block, a jersey barrier, a
+## Something in the arena that rounds chip, bursts break and a machine driven into it batters (its
+## weight times how hard it stopped, more on a ram's spikes: Machine): a concrete block, a jersey barrier, a
 ## shipping container, a crate, a sandbag wall, an oil drum. Solid ground to everything (layer 1:
 ## wheels drive up on it, rounds stop on it) until its hit points run out; then it comes apart into
 ## chunks the size and stuff it was made of (concrete lumps, steel panels, planks, bags), flung away
@@ -9,11 +10,11 @@ extends StaticBody3D
 const GROUP := "breakables"
 ## kind -> hit points, chunk colour, how many chunks, what its chips look like (Combat's impacts), mass kg/m3.
 const KINDS := {
-	"block": {"hp": 700.0, "color": Color(0.52, 0.5, 0.46), "chunks": 12, "chip": "dirt", "density": 2300.0},
-	"barrier": {"hp": 650.0, "color": Color(0.52, 0.5, 0.46), "chunks": 7, "chip": "dirt", "density": 2300.0},
-	"container": {"hp": 1400.0, "color": Color(0.12, 0.25, 0.38), "chunks": 8, "chip": "metal", "density": 60.0},
+	"block": {"hp": 420.0, "color": Color(0.52, 0.5, 0.46), "chunks": 12, "chip": "dirt", "density": 2300.0},
+	"barrier": {"hp": 380.0, "color": Color(0.52, 0.5, 0.46), "chunks": 7, "chip": "dirt", "density": 2300.0},
+	"container": {"hp": 800.0, "color": Color(0.12, 0.25, 0.38), "chunks": 8, "chip": "metal", "density": 60.0},
 	"crate": {"hp": 60.0, "color": Color(0.42, 0.3, 0.17), "chunks": 10, "chip": "dirt", "density": 160.0},
-	"sandbags": {"hp": 500.0, "color": Color(0.5, 0.43, 0.29), "chunks": 10, "chip": "dirt", "density": 1500.0},
+	"sandbags": {"hp": 320.0, "color": Color(0.5, 0.43, 0.29), "chunks": 10, "chip": "dirt", "density": 1500.0},
 	"drum": {"hp": 30.0, "color": Color(0.45, 0.08, 0.05), "chunks": 4, "chip": "metal", "density": 200.0},
 }
 ## The models' boxes (Godot axes: x across, y up, z along), their feet at the origin.

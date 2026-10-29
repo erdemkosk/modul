@@ -86,6 +86,19 @@ func _physics_process(_d: float) -> bool:
 			_expect(ar.walls.size() > 10 and way.size() >= CageArena.N * 2 - 2, "a maze, with a way through from your corner to theirs")
 			_expect(str(other.walls) == str(again.walls) and str(other.walls) != str(ar.layout.walls), "the same seed the same maze, another seed another")
 			_expect((_g.get("builder") as Builder).active, "the builder's open on it")
+			# a wall broken through is a way through
+			var w0: Array = ar.walls[0]
+			var mid0: Vector2 = ((w0[0] as Vector2) + (w0[1] as Vector2)) * 0.5
+			var across: Vector2 = ((w0[1] as Vector2) - (w0[0] as Vector2)).normalized().orthogonal() * CageArena.CELL * 0.5
+			var ca := ar.cell_of(Vector3(mid0.x - across.x, 0, mid0.y - across.y))
+			var cb := ar.cell_of(Vector3(mid0.x + across.x, 0, mid0.y + across.y))
+			var shut := not ar.is_open_between(ca, cb)
+			for br: Breakable in w0[2]:
+				br.hit(99999.0, br.center(), Vector3.FORWARD)
+			ar._walls_frame = -1 # (it looks once a step: this step it already has)
+			ar.path(ar.center(CageArena.RED), ar.center(CageArena.BLUE))
+			print("a wall between %s and %s broken: shut before %s, open now %s, walls %d" % [ca, cb, shut, ar.is_open_between(ca, cb), ar.walls.size()])
+			_expect(shut and ar.is_open_between(ca, cb), "a wall broken through is a way through")
 			_r.walls1 = str(ar.layout.walls)
 			_c.start_run()
 			_next("countdown")

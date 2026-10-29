@@ -161,14 +161,14 @@ func _physics_process(dt: float) -> void:
 	elif absf(ang) > 2.2 and (dist > near or rams or shoving):
 		throttle = 0.5 # (tracks: it turns round where it is)
 	# spiked: struck home, it backs off for a run-up and comes again (a ram bites by its speed)
-	if rams and _spiked() and dist < 3.2 and _back_t <= 0.0 and absf(machine.speed) < 4.0:
+	if rams and _spiked() and dist < 3.2 and _back_t <= 0.0 and absf(machine.speed) < 4.0 and not shoving: # (shoving: it keeps pushing)
 		_back_t = 1.1
 	# stuck: backs out, turned the other way
 	if _back_t > 0.0:
 		_back_t -= dt
 		throttle = -0.8
 		steer = -steer
-	elif absf(throttle) > 0.4 and absf(machine.speed) < 0.4:
+	elif absf(throttle) > 0.4 and absf(machine.speed) < 0.4 and not shoving and dist > 6.0: # (not up against its target: pushing it)
 		_stuck_t += dt
 		if _stuck_t > 2.5:
 			_stuck_t = 0.0
@@ -178,7 +178,8 @@ func _physics_process(dt: float) -> void:
 		_stuck_t = maxf(_stuck_t - dt, 0.0) # (a jolt, a spinner's fling, doesn't free it)
 	_went_t += dt
 	if _went_t > 3.0:
-		if _back_t <= 0.0 and absf(throttle) > 0.4 and machine.global_position.distance_to(_went_from) < 1.5:
+		if _back_t <= 0.0 and absf(throttle) > 0.4 and machine.global_position.distance_to(_went_from) < 1.5 \
+				and not shoving and dist > 6.0: # (pushing its target along isn't being stuck)
 			_back_t = 1.8 # (pushing three seconds and still where it was)
 			circle = -circle
 		_went_t = 0.0
@@ -250,7 +251,7 @@ func _steer_round(to: Vector3, _shoving_now: bool) -> Vector3:
 		var r: float = d.r
 		var off := p - c
 		var dist := off.length()
-		var seen := 5.0 + absf(machine.speed) * 1.4 # (the faster, the further ahead it looks)
+		var seen := 5.0 + absf(machine.speed) * 1.0 # (the faster, the further ahead it looks)
 		if dist > r + seen or dist < 0.001:
 			continue
 		var radial := off / dist
@@ -266,7 +267,7 @@ func _steer_round(to: Vector3, _shoving_now: bool) -> Vector3:
 		_detour_t = 1.0
 		var w := (1.0 - (dist - r) / seen) * (0.4 + toward)
 		out += tangent * _detour * w * 2.4 + radial * w * 0.6
-		if dist < r + 3.0 + absf(machine.speed) * 0.4 and toward > 0.5:
+		if dist < r + 3.0 and toward > 0.5:
 			_slow = true # (close and dead ahead: ease off while it gets round)
 	return Vector3(out.x, 0.0, out.y).normalized()
 

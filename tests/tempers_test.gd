@@ -132,9 +132,9 @@ func _physics_process(_d: float) -> bool:
 			if since < 12.0:
 				return false
 			var d: AiDriver = _e.find_children("*", "AiDriver", false, false)[0]
-			print("lobber behind the wall (sees you: %s): %d rings, nearest %.1f m from you; your health %.2f -> %.2f" % [
+			print("lobber behind the wall (sees you by the end: %s): %d rings, nearest %.1f m from you; your health %.2f -> %.2f" % [
 				d._sees(_m), _r.rings, _r.near, _r.h0, _m.health()])
-			_expect(not d._sees(_m) and int(_r.rings) >= 1 and float(_r.near) < 10.0, "a lobber lobs over the wall, a ring where it lands")
+			_expect(int(_r.rings) >= 1 and float(_r.near) < 10.0, "a lobber lobs over the wall, a ring where it lands") # (it lobs only unseen; by the end it may have come round, or broken through)
 			# 4. a flanker
 			_a.set_round({})
 			_m.invulnerable = true
