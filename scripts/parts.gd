@@ -70,11 +70,15 @@ const DEFS := {
 		"about": "Yanına değen silaha uzun namlu takar: mermi daha hızlı ve daha isabetli, alev daha uzağa gider; ama silah daha yavaş döner."},
 	"plate": {"name": "Çelik plaka", "size": Vector3i(1, 1, 1), "mass": 22.0, "kind": "block", "hp": 150.0,
 		"about": "Hafif zırh: bloktan çok daha hafif, kafesten çok daha sağlam."},
+	"crane": {"name": "Vinç", "size": Vector3i(2, 1, 2), "mass": 260.0, "kind": "crane", "hp": 240.0, "lift": 1500.0,
+		"about": "Döner vinç (Y): baktığın yere döner, kancası kolunda baktığın uzaklığa (0,8-2,5 m) kayar. Kanca yükün üstündeyken Y: tutar, sarıp kaldırır; kasanın üstüne çevir, Y: bırakır. 1,5 t kaldırır; ağır yük hafif aracı devirir."},
+	"winch": {"name": "Çeki vinci", "size": Vector3i(1, 1, 2), "mass": 90.0, "kind": "winch", "hp": 180.0, "lift": 4000.0,
+		"about": "Arkadan halat (N): 12 m'deki yükü ya da aracı bağlar, sarıp yanına çeker; yükü sürükle, saplanmış aracı çamurdan çek. N yine çözer. 4 t çeker."},
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
 const ORDER := ["frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
-	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "turret", "ammo", "barrel", "cab"]
+	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "turret", "ammo", "barrel", "crane", "winch", "cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
 ## Hit points by part (what a hit takes off; at 0 it comes off), if a part doesn't say its own.

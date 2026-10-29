@@ -7,22 +7,22 @@ extends Node
 ## Three jobs are offered at a time (the radio: J) from the places nearest you: what it is, how heavy
 ## (a medicine crate 150 kg, a generator 650, fuel drums 800, a pump 950, steel beams 1600), from where
 ## to where and how far, what it pays; some are urgent (the wounded, medicine: a time to be there by).
-## Take one and its load waits on the pad it's to go from. Stop beside it (within LOAD_REACH, still)
-## and it's lashed on top of your machine, if your machine can carry it (its wheels' rated load over
-## its weight with the load: Machine.rated_kg); its weight is the machine's now (it sinks deeper,
-## climbs slower, tips sooner). Every hard knock (Machine.struck) hurts what's carried, the fragile
-## (the wounded) far more; roll over and it falls off where you are, hurt, to be picked up again; the
-## machine carrying it gone, the same. Stop on the pad it's for and it's delivered: paid in parts
-## (good ones: Inventory, CONDITION) and scrap, less for what's broken, half if late.
+## Take one and its load waits on the pad it's to go from: a real crate of its weight (a RigidBody,
+## group "loads"), and getting it home is up to you and what you've built. A crane (MachineHoist: Y)
+## lifts it and sets it down on your bed, where it rides as weight like any other (it slides if you
+## brake hard, falls off if you roll); a winch (N) drags it along behind, or a light one's pushed. It
+## feels every knock (a drop, a fall, a crash: a sudden change in its speed past KNOCK), the fragile
+## (the wounded) far more, and broken through it's lost. Set it down within DROP_REACH of the pad
+## it's for, let go of it and still, and it's delivered: paid in parts (good ones) and scrap, less for
+## what's broken, half if late.
 ## The job, its load and where it is are kept (`path`).
 
 signal changed ## (the job or the offers changed: the radio's page)
 
-const LOAD_REACH := 7.0 ## m from the load
 const DROP_REACH := 14.0 ## m from the pad it's for
-const STILL := 1.2 ## m/s or slower counts as stopped
-const HOLD := 1.5 ## s stopped to load or unload
-const KNOCK := 5.0 ## m/s a knock changes speed by before what's carried feels it
+const STILL := 0.5 ## m/s or slower the load counts as set down
+const HOLD := 1.5 ## s set down on the pad to be delivered
+const KNOCK := 4.0 ## m/s the load's speed changes by in a step (a drop, a crash) before it feels it
 const OFFERS := 3
 const GOODS := {
 	"medicine": {"name": "İlaç sandıkları", "kg": 150.0, "size": Vector3(1.2, 0.7, 0.9), "fragile": 1.5, "urgent": true, "pay": 1},
@@ -44,15 +44,12 @@ var game: Node
 var terrain: Node
 var depots: Array[Dictionary] = [] ## {id, name, at: Vector3 (its pad), nodes}
 var offers: Array[Dictionary] = [] ## {goods, from, to, dist, pay, due}
-var job: Dictionary = {} ## the one taken: as an offer, and {state: "waiting" | "carried" | "dropped", cond, left, at}
-var carrier: Machine ## (the machine it's lashed on)
+var job: Dictionary = {} ## the one taken: as an offer, and {state: "waiting" | "moved", cond, left, at, from_at}
 var done := 0 ## jobs delivered
-var _crate: Node3D ## the load lying (waiting or dropped)
-var _lashed: Node3D ## the load on the machine
+var crate: RigidBody3D ## the load (while it's near enough to be out)
 var _beam: Node3D ## where to go
 var _hold := 0.0
-var _tipped := 0.0
-var _told := ""
+var _v := Vector3.ZERO ## (the load's speed last step)
 var _rng := RandomNumberGenerator.new()
 
 
@@ -126,6 +123,7 @@ func accept(i: int) -> bool:
 	job.left = float(job.due)
 	var f := depot(job.from)
 	job.at = f.at
+	job.from_at = f.at
 	var o := _offer()
 	if not o.is_empty():
 		offers.append(o)
@@ -140,7 +138,7 @@ func abandon() -> void:
 	if job.is_empty():
 		return
 	_say("Sefer bırakıldı: %s" % GOODS[job.goods].name)
-	_unlash()
+	_drop_crate()
 	job = {}
 	_save()
 	_show()
@@ -155,132 +153,64 @@ func _physics_process(dt: float) -> void:
 	_yards()
 	if job.is_empty():
 		return
-	var me := _me()
-	if job.due > 0.0 and job.left > -9999.0:
+	if float(job.due) > 0.0:
 		var was := float(job.left)
 		job.left = was - dt
 		if was > 0.0 and float(job.left) <= 0.0:
 			_say("Geç kaldın: %s yine de götürülebilir, ama yarı ücrete" % GOODS[job.goods].name)
-	match str(job.state):
-		"waiting", "dropped":
-			if _crate:
-				job.at = _crate.global_position
-			if me == null or not me.alive or me.building:
-				_hold = 0.0
-				return
-			var d := me.global_position.distance_to(job.at)
-			if d < LOAD_REACH and absf(me.speed) < STILL:
-				_hold += dt
-				if _hold >= HOLD:
-					_hold = 0.0
-					_lash(me)
-			else:
-				_hold = 0.0
-				if d > LOAD_REACH + 4.0:
-					_told = ""
-		"carried":
-			if not is_instance_valid(carrier) or not carrier.alive:
-				_fall(carrier.global_position if is_instance_valid(carrier) else Vector3(job.at), 0.3)
-				return
-			job.at = carrier.global_position
-			# rolled over (or on its side): it comes off
-			_tipped = _tipped + dt if carrier.global_basis.y.y < 0.35 else 0.0
-			if _tipped > 0.6:
-				_fall(carrier.global_position + Vector3.UP * 1.5, 0.15)
-				_say("Yük devrildi! %s yerde: yanına dur, yeniden yüklensin" % GOODS[job.goods].name)
-				return
-			var to := depot(job.to)
-			if carrier == me and me.global_position.distance_to(to.at) < DROP_REACH and absf(me.speed) < STILL:
-				_hold += dt
-				if _hold >= HOLD:
-					_hold = 0.0
-					_deliver()
-			else:
-				_hold = 0.0
-
-
-## Lashed on `m` if it can carry it.
-func _lash(m: Machine) -> void:
-	var g: Dictionary = GOODS[job.goods]
-	var kg := float(g.kg)
-	if m.total_mass + kg > m.rated_kg * 1.1:
-		var why := "Bu yükü taşıyamaz: tekerleri %d kg taşır, yükle %d kg olur" % [roundi(m.rated_kg), roundi(m.total_mass + kg)]
-		if _told != why:
-			_told = why
-			_say(why)
+	if not is_instance_valid(crate):
 		return
-	if is_instance_valid(_crate):
-		_crate.queue_free()
-	_crate = null
-	carrier = m
-	var size: Vector3 = g.size
-	m.cargo_kg = kg
-	m.cargo_at = Vector3(m.com.x, m.top_y + size.y * 0.5, m.com.z)
-	m.rebuild()
-	_lashed = _crate_node(size, job.goods)
-	_lashed.position = m.cargo_at
-	m.add_child(_lashed)
-	if not m.struck.is_connected(_on_struck):
-		m.struck.connect(_on_struck)
-	job.state = "carried"
-	_tipped = 0.0
-	if Combat.current:
-		Combat.current.sound("res://assets/audio/build/heavy_01.wav", m.global_position, -2.0, 0.8)
-	_say("Yüklendi: %s (%d kg)  ·  %s'a götür, %d m" % [g.name, roundi(kg), depot(job.to).name,
-		roundi(m.global_position.distance_to(depot(job.to).at))])
-	_save()
-	_show()
+	job.at = crate.global_position
+	# what it feels: a sudden change in its speed (dropped, fallen, struck)
+	var v := crate.linear_velocity
+	var dv := (v - _v).length()
+	_v = v
+	if dv > KNOCK:
+		var g: Dictionary = GOODS[job.goods]
+		var was := float(job.cond)
+		job.cond = maxf(was - (dv - KNOCK) * 0.06 * float(g.fragile), 0.0)
+		if float(job.cond) <= 0.0:
+			_lost()
+			return
+		if was - float(job.cond) > 0.03:
+			_say("▲ Yük sarsıldı: %s %%%d" % [g.name, roundi(float(job.cond) * 100.0)])
+	var from_at: Vector3 = job.from_at
+	if str(job.state) == "waiting" and Vector2(crate.global_position.x - from_at.x, crate.global_position.z - from_at.z).length() > 4.0:
+		job.state = "moved"
+		_save()
+	# set down on its pad, let go of, still: delivered
+	var to: Vector3 = depot(job.to).at
+	var flat := Vector2(crate.global_position.x - to.x, crate.global_position.z - to.z).length()
+	if flat < DROP_REACH and v.length() < STILL and not hooked(crate):
+		_hold += dt
+		if _hold >= HOLD:
+			_hold = 0.0
+			_deliver()
+	else:
+		_hold = 0.0
 
 
-## Off the machine (if it's on one).
-func _unlash() -> void:
-	if is_instance_valid(carrier):
-		carrier.cargo_kg = 0.0
-		carrier.rebuild()
-		if carrier.struck.is_connected(_on_struck):
-			carrier.struck.disconnect(_on_struck)
-	carrier = null
-	if is_instance_valid(_lashed):
-		_lashed.queue_free()
-	_lashed = null
-	if is_instance_valid(_crate):
-		_crate.queue_free()
-	_crate = null
-
-
-## It comes off at `at`, `hurt` more broken.
-func _fall(at: Vector3, hurt: float) -> void:
-	_unlash()
-	job.cond = maxf(float(job.cond) - hurt, 0.0)
-	if float(job.cond) <= 0.0:
-		_lost()
-		return
-	job.state = "dropped"
-	job.at = at
-	_lay(at)
-	_save()
-	_show()
-
-
-func _on_struck(_at: Vector3, dv: float, _other: Object) -> void:
-	if job.is_empty() or str(job.state) != "carried" or dv < KNOCK:
-		return
-	var g: Dictionary = GOODS[job.goods]
-	var was := float(job.cond)
-	job.cond = maxf(was - (dv - KNOCK) * 0.05 * float(g.fragile), 0.0)
-	if float(job.cond) <= 0.0:
-		_unlash()
-		_lost()
-		return
-	if was - float(job.cond) > 0.04:
-		_say("▲ Yük sarsıldı: %s %%%d" % [g.name, roundi(float(job.cond) * 100.0)])
+## Something's rope is on `b`.
+static func hooked(b: Node) -> bool:
+	for n: Node in b.get_tree().get_nodes_in_group("machines"):
+		for h: MachineHoist in (n as Machine).hoists:
+			if h.hooked() == b:
+				return true
+	return false
 
 
 func _lost() -> void:
 	_say("SEFER BAŞARISIZ: %s kullanılmaz hale geldi" % GOODS[job.goods].name)
+	_drop_crate()
 	job = {}
 	_save()
 	_show()
+
+
+func _drop_crate() -> void:
+	if is_instance_valid(crate):
+		crate.queue_free()
+	crate = null
 
 
 ## Delivered: paid in parts and scrap.
@@ -298,27 +228,46 @@ func _deliver() -> void:
 		got.append(Parts.def(id).name)
 	var scrap := roundi((4.0 + float(job.dist) / 100.0) * k)
 	Inventory.add_scrap(scrap)
-	_unlash()
+	if Combat.current and is_instance_valid(crate):
+		Combat.current.sound("res://assets/audio/build/bolt_on_01.wav", crate.global_position, 2.0, 0.9)
+	_drop_crate()
 	done += 1
 	_say("TESLİM EDİLDİ: %s%s  ·  +%s, +%d hurda" % [g.name, " (geç)" if late else "", ", ".join(got), scrap])
-	if Combat.current and is_instance_valid(_me()):
-		Combat.current.sound("res://assets/audio/build/bolt_on_01.wav", _me().global_position, 2.0, 0.9)
 	job = {}
 	_save()
 	_show()
 
 
-## The load lying at `at` (a crate the size of it).
+## The load out at `at`: a crate of its weight on the ground.
 func _lay(at: Vector3) -> void:
-	if is_instance_valid(_crate):
-		_crate.queue_free()
-	var size: Vector3 = GOODS[job.goods].size
-	_crate = _crate_node(size, job.goods)
-	_crate.position = Vector3(at.x, float(terrain.call("height_at", at.x, at.z)) + size.y * 0.5, at.z)
-	game.add_child(_crate)
+	_drop_crate()
+	var g: Dictionary = GOODS[job.goods]
+	var size: Vector3 = g.size
+	var b := RigidBody3D.new()
+	b.name = "Load"
+	b.mass = float(g.kg)
+	b.collision_layer = 1 | 4 # (ground to wheels: it can ride on a bed and be driven over)
+	b.collision_mask = 1 | 2
+	b.continuous_cd = true
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.9
+	b.physics_material_override = pm
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	b.add_child(cs)
+	b.add_child(_crate_node(size, job.goods))
+	b.set_meta("size", size)
+	b.set_meta("title", str(g.name))
+	b.add_to_group("loads")
+	b.position = Vector3(at.x, float(terrain.call("height_at", at.x, at.z)) + size.y * 0.5 + 0.05, at.z)
+	game.add_child(b)
+	crate = b
+	_v = Vector3.ZERO
 
 
-## What it looks like: a lashed crate (strapped), the drums, the beams, the stretcher.
+## What it looks like: a strapped crate, the drums, the beams, the stretcher.
 func _crate_node(size: Vector3, gid: String) -> Node3D:
 	var n := Node3D.new()
 	n.name = "Load"
@@ -390,12 +339,12 @@ func _yards() -> void:
 			d.nodes = []
 	if job.is_empty():
 		_mark(Vector3.INF)
-	elif str(job.state) == "carried":
-		_mark(depot(job.to).at)
-	else:
-		_mark(job.at)
-		if str(job.state) == "waiting" and not is_instance_valid(_crate) and me.global_position.distance_to(job.at) < 320.0:
-			_lay(job.at)
+		return
+	if not is_instance_valid(crate) and me.global_position.distance_to(job.at) < 320.0:
+		_lay(job.at)
+	# the light over the load till you're with it, then over where it's to go
+	var with_it := me.global_position.distance_to(Vector3(job.at)) < 20.0
+	_mark(depot(job.to).at if with_it else Vector3(job.at))
 
 
 func _raise(d: Dictionary) -> void:
@@ -467,13 +416,12 @@ func status() -> String:
 	var me := _me()
 	var here := me.global_position if me else Vector3.ZERO
 	var line := ""
-	match str(job.state):
-		"waiting":
-			line = "%s %s'da seni bekliyor · %d m" % [g.name, depot(job.from).name, roundi(here.distance_to(job.at))]
-		"dropped":
-			line = "%s yerde · %d m" % [g.name, roundi(here.distance_to(job.at))]
-		"carried":
-			line = "%s → %s · %d m" % [g.name, depot(job.to).name, roundi(here.distance_to(depot(job.to).at))]
+	var to: Dictionary = depot(job.to)
+	var d_load := here.distance_to(job.at)
+	if d_load > 20.0:
+		line = "%s %s · %d m" % [g.name, "yerde" if str(job.state) == "moved" else str(depot(job.from).name) + "'da bekliyor", roundi(d_load)]
+	else:
+		line = "%s → %s · %d m" % [g.name, to.name, roundi(Vector3(job.at).distance_to(to.at))]
 	line += "  ·  yük %%%d" % roundi(float(job.cond) * 100.0)
 	if float(job.due) > 0.0:
 		var left := float(job.left)
@@ -484,7 +432,8 @@ func status() -> String:
 ## An offer, in words (the radio).
 func describe(o: Dictionary) -> String:
 	var g: Dictionary = GOODS[o.goods]
-	var s := "%s · %d kg\n%s → %s · %.1f km" % [g.name, roundi(float(g.kg)), depot(o.from).name, depot(o.to).name, float(o.dist) / 1000.0]
+	var s := "%s · %d kg%s\n%s → %s · %.1f km" % [g.name, roundi(float(g.kg)), " (vinç kaldırmaz: çeki vinciyle sürükle)" if float(g.kg) > 1500.0 else "",
+		depot(o.from).name, depot(o.to).name, float(o.dist) / 1000.0]
 	if float(o.due) > 0.0:
 		s += " · ACİL %d dk" % ceili(float(o.due) / 60.0)
 	s += "\nÖdül: %d parça (%s…), %d hurda" % [2 + int(o.pay), Parts.def(PAY_PARTS[int(o.pay)][0]).name, roundi(4.0 + float(o.dist) / 100.0)]
@@ -519,16 +468,11 @@ func _load() -> void:
 	var j: Dictionary = cf.get_value("jobs", "job", {})
 	if not j.is_empty() and GOODS.has(str(j.get("goods", ""))) and not depot(str(j.get("to", ""))).is_empty():
 		job = j
-		if str(job.state) == "carried":
-			_relash.call_deferred() # (back on the machine you start in)
+		if not job.has("from_at"):
+			job.from_at = depot(job.from).at
+		if str(job.get("state", "")) != "waiting":
+			job.state = "moved"
 
 
-func _relash() -> void:
-	var me := _me()
-	if me:
-		job.state = "waiting"
-		_lash(me)
-		if str(job.state) != "carried": # (it can't now: it's beside you)
-			job.state = "dropped"
-			job.at = me.global_position + me.global_basis.x * 5.0
-			_lay(job.at)
+func _exit_tree() -> void:
+	_save() # (where the load got to)

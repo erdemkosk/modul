@@ -41,13 +41,13 @@ const BAD := Color(1.0, 0.42, 0.32)
 const GOOD := Color(0.55, 0.9, 0.5)
 ## The keys that pick the parts, in Parts.ORDER (the cab left out).
 const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_Q, KEY_E, KEY_Z, KEY_X,
-	KEY_C, KEY_F, KEY_H, KEY_N, KEY_U, KEY_I, KEY_O, KEY_J, KEY_P, KEY_G]
+	KEY_C, KEY_F, KEY_H, KEY_N, KEY_U, KEY_I, KEY_O, KEY_J, KEY_P, KEY_G, KEY_Y, KEY_L]
 const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N", "U", "I", "O",
-	"J", "P", "G"]
+	"J", "P", "G", "Y", "L"]
 ## The cards' groups.
 const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
 	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel", "flipper"]],
-	["HAREKET", ["turret", "hinge", "rotor", "piston"]]]
+	["HAREKET", ["turret", "hinge", "rotor", "piston"]], ["YÜK", ["crane", "winch"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine
@@ -1230,7 +1230,7 @@ static func load_saved() -> Array:
 ## mouse or F).
 func _listen_for_key() -> void:
 	var i := _remove_i
-	if i < 0 or i >= machine.design.size() or not str(Parts.def(machine.design[i].id).kind) in ["weapon", "flipper", "joint"]:
+	if i < 0 or i >= machine.design.size() or not str(Parts.def(machine.design[i].id).kind) in ["weapon", "flipper", "joint", "crane", "winch"]:
 		_hint_say("Tuş vermek için farenin altında bir silah, çevirici ya da hareketli parça olsun, sonra K")
 		return
 	_listen = i

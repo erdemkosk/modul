@@ -354,6 +354,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var code := (event as InputEventKey).physical_keycode
 		_fire_flippers(code)
 		machine.joint_key(code)
+		var hoisted := machine.hoist_key(code)
+		if hoisted != "":
+			say(hoisted)
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and not builder.active:
 		if key.keycode >= KEY_0 and key.keycode <= KEY_9:

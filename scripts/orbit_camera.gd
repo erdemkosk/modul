@@ -37,9 +37,14 @@ const ISO_BACK := 80.0 ## m the orthographic camera stands off (it sees the same
 
 var _yaw_shown := PI
 var _iso_drag := 0.0
+var _reach := -1.0 ## m out from the pivot it's let go this moment (pulled in at once by what's in the way, let out slowly)
 
 
 func _ready() -> void:
+	# it moves every frame itself, after the machine's drawn where it is between physics steps: it's
+	# not interpolated, and it follows the machine as drawn (not as the last step left it), or the
+	# machine shudders in the picture, the more the further out the view
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	far = 6000.0
 	near = 0.08
 	fov = 70.0
@@ -98,7 +103,7 @@ func _process(dt: float) -> void:
 	_yaw_shown = lerp_angle(_yaw_shown, yaw, 1.0 - exp(-10.0 * dt)) if iso or free_mouse else yaw
 	var p := ISO_PITCH if iso else pitch
 	var dir := Basis(Vector3.UP, _yaw_shown) * Basis(Vector3.RIGHT, p) * Vector3(0.0, 0.0, 1.0)
-	var c := target.com_global() + Vector3.UP * 0.6 - Basis(Vector3.UP, _yaw_shown) * Vector3.RIGHT * shift
+	var c := _anchor() + Vector3.UP * 0.6 - Basis(Vector3.UP, _yaw_shown) * Vector3.RIGHT * shift
 	if iso:
 		projection = Camera3D.PROJECTION_ORTHOGONAL
 		size = lerpf(size, dist * 1.15, k)
@@ -134,6 +139,11 @@ func _process(dt: float) -> void:
 	fov = _fov + _punch
 
 
+## The machine's centre of mass as it's drawn this frame (between physics steps).
+func _anchor() -> Vector3:
+	return target.get_global_transform_interpolated() * target.com
+
+
 ## The driving views: placed behind and above, looking out along the aim.
 func _drive_view(dt: float, k: float) -> void:
 	var aim := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * Vector3.FORWARD # (where you look)
@@ -142,30 +152,38 @@ func _drive_view(dt: float, k: float) -> void:
 	match mode:
 		TURRET:
 			# on top of it, a little behind its middle
-			want = target.global_transform * Vector3(target.com.x, target.top_y + 0.9, target.com.z) \
+			want = target.get_global_transform_interpolated() * Vector3(target.com.x, target.top_y + 0.9, target.com.z) \
 				- Basis(Vector3.UP, yaw) * Vector3.FORWARD * 0.6
 		HIGH:
 			var d := dist * 1.7 + 8.0
 			var back := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, minf(pitch, -0.25) - 0.45) * Vector3.BACK
-			want = target.com_global() + Vector3.UP * 1.0 + back * d
+			want = _anchor() + Vector3.UP * 1.0 + back * d
 			# looking down over the ground ahead to where the aim comes down
 			look = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch - 0.22) * Vector3.FORWARD
 		_:
 			# behind and above: the line back to the camera is the aim's, tipped up 0.15 rad more
 			var back := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch - 0.15) * Vector3.BACK
-			want = target.com_global() + Vector3.UP * (1.0 + dist * 0.06) + back * dist
+			want = _anchor() + Vector3.UP * (1.0 + dist * 0.06) + back * dist
 	if zoom and mode != TURRET:
-		want = want.lerp(target.com_global() + Vector3.UP * (target.top_y + 1.2), 0.35) # (in closer, over it)
+		want = want.lerp(_anchor() + Vector3.UP * (target.top_y + 1.2), 0.35) # (in closer, over it)
 	if terrain and terrain.has_method("height_at"):
 		want.y = maxf(want.y, float(terrain.call("height_at", want.x, want.z)) + 0.6)
 	# not through walls: from over the machine out to where it wants to be, it stops short of what's
 	# in the way (the ground, the arena, its cover; not machines or what's flying about)
-	var pivot := target.com_global() + Vector3.UP * 1.2
-	var q := PhysicsRayQueryParameters3D.create(pivot, want + (want - pivot).normalized() * 0.4, 1)
+	var pivot := _anchor() + Vector3.UP * 1.2
+	var out := want - pivot
+	var full := out.length()
+	var q := PhysicsRayQueryParameters3D.create(pivot, want + out.normalized() * 0.4, 1)
 	q.exclude = [target.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	var blocked := not hit.is_empty() and mode != TURRET
-	if blocked:
-		want = (hit.position as Vector3) - (want - pivot).normalized() * 0.4
+	var room := full if hit.is_empty() or mode == TURRET else maxf(pivot.distance_to(hit.position) - 0.4, 0.5)
+	# pulled in at once when something's in the way, let back out slowly: a far view over rough ground
+	# (a bump, a tree, in and out of the line every frame) doesn't jump in and out with it
+	if _reach < 0.0 or room < _reach:
+		_reach = room
+	else:
+		_reach = minf(lerpf(_reach, room, 1.0 - exp(-2.5 * dt)), room)
+	var blocked := _reach < full - 0.05
+	want = pivot + out.normalized() * _reach if full > 0.001 else want
 	global_position = global_position.lerp(want, 1.0 if blocked else (k if mode != TURRET else 1.0 - exp(-30.0 * dt)))
 	look_at(global_position + look, Vector3.UP)

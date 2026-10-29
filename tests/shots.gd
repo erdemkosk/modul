@@ -402,9 +402,38 @@ func _expedition_steps() -> Array:
 		[0.5, _noop, func() -> void:
 			var ex: Expeditions = _g.get("expeditions")
 			ex.accept(0)
-			ex.job.goods = "generator"
-			_put_at(Vector3(ex.job.at) + Vector3(4, 0, 0))],
-		[5.0, func(_s: float) -> void: _cam(PI * 0.75, -0.25, 10.0), func() -> void: _shoot("loaded")],
+			ex.job.goods = "medicine"
+			var d := Designs.starter()
+			d.append(["crane", 0, 3, 0, 0])
+			d.append(["winch", -1, 1, 2, 0])
+			_m.from_data(d)
+			_put_at(Vector3(ex.job.at) + Vector3(0, 0, 2.7))],
+		[3.0, func(_s: float) -> void:
+			var ex: Expeditions = _g.get("expeditions")
+			if is_instance_valid(ex.crate):
+				_m.keyed = true
+				_m.aim_point = ex.crate.global_position
+			_cam(PI * 0.7, -0.2, 9.0), func() -> void: _m.hoist_key(KEY_Y)],
+		[4.0, func(_s: float) -> void:
+			_m.aim_point = _m.global_position - _m.global_basis.z * 3.0 + _m.global_basis.x * 6.0
+			_cam(PI * 0.7, -0.2, 9.0), func() -> void: _shoot("crane_lift")],
+		[5.0, func(_s: float) -> void:
+			_m.aim_point = _m.global_position + _m.global_basis.z * 1.7 + Vector3.UP * 1.0 # (over its own bed, behind the cab)
+			_cam(PI * 0.25, -0.35, 9.0), func() -> void: _shoot("loaded")],
+		[0.5, _noop, func() -> void:
+			_m.hoist_key(KEY_Y)
+			var ex: Expeditions = _g.get("expeditions")
+			if is_instance_valid(ex.crate):
+				_put_at(ex.crate.global_position + Vector3(0, 0, -8.0))],
+		[2.0, _noop, func() -> void:
+			_m.hoist_key(KEY_N)
+			_m.brake = 0.0],
+		[5.0, func(_s: float) -> void:
+			_m.throttle = 0.5
+			_cam(PI * 0.15, -0.25, 12.0), func() -> void:
+			_m.throttle = 0.0
+			_shoot("towing")],
+		[1.0, _noop, func() -> void: _m.hoist_key(KEY_N)],
 		[1.0, func(_s: float) -> void: pass, func() -> void:
 			(_g.get("valley_hud") as ValleyHud).toggle_board()
 			_shoot("radio")],

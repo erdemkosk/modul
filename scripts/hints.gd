@@ -14,7 +14,8 @@ const CARDS := {
 	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
 		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],
 		["Ayaklar, dipler", "taşıyanı kır: üstündeki devrilir"], ["R", "baştan başla"]]],
-	"valley_work": ["VADİ", [["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Yükün yanında dur", "yüklenir; ağırlığı aracının olur, devrilirsen düşer"],
+	"valley_lift": ["VADİ", [["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Y · vinç", "kancayı yükün üstüne getir, Y: kaldırır; kasana çevir, Y: bırakır"], ["N · çeki vinci", "arkadaki yükü ya da saplanmış aracı bağlar, sarıp çeker"],
+		["Teslim", "yükü gideceği yerin halkasına indir, bırak"],
 		["V", "atölye kamyonuna bin / in: inşa ve onarım sadece onun yanında"], ["Işıklı parçalar", "enkazdan çıkan parçalar yıpranmıştır: yüzdesi yazar"],
 		["Hurda", "atölyede onarımın bedeli: seferlerden, enkazdan"], ["Yağmur", "çamur derinleşir, geçitler taşar; yollar heyelanla kapanır"],
 		["Dev makineler", "vurarak değil, sökerek devrilir: silahını, paletini kopar"]]],
@@ -59,7 +60,7 @@ func _process(dt: float) -> void:
 			and is_instance_valid(game.get("machine")):
 		_show("drive")
 		if Mode.current == "valley" and _card == null:
-			_show("valley_work")
+			_show("valley_lift")
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

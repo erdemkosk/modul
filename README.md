@@ -29,7 +29,10 @@ are this project's own.
   build only with what you hold (a ready design or a slot loads if your parts cover it), and the
   valley's machine and parts are kept apart from the other modes'. Its work is carrying: jobs on the
   radio (J) to haul a load (medicine, the wounded, a generator, fuel, a pump, steel beams) between the
-  map's places, lashed on top of a machine that can bear it, paid in good parts and scrap. There's no
+  map's places: a real crate of its weight, lifted onto your bed with a crane (Y: it slews to your
+  aim, its trolley runs out to where you look, a load moment limiter keeps it from tipping you over)
+  or dragged with a winch (N: it also pulls a stuck machine out of the mud), set down on the pad it's
+  for, paid in good parts and scrap. There's no
   base: you build and mend only beside the workshop truck (V to drive it: slow, heavy, it hauls the
   big loads). Parts have a past (salvage is worn, a worn part may give on the road). The valley soaks
   and dries (the mud's depth), its fords flood, its roads are shut some mornings (a slide, trees down),
@@ -127,6 +130,8 @@ are this project's own.
 - Salvage: `inventory.gd` (what you hold, user://valley_inventory.cfg), `salvage.gd` (the lit parts
   and taking them), `wanderers.gd` (the valley's hunters); the builder's guard, removed and
   swap_guard hooks keep the building to what's held; each part held has its wear (`Inventory.cond`).
+- Cranes and winches: `machine_hoist.gd` (the rope as a spring that only pulls, the crane's slew and
+  trolley, its load moment limiter, drawing the rope); models in tools/blender/build_parts.py.
 - The valley's work: `expeditions.gd` (places, jobs, the load and its knocks, delivery),
   `workshop.gd` (the truck, building and mending beside it), `valley_life.gd` (soaking mud, fords in
   flood, shut roads, worn parts giving), `colossus.gd` (the giants), `valley_hud.gd` (the lines and

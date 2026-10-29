@@ -15,7 +15,9 @@ static var scrap := 0
 static var taken := 1.0 ## (what the part last taken had left)
 static var _loaded := false
 ## What a new start in the valley has spare (with the starter machine on).
-const START := {"frame": 6, "plate": 3, "wedge": 2}
+const START := {"frame": 6, "plate": 3, "wedge": 2, "crane": 1, "winch": 1}
+## Given once to a valley begun before there were any (what loads are lifted and dragged with).
+const GIFT := {"crane": 1, "winch": 1}
 const START_SCRAP := 20
 
 
@@ -34,6 +36,10 @@ static func load_all() -> void:
 		var c: Array = cf.get_value("cond", k, [])
 		cond[k] = c.slice(0, counts[k])
 	scrap = int(cf.get_value("res", "scrap", 0))
+	if not bool(cf.get_value("res", "gift_hoist", false)):
+		for k: String in GIFT:
+			counts[k] = int(counts.get(k, 0)) + int(GIFT[k])
+		save_all()
 
 
 static func save_all() -> void:
@@ -43,6 +49,7 @@ static func save_all() -> void:
 			cf.set_value("parts", k, int(counts[k]))
 			cf.set_value("cond", k, _conds(k))
 	cf.set_value("res", "scrap", scrap)
+	cf.set_value("res", "gift_hoist", true)
 	cf.save(path)
 
 

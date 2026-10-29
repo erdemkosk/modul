@@ -30,6 +30,13 @@ Output: assets/parts/<id>.glb, assets/parts/previews/*.png (--render).
   plate      1x1x1  a steel plate on the cell's outer face, on brackets
   cannon     2x2x2  a 76 mm gun in a sloped armoured turret: Turret > Gun (the mantlet and barrel, a muzzle
                     brake), Muzzle at its end
+  crane      2x1x2  a slewing knuckle crane: its ring bolted down; on it (node Top, slewing about its middle)
+                    the king post, a lattice boom out forward to the sheave at its tip (Godot 0, 1.85, -2.5),
+                    the luffing ram, the hoist drum and a counterweight behind
+  winch      1x1x2  a recovery winch: a drum of wire rope between side plates, its motor, the fairlead's
+                    rollers at the back where the rope comes out (Godot 0, -0.05, 0.5), a hook stowed there
+
+Only some: -- --only=crane,winch
 """
 
 import math
@@ -52,7 +59,7 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
          "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1),
-         "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1)}
+         "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1), "crane": (2, 1, 2), "winch": (1, 1, 2)}
 
 
 def materials():
@@ -1096,13 +1103,76 @@ def build_barrel():
     box("Tag", (0.12, 0.003, 0.05), (0.13, -(s - 0.08) / 2, -h + 0.13), "Hazard", grp="Part")
 
 
+def build_crane():
+    """A slewing crane: a ring bolted down (as the turret's) and on it, slewing, the deck, the king
+    post, a lattice boom angled up and out forward to its tip sheave, the luffing ram under it, the
+    hoist drum and the counterweight behind the post. The game hangs the rope from the tip."""
+    sx, sy, sz = ext(PARTS["crane"])
+    hz = sz / 2
+    box("Base", (sx - 0.04, sy - 0.04, 0.08), (0, 0, -hz + 0.04), "SteelDark", bev=0.008, grp="Part")
+    bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.8, sy * 0.8, grp="Part")
+    cyl("Ring", 0.42, 0.1, (0, 0, -hz + 0.13), segs=48, mat="Steel", grp="Part")
+    # what slews
+    cyl("Deck", 0.46, 0.08, (0, 0, hz - 0.04), segs=40, mat="Paint", bev=0.01, grp="Top")
+    box("Post", (0.24, 0.24, 1.45), (0, -0.05, hz + 0.72), "Paint", bev=0.02, grp="Top")
+    box("PostCap", (0.3, 0.3, 0.06), (0, -0.05, hz + 1.46), "SteelDark", bev=0.01, grp="Top")
+    tip = Vector((0, 2.5, 1.85))
+    for x in (-0.09, 0.09):  # (the top chords)
+        cyl_between(f"Chord{x}", (x, 0.02, 1.5), (x * 0.5, tip.y - 0.05, tip.z), 0.032, mat="Paint", grp="Top")
+    cyl_between("ChordLow", (0, 0.08, 1.24), (0, tip.y - 0.12, tip.z - 0.12), 0.032, mat="Paint", grp="Top")
+    for k in range(7):  # (the lacing)
+        f0 = k / 7.0
+        f1 = (k + 1) / 7.0
+        a = Vector((0.0, 0.02, 1.5)).lerp(Vector((0, tip.y - 0.05, tip.z)), f0)
+        b = Vector((0.0, 0.08, 1.24)).lerp(Vector((0, tip.y - 0.12, tip.z - 0.12)), f1)
+        for x in (-1, 1):
+            cyl_between(f"Lace{k}{x}", (x * 0.08 * (1 - f0 * 0.5), a.y, a.z), (0, b.y, b.z), 0.013, mat="SteelDark", grp="Top")
+    cyl("Sheave", 0.09, 0.06, tuple(tip), axis="X", segs=20, mat="Steel", grp="Top")
+    for x in (-0.05, 0.05):
+        box(f"Cheek{x}", (0.015, 0.22, 0.22), (x, tip.y, tip.z), "Paint", bev=0.004, grp="Top")
+    cyl_between("Ram", (0, 0.12, hz + 0.25), (0, 0.75, 1.32), 0.055, mat="Paint", grp="Top")
+    cyl_between("RamRod", (0, 0.75, 1.32), (0, 1.15, 1.42), 0.028, mat="Steel", grp="Top")
+    cyl("Drum", 0.12, 0.3, (0, -0.32, hz + 0.32), axis="X", segs=20, mat="SteelDark", grp="Top")
+    cyl("Wound", 0.135, 0.24, (0, -0.32, hz + 0.32), axis="X", segs=20, mat="Steel", grp="Top")
+    box("Counterweight", (0.6, 0.26, 0.34), (0, -0.4, hz + 0.08), "PaintDark", bev=0.015, grp="Top")
+    for k in range(3):
+        box(f"Stripe{k}", (0.06, 0.004, 0.3), (-0.2 + k * 0.2, -0.531, hz + 0.08), "Hazard", rot=(0, 0.6, 0), grp="Top")
+    tube("Rope", [(0, -0.32, hz + 0.46), (0, -0.05, 1.62), (0, tip.y - 0.1, tip.z + 0.08)], 0.008, mat="SteelDark",
+         nring=6, sub=2, grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
+def build_winch():
+    """A recovery winch: side plates on a base bolted down, the drum of wire rope between them, the
+    motor on one side and the gearbox on the other, the fairlead's four rollers at the back where the
+    rope comes out, its hook stowed against them."""
+    sx, sy, sz = ext(PARTS["winch"])
+    hz = sz / 2
+    box("Base", (sx - 0.04, sy - 0.04, 0.06), (0, 0, -hz + 0.03), "SteelDark", bev=0.006, grp="Part")
+    bolts("BaseBolt", (0, 0.2, -hz), (0, 0, -1), 0.3, 0.3, grp="Part")
+    for x in (-0.2, 0.2):
+        box(f"Side{x}", (0.04, 0.5, 0.4), (x, 0.12, -0.02), "Paint", bev=0.008, grp="Part")
+    cyl("Drum", 0.1, 0.36, (0, 0.12, -0.02), axis="X", segs=20, mat="SteelDark", grp="Part")
+    cyl("Wound", 0.15, 0.32, (0, 0.12, -0.02), axis="X", segs=24, mat="Steel", grp="Part")
+    cyl("Motor", 0.08, 0.14, (0.17, 0.32, -0.08), axis="X", segs=16, mat="SteelDark", grp="Part")
+    box("Gearbox", (0.06, 0.18, 0.2), (-0.23, 0.12, -0.02), "PaintDark", bev=0.008, grp="Part")
+    box("Fairlead", (sx - 0.06, 0.08, 0.3), (0, -0.44, -0.05), "Paint", bev=0.01, grp="Part")
+    for x in (-0.07, 0.07):
+        cyl(f"RollerV{x}", 0.03, 0.22, (x, -0.47, -0.05), segs=12, mat="Steel", grp="Part")
+    for z in (-0.12, 0.02):
+        cyl(f"RollerH{z}", 0.03, 0.2, (0, -0.47, z), axis="X", segs=12, mat="Steel", grp="Part")
+    tube("Rope", [(0, 0.12, 0.12), (0, -0.2, 0.0), (0, -0.48, -0.05)], 0.009, mat="SteelDark", nring=6, sub=2, grp="Part")
+    box("Hook", (0.05, 0.05, 0.12), (0, -0.53, -0.09), "Spring", bev=0.01, grp="Part")
+    box("Stripe", (0.3, 0.004, 0.05), (0, -0.485, 0.07), "Hazard", grp="Part")
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
             "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
             "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
             "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston,
-            "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel}
+            "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel, "crane": build_crane, "winch": build_winch}
 
 
 def icon(pid):
@@ -1118,12 +1188,16 @@ def icon(pid):
         span *= 1.6
     if pid == "track":
         span *= 0.8  # (the barrels reach past the footprint)
+    if pid == "crane":
+        span = 2.4  # (its boom reaches well past the footprint, up and out)
     d = span * 1.45 + 0.2
     os.makedirs(os.path.join(OUT_DIR, "icons"), exist_ok=True)
     bt.OUT_DIR = OUT_DIR
     cd = bpy.data.cameras.new("Icon")
     cam = bt.link(bpy.data.objects.new("Icon", cd))
     target = Vector((0, 0.15 * span if pid in ("minigun", "cannon") else 0.0, 0))
+    if pid == "crane":
+        target = Vector((0, 1.1, 0.85))
     cam.location = target + Vector((d * 0.75, d * 0.95, d * 0.62))
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     cd.lens = 50
@@ -1136,7 +1210,10 @@ def icon(pid):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     os.makedirs(OUT_DIR, exist_ok=True)
+    only = next((a[7:].split(",") for a in argv if a.startswith("--only=")), None)
     for pid, fn in BUILDERS.items():
+        if only and pid not in only:
+            continue
         PIVOTS.clear()
         bpy.ops.wm.read_factory_settings(use_empty=True)
         bt.MAT.clear()

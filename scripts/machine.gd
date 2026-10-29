@@ -90,6 +90,7 @@ var aim_point := Vector3.ZERO
 var firing := false
 var guns: Array[MachineGun] = []
 var flippers: Array[MachineFlipper] = []
+var hoists: Array[MachineHoist] = [] ## (its cranes and winches)
 var joints: Array[MachineJoint] = []
 var _chain := {} ## part index -> the joints that carry it, outermost first
 var _shapes := {} ## part index -> [[its CollisionShape3D, its box at rest]]
@@ -105,8 +106,6 @@ var invulnerable := false ## (the proving ground's G) hits push it but take noth
 var ammo_limited := false ## its guns' ammunition runs out (Game: everywhere but the proving ground)
 var ammo_k := 1.0 ## how many loads its guns carry (a crew's: more)
 var wet := 0.0 ## 0..1: the ground soaked by rain (Weather.wetness): what the wheels throw
-var cargo_kg := 0.0 ## a load carried (the valley's expeditions): its weight, sitting at `cargo_at` (machine space)
-var cargo_at := Vector3.ZERO
 
 var power_kw := 0.0
 var total_mass := 0.0
@@ -324,6 +323,9 @@ func rebuild() -> void:
 	tracks.clear()
 	guns.clear()
 	flippers.clear()
+	for h in hoists:
+		h.free_fx()
+	hoists.clear()
 	joints.clear()
 	_chain.clear()
 	_shapes.clear()
@@ -397,6 +399,12 @@ func rebuild() -> void:
 				jt.key = int(p.get("key", 0))
 				joints.append(jt)
 				_add_shape(ext * Vector3(0.95, 0.95, 0.95), xf.origin)
+			"crane", "winch":
+				var ho := MachineHoist.make(self, node, i, p.id)
+				ho.key = int(p.get("key", 0))
+				ho.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+				hoists.append(ho)
+				_add_shape(ext * Vector3(0.9, 0.8, 0.9), xf.origin)
 			"flipper":
 				var fl := MachineFlipper.make(self, node)
 				fl.key = int(p.get("key", 0))
@@ -405,9 +413,6 @@ func rebuild() -> void:
 				_add_shape(ext * Vector3(0.95, 0.8, 0.95), xf.origin)
 			_:
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
-	if cargo_kg > 0.0: # (a load on it: its weight where it sits)
-		total_mass += cargo_kg
-		moment += cargo_at * cargo_kg
 	_cur = -1
 	_sections()
 	if total_mass <= 0.0:
@@ -720,6 +725,8 @@ func _physics_process(dt: float) -> void:
 		g.update(dt, aim_point, trig and g.armed, powered)
 	for f in flippers:
 		f.update(dt, powered)
+	for h in hoists:
+		h.update(dt)
 	if not joints.is_empty():
 		for jt in joints:
 			jt.update(dt, powered)
@@ -1682,6 +1689,16 @@ func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
 	if Combat.current:
 		Combat.current.call_deferred("_impact", at, -v.normalized(), "metal", clampf(speed / 10.0, 0.3, 1.0))
 		Combat.current.call_deferred("sound", "res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), at, 4.0, randf_range(0.7, 0.9))
+
+
+## The cranes and winches on `code` (Y a crane with no key of its own, N a winch): hooked on or let
+## go. What they did, in words ("" if none answers to it).
+func hoist_key(code: int) -> String:
+	var said := ""
+	for h in hoists:
+		if (h.key if h.key != 0 else (KEY_Y if h.kind == "crane" else KEY_N)) == code:
+			said = h.toggle()
+	return said
 
 
 ## The joints on `code` (E for those with no key of their own) toggled. True if any answers to it.

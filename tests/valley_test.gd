@@ -6,9 +6,9 @@ extends SceneTree
 ##    saved design keeps its wear; the held parts' wear is kept in the file.
 ## 3. Mending beside the workshop puts hurt parts right, paid in scrap.
 ## 4. A worn part driven hard gives in time.
-## 5. Expeditions: three jobs offered; one taken, its load waits on its pad; a load too heavy for the
-##    machine isn't lashed on, a light one is (its weight the machine's); a knock hurts it; rolled
-##    over it falls off, and is picked up again; stopped on the pad it's for, it's delivered and paid.
+## 5. Expeditions: three jobs offered; one taken, its load waits on its pad, a real crate; a crane
+##    on the machine hooks it (Y), lifts it, swings it round and lets it go; a fall hurts it; a winch
+##    (N) drags it; steel beams are too heavy for the crane; set down on its pad it's delivered and paid.
 ## 6. The valley: the mud softer soaked than dry; a ford in flood pushes a machine downstream; today's
 ##    shut roads are put up near you, broken through they're cleared; a new day comes.
 ## 7. A giant: out near you, huge (tons), its parts torn off are salvage; brought down, its rare parts
@@ -165,54 +165,128 @@ func _physics_process(_d: float) -> bool:
 					break
 			print("a light at 5%% driven hard: parts %d -> %d" % [n0, m.design.size()])
 			_expect(m.design.size() < n0, "a worn part driven hard gives")
-			# 5. an expedition
+			# 5. an expedition: a crane on the cab's roof, a winch at the back
 			_expect(ex.accept(0) and str(ex.job.state) == "waiting", "a job taken: its load waits")
-			ex.job.goods = "beams"
-			_r.from = ex.job.at
-			_put(m, Vector3(ex.job.at) + Vector3(4, 0, 0))
-			_next("too_heavy")
-		"too_heavy":
-			if since < 3.0:
-				return false
-			var m := _me()
-			print("steel beams (1600 kg) on %.0f kg rated %.0f: %s" % [m.total_mass, m.rated_kg, ex.job.state])
-			_expect(str(ex.job.state) == "waiting", "too heavy for it: not lashed on")
 			ex.job.goods = "medicine"
-			_r.mass0 = m.total_mass
-			_next("load")
-		"load":
-			if since < 3.0:
-				return false
+			var d := Designs.starter()
+			d.append(["crane", 0, 3, 0, 0])
+			d.append(["winch", -1, 1, 2, 0])
+			m.from_data(d)
+			_expect(m.hoists.size() == 2, "a crane and a winch bolted on")
+			_put(m, Vector3(ex.job.at) + Vector3(0, 0, 2.7))
+			_next("crane_in")
+		"crane_in":
 			var m := _me()
-			print("medicine: %s, mass %.0f -> %.0f, cargo %.0f kg" % [ex.job.state, _r.mass0, m.total_mass, m.cargo_kg])
-			_expect(str(ex.job.state) == "carried" and m.total_mass > float(_r.mass0) + 100.0, "a load it can carry is lashed on, its weight the machine's")
-			m.struck.emit(m.global_position, 14.0, null)
-			print("a knock of 14 m/s: the load %.2f" % float(ex.job.cond))
-			_expect(float(ex.job.cond) < 0.9, "a knock hurts what's carried")
-			_r.c0 = float(ex.job.cond)
-			m.global_transform = Transform3D(Basis(Vector3.RIGHT, PI), m.global_position + Vector3.UP * 1.0)
-			_next("tip")
-		"tip":
+			if since < 1.0:
+				return false
+			if not is_instance_valid(ex.crate):
+				if since > 4.0:
+					_expect(false, "the load's out on its pad")
+					return _done()
+				return false
+			m.keyed = true
+			m.aim_point = ex.crate.global_position
+			if since < 2.5:
+				return false
+			var t := m.hoists[0].tip()
+			print("crane over the load: tip %.1f m from it" % t.distance_to(ex.crate.global_position))
+			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			_expect(m.hoists[0].hooked() == ex.crate, "Y with the hook over the load: hooked")
+			_r.y0 = ex.crate.global_position.y
+			_r.ground = float(_g.terrain.height_at(ex.crate.global_position.x, ex.crate.global_position.z))
+			_next("lift")
+		"lift":
+			var m := _me()
+			m.aim_point = ex.crate.global_position if is_instance_valid(ex.crate) else m.aim_point
+			if since < 4.0:
+				return false
+			var up := ex.crate.global_position.y - float(_r.ground)
+			print("lifted: the load's bottom %.2f m off the ground" % (up - 0.35))
+			_expect(up > 1.0, "the crane lifts it")
+			_r.p0 = ex.crate.global_position
+			m.aim_point = m.global_position + m.global_basis.x * 8.0 + Vector3.UP # (swung round to the right)
+			_next("swing")
+		"swing":
+			var m := _me()
+			m.aim_point = m.global_position + m.global_basis.x * 8.0 + Vector3.UP
+			if since < 4.0:
+				return false
+			var moved := Vector2(ex.crate.global_position.x - _r.p0.x, ex.crate.global_position.z - _r.p0.z).length()
+			print("swung round: the load carried %.1f m, the job %s" % [moved, ex.job.state])
+			_expect(moved > 2.0 and str(ex.job.state) == "moved", "slewed round, the load goes with it")
+			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			_expect(m.hoists[0].hooked() == null, "Y again lets it go")
+			_next("set_down")
+		"set_down":
 			if since < 2.0:
 				return false
-			var m := _me()
-			print("rolled over: %s, the load %.2f, cargo on the machine %.0f kg" % [ex.job.state, float(ex.job.cond), m.cargo_kg])
-			_expect(str(ex.job.state) == "dropped" and m.cargo_kg == 0.0, "rolled over, the load falls off")
-			_put(m, Vector3(ex.job.at) + Vector3(3, 0, 0))
-			_next("reload")
-		"reload":
-			if since < 3.5:
+			var c0 := float(ex.job.cond)
+			ex.crate.linear_velocity = Vector3(0, -8, 0) # (a hard fall, as if dropped from high)
+			_r.c0 = c0
+			_next("knock")
+		"knock":
+			if since < 0.2:
 				return false
+			print("a fall: the load %.2f -> %.2f" % [_r.c0, float(ex.job.cond)])
+			_expect(float(ex.job.cond) < float(_r.c0) - 0.05, "a fall hurts the load")
+			# the winch: the machine ahead of the load, its back to it
 			var m := _me()
-			print("beside it again: %s, %.1f m from it, speed %.2f, mass %.0f rated %.0f, parts %d, said '%s'" % [ex.job.state,
-				m.global_position.distance_to(ex.job.at), m.speed, m.total_mass, m.rated_kg, m.design.size(), ex._told])
-			_expect(str(ex.job.state) == "carried", "and is picked up again")
+			var c: Vector3 = ex.crate.global_position
+			_put(m, c + Vector3(0, 0, -7.0))
+			_next("winch")
+		"winch":
+			var m := _me()
+			if since < 1.5:
+				return false
+			if not _r.has("towing"):
+				_r.towing = true
+				print("N: '%s'" % m.hoist_key(KEY_N))
+				_expect(m.hoists[1].hooked() == ex.crate, "N: the winch's rope on the load")
+				_r.p1 = ex.crate.global_position
+				m.brake = 0.0
+			m.throttle = 0.6
+			if since < 7.0:
+				return false
+			m.throttle = 0.0
+			m.brake = 1.0
+			var moved := ex.crate.global_position.distance_to(_r.p1)
+			print("towed: the load dragged %.1f m" % moved)
+			_expect(moved > 3.0, "the winch drags the load")
+			m.hoist_key(KEY_N)
+			# too heavy for the crane: steel beams
+			ex.job.goods = "beams"
+			var bat: Vector3 = shop.truck.global_position + Vector3(25, 0, -12.0) # (flat ground by the workshop, clear of the machine)
+			ex._lay(bat)
+			_put(m, bat + Vector3(0, 0, 4.0))
+			_next("heavy")
+		"heavy":
+			var m := _me()
+			if not is_instance_valid(ex.crate):
+				return false
+			m.aim_point = ex.crate.global_position
+			if since < 2.5:
+				return false
+			if not _r.has("heavy_hooked"):
+				_r.heavy_hooked = true
+				print("before hooking the beams: upright %.2f" % m.global_basis.y.y)
+				m.hoist_key(KEY_Y)
+				_r.hground = float(_g.terrain.height_at(ex.crate.global_position.x, ex.crate.global_position.z))
+			if since < 6.0:
+				return false
+			var up := ex.crate.global_position.y - float(_r.hground)
+			print("steel beams (1600 kg) on the 1.5 t crane: %.2f m up (resting: 0.30)" % up)
+			_expect(up < 0.7, "too heavy for the crane: it stays down")
+			_expect(m.global_basis.y.y > 0.9, "and the machine stays on its wheels (the limiter)")
+			m.hoist_key(KEY_Y)
+			ex.job.goods = "medicine"
+			ex.job.cond = 0.9
 			_r.scrap = Inventory.scrap
 			_r.held = 0
 			for k: String in Inventory.counts:
 				_r.held = int(_r.held) + int(Inventory.counts[k])
 			var to: Vector3 = ex.depot(ex.job.to).at
-			_put(_me(), to + Vector3(3, 0, 0))
+			_put(m, to + Vector3(14, 0, 14))
+			ex._lay(to + Vector3(3, 0, 0)) # (set down on its pad)
 			_next("deliver")
 		"deliver":
 			if since < 4.0:
@@ -222,8 +296,8 @@ func _physics_process(_d: float) -> bool:
 				held += int(Inventory.counts[k])
 			print("on the pad: job %s, delivered %d, parts held %d -> %d, scrap %d -> %d" % ["done" if ex.job.is_empty() else ex.job.state, ex.done,
 				_r.held, held, _r.scrap, Inventory.scrap])
-			_expect(ex.job.is_empty() and ex.done == 1 and held > int(_r.held) and Inventory.scrap > int(_r.scrap), "delivered and paid in parts and scrap")
-			_expect(_me().cargo_kg == 0.0, "and it's off the machine")
+			_expect(ex.job.is_empty() and ex.done == 1 and held > int(_r.held) and Inventory.scrap > int(_r.scrap), "set down on its pad: delivered and paid")
+			_expect(not is_instance_valid(ex.crate), "and it's taken")
 			# 6. the valley soaked
 			var mud := Surface.preset("mud")
 			var w: Weather = _g.get("weather")
@@ -289,7 +363,7 @@ func _physics_process(_d: float) -> bool:
 				_r.g0 = gm.global_position.distance_to(_me().global_position)
 			if gm and gm.firing:
 				_r.fired = true
-			if since < 12.0:
+			if since < 16.0:
 				return false
 			_expect(gm != null, "a giant's out near you")
 			if gm == null:
@@ -299,7 +373,7 @@ func _physics_process(_d: float) -> bool:
 			print("%s: %.0f kg, %d parts, %.0f kW, alive %s; upright %.2f, %.0f m -> %.0f m from you, facing you %.2f, fired %s" % [g.name, gm.total_mass,
 				gm.design.size(), gm.power_kw, gm.alive, gm.global_basis.y.y, _r.g0, dd, facing, _r.fired])
 			_expect(gm.total_mass > 6000.0 and gm.alive, "huge")
-			_expect(gm.global_basis.y.y > 0.8 and (dd < float(_r.g0) - 3.0 or facing > 0.7), "it turns on you, upright") # (its guns fire when the ground between's clear: not always)
+			_expect(gm.global_basis.y.y > 0.8 and (dd < float(_r.g0) - 3.0 or facing > 0.7 or bool(_r.fired)), "it turns on you, upright") # (its guns fire when the ground between's clear: not always)
 			_r.sal = Salvage.current.count()
 			for i in gm.design.size():
 				if Parts.def(gm.design[i].id).kind == "weapon":

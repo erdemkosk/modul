@@ -115,7 +115,8 @@ static func dummy() -> Array:
 
 
 ## The valley's workshop truck (Workshop): a long bed on six off-road wheels, the cab and a V8 up
-## front, a box of plate walls behind it (the shop), a crane on a turntable over its tail, lamps.
+## front, a box of plate walls behind it (the shop), a crane on its roof that slews round over the
+## open flatbed behind (low rails along its sides), a winch under its tail, lamps.
 ## ~3 t, 200 kW; its wheels carry 7 t (it hauls the heavy loads).
 static func workshop() -> Array:
 	var out := _bed(-2, 3, -5, 4)
@@ -127,15 +128,14 @@ static func workshop() -> Array:
 	for y in range(1, 3): # (the shop's walls)
 		for x in range(-2, 4):
 			out.append(["plate", x, y, -2, 0])
-			out.append(["plate", x, y, 4, 0])
-		for z in range(-1, 4):
-			out.append(["plate", -2, y, z, 0])
-			out.append(["plate", 3, y, z, 0])
-	out.append(["rotor", 0, 3, 3, 0]) # (the crane: a mast and its jib)
-	for y in range(4, 7):
-		out.append(["frame", 0, y, 3, 0])
-	for z in range(-1, 3):
-		out.append(["frame", 0, 6, z, 0])
+			out.append(["plate", x, y, 0, 0])
+		out.append(["plate", -2, y, -1, 0])
+		out.append(["plate", 3, y, -1, 0])
+	for z in range(1, 5): # (the flatbed's rails)
+		out.append(["plate", -2, 1, z, 0])
+		out.append(["plate", 3, 1, z, 0])
+	out.append(["crane", 0, 3, -1, 0])
+	out.append(["winch", 0, -1, 3, 0])
 	return out
 
 
