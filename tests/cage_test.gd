@@ -9,6 +9,8 @@ extends SceneTree
 ## 4. The next round lays another floor (ice in the middle) with spikes that bite what's on them; the
 ##    third's fire vents burn what's over them.
 ## 5. Your cab gone, you're out.
+## The crowd (in round 1): the stadium full and its screens on; hits raise COŞKU, full it sends a
+## crate down near you; sitting it out has them booing, then the organisers shell you.
 
 const HZ := 120
 var _g: Node
@@ -67,6 +69,10 @@ func _physics_process(_d: float) -> bool:
 				if not hit.is_empty() and (hit.position as Vector3).length() < CageArena.HALF * 1.5:
 					walled += 1
 			_expect(walled == 8, "walled all round (%d/8)" % walled)
+			var st := _c.arena.stadium
+			print("stadium: %d people, screen: %s" % [st.people, st.line(0)])
+			_expect(st.people > 12000, "a stadium full of people round the cage")
+			_expect(st.line(0).begins_with("PROTOTİP"), "its screens on")
 			_c.start_run()
 			_next("countdown")
 		"countdown":
@@ -82,6 +88,33 @@ func _physics_process(_d: float) -> bool:
 			print("after the countdown: state %s, rival moved %.1f m" % [_c.state, e.global_position.distance_to(_r.e0)])
 			_expect(_c.state == "fight", "then it's on")
 			_expect(e.global_position.distance_to(_r.e0) > 2.0, "and the rival drives")
+			_hold()
+			var m0 := _c.mood
+			_c.you_hit(120.0)
+			print("crowd: mood %.2f -> %.2f after a hit" % [m0, _c.mood])
+			_expect(_c.mood > m0, "a hit raises the mood")
+			_c.mood_up(1.0)
+			var drops := _g.get_tree().get_nodes_in_group("supply")
+			var near := drops.size() == 1 and Vector2((drops[0] as Node3D).global_position.x - _m.global_position.x,
+				(drops[0] as Node3D).global_position.z - _m.global_position.z).length() < 25.0
+			print("full: %d present(s), %d crate(s) near: %s, mood now %.2f" % [_c.presents, drops.size(), near, _c.mood])
+			_expect(_c.presents == 1 and near and _c.mood < 0.5, "full, the crowd sends a crate down near you")
+			_c.camp_t = Cage.CAMP_BOO
+			_r.hh = _m.health()
+			_next("boo")
+		"boo":
+			if since < 0.2:
+				return false
+			if not _r.has("booed"):
+				_r.booed = true
+				_expect(_c.booing, "sitting it out, they boo")
+				_c.camp_t = Cage.CAMP_SHELL
+			if since < 7.0:
+				return false
+			print("shelled %d, health %.2f -> %.2f" % [_c.shelled, _r.hh, _m.health()])
+			_expect(_c.shelled == 1 and _m.health() < float(_r.hh), "then the organisers shell you")
+			_c.full = _m.to_data() # (what the shells did isn't the workshop's to check)
+			var e: Machine = _c.rivals[0]
 			_r.cr0 = _c.credits
 			# your machine hurt a little meanwhile (for the workshop): a light off, a frame hit
 			for i in range(_m.design.size() - 1, -1, -1):
@@ -119,7 +152,7 @@ func _physics_process(_d: float) -> bool:
 			_expect(_g.terrain.surface_at(Vector3.ZERO).label == "ice", "the next round's floor: ice")
 			# onto the spikes, everyone held
 			_hold()
-			_put(Vector2(-8.5, -15.75))
+			_put(Vector2(-14.5, -26.5))
 			_r.h0 = _m.health()
 			_next("spikes")
 		"spikes":
@@ -136,7 +169,7 @@ func _physics_process(_d: float) -> bool:
 			if since < 4.5:
 				return false
 			_hold()
-			_put(Vector2(-9, -9))
+			_put(Vector2(-15, -15))
 			_r.h1 = _m.health()
 			_next("vent")
 		"vent":

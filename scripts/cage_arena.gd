@@ -2,8 +2,9 @@ class_name CageArena
 extends Node3D
 ## The cage: a square floor HALF m each way of the middle, walled with concrete to 1.2 m and a steel
 ## catch fence on posts over it to 5.5 m, a hazard stripe round its edge, a red corner and a blue one
-## to start from; outside, a grandstand on each side full of people (a MultiMesh of seated figures
-## that sway, and come up on their feet cheering with `excite`), a floodlight mast at each corner.
+## to start from; all round it the stadium (Stadium: Prototip Deneme Sahası 07), two tiers of its
+## crowd that sway, and come up on their feet cheering with `excite`, its LED screens on the roof,
+## floodlights along the roof's edge.
 ##
 ## Two other corners are the house robots' patrol zones, hatched yellow and black (HOUSE_ZONES).
 ##
@@ -14,18 +15,19 @@ extends Node3D
 ## toothed drum on the floor spinning flat out: what touches it is torn at and flung off sideways) and
 ## floor saws (a toothed blade up out of a slot, running to and fro along it, cutting what's over it).
 
-const HALF := 24.0
+const HALF := 40.0
 const A := "res://assets/arena/"
 const SPIKE_DAMAGE := 22.0 ## hp a bite
 const FIRE_DAMAGE := 26.0 ## hp a lick at the middle
-const HOUSE_ZONES := [Rect2(-24, 16, 8, 8), Rect2(16, -24, 8, 8)] ## (x, z)
+const HOUSE_ZONES := [Rect2(-HALF, HALF - 12.0, 12, 12), Rect2(HALF - 12.0, -HALF, 12, 12)] ## (x, z)
 const SPINNER_DAMAGE := 34.0 ## hp a tooth's bite (every BLADE_TICK s while it's touching)
 const SAW_DAMAGE := 26.0
 const BLADE_TICK := 0.15
 const SPINNER_FLING := 1800.0 ## N s sideways a bite flings it off
 
 var terrain: TestTerrain
-var crowd_mat: ShaderMaterial
+var stadium: Stadium
+var _lights: Array[SpotLight3D] = []
 var _hazards: Node3D
 var _spikes: Array[Area3D] = []
 var _vents: Array[Dictionary] = [] ## {area, fire, light, t, period, offset}
@@ -47,8 +49,11 @@ func _ready() -> void:
 	add_to_group("cage_arena")
 	_floor_marks()
 	_walls()
-	_stands()
-	_masts()
+	stadium = Stadium.new()
+	stadium.terrain = terrain
+	stadium.r0 = HALF + 3.0
+	add_child(stadium)
+	_floodlights()
 	_hazards = Node3D.new()
 	_hazards.name = "Hazards"
 	add_child(_hazards)
@@ -97,7 +102,7 @@ func _box(size: Vector3, xf: Transform3D, mat: Material, body: StaticBody3D = nu
 func _floor_marks() -> void:
 	var yellow := _mat(Color(0.8, 0.6, 0.08), 0.7)
 	var black := _mat(Color(0.05, 0.05, 0.05), 0.7)
-	var n := 24
+	var n := 40
 	for side in 4:
 		for k in n:
 			var along := -HALF + (k + 0.5) * HALF * 2.0 / n
@@ -149,8 +154,8 @@ func _walls() -> void:
 		cs.shape = bs
 		cs.transform = Transform3D(b, mid + Vector3.UP * 3.35)
 		body.add_child(cs)
-		for k in 13:
-			var p := b * Vector3(-HALF + k * HALF * 2.0 / 12.0, 0.0, -HALF - 0.2)
+		for k in 21:
+			var p := b * Vector3(-HALF + k * HALF * 2.0 / 20.0, 0.0, -HALF - 0.2)
 			p.y = _h(p.x, p.z)
 			var post := MeshInstance3D.new()
 			var cm := CylinderMesh.new()
@@ -188,130 +193,38 @@ func _walls() -> void:
 		add_child(net)
 
 
-## Two grandstands a side, facing in, full of people.
-func _stands() -> void:
-	var seats: Array[Transform3D] = []
-	for side in 4:
-		var b := Basis(Vector3.UP, side * PI * 0.5) # (side 0: north, the stand's front facing +z, in)
-		for k in 2:
-			var along := (k - 0.5) * 24.5
-			var p := b * Vector3(along, 0.0, -HALF - 5.5)
-			p.y = _h(p.x, p.z)
-			var face := b * Basis(Vector3.UP, PI) # (the model's front, -z, toward the middle)
-			var s := _place("stand.glb", Transform3D(face, p))
-			var bd := StaticBody3D.new()
-			var cs := CollisionShape3D.new()
-			var bs := BoxShape3D.new()
-			bs.size = Vector3(24.0, 4.0, 7.0)
-			cs.shape = bs
-			cs.position = Vector3(0.0, 2.0, 3.4)
-			bd.add_child(cs)
-			s.add_child(bd)
-			# the seats (as tools/blender/build_arena.py lays them: rows back and up, 16 a row, two aisles)
-			for row in 8:
-				for i in 16:
-					if i in [5, 10] or randf() < 0.12:
-						continue
-					var x := -12.0 + 0.75 + i * 22.5 / 15.0 + randf_range(-0.08, 0.08)
-					var local := Vector3(x, row * 0.45 + 0.68, row * 0.8 - 0.1)
-					seats.append(Transform3D(face * Basis(Vector3.UP, randf_range(-0.15, 0.15)), p + face * local))
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	mm.mesh = _figure()
-	mm.instance_count = seats.size()
-	var shirts := [Color(0.7, 0.15, 0.12), Color(0.15, 0.3, 0.65), Color(0.85, 0.75, 0.2), Color(0.2, 0.45, 0.25),
-		Color(0.9, 0.9, 0.88), Color(0.15, 0.15, 0.17), Color(0.85, 0.45, 0.15), Color(0.45, 0.25, 0.5)]
-	for i in seats.size():
-		mm.set_instance_transform(i, seats[i])
-		var c: Color = shirts[randi() % shirts.size()]
-		mm.set_instance_color(i, c.lerp(Color(randf(), randf(), randf()), 0.15))
-		mm.set_instance_custom_data(i, Color(randf(), randf(), 0, 0))
-	crowd_mat = ShaderMaterial.new()
-	crowd_mat.shader = preload("res://shaders/crowd.gdshader")
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
-	mmi.material_override = crowd_mat
-	add_child(mmi)
-
-
-## A seated figure (its feet at the origin, facing -z): body, legs forward, head, arms hanging; the
-## part each vertex belongs to in UV.x for crowd.gdshader, which side an arm's on in UV.y.
-static func _figure() -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var parts := [
-		[_capsule(0.16, 0.5), Transform3D(Basis.IDENTITY, Vector3(0, 0.3, 0.02)), 0.0, 0.0],
-		[_box_m(Vector3(0.3, 0.13, 0.42)), Transform3D(Basis.IDENTITY, Vector3(0, 0.08, -0.17)), 0.25, 0.0],
-		[_box_m(Vector3(0.28, 0.42, 0.12)), Transform3D(Basis.IDENTITY, Vector3(0, -0.15, -0.36)), 0.25, 0.0],
-		[_sphere(0.11), Transform3D(Basis.IDENTITY, Vector3(0, 0.66, 0.0)), 0.5, 0.0],
-		[_capsule(0.05, 0.42), Transform3D(Basis.IDENTITY, Vector3(-0.21, 0.26, 0.0)), 1.0, 0.0],
-		[_capsule(0.05, 0.42), Transform3D(Basis.IDENTITY, Vector3(0.21, 0.26, 0.0)), 1.0, 1.0],
-	]
-	for e: Array in parts:
-		var arr: Array = (e[0] as Mesh).surface_get_arrays(0)
-		var xf: Transform3D = e[1]
-		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var ns: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-		for k in idx.size():
-			var j := idx[k]
-			st.set_normal(xf.basis * ns[j])
-			st.set_uv(Vector2(float(e[2]), float(e[3])))
-			st.set_color(Color.WHITE)
-			st.add_vertex(xf * vs[j])
-	return st.commit()
-
-
-static func _capsule(r: float, h: float) -> Mesh:
-	var m := CapsuleMesh.new()
-	m.radius = r
-	m.height = h
-	m.radial_segments = 8
-	m.rings = 2
-	return m
-
-
-static func _sphere(r: float) -> Mesh:
-	var m := SphereMesh.new()
-	m.radius = r
-	m.height = r * 2.0
-	m.radial_segments = 8
-	m.rings = 4
-	return m
-
-
-static func _box_m(s: Vector3) -> Mesh:
-	var m := BoxMesh.new()
-	m.size = s
-	return m
-
-
-## A floodlight mast at each corner, lit, aimed in.
-func _masts() -> void:
-	for k in 4:
-		var ang := PI * 0.25 + k * PI * 0.5
-		var p := Vector3(cos(ang), 0.0, sin(ang)) * (HALF * 1.41 + 9.0)
-		p.y = _h(p.x, p.z)
-		var face := Basis.looking_at(Vector3(-p.x, 0.0, -p.z).normalized(), Vector3.UP)
-		_place("tower.glb", Transform3D(face, p))
+## The floodlights on the stadium's roof edge, at its corners and its sides' middles, on the floor
+## (not the stands: they've their own glow).
+func _floodlights() -> void:
+	for k in 8:
+		var a := k * TAU / 8.0 + PI * 0.25
+		var p := Vector3(cos(a), 0.0, sin(a))
+		p = p / maxf(absf(p.x), absf(p.z)) * (stadium.roof_from - 1.0)
 		var l := SpotLight3D.new()
-		l.light_color = Color(1.0, 0.96, 0.88)
-		l.light_energy = 26.0
-		l.spot_range = 90.0
-		l.spot_angle = 34.0
-		l.spot_attenuation = 0.5
-		l.shadow_enabled = k == 0 # (one casts: the cars' shadows on the floor; the others fill)
+		l.position = p + Vector3.UP * (Stadium.ROOF_H - 1.5)
 		add_child(l)
-		l.global_position = p + Vector3.UP * 21.5
-		l.look_at(Vector3(p.x, 0.0, p.z) * 0.1, Vector3.UP)
+		l.look_at(-p * 0.2, Vector3.UP)
+		l.spot_range = 130.0
+		l.spot_angle = 38.0
+		l.spot_attenuation = 0.45
+		l.light_energy = 0.0
+		l.light_color = Color(0.94, 0.97, 1.0)
+		l.light_cull_mask = 0xFFFFF & ~Stadium.LAYER
+		l.shadow_enabled = k == 0 # (one casts: the cars' shadows on the floor; the others fill)
+		_lights.append(l)
+
+
+## Night: the floodlights on, the stadium lit.
+func set_night(on: bool) -> void:
+	for l in _lights:
+		l.light_energy = 6.0 if on else 0.0
+	stadium.set_night(on)
 
 
 ## The audience: 0 sitting .. 1 on their feet.
 func set_excite(v: float) -> void:
-	if crowd_mat:
-		crowd_mat.set_shader_parameter("excite", clampf(v, 0.0, 1.0))
+	if stadium and stadium.crowd_mat:
+		stadium.set_excite(v)
 
 
 # --- A round's floor -----------------------------------------------------------------------------

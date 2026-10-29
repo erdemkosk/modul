@@ -2,7 +2,7 @@ class_name CageUi
 extends CanvasLayer
 ## The cage's screens, in the game's look (Ui):
 ##   the top     the round and its floor, the clock, your credits, each rival's name and a bar of
-##               what's left of it
+##               what's left of it, the crowd's mood (COŞKU; YUHALIYORLAR when they boo)
 ##   the middle  3, 2, 1, DÖVÜŞ!; KAZANDIN and what it paid
 ##   panels      before the first round (build, then start), the workshop between rounds (what's
 ##               broken and missing and what it costs, repair all or only the cab, on to the next),
@@ -14,6 +14,9 @@ var _title: Label
 var _clock: Label
 var _credits: Label
 var _bars: VBoxContainer
+var _mood_row: HBoxContainer
+var _mood_word: Label
+var _mood_bar: Control
 var _big: Label
 var _sub: Label
 var _panel: PanelContainer
@@ -52,6 +55,18 @@ func _ready() -> void:
 	_bars = VBoxContainer.new()
 	_bars.add_theme_constant_override("separation", 3)
 	_top.add_child(_bars)
+	_mood_row = HBoxContainer.new()
+	_mood_row.add_theme_constant_override("separation", 10)
+	_top.add_child(_mood_row)
+	_mood_word = Ui.label(_mood_row, "COŞKU", 14, Color(0.35, 0.9, 1.0), "digital")
+	_mood_word.custom_minimum_size.x = 120
+	_mood_bar = Control.new()
+	_mood_bar.custom_minimum_size = Vector2(240, 12)
+	_mood_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_mood_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mood_bar.draw.connect(func() -> void:
+		Ui.segments(_mood_bar, Rect2(Vector2.ZERO, _mood_bar.size), 24, cage.mood, cage.mood_color()))
+	_mood_row.add_child(_mood_bar)
 	# the middle
 	var mid := VBoxContainer.new()
 	mid.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -122,6 +137,11 @@ func _button(text: String, fn: Callable, primary := false) -> Button:
 	return b
 
 
+## A word across the middle for a moment (the crowd's present, the organisers' shelling).
+func flash(t: String, sub := "") -> void:
+	_big_text(t, sub, 2.0)
+
+
 func _big_text(t: String, sub := "", secs := 1.2) -> void:
 	_big.text = t
 	_sub.text = sub
@@ -141,7 +161,7 @@ func show_prep() -> void:
 	Ui.label(_panel_box, "KAFES", 15, Ui.ACCENT, "head")
 	Ui.label(_panel_box, "%d TURLUK TURNUVA" % Cage.ROUNDS.size(), 48, Ui.INK, "display")
 	Ui.rule(_panel_box, 80.0)
-	var t := Ui.label(_panel_box, "Her turda zemin ve rakip değişir: çamur, buz, ateş kapanları, dikenler, bataklık. Rakibi parçala ya da hareketsiz bırak (8 sn sayılır); süre biterse jüri az hasar alana verir. Kazandıkça kredi kazanırsın, turlar arasında atölyede aracını onarırsın. Kabinin giderse elenirsin.", 16, Ui.DIM)
+	var t := Ui.label(_panel_box, "Her turda zemin ve rakip değişir: çamur, buz, ateş kapanları, dikenler, bataklık. Rakibi parçala ya da hareketsiz bırak (8 sn sayılır); süre biterse jüri az hasar alana verir. Kazandıkça kredi kazanırsın, turlar arasında atölyede aracını onarırsın. Kabinin giderse elenirsin. Kafes bir stadyumun ortasında: seyirci kavga ister, vurdukça coşar, coşku dolunca yanına hediye sandık yollar; savaşmadan saklanırsan yuhalar, sonra organizasyon topçu ateşi açar.", 16, Ui.DIM)
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	t.custom_minimum_size.x = 510
 	Ui.label(_panel_box, "Aracını şimdi kur (B). Turnuva başladıktan sonra yalnız onarılır.", 15, Ui.INK, "label")
@@ -279,6 +299,10 @@ func tick(dt: float) -> void:
 		_clock.text = "%d:%02d" % [int(t) / 60, int(t) % 60]
 		_clock.add_theme_color_override("font_color", Ui.BAD if t < 20.0 and fmod(t, 1.0) < 0.5 else Ui.INK)
 	_credits.text = "KREDİ  %d" % cage.credits
+	_mood_row.visible = cage.state == "fight"
+	_mood_word.text = "YUHALIYORLAR" if cage.booing else "COŞKU"
+	_mood_word.add_theme_color_override("font_color", cage.mood_color() if cage.booing else Color(0.35, 0.9, 1.0))
+	_mood_bar.queue_redraw()
 	for row in _bars.get_children():
 		if row.get_child_count() > 1:
 			(row.get_child(1) as Control).queue_redraw()

@@ -2,7 +2,7 @@ extends Node3D
 ## İnşa: a machine you put together from parts and drive and fight with. Three places (Mode):
 ##   waves    ARENA: round after round in a walled maze, new each round: build, then fight off what
 ##            comes, supply crates coming down (Waves, WaveArena)
-##   cage     KAFES: a tournament of rounds in a small walled arena before a crowd (Cage, CageArena)
+##   cage     KAFES: a tournament of rounds in a walled cage inside a stadium, before its crowd (Cage, CageArena, Stadium)
 ##   valley   the open valley (WorldTerrain: its mud, snow, roads; WorldDecor's trees; Weather's sky)
 ##   arena    the proving ground (TestTerrain): asphalt, gravel, mud pits, a bog, snow, ice, ramps;
 ##            build on the spot and set the other side's machines on yourself
@@ -97,7 +97,7 @@ func _ready() -> void:
 	elif caged:
 		var ct := TestTerrain.new()
 		ct.default_surface = Surface.preset("asphalt")
-		ct.noise_from = 52.0
+		ct.noise_from = 90.0 # (flat under the stadium too)
 		ct.grid_strength = 0.0
 		terrain = ct
 		add_child(ct)
@@ -156,6 +156,7 @@ func _ready() -> void:
 	_death.respawn.connect(_respawn)
 	add_child(_death)
 	if cage:
+		cage.arena.set_night(weather.is_night())
 		add_child(cage)
 	if walled:
 		wave_arena.set_night(weather.is_night())

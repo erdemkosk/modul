@@ -87,7 +87,7 @@ func _physics_process(dt: float) -> void:
 	var near := range_near * (1.6 if hurt else 1.0)
 	var far := range_far * (1.4 if hurt else 1.0)
 	if _arena:
-		# the cage is 48 m across: it fights close (the rocket pod a little further, its burst reaches)
+		# the cage is 80 m across, walled: it fights close (the rocket pod a little further, its burst reaches)
 		near = (11.0 if _has("rockets") else 7.0) * (1.4 if hurt else 1.0)
 		far = (20.0 if _has("rockets") or _has("cannon") else 15.0) * (1.2 if hurt else 1.0)
 	if _only("flamer"): # (a flamethrower's got to be close: it fights at 5-11 m)

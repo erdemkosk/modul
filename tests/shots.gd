@@ -393,36 +393,6 @@ func _waves_steps() -> Array:
 			_cam(0.2, -0.1, 12.0), func() -> void: _shoot("waves_chute")],
 		[2.5, func(_s: float) -> void:
 			_cam(0.2, -0.25, 12.0), func() -> void: _shoot("waves_crate")],
-		# the stadium: by day from by the wall, the crowd on its feet; at night under the floodlights
-		[0.3, _noop, func() -> void:
-			var wt: Weather = _g.get("weather")
-			wt.preset = "clear"
-			wt.hour = 15.5
-			(_g.get("wave_arena") as WaveArena).set_night(false)
-			var p := Vector3(0.0, 0.0, 50.0)
-			p.y = float((_g.get("terrain") as Node).call("height_at", p.x, p.z)) + 1.5
-			_m.linear_velocity = Vector3.ZERO
-			_m.global_transform = Transform3D(Basis.IDENTITY, p)],
-		[2.0, func(_s: float) -> void:
-			_m.brake = 1.0
-			_cam(0.0, -0.12, 9.0), func() -> void: _shoot("waves_stand_a")],
-		[1.0, func(_s: float) -> void:
-			_cam(PI, -0.12, 9.0), func() -> void: _shoot("waves_stand_b")],
-		[3.0, func(_s: float) -> void:
-			_cam(PI, -0.12, 9.0), func() -> void: _shoot("waves_stand_b2")],
-		[1.5, func(_s: float) -> void:
-			(_g.get("waves") as Waves).excite = 1.0
-			_cam(PI * 0.75, -0.3, 20.0), func() -> void: _shoot("waves_cheer")],
-		[0.3, _noop, func() -> void:
-			var wt: Weather = _g.get("weather")
-			wt.hour = 22.0
-			(_g.get("wave_arena") as WaveArena).set_night(true)],
-		[2.0, func(_s: float) -> void:
-			_cam(0.0, -0.12, 9.0), func() -> void: _shoot("waves_night_a")],
-		[1.0, func(_s: float) -> void:
-			_cam(PI, -0.12, 9.0), func() -> void: _shoot("waves_night_b")],
-		[1.5, func(_s: float) -> void:
-			_cam(0.6, -0.9, 70.0), func() -> void: _shoot("waves_night_top")],
 	]
 
 
@@ -620,6 +590,13 @@ func _cage_steps() -> Array:
 			(_g.get("cage") as Cage).excite = 1.0
 			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.CHASE
 			_cam(PI * 0.25, 0.25, 6.0), func() -> void: _shoot("cage_crowd")],
+		[2.0, func(_s: float) -> void:
+			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
+			_cam(PI * 1.25, -0.42, 58.0), func() -> void: _shoot("cage_stadium")],
+		[2.0, func(_s: float) -> void:
+			if _once("shell"):
+				(_g.get("cage") as Cage).camp_t = Cage.CAMP_SHELL
+			_cam(PI * 1.1, -0.2, 16.0), func() -> void: _shoot("cage_shelled")],
 		[0.5, _noop, func() -> void:
 			_m.firing = false
 			var c: Cage = _g.get("cage")
