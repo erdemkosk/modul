@@ -114,6 +114,75 @@ static func dummy() -> Array:
 	return out
 
 
+## The valley's workshop truck (Workshop): a long bed on six off-road wheels, the cab and a V8 up
+## front, a box of plate walls behind it (the shop), a crane on a turntable over its tail, lamps.
+## ~3 t, 200 kW; its wheels carry 7 t (it hauls the heavy loads).
+static func workshop() -> Array:
+	var out := _bed(-2, 3, -5, 4)
+	out.append_array([["cab", 0, 1, -5, 0], ["engine_l", -2, 1, -5, 0], ["battery", 2, 1, -5, 0],
+		["light", 3, 1, -5, 0], ["light", -2, 3, -5, 0], ["light", 3, 3, -2, 0]])
+	for z: int in [-5, -1, 2]:
+		out.append(["wheel_l", 4, -1, z, 0])
+		out.append(["wheel_l", -4, -1, z, 2])
+	for y in range(1, 3): # (the shop's walls)
+		for x in range(-2, 4):
+			out.append(["plate", x, y, -2, 0])
+			out.append(["plate", x, y, 4, 0])
+		for z in range(-1, 4):
+			out.append(["plate", -2, y, z, 0])
+			out.append(["plate", 3, y, z, 0])
+	out.append(["rotor", 0, 3, 3, 0]) # (the crane: a mast and its jib)
+	for y in range(4, 7):
+		out.append(["frame", 0, y, 3, 0])
+	for z in range(-1, 3):
+		out.append(["frame", 0, 6, z, 0])
+	return out
+
+
+## The valley's giants (Colossus): `kind` "digger" (KAZICI: a quarry's excavator gone wild, tracks
+## and a spinning arm, a cannon and a minigun on turrets) or "crawler" (KARA PALET: lower and longer,
+## rockets). Their cab lies deep in armour: they're taken apart, not shot down.
+static func giant(kind: String) -> Array:
+	var long := kind == "crawler"
+	var z0 := -8 if not long else -11
+	var z1 := 7 if not long else 9
+	var out := _bed(-4, 5, z0, z1)
+	var tz := range(z0, z1 - 1, 6)
+	for z in range(z0, z1 + 1): # (hangers under the bed's edges: the tracks set lower, the belly clear of the rocks)
+		out.append(["frame", 5, -1, z, 0])
+		out.append(["frame", -4, -1, z, 0])
+	for z: int in tz:
+		out.append(["track", 6, -2, z, 0])
+		out.append(["track", -6, -2, z, 2])
+	out.append(["cab", 0, 1, 0, 0]) # (buried: armour round it and over it)
+	for x in range(-1, 3):
+		for z in range(-1, 3):
+			if x in [-1, 2] or z in [-1, 2]:
+				out.append(["armor", x, 1, z, 0])
+				out.append(["armor", x, 2, z, 0])
+			out.append(["armor", x, 3, z, 0])
+	out.append_array([["engine_l", -4, 1, 3, 0], ["engine_l", 3, 1, 3, 0], ["engine_l", -4, 1, z0 + 1, 0],
+		["battery", 3, 1, z0 + 1, 0], ["battery", 3, 1, z0 + 3, 0]])
+	for z in range(z0, z1 + 1): # (its skirts: plate down both sides, but where the engines sit)
+		if not (z >= 3 and z <= 5) and not (z >= z0 + 1 and z <= z0 + 3):
+			out.append(["plate", -4, 1, z, 0])
+		out.append(["plate", 5, 1, z, 0])
+	for x in range(-3, 5):
+		out.append(["wedge", x, 1, z0, 0])
+	out.append_array([["light", -4, 2, z0, 0], ["light", 5, 2, z0, 0]])
+	if not long:
+		out.append(["rotor", 0, 4, 0, 0]) # (the arm: a mast, a boom forward, spikes at its end)
+		out.append(["frame", 0, 5, 0, 0])
+		for z in range(-6, 1):
+			out.append(["frame", 0, 6, z, 0])
+		out.append_array([["spike", 0, 6, -7, 0], ["spike", 1, 6, -6, 0], ["spike", -1, 6, -6, 0]])
+		out.append_array([["turret", -3, 1, z0 + 4, 0], ["cannon", -3, 2, z0 + 4, 0], ["turret", 3, 1, z1 - 1, 0], ["minigun", 3, 2, z1 - 1, 0]])
+	else:
+		out.append_array([["turret", 0, 4, 0, 0], ["rockets", 0, 5, 0, 0], ["turret", -3, 1, z1 - 1, 0], ["minigun", -3, 2, z1 - 1, 0],
+			["turret", 3, 1, z1 - 1, 0], ["minigun", 3, 2, z1 - 1, 0]])
+	return out
+
+
 static func _bed(x0: int, x1: int, z0: int, z1: int) -> Array:
 	var out := []
 	for x in range(x0, x1 + 1):

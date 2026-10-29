@@ -26,6 +26,10 @@ var price_note: Callable
 var lock_note: Callable ## (id) -> "" if it may be built with, else what it still needs (KAFES: its fame)
 var swap_guard: Callable ## (old rows, new rows) -> bool: may the machine become `new`? (the valley: if what you hold covers it)
 signal removed(id: String, at: Vector3i, rot: int)
+signal placed(i: int) ## (part `i` of the design was just bolted on)
+static var keep_wear := false ## (the valley) a saved design keeps its parts' wear (Machine.to_data)
+var swap_rows: Array = [] ## (swap_guard may say what the new design is built of: its rows, worn)
+var removed_cond := 1.0 ## (what the part last taken off had left of its hit points, 0..1)
 signal closed
 const SLOTS := 3
 const PANEL := Color(0.06, 0.065, 0.06, 0.86)
@@ -647,7 +651,7 @@ func select(id: String, sound := true) -> void:
 
 ## Remembers the design as it is, before a change.
 func _remember() -> void:
-	_history.append(machine.to_data())
+	_history.append(machine.to_data(keep_wear))
 	if _history.size() > 60:
 		_history.pop_front()
 	_future.clear()
@@ -656,7 +660,7 @@ func _remember() -> void:
 func undo() -> void:
 	if _history.is_empty():
 		return
-	var now := machine.to_data()
+	var now := machine.to_data(keep_wear)
 	var back: Array = _history.pop_back()
 	if _swap_design(back, false):
 		_future.append(now)
@@ -667,7 +671,7 @@ func undo() -> void:
 func redo() -> void:
 	if _future.is_empty():
 		return
-	var now := machine.to_data()
+	var now := machine.to_data(keep_wear)
 	var on: Array = _future.pop_back()
 	if _swap_design(on, false):
 		_history.append(now)
@@ -861,7 +865,7 @@ static func slot_path(k: int) -> String:
 func save_slot(k: int) -> void:
 	var f := FileAccess.open(slot_path(k), FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"name": _name_edit.text if _name_edit else "", "parts": machine.to_data()}))
+		f.store_string(JSON.stringify({"name": _name_edit.text if _name_edit else "", "parts": machine.to_data(keep_wear)}))
 		f.close()
 	_play("ratchet_0%d.wav" % randi_range(1, 3), -4.0)
 	_refresh_slots()
@@ -914,9 +918,12 @@ func load_preset(i: int) -> void:
 
 ## A whole new design: the old parts lift away, the new ones drop in (undoable unless it's the undo).
 func _swap_design(data: Array, remember := true) -> bool:
-	if swap_guard.is_valid() and not bool(swap_guard.call(machine.to_data(), data)):
+	swap_rows = []
+	if swap_guard.is_valid() and not bool(swap_guard.call(machine.to_data(keep_wear), data)):
 		_play("tick.wav", -4.0, 0.6)
 		return false
+	if not swap_rows.is_empty(): # (the parts it'll be built of, as worn as they are)
+		data = swap_rows
 	if remember:
 		_remember()
 	for n in machine.part_nodes:
@@ -1004,23 +1011,25 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Bolts the chosen part on where the ghost is (and its mirror image, if mirroring and it fits).
 func place_target() -> void:
 	var t := _target
-	var before := machine.to_data()
+	var before := machine.to_data(keep_wear)
 	if guard.is_valid() and not bool(guard.call(selected, t.at, t.rot)):
 		_play("tick.wav", -8.0, 0.6)
 		return
 	if not machine.place(selected, t.at, t.rot):
 		return
+	placed.emit(machine.design.size() - 1)
 	_history.append(before)
 	_future.clear()
-	var placed: Array[Node3D] = [machine.part_nodes.back()]
+	var dropped: Array[Node3D] = [machine.part_nodes.back()]
 	var m: Dictionary = t.get("mirror", {})
 	if not m.is_empty() and machine.can_place(selected, m.at, m.rot) and (not guard.is_valid() or bool(guard.call(selected, m.at, m.rot))) \
 			and machine.place(selected, m.at, m.rot):
-		placed.append(machine.part_nodes.back())
+		placed.emit(machine.design.size() - 1)
+		dropped.append(machine.part_nodes.back())
 	# (a rebuild made every part's node anew: the new ones are the last)
 	var n := machine.part_nodes.size()
-	for k in placed.size():
-		_drop_in(machine.part_nodes[n - placed.size() + k], k * 0.08)
+	for k in dropped.size():
+		_drop_in(machine.part_nodes[n - dropped.size() + k], k * 0.08)
 	_bolt_sound(selected)
 	save()
 
@@ -1031,7 +1040,8 @@ func remove_at(i: int) -> void:
 	var id: String = machine.design[i].id
 	var at: Vector3i = machine.design[i].at
 	var r: int = machine.design[i].rot
-	var before := machine.to_data()
+	removed_cond = clampf(float(machine.design[i].hp) / Parts.hp_of(id), 0.0, 1.0)
+	var before := machine.to_data(keep_wear)
 	_fly_off(machine.part_nodes[i], 0.0)
 	if machine.remove(i):
 		removed.emit(id, at, r)
@@ -1203,7 +1213,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify(machine.to_data()))
+		f.store_string(JSON.stringify(machine.to_data(keep_wear)))
 
 
 static func load_saved() -> Array:

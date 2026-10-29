@@ -105,6 +105,8 @@ var invulnerable := false ## (the proving ground's G) hits push it but take noth
 var ammo_limited := false ## its guns' ammunition runs out (Game: everywhere but the proving ground)
 var ammo_k := 1.0 ## how many loads its guns carry (a crew's: more)
 var wet := 0.0 ## 0..1: the ground soaked by rain (Weather.wetness): what the wheels throw
+var cargo_kg := 0.0 ## a load carried (the valley's expeditions): its weight, sitting at `cargo_at` (machine space)
+var cargo_at := Vector3.ZERO
 
 var power_kw := 0.0
 var total_mass := 0.0
@@ -270,12 +272,17 @@ func _connected_without(skip: int) -> bool:
 	return seen.size() == design.size() - (1 if skip >= 0 else 0)
 
 
-func to_data() -> Array:
+## The design as rows [id, x, y, z, rot, (key), (wear)]; `wear`: a part not whole keeps what it has
+## left of its hit points (0..1) seventh (the valley's machines keep their wear; elsewhere they're new).
+func to_data(wear := false) -> Array:
 	var out := []
 	for p: Dictionary in design:
 		var row := [p.id, p.at.x, p.at.y, p.at.z, p.rot]
-		if int(p.get("key", 0)) != 0:
-			row.append(int(p.key)) # (the key it answers to)
+		var frac := clampf(float(p.get("hp", 0.0)) / Parts.hp_of(p.id), 0.0, 1.0)
+		if int(p.get("key", 0)) != 0 or (wear and frac < 0.995):
+			row.append(int(p.get("key", 0))) # (the key it answers to)
+		if wear and frac < 0.995:
+			row.append(snappedf(frac, 0.01))
 		out.append(row)
 	return out
 
@@ -288,6 +295,13 @@ func from_data(data: Array) -> void:
 			var p := {"id": pid, "at": Vector3i(int(e[1]), int(e[2]), int(e[3])), "rot": int(e[4]), "hp": Parts.hp_of(pid)}
 			if (e as Array).size() >= 6 and int(e[5]) != 0:
 				p.key = int(e[5])
+			if (e as Array).size() >= 7: # (worn: what it has left)
+				var frac := clampf(float(e[6]), 0.02, 1.0)
+				p.hp = Parts.hp_of(pid) * frac
+				if frac < TYRE_BURST and Parts.def(pid).kind == "wheel":
+					p.flat = true
+				if frac < TRACK_THROWN and Parts.def(pid).kind == "track":
+					p.thrown = true
 			design.append(p)
 	rebuild()
 	_note_built()
@@ -391,6 +405,9 @@ func rebuild() -> void:
 				_add_shape(ext * Vector3(0.95, 0.8, 0.95), xf.origin)
 			_:
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
+	if cargo_kg > 0.0: # (a load on it: its weight where it sits)
+		total_mass += cargo_kg
+		moment += cargo_at * cargo_kg
 	_cur = -1
 	_sections()
 	if total_mass <= 0.0:

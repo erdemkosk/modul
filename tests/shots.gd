@@ -27,6 +27,7 @@ var _t := 0.0
 var _step := 0
 var _mark := 0.0
 var _shots: Array[Image] = []
+var _expedition := false
 var _pending := ""
 var _wait := 0
 var _m: Machine
@@ -63,6 +64,15 @@ func _initialize() -> void:
 			Inventory.path = "user://shots_inventory.cfg"
 		if a.begins_with("--mission="):
 			_mission = a.substr(10)
+		if a == "--expedition":
+			_expedition = true
+			_valley = true
+			Inventory.path = "user://shots_inventory.cfg"
+			Inventory.reset()
+			for pair: Array in [[Workshop, "user://shots_workshop.cfg"], [Expeditions, "user://shots_jobs.cfg"],
+					[ValleyLife, "user://shots_life.cfg"], [Colossus, "user://shots_giants.cfg"]]:
+				(pair[0] as GDScript).set("path", pair[1])
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(str(pair[1])))
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
@@ -107,7 +117,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else _all_steps())
+	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else (_expedition_steps() if _expedition else _all_steps()))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -378,6 +388,73 @@ func _worksite_steps() -> Array:
 		[4.0, func(_s: float) -> void:
 			_cam(0.0, -0.2, 11.0), func() -> void: _shoot("worksite_fight")],
 	]
+
+
+## The valley's work: the workshop truck beside you, a load lashed on, the radio, a giant, a shut
+## road, a ford in flood.
+func _expedition_steps() -> Array:
+	return [
+		[8.0, func(_s: float) -> void: _g.set("player_input", false), func() -> void:
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			_m.brake = 1.0],
+		[2.0, func(_s: float) -> void: _cam(PI * 0.3, -0.28, 22.0), func() -> void: _shoot("workshop")],
+		[0.5, _noop, func() -> void:
+			var ex: Expeditions = _g.get("expeditions")
+			ex.accept(0)
+			ex.job.goods = "generator"
+			_put_at(Vector3(ex.job.at) + Vector3(4, 0, 0))],
+		[5.0, func(_s: float) -> void: _cam(PI * 0.75, -0.25, 10.0), func() -> void: _shoot("loaded")],
+		[1.0, func(_s: float) -> void: pass, func() -> void:
+			(_g.get("valley_hud") as ValleyHud).toggle_board()
+			_shoot("radio")],
+		[1.0, _noop, func() -> void:
+			(_g.get("valley_hud") as ValleyHud).toggle_board()
+			var gi: Colossus = _g.get("giants")
+			var g: Dictionary = gi.giants[0]
+			_put_at(Vector3(g.at) + Vector3(45, 0, 0))],
+		[3.0, _noop, func() -> void: # (in front of it, on its way)
+			var gm: Variant = (_g.get("giants") as Colossus).giants[0].m
+			if is_instance_valid(gm):
+				var gb := (gm as Machine).global_transform
+				_put_at(gb.origin - gb.basis.z * 38.0 + gb.basis.x * 10.0)],
+		[5.0, func(_s: float) -> void:
+			var gm: Variant = (_g.get("giants") as Colossus).giants[0].m
+			if is_instance_valid(gm):
+				_look_at((gm as Machine).global_position, -0.1, 12.0), func() -> void: _shoot("giant")],
+		[0.5, _noop, func() -> void:
+			var life: ValleyLife = _g.get("life")
+			var bl: Dictionary = life.blocks[0]
+			_put_at(Vector3(bl.at.x, 0, bl.at.y) + Vector3(bl.across.y, 0, -bl.across.x) * 14.0)],
+		[4.0, func(_s: float) -> void:
+			var life: ValleyLife = _g.get("life")
+			var bl: Dictionary = life.blocks[0]
+			_look_at(Vector3(bl.at.x, 0, bl.at.y), -0.25, 12.0), func() -> void: _shoot("shut_road")],
+		[0.5, _noop, func() -> void:
+			(_g.get("weather") as Weather).wetness = 1.0
+			var life: ValleyLife = _g.get("life")
+			var f: Dictionary = life.floods[0]
+			_put_at(Vector3(f.at.x, 0, f.at.y) + Vector3(f.down.y, 0, -f.down.x) * 26.0)],
+		[4.0, func(_s: float) -> void:
+			var f: Dictionary = (_g.get("life") as ValleyLife).floods[0]
+			_look_at(Vector3(f.at.x, 0, f.at.y), -0.3, 14.0), func() -> void: _shoot("flood")],
+	]
+
+
+## The camera behind you, looking toward `at`.
+func _look_at(at: Vector3, pitch: float, dist: float) -> void:
+	var to := at - _m.global_position
+	_cam(atan2(-to.x, -to.z), pitch, dist)
+
+
+func _put_at(at: Vector3) -> void:
+	var t: Node = _g.get("terrain")
+	at.y = float(t.call("height_at", at.x, at.z)) + 1.6
+	_m.global_transform = Transform3D(Basis.IDENTITY, at)
+	_m.linear_velocity = Vector3.ZERO
+	_m.angular_velocity = Vector3.ZERO
+	_m.brake = 1.0
+	_m.set_down()
 
 
 func _noop(_s: float) -> void:

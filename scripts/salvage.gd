@@ -4,10 +4,14 @@ extends Node
 ## machine whole lies where it falls with a light over it; drive up to it (within REACH) and it's
 ## yours (Inventory). Parts shot to nothing leave nothing to take. They lie LIFE s, then they're
 ## gone (the oldest first past MAX).
+##
+## Nothing taken off a wreck is new: each comes with what's left of it (WORN: rusted, bent, burnt),
+## less than a cache's or a job's pay; what it has is said when it's taken (Inventory keeps it).
 
 const REACH := 4.5 ## m
 const LIFE := 240.0 ## s
 const MAX := 40
+const WORN := Vector2(0.3, 0.85) ## what a wreck's part has left: between these
 
 static var current: Salvage
 
@@ -25,9 +29,11 @@ func _exit_tree() -> void:
 		current = null
 
 
-## A piece of debris (`b`, part `id`) to take: lit, kept out of the debris pool's culling.
-func mark(b: RigidBody3D, id: String) -> void:
+## A piece of debris (`b`, part `id`) to take: lit, kept out of the debris pool's culling; `cond` what
+## it has left (a wreck's own if not said).
+func mark(b: RigidBody3D, id: String, cond := -1.0) -> void:
 	b.set_meta("salvage", id)
+	b.set_meta("cond", cond if cond >= 0.0 else randf_range(WORN.x, WORN.y))
 	b.set_meta("age", 0.0)
 	b.add_to_group("salvage")
 	if Combat.current:
@@ -62,14 +68,14 @@ func mark(b: RigidBody3D, id: String) -> void:
 
 
 ## A whole part `id` left at `at` to be taken (a robot's wreck, a site's cache): tossed up a little.
-func drop(id: String, at: Vector3) -> void:
+func drop(id: String, at: Vector3, cond := -1.0) -> void:
 	var c := Combat.current
 	if c == null or not ResourceLoader.exists(Parts.model(id)):
 		return
 	var v := Vector3(randf_range(-1.5, 1.5), randf_range(2.0, 4.0), randf_range(-1.5, 1.5))
 	var b := c.debris(id, Transform3D(Basis(Vector3.UP, randf() * TAU), at + Vector3.UP * 0.8), v,
 		Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 2.0, load(Parts.model(id)) as PackedScene)
-	mark(b, id)
+	mark(b, id, cond)
 
 
 func _physics_process(dt: float) -> void:
@@ -97,12 +103,19 @@ func _physics_process(dt: float) -> void:
 
 func _take(b: RigidBody3D) -> void:
 	var id := str(b.get_meta("salvage"))
-	Inventory.add(id)
+	var c := float(b.get_meta("cond", 1.0))
+	Inventory.add(id, 1, c)
 	if Combat.current:
 		Combat.current.sound("res://assets/audio/build/bolt_on_0%d.wav" % randi_range(1, 3), b.global_position, 2.0, 1.1)
 	if game.has_method("say"):
-		game.call("say", "+ %s  ·  elde %d" % [Parts.def(id).name, Inventory.count(id)])
+		game.call("say", "+ %s %s  ·  elde %d" % [Parts.def(id).name, cond_word(c), Inventory.count(id)])
 	b.queue_free()
+
+
+## How a part is, in a word and its share (%): what's said when it's taken, the builder's note.
+static func cond_word(c: float) -> String:
+	var w := "sağlam" if c >= 0.85 else ("kullanılmış" if c >= 0.6 else ("yıpranmış" if c >= 0.4 else "hurda gibi"))
+	return "(%s %%%d)" % [w, roundi(c * 100.0)]
 
 
 func count() -> int:

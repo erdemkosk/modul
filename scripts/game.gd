@@ -36,6 +36,11 @@ var missions: Missions
 var salvage: Salvage
 var wanderers: Wanderers
 var sites: Node ## (the valley's works sites: works_sites.gd)
+var workshop: Workshop ## (the valley's: the truck you build and mend beside)
+var expeditions: Expeditions
+var life: ValleyLife
+var giants: Colossus
+var valley_hud: ValleyHud
 var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
@@ -60,6 +65,7 @@ func _ready() -> void:
 	var mission := Mode.current == "mission"
 	var md := Missions.find(Mode.mission) if mission else {}
 	place_name = "KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ"))
+	Builder.keep_wear = Mode.current == "valley" # (the valley's parts are worn and stay so)
 	if Mode.current == "valley" and Builder.save_path == "user://design.json":
 		Builder.save_path = "user://valley_design.json" # (the valley's machine is its own: built from what you hold)
 	elif Mode.current == "cage" and Builder.save_path == "user://design.json":
@@ -134,6 +140,8 @@ func _ready() -> void:
 	pause = PauseMenu.new()
 	pause.to_menu.connect(func() -> void:
 		builder.save()
+		if workshop:
+			workshop.save()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_tree().change_scene_to_file("res://scenes/menu.tscn"))
 	add_child(pause)
@@ -162,7 +170,35 @@ func _ready() -> void:
 ## The valley's way: you build with what you hold (Inventory), what comes off the other side's
 ## machines whole is yours to take (Salvage), and machines come to be hunted (Wanderers); old works
 ## out in the valley are still guarded by their robots, a cache left in each (works_sites.gd).
+## Its work is carrying (Expeditions: J); you build and mend only beside the workshop truck
+## (Workshop: V to drive it); the valley soaks, floods and shuts its roads (ValleyLife); giants roam
+## it to be taken apart (Colossus).
 func _valley_salvage() -> void:
+	Inventory.load_all() # (what's held, its wear and the scrap: read now, for the HUD)
+	workshop = Workshop.new()
+	workshop.game = self
+	workshop.terrain = terrain
+	add_child(workshop)
+	life = ValleyLife.new()
+	life.game = self
+	life.terrain = terrain
+	life.weather = weather
+	add_child(life)
+	expeditions = Expeditions.new()
+	expeditions.game = self
+	expeditions.terrain = terrain
+	add_child(expeditions)
+	giants = Colossus.new()
+	giants.game = self
+	giants.terrain = terrain
+	add_child(giants)
+	valley_hud = ValleyHud.new()
+	valley_hud.game = self
+	valley_hud.exp_ = expeditions
+	valley_hud.shop = workshop
+	valley_hud.life = life
+	valley_hud.giants = giants
+	add_child(valley_hud)
 	salvage = Salvage.new()
 	salvage.game = self
 	add_child(salvage)
@@ -177,12 +213,23 @@ func _valley_salvage() -> void:
 	builder.guard = func(id: String, _at: Vector3i, _rot: int) -> bool:
 		if Inventory.take(id):
 			return true
-		say("Elinde %s yok: parçalanan araçlardan topla" % Parts.def(id).name)
+		say("Elinde %s yok: parçalanan araçlardan topla, seferlerden kazan" % Parts.def(id).name)
 		return false
-	builder.removed.connect(func(id: String, _at: Vector3i, _rot: int) -> void: Inventory.add(id))
-	builder.price_note = func(id: String) -> String: return "elde %d" % Inventory.count(id)
+	# (the part bolted on is the one taken: as worn as it was)
+	builder.placed.connect(func(i: int) -> void:
+		var m := builder.machine
+		if i < m.design.size() and Inventory.taken < 0.995:
+			var p: Dictionary = m.design[i]
+			p.hp = Parts.hp_of(p.id) * Inventory.taken
+			m.rebuild())
+	builder.removed.connect(func(id: String, _at: Vector3i, _rot: int) -> void: Inventory.add(id, 1, builder.removed_cond))
+	builder.price_note = func(id: String) -> String:
+		var b := Inventory.best(id)
+		return "elde %d" % Inventory.count(id) + (" · en iyisi %%%d" % roundi(b * 100.0) if b >= 0.0 and b < 0.995 else "")
 	builder.swap_guard = func(old: Array, new: Array) -> bool:
 		var r := Inventory.swap(old, new)
+		if bool(r.ok):
+			builder.swap_rows = r.rows
 		if not bool(r.ok):
 			var need := []
 			for id: String in r.short:
@@ -200,6 +247,13 @@ func _start_xform() -> Transform3D:
 		return Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at)
 	if arena:
 		return Transform3D(Basis.IDENTITY, Vector3(0.0, terrain.call("height_at", 0.0, -40.0) + 2.0, -40.0))
+	if Mode.current == "valley":
+		if workshop and is_instance_valid(workshop.truck): # (a new one's built beside the workshop)
+			var t := workshop.truck.global_transform
+			var p := t.origin - t.basis.x * 8.0
+			p.y = float(terrain.call("height_at", p.x, p.z)) + 1.5
+			return Transform3D(Basis(Vector3.UP, t.basis.get_euler().y), p)
+		return Workshop.beside(terrain)
 	var at: Transform3D = terrain.get("spawn")
 	return Transform3D(at.basis, at.origin + Vector3.UP * 2.0)
 
@@ -223,6 +277,8 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 		m.system_hit.connect(func(text: String, _at: Vector3) -> void: say("▲ " + text))
 	if team != 0:
 		m.died.connect(func() -> void:
+			if Mode.current == "valley":
+				Inventory.add_scrap(3) # (what's left of it)
 			kills += 1
 			say("%s PARÇALANDI  ·  %d" % [m.label, kills]))
 	return m
@@ -272,8 +328,16 @@ func _bind_keys() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_instance_valid(machine):
 		return
+	if valley_hud and valley_hud.board_open and event is InputEventKey and (event as InputEventKey).pressed 			and (event as InputEventKey).physical_keycode in [KEY_J, KEY_ESCAPE]:
+		valley_hud.toggle_board()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("build"):
-		if cage and not cage.can_build() and not builder.active:
+		if workshop and not builder.active and workshop.driving():
+			say("Atölyeyi sürerken inşa olmaz: V ile aracına geç")
+		elif workshop and not builder.active and not workshop.near(machine):
+			say("İnşa ve onarım yalnız atölyenin yanında: %s" % workshop.status())
+		elif cage and not cage.can_build() and not builder.active:
 			say("Dövüş sırasında araç değiştirilemez: turlar arası atölyede")
 		elif missions and not missions.can_build() and not builder.active:
 			say("Görev sürerken araç değiştirilemez: R ile baştan başla")
@@ -297,6 +361,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if key.keycode == KEY_C:
 			say("Kamera: " + cam.cycle_mode())
+			return
+		if workshop and key.physical_keycode == KEY_V:
+			workshop.swap()
+			return
+		if valley_hud and key.physical_keycode == KEY_J:
+			valley_hud.toggle_board()
 			return
 	if key and key.pressed and not key.echo:
 		match key.keycode:
@@ -423,7 +493,7 @@ func _physics_process(dt: float) -> void:
 	_apply_armed() # (a rebuild makes the guns anew)
 	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
 	# is rebuilt where it started
-	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null:
+	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null and not (workshop and workshop.driving()):
 		_recover_t += dt
 		if _recover_t >= 1.5:
 			_recover_t = 0.0
@@ -454,6 +524,16 @@ func aim_point() -> Vector3:
 ## Your cab's gone: the moment slowed right down, the wreck flying, and a card says what did it and
 ## how you did; Space (or a few seconds) and a new one's built where you start.
 func _on_player_died() -> void:
+	if workshop and workshop.driving(): # (the machine you left's gone: a new one beside the workshop)
+		say("Bıraktığın araç parçalandı: atölyenin yanında yenisi kuruldu")
+		var data := Builder.load_saved()
+		var m := _spawn(data if not data.is_empty() else Designs.starter(), _start_xform(), 0)
+		m.died.connect(_on_player_died)
+		m.brake = 1.0
+		workshop.own = m
+		builder.machine = m
+		builder.rebind()
+		return
 	if cage:
 		cage.on_player_died()
 		return
@@ -467,6 +547,18 @@ func _on_player_died() -> void:
 	var tw := create_tween().set_ignore_time_scale(true)
 	tw.tween_interval(0.5)
 	tw.tween_property(Engine, "time_scale", 1.0, 1.0)
+
+
+## You at the wheel of `m` (the valley's workshop truck, or your own machine again): the one left braked.
+func drive(m: Machine) -> void:
+	if is_instance_valid(machine):
+		machine.throttle = 0.0
+		machine.steer = 0.0
+		machine.firing = false
+		machine.brake = 1.0
+	machine = m
+	m.brake = 0.0
+	cam.target = m
 
 
 ## A new machine from the saved design where you start, without a word (the cage's new run).

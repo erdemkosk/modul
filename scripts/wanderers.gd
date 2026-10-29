@@ -42,6 +42,9 @@ func _physics_process(dt: float) -> void:
 ## One more, somewhere dry SPAWN_MIN..SPAWN_MAX m from `at`. Null if nowhere would do.
 func spawn_near(at: Vector3) -> Machine:
 	var me: Machine = game.get("machine")
+	var shop: Variant = game.get("workshop")
+	if shop and (shop as Workshop).yours(): # (as strong as your machine, not the workshop truck you're driving)
+		me = (shop as Workshop).yours()
 	var tier := clampi(int((me.total_mass - 700.0) / 450.0), 0, 5) if is_instance_valid(me) else 0
 	for tries in 12:
 		var a := randf() * TAU

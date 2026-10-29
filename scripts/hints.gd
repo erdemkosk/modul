@@ -14,8 +14,10 @@ const CARDS := {
 	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
 		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],
 		["Ayaklar, dipler", "taşıyanı kır: üstündeki devrilir"], ["R", "baştan başla"]]],
-	"valley": ["VADİ", [["Elindekiyle kur", "inşa sadece envanterindeki parçalarla"], ["Işıklı parçalar", "parçalanan araçların sağlam parçaları: üstünden geç, alırsın"],
-		["Avcılar", "vadide dolaşır; aracın büyüdükçe onlar da büyür"], ["Hazır tasarımlar", "parçaların yetiyorsa yüklenir"]]],
+	"valley_work": ["VADİ", [["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Yükün yanında dur", "yüklenir; ağırlığı aracının olur, devrilirsen düşer"],
+		["V", "atölye kamyonuna bin / in: inşa ve onarım sadece onun yanında"], ["Işıklı parçalar", "enkazdan çıkan parçalar yıpranmıştır: yüzdesi yazar"],
+		["Hurda", "atölyede onarımın bedeli: seferlerden, enkazdan"], ["Yağmur", "çamur derinleşir, geçitler taşar; yollar heyelanla kapanır"],
+		["Dev makineler", "vurarak değil, sökerek devrilir: silahını, paletini kopar"]]],
 	"cage": ["KAFES", [["B", "önce aracını kur: turnuvada sadece atölyede değişir"], ["DÖVÜŞE BAŞLA · Enter", "ilk tura çık"],
 		["Kazanmak", "rakibi parçala ya da 8 sn hareketsiz bırak"], ["Turlar arası", "atölyede hasarı kredinle onar"],
 		["Ters dönmek", "8 sn'de sayılırsın; ancak çeviriciyle (F) doğrulursun"],
@@ -57,7 +59,7 @@ func _process(dt: float) -> void:
 			and is_instance_valid(game.get("machine")):
 		_show("drive")
 		if Mode.current == "valley" and _card == null:
-			_show("valley")
+			_show("valley_work")
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

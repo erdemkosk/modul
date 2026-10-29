@@ -27,7 +27,13 @@ are this project's own.
 - **Vadi**: the 2 km valley, the Terra Tech way: machines roam it to be hunted (Forge's, sized to
   yours), and what comes off them whole lies lit where it falls; drive up to it and it's yours. You
   build only with what you hold (a ready design or a slot loads if your parts cover it), and the
-  valley's machine and parts are kept apart from the other modes'.
+  valley's machine and parts are kept apart from the other modes'. Its work is carrying: jobs on the
+  radio (J) to haul a load (medicine, the wounded, a generator, fuel, a pump, steel beams) between the
+  map's places, lashed on top of a machine that can bear it, paid in good parts and scrap. There's no
+  base: you build and mend only beside the workshop truck (V to drive it: slow, heavy, it hauls the
+  big loads). Parts have a past (salvage is worn, a worn part may give on the road). The valley soaks
+  and dries (the mud's depth), its fords flood, its roads are shut some mornings (a slide, trees down),
+  and two giants roam it, taken apart rather than shot down.
 
 | Key | |
 |---|---|
@@ -120,7 +126,11 @@ are this project's own.
   the aim's range; the crosshair's rings show where each would land.
 - Salvage: `inventory.gd` (what you hold, user://valley_inventory.cfg), `salvage.gd` (the lit parts
   and taking them), `wanderers.gd` (the valley's hunters); the builder's guard, removed and
-  swap_guard hooks keep the building to what's held.
+  swap_guard hooks keep the building to what's held; each part held has its wear (`Inventory.cond`).
+- The valley's work: `expeditions.gd` (places, jobs, the load and its knocks, delivery),
+  `workshop.gd` (the truck, building and mending beside it), `valley_life.gd` (soaking mud, fords in
+  flood, shut roads, worn parts giving), `colossus.gd` (the giants), `valley_hud.gd` (the lines and
+  the radio); saved in user://valley_jobs.cfg, valley_workshop.cfg, valley_life.cfg, valley_giants.cfg.
 - Missions: `missions.gd` (the list, the yard, the flow, the record in user://missions.cfg),
   `mission_ui.gd` (the brief, the clock and targets, markers, done and failed), `structure.gd` and
   `structure_piece.gd` (what stands on what, falling, hit points by stuff, fire), `structures.gd`
@@ -145,5 +155,5 @@ godot --headless --path . -s res://tests/missions_test.gd
 godot --headless --path . -s res://tests/salvage_test.gd
 godot --headless --path . -s res://tests/keys_test.gd
 godot --headless --path . -s res://tests/joints_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id> | --spin]
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id> | --spin | --expedition]
 ```

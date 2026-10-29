@@ -203,11 +203,13 @@ func _on_robot_died(r: Node) -> void:
 	if Salvage.current and randf() < 0.6:
 		var pool: Array = WRECK[str(r.get("kind"))]
 		Salvage.current.drop(str(pool[randi() % pool.size()]), at)
+	Inventory.add_scrap(2) # (what's left of it: scrap)
 	if (s.dead as Array).size() >= (s.robots as Array).size() and not s.cleared:
 		s.cleared = true
 		if Salvage.current:
 			for id: String in s.cache:
-				Salvage.current.drop(id, (s.at as Vector3) + Vector3(randf_range(-2, 2), 0.0, randf_range(-2, 2)))
+				Salvage.current.drop(id, (s.at as Vector3) + Vector3(randf_range(-2, 2), 0.0, randf_range(-2, 2)), randf_range(0.75, 1.0)) # (kept: in good order)
+		Inventory.add_scrap(6)
 		if game.has_method("say"):
 			game.call("say", "%s TEMİZLENDİ  ·  zulası orada, al" % s.name)
 	_save()
