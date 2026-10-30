@@ -30,6 +30,7 @@ var on := false
 var spin := 0.0 ## 0..1 of the blade's speed
 var cutting := -1 ## (the prop the blade's in, or -1)
 var _progress := {} ## prop index -> s cut so far
+var _kerfs := {} ## prop index -> Timber.kerf(): the cut in the trunk, where the blade went in
 var _blade: Node3D
 var _hum: AudioStreamPlayer3D ## the blade turning free
 var _bite_snd: AudioStreamPlayer3D ## and biting into wood (a child of _hum)
@@ -109,10 +110,22 @@ func update(dt: float) -> void:
 				machine.apply_central_force(-machine.linear_velocity * machine.total_mass * 1.5)
 				_bite_feel(c, base, float(info.radius), float(_progress[i]) / need, i, str(info.kind) == "tree",
 					float(info.get("height", 6.0)), dt)
+				var cut_h := 0.3
+				if str(info.kind) == "tree": # (the cut where the blade went in: the kerf opening in the trunk)
+					if not _kerfs.has(i):
+						_kerfs[i] = Timber.kerf(machine.get_tree(), base, c, float(info.radius))
+					var k: Dictionary = _kerfs[i]
+					Timber.kerf_grow(k, float(_progress[i]) / need)
+					cut_h = float(k.h)
 				if float(_progress[i]) >= need:
 					_progress.erase(i)
 					var away := Vector3(base.x - machine.global_position.x, 0.0, base.z - machine.global_position.z)
-					Timber.cut(machine, props, i, away.normalized() if away.length() > 0.1 else -machine.global_basis.z)
+					if _kerfs.has(i):
+						var k: Dictionary = _kerfs[i]
+						away = k.dir # (it goes over away from the side it was cut from)
+						Timber.kerf_free(k)
+						_kerfs.erase(i)
+					Timber.cut(machine, props, i, away.normalized() if away.length() > 0.1 else -machine.global_basis.z, cut_h)
 				return
 	# crates, logs and the like lying about; another machine
 	for n: Node in machine.get_tree().get_nodes_in_group(Breakable.GROUP):

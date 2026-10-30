@@ -7,12 +7,17 @@ extends RefCounted
 ## gives, as thick as its trunk; the crown's left); a log on the ground or a stump is cut up where it lies. Billets lie LIFE s if no one takes
 ## them (not while one's by a machine: on its bed, say). What's felled stays felled (WorldProps.cut_tree:
 ## RutStore keeps it).
+## A tree's cut where the blade meets it: at that height (KERF_H, from the ground up), the kerf opening
+## from the side the blade came in, sawdust heaping at its foot; through, it shivers, cracks and goes
+## over from there, away from the cut, and its stump stands that tall.
 
 const GROUP := "timber"
 const BILLET := 1.0 ## m long
 const DENSITY := 700.0 ## kg/m3, green wood
 const LIFE := 900.0 ## s
 const MAX := 60 ## billets lying at once (the oldest go first)
+const KERF_H := Vector2(0.2, 1.6) ## m over the ground a trunk's cut, at most and least
+const SHIVER := 0.55 ## s it stands, cut through, before it goes
 
 static var _bark: StandardMaterial3D
 static var _end: StandardMaterial3D
@@ -24,7 +29,7 @@ static func props_of(n: Node) -> WorldProps:
 
 
 ## Prop `i` cut through by `by`'s saw: a tree goes over `away`, a log or a stump is billets.
-static func cut(by: Machine, props: WorldProps, i: int, away: Vector3) -> void:
+static func cut(by: Machine, props: WorldProps, i: int, away: Vector3, cut_h := 0.3) -> void:
 	var info := props.prop_info(i)
 	props.cut_tree(i)
 	var tree := by.get_tree()
@@ -32,7 +37,7 @@ static func cut(by: Machine, props: WorldProps, i: int, away: Vector3) -> void:
 		Combat.current.sound("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4), info.origin + Vector3.UP, 2.0, 0.7) # (the last of the wood parting)
 	match str(info.kind):
 		"tree":
-			_fall(tree, props, i, info, away)
+			_fall(tree, props, i, info, away, cut_h)
 		"log":
 			var o: Vector3 = info.origin
 			var ax: Vector3 = info.axis
@@ -44,10 +49,11 @@ static func cut(by: Machine, props: WorldProps, i: int, away: Vector3) -> void:
 ## The tree going over: its model hinged at the cut, tipping `away` as a felled tree does (slow at
 ## first, faster and faster: a rod falling about its foot), till its top meets the ground; what's
 ## under it is struck. A moment after, its trunk lies as billets and its stump's left.
-static func _fall(tree: SceneTree, props: WorldProps, i: int, info: Dictionary, away: Vector3) -> void:
+static func _fall(tree: SceneTree, props: WorldProps, i: int, info: Dictionary, away: Vector3, cut_h := 0.3) -> void:
 	var h := float(info.height)
 	var r := float(info.radius)
-	var base: Vector3 = info.origin
+	var ground: Vector3 = info.origin
+	var base := ground + Vector3.UP * cut_h # (the hinge: the cut; what was below it is the stump)
 	var root := tree.current_scene if tree.current_scene else tree.root
 	var t := Node3D.new()
 	t.name = "Felled"
@@ -58,14 +64,25 @@ static func _fall(tree: SceneTree, props: WorldProps, i: int, info: Dictionary, 
 	var start: Basis = info.basis
 	var axis := away.cross(Vector3.UP).normalized() * -1.0 # (about this, up turns toward `away`)
 	t.global_transform = Transform3D(start, base)
-	_stump(root, base, r)
-	var st := {"a": 0.1, "w": 0.2, "down": false, "left": 0.7} # (the cut opening, the saw's shove)
+	_stump(root, ground, r, cut_h)
+	var st := {"a": 0.0, "w": 0.12, "down": false, "left": 0.7, "shiver": SHIVER} # (it stands a moment, then the cut opens)
 	var terrain := props.terrain
 	st.cb = func() -> void:
 		if not is_instance_valid(t):
 			tree.physics_frame.disconnect(st.cb)
 			return
 		var dt := 1.0 / Engine.physics_ticks_per_second
+		if float(st.shiver) > 0.0: # (cut through, it shivers on the last fibres, leaning a hair)
+			st.shiver = float(st.shiver) - dt
+			var k := 1.0 - float(st.shiver) / SHIVER
+			var wob := sin(float(st.shiver) * 55.0) * 0.006 * (1.0 - k) + 0.035 * k * k
+			t.global_transform = Transform3D(Basis(axis, wob) * start, base)
+			if float(st.shiver) <= 0.0:
+				st.a = 0.04
+				if Combat.current:
+					Combat.current._burst(base, "chips", 0.8, away + Vector3.UP * 0.3)
+					Combat.current._burst(base, "sawdust", 1.0, -away + Vector3.UP * 0.2)
+			return
 		if not bool(st.down):
 			st.w = float(st.w) + 2.5 * 9.8 / maxf(h, 2.0) * sin(float(st.a)) * dt # (a rod going over about its foot, a crown that pulls it on)
 			st.a = float(st.a) + float(st.w) * dt
@@ -105,17 +122,27 @@ static func _landed(tree: SceneTree, base: Vector3, up: Vector3, h: float, r: fl
 			m.blast(on + Vector3.UP * 0.5, 2.5, 140.0 * clampf(r / 0.3, 0.5, 2.0) * (1.0 - k * 0.6), m.total_mass * 2.0, null, "ağaç")
 
 
-## What's left standing where it was cut: a stump, its cut face pale.
-static func _stump(root: Node, at: Vector3, r: float) -> void:
+## What's left standing where it was cut: a stump `cut_h` tall, its cut face pale, a splinter of the
+## last fibres torn up at one edge.
+static func _stump(root: Node, at: Vector3, r: float, cut_h := 0.3) -> void:
 	var s := MeshInstance3D.new()
 	s.name = "Stump"
+	var hh := cut_h + 0.2
 	var cm := CylinderMesh.new()
 	cm.top_radius = r
 	cm.bottom_radius = r * 1.25
-	cm.height = 0.5
+	cm.height = hh
 	cm.radial_segments = 14
 	cm.material = bark()
 	s.mesh = cm
+	var sp := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(r * 0.7, 0.12, 0.05)
+	sm.material = _end_mat()
+	sp.mesh = sm
+	sp.position = Vector3(0.0, hh * 0.5 + 0.05, -r * 0.45)
+	sp.rotation = Vector3(0.25, 0.0, 0.0)
+	s.add_child(sp)
 	var top := MeshInstance3D.new()
 	var tm := CylinderMesh.new()
 	tm.top_radius = r * 0.95
@@ -124,10 +151,75 @@ static func _stump(root: Node, at: Vector3, r: float) -> void:
 	tm.radial_segments = 14
 	tm.material = _end_mat()
 	top.mesh = tm
-	top.position = Vector3.UP * 0.25
+	top.position = Vector3.UP * hh * 0.5
 	s.add_child(top)
 	root.add_child(s)
-	s.global_position = at + Vector3.UP * 0.15
+	s.global_position = at + Vector3.UP * (hh * 0.5 - 0.2)
+
+
+## The cut opening in a trunk (its ground at `base`, `r` thick) where the blade at `blade` went in: a
+## dark slot at that height from the blade's side, and a heap of sawdust at the foot. {node, heap, h, dir, r}.
+static func kerf(tree: SceneTree, base: Vector3, blade: Vector3, r: float) -> Dictionary:
+	var root := tree.current_scene if tree.current_scene else tree.root
+	var h := clampf(blade.y - base.y, KERF_H.x, KERF_H.y)
+	var from := Vector3(blade.x - base.x, 0.0, blade.z - base.z)
+	var dir := (-from).normalized() if from.length() > 0.05 else Vector3.FORWARD # (into the trunk)
+	var n := Node3D.new()
+	n.name = "Kerf"
+	root.add_child(n)
+	n.global_transform = Transform3D(Basis.looking_at(dir, Vector3.UP), base + Vector3.UP * h)
+	var slot := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(r * 2.05, 0.04, 1.0)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.05, 0.035)
+	dark.roughness = 1.0
+	bm.material = dark
+	slot.mesh = bm
+	slot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(slot)
+	var heap := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.02
+	cm.bottom_radius = 1.0
+	cm.height = 1.0
+	cm.radial_segments = 10
+	var dust := StandardMaterial3D.new()
+	dust.albedo_color = Color(0.72, 0.58, 0.38)
+	dust.roughness = 1.0
+	cm.material = dust
+	heap.mesh = cm
+	root.add_child(heap)
+	var foot := base - dir * (r + 0.25)
+	var props := tree.get_first_node_in_group("anchor_index") as WorldProps
+	if props and props.terrain:
+		foot.y = props.terrain.height_at(foot.x, foot.z)
+	heap.global_position = foot
+	var k := {"node": n, "slot": slot, "heap": heap, "h": h, "dir": dir, "r": r}
+	kerf_grow(k, 0.0)
+	return k
+
+
+## The kerf `frac` (0..1) of the way through: the slot that deep from its side, the heap that big.
+static func kerf_grow(k: Dictionary, frac: float) -> void:
+	var slot := k.slot as MeshInstance3D
+	if not is_instance_valid(slot):
+		return
+	var r := float(k.r)
+	var depth := maxf(frac, 0.04) * r * 2.0
+	slot.scale = Vector3(1.0, 1.0 + frac * 0.6, depth) # (it opens a little as the trunk settles on it)
+	slot.position = Vector3(0.0, 0.0, r - depth * 0.5 + 0.01) # (+z is the blade's side; it goes in along -z)
+	var heap := k.heap as MeshInstance3D
+	if is_instance_valid(heap):
+		var s := 0.08 + 0.3 * frac
+		heap.scale = Vector3(s, s * 0.35, s)
+
+
+static func kerf_free(k: Dictionary) -> void:
+	var n := k.node as Node
+	if is_instance_valid(n):
+		n.queue_free()
+	# (the heap stays: the sawdust lies where it fell)
 
 
 ## Billets along `ax` from `from`, `length` m of it, `radius` thick.
@@ -278,7 +370,7 @@ static func sawdust(at: Vector3, dir := Vector3.UP) -> void:
 static func bark() -> StandardMaterial3D:
 	if _bark == null:
 		_bark = StandardMaterial3D.new()
-		_bark.albedo_color = Color(0.2, 0.14, 0.09)
+		_bark.albedo_color = WorldProps.BARK # (the standing trees' own)
 		_bark.roughness = 0.95
 	return _bark
 
@@ -286,7 +378,7 @@ static func bark() -> StandardMaterial3D:
 static func _end_mat() -> StandardMaterial3D:
 	if _end == null:
 		_end = StandardMaterial3D.new()
-		_end.albedo_color = Color(0.62, 0.47, 0.3)
+		_end.albedo_color = WorldProps.CUT_WOOD
 		_end.roughness = 0.8
 	return _end
 

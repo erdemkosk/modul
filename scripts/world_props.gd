@@ -13,6 +13,10 @@ extends Node3D
 ## "winch_anchor" group, and anchors_near() finds them by grid instead of scanning the group.
 
 const NATURE_DIR := "res://assets/nature/"
+## The trees' bark, and the wood under it: one brown for standing trunks, felled ones, stumps and
+## billets alike (Timber), a weathered pine's rather than the models' bright orange.
+const BARK := Color(0.4, 0.27, 0.17)
+const CUT_WOOD := Color(0.78, 0.63, 0.42)
 const CHUNK := 128.0
 const CELL := 32.0
 const UPDATE_PERIOD := 0.25
@@ -158,6 +162,10 @@ func _with_nature_materials(mesh: Mesh, kind: String, height: float, lod_role :=
 		elif src:
 			mat_name = src.resource_name
 		var foliage := mat_name in FOLIAGE
+		if mat_name == "Bark":
+			col = BARK
+		elif mat_name == "Wood":
+			col = CUT_WOOD
 		mat.set_shader_parameter("albedo", col)
 		mat.set_shader_parameter("roughness", rough)
 		mat.set_shader_parameter("leaf", 1.0 if foliage else 0.0)
@@ -246,7 +254,7 @@ func _load_props() -> void:
 		if _models[k].kind == "bush":
 			s *= 0.7 # smaller tufts: a bush by the road, not a wall of leaves filling the view
 		var basis := Basis(Vector3.UP, data[o + 5]).scaled(Vector3(s, s, s))
-		var y := data[o + 1]
+		var y := data[o + 1] + terrain.lift_at(data[o], data[o + 2]) # (the start's ground was eased: it sits on it)
 		var model := _models[k]
 		if model.kind == "rock" or model.kind == "cliff":
 			y -= 0.25 * s # bed them in so slopes don't show their undersides

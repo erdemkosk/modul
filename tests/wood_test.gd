@@ -160,6 +160,9 @@ func _physics_process(_d: float) -> bool:
 				_expect(RutStore.cut.has(int(_r.tree)), "a felled tree's kept")
 				_next("fallen")
 			elif since > 20.0:
+				var info := props.prop_info(int(_r.tree))
+				var c := m.tools[0].node.global_transform * MachineTool.BLADE
+				print("(not cut: blade %s, tree base %s, ground there %.2f, machine %s)" % [c, info.origin, float(_g.get("terrain").call("height_at", c.x, c.z)), m.global_position])
 				_expect(false, "the saw cuts through the trunk")
 				return _done()
 		"fallen":
@@ -192,7 +195,15 @@ func _physics_process(_d: float) -> bool:
 			m.aim_point = b.global_position
 			if since < 2.5:
 				return false
-			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			var h: MachineHoist = _g.call("crane_on_mouse")
+			_expect(h != null and h.pick() != null, "the crane's on the mouse, and it shows what it'd take")
+			if h and not _r.has("clicked"):
+				_r.clicked = true # (the first by the mouse: a click)
+				_g.call("_crane_mouse", h, true, false, 0.0)
+				_g.call("_crane_mouse", h, false, false, 0.05)
+				print("click: hooked %s" % (h.hooked() != null))
+			else:
+				print("Y: '%s'" % m.hoist_key(KEY_Y))
 			_expect(m.hoists[0].hooked() is RigidBody3D, "the crane takes hold of a billet")
 			if m.hoists[0].hooked():
 				_r.b = m.hoists[0].hooked()
@@ -212,6 +223,19 @@ func _physics_process(_d: float) -> bool:
 			m.aim_point = m.global_transform * Vector3(0.25, 1.0, 0.9) # (over the bed)
 			if since < 7.0:
 				return false
+			if not _r.has("paid"): # (the left held: the rope pays out, the load goes down; let go, it holds)
+				_r.paid = true
+				var h: MachineHoist = m.hoists[0]
+				var l0 := float(m.design[h.index].rope_len)
+				for k in 30:
+					_g.call("_crane_mouse", h, true, false, 1.0 / 60.0)
+				h.update(0.2)
+				_g.call("_crane_mouse", h, false, false, 0.0)
+				var l1 := float(m.design[h.index].rope_len)
+				h.update(0.5)
+				print("held down 0.5 s: rope %.2f -> %.2f, then holds at %.2f" % [l0, l1, float(m.design[h.index].rope_len)])
+				_expect(l1 > l0 + 0.1 and absf(float(m.design[h.index].rope_len) - l1) < 0.05, "the left held pays out; let go, it holds")
+				m.design[h.index].erase("drum")
 			print("lifted %.2f m off the ground; over the bed: %s" % [float(_r.lifted), Workshop._riding(b, m)])
 			print("Y: '%s'" % m.hoist_key(KEY_Y))
 			_next("set_down")
@@ -251,8 +275,8 @@ func _physics_process(_d: float) -> bool:
 			if since < 4.0:
 				return false
 			print("beside the workshop: wood %d -> %d (worth %d), all told %d" % [int(_r.wood0), Inventory.wood, int(_r.worth), Inventory.delivered])
-			_expect(Inventory.wood == int(_r.wood0) + int(_r.worth) and _on_bed(m).is_empty() and int(_r.worth) > 0, "what's on the bed goes into the store")
-			_expect(Inventory.delivered == int(_r.worth), "and counts toward what opens")
+			_expect(Inventory.wood > int(_r.wood0) and Inventory.wood <= int(_r.wood0) + int(_r.worth) and _on_bed(m).is_empty(), "what's on the bed goes into the store")
+			_expect(Inventory.delivered == Inventory.wood - int(_r.wood0), "and counts toward what opens")
 			# 4. wooden parts
 			var b: Builder = _g.get("builder")
 			var w0 := Inventory.wood

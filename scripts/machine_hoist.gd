@@ -19,6 +19,10 @@ extends RefCounted
 ##          within GRAB_WINCH behind, the rope as long as it is, and winds it in to TOW; it pulls
 ##          `lift` (4 t) at most. Dragging a load, or pulling a machine (yours, sunk) out of the mud.
 ##
+## On the mouse (your machine's crane, no gun on: Game): a click takes hold of what's under the hook
+## (`pick()`: what you look at, near the tip), or sets down what it holds and lets go; the left button
+## held pays the rope out (`drum` "pay": the load goes down), the right held winds it in ("haul");
+## let go, the drum holds where it is ("hold") till you hook something else.
 ## The wood age's crane ("wood_crane") is the same, smaller: a short pole jib (its own `tip`, `root`,
 ## `reach` and `hang` in its part's def), 450 kg. What a crane takes hold of: a load, a billet lying
 ## (Timber), a part off a wreck (Salvage): set on your own bed, it rides there (rails keep it on) and
@@ -33,6 +37,8 @@ const TOW := 3.0 ## m the winch winds the rope in to
 const WIND := 0.9 ## m/s the drum winds
 const LOWER := 1.2 ## m/s it pays out, setting a load down
 const LOWER_MAX := 4.0 ## s
+const AIM_PICK := 2.0 ## m from where you look a load's taken as the one meant
+const ROPE_MAX := 9.0 ## m of rope on the drum
 const SLEW := 1.4 ## rad/s the crane turns
 const TIP := Vector3(0.0, 1.85, -2.5) ## the crane's sheave, in the part's space with the boom straight ahead
 const ROOT := Vector3(0.0, 1.5, -0.1) ## where its jib leaves the post
@@ -111,23 +117,24 @@ static func eye(b: PhysicsBody3D) -> Vector3:
 func toggle() -> String:
 	if hooked():
 		if kind == "crane" and not machine.design[index].has("lowering"):
+			machine.design[index].erase("drum")
 			machine.design[index].lowering = true # (set down first, then let go: update())
 			_lower_t = 0.0
 			return "İndiriyor"
 		_let_go()
 		return "%s bıraktı" % ("Vinç" if kind == "crane" else "Halat")
 	var t := tip()
-	var best: PhysicsBody3D = null
+	var best: PhysicsBody3D = pick() if kind == "crane" else null
 	var bd := GRAB if kind == "crane" else GRAB_WINCH
-	for n: Node in liftable(machine.get_tree()):
-		var b := n as PhysicsBody3D
-		if b == null or b.has_meta("taken"):
-			continue
-		var d := eye(b).distance_to(t)
-		if d < bd:
-			bd = d
-			best = b
-	if kind == "winch": # (or a machine: one stuck, a wreck to drag)
+	if kind == "winch":
+		for n: Node in liftable(machine.get_tree()):
+			var b := n as PhysicsBody3D
+			if b == null or b.has_meta("taken"):
+				continue
+			var d := eye(b).distance_to(t)
+			if d < bd:
+				bd = d
+				best = b # (or a machine: one stuck, a wreck to drag)
 		for n: Node in machine.get_tree().get_nodes_in_group("machines"):
 			var m := n as Machine
 			if m == machine or not m.alive:
@@ -142,6 +149,7 @@ func toggle() -> String:
 	_warned = false
 	p.rope_to = best
 	p.erase("lowering")
+	p.erase("drum")
 	p.rope_len = maxf(eye(best).distance_to(t), hang if kind == "crane" else TOW)
 	if best is RigidBody3D and not best is Machine: # (it swings less, hung on a hook)
 		(best as RigidBody3D).angular_damp = maxf((best as RigidBody3D).angular_damp, 3.0)
@@ -151,6 +159,45 @@ func toggle() -> String:
 			Combat.current.sound("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4), eye(best), 0.0, randf_range(0.8, 0.95))
 	var what := (best as Machine).label if best is Machine else what_is(best)
 	return "Kancada: %s" % what if what != "" else "Kancada"
+
+
+## What the crane would take hold of now: of what's within GRAB of its tip, the one nearest where you
+## look (within AIM_PICK of it), or failing that the nearest the tip; null if nothing.
+func pick() -> PhysicsBody3D:
+	if kind != "crane" or not is_instance_valid(node):
+		return null
+	var t := tip()
+	var best: PhysicsBody3D = null
+	var bd := INF
+	var aim := machine.aim_point
+	for n: Node in liftable(machine.get_tree()):
+		var b := n as PhysicsBody3D
+		if b == null or b.has_meta("taken") or b == hooked():
+			continue
+		var e := eye(b)
+		var dt := e.distance_to(t)
+		if dt > GRAB:
+			continue
+		var da := e.distance_to(aim)
+		var score := da if da < AIM_PICK else 100.0 + dt
+		if score < bd:
+			bd = score
+			best = b
+	return best
+
+
+## The drum by hand: "pay" (out), "haul" (in), "" (it holds where it is, or winds up to hang if it's
+## never been worked since it took hold).
+func work_drum(how: String) -> void:
+	if not hooked() or kind != "crane":
+		return
+	var p: Dictionary = machine.design[index]
+	if how == "":
+		if p.has("drum"):
+			p.drum = "hold"
+	else:
+		p.drum = how
+		p.erase("lowering")
 
 
 ## What there is to take hold of: loads, billets lying, parts off wrecks.
@@ -177,6 +224,7 @@ func _let_go() -> void:
 	p.erase("rope_to")
 	p.erase("rope_len")
 	p.erase("lowering")
+	p.erase("drum")
 
 
 ## Every physics step: the crane slews to the aim; the rope winds in and pulls.
@@ -213,7 +261,18 @@ func update(dt: float) -> void:
 			_show(Vector3.INF)
 			return
 	else:
-		p.rope_len = maxf(len - wind * dt * (1.0 if machine.powered else 0.0), hang if kind == "crane" else TOW)
+		var run := 1.0 if machine.powered else 0.0
+		match str(p.get("drum", "")):
+			"pay":
+				p.rope_len = minf(len + LOWER * dt * run, ROPE_MAX)
+				if l < len - 0.3: # (it's resting on something: the rope'd only go slack)
+					p.rope_len = l + 0.3
+			"haul":
+				p.rope_len = maxf(len - wind * dt * run, hang)
+			"hold":
+				pass
+			_:
+				p.rope_len = maxf(len - wind * dt * run, hang if kind == "crane" else TOW)
 	if l > 30.0: # (torn away: the rope parts)
 		_let_go()
 		return

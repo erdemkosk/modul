@@ -11,6 +11,7 @@ extends Camera3D
 ## The right button held narrows the view to aim at range. `iso` (building): an isometric view, orthographic, looking down at
 ## 35° from one of the four corners (the right drag turns it a corner at a time), the wheel zooming.
 
+var no_zoom := false ## (the right button's the crane's: it hauls, it doesn't zoom)
 var target: Machine
 var terrain: Node
 var yaw := PI
@@ -132,7 +133,7 @@ func _process(dt: float) -> void:
 	else:
 		h_offset = 0.0
 		v_offset = 0.0
-	zoom = not free_mouse and not iso and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) \
+	zoom = not free_mouse and not iso and not no_zoom and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) \
 		and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	var base := float(Settings.get_value("fov"))
 	_fov = lerpf(_fov, base * 0.43 if zoom else base, 1.0 - exp(-12.0 * dt))

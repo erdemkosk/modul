@@ -58,15 +58,19 @@ func _init() -> void:
 		_apply_churned()
 
 
-## Where you begin (START_R m round the spawn) is easy ground: the slopes eased (the heights drawn
-## toward their average over START_BLUR m, wholly in the middle, less and less out to the edge) and
-## little mud (_build_soft), as a first cart's small engine needs.
+## Where you begin is flat ground: within START_FLAT m of the spawn one level (the ground's average
+## there), out to START_R the heights eased back to the valley's own (drawn toward their average over
+## START_BLUR m, less and less outward), and little mud (_build_soft), as a first cart's small engine
+## needs.
 const START_R := 110.0
 const START_BLUR := 16
+const START_FLAT := 60.0
+var _lift := PackedFloat32Array() ## (how far the start's easing moved the ground, over _lift_rect)
+var _lift_rect := Rect2i()
 
 
 func _flatten_start(cx: float, cz: float) -> void:
-	var r := int(START_R) + START_BLUR + 2
+	var r := int(START_R + 40.0) + START_BLUR + 2
 	var gx0 := clampi(int(cx) + half - r, 0, size - 1)
 	var gx1 := clampi(int(cx) + half + r, 0, size - 1)
 	var gz0 := clampi(int(cz) + half - r, 0, size - 1)
@@ -105,13 +109,39 @@ func _flatten_start(cx: float, cz: float) -> void:
 				n -= 1
 			if z >= 0 and z < h:
 				blur[z * w + x] = acc / n
+	var level := 0.0 # (the flat's height: the ground's average round the spawn)
+	var n_level := 0
+	for z in h:
+		for x in w:
+			if Vector2(gx0 + x - half - cx, gz0 + z - half - cz).length() < 30.0:
+				level += blur[z * w + x]
+				n_level += 1
+	level /= maxi(n_level, 1)
+	var r_out := START_R + 40.0
+	_lift_rect = Rect2i(gx0, gz0, w, h)
+	_lift.resize(w * h)
+	_lift.fill(0.0)
 	for z in h:
 		for x in w:
 			var d := Vector2(gx0 + x - half - cx, gz0 + z - half - cz).length()
-			var k := smoothstep(START_R, START_R * 0.45, d)
-			if k > 0.0:
-				var i := (gz0 + z) * size + gx0 + x
-				_heights[i] = lerpf(_heights[i], blur[z * w + x], k * 0.9)
+			var k := smoothstep(r_out, START_R * 0.45, d)
+			if k <= 0.0:
+				continue
+			var i := (gz0 + z) * size + gx0 + x
+			var flat := smoothstep(START_R, START_FLAT, d) # (1 inside START_FLAT: one level)
+			var to := lerpf(blur[z * w + x], level, flat)
+			var was := _heights[i]
+			_heights[i] = lerpf(_heights[i], to, k)
+			_lift[z * w + x] = _heights[i] - was
+
+
+## How far the ground at (x, z) was moved by the start's easing (what's placed from the valley's baked
+## data, its trees and rocks, moves with it).
+func lift_at(x: float, z: float) -> float:
+	var g := Vector2i(roundi(x + half), roundi(z + half)) - _lift_rect.position
+	if _lift.is_empty() or g.x < 0 or g.y < 0 or g.x >= _lift_rect.size.x or g.y >= _lift_rect.size.y:
+		return 0.0
+	return _lift[g.y * _lift_rect.size.x + g.x]
 
 
 ## How much of a start's ease there is at (x, z): 1 in the middle, 0 past START_R.

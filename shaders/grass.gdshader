@@ -31,6 +31,8 @@ uniform vec3 color_a : source_color = vec3(0.11, 0.25, 0.05);
 uniform vec3 color_b : source_color = vec3(0.3, 0.44, 0.1);
 
 global uniform vec3 weather_wind;
+global uniform vec4 grass_press; // xyz your machine, w how far round it the grass is pressed down
+uniform float height_k = 0.55; // (a meadow you can see a log lying in, a wheel turning in)
 global uniform vec4 campfire_clear_a; // xyz the fire, w the radius cleared round it (Campfire)
 global uniform vec4 campfire_clear_b;
 global uniform float weather_wetness;
@@ -122,7 +124,12 @@ void vertex() {
 	// Rotate the clump round Y by a hash.
 	float a = hash12(cell + 2.2) * 6.2831;
 	mat2 rot = mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a)));
-	vec3 v = VERTEX * scale * vec3(clump_scale, 1.0, clump_scale);
+	vec3 v = VERTEX * scale * vec3(clump_scale, height_k, clump_scale);
+	// Pressed down under your machine and laid over away from it (what it drives over it flattens).
+	vec2 off = xz - grass_press.xz;
+	float press = (1.0 - smoothstep(grass_press.w * 0.6, grass_press.w, length(off))) * step(abs(ground - grass_press.y), 4.0);
+	v.y *= 1.0 - 0.85 * press;
+	v.xz += normalize(off + vec2(0.001)) * press * 0.25 * scale;
 	// Far off, a blade a couple of centimetres wide is thinner than a pixel and sparkles in and
 	// out as the camera moves: the blades get broader with distance so each stays a few
 	// pixels wide (the clump reads the same, it just stops crawling).

@@ -42,6 +42,9 @@ var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
 var disarmed: Array[int] = [] ## your guns (by their order) turned off: the rest fire together
+const CLICK := 0.25 ## s: a press shorter than this is a click
+var _lmb_t := -1.0 ## (how long the left button's been down; -1: up)
+var _lmb_on := false
 var _hud: Label
 var _drive_hud: DriveHud
 var pause: PauseMenu
@@ -477,10 +480,55 @@ func _physics_process(dt: float) -> void:
 			_respawn()
 	else:
 		_recover_t = 0.0
-	machine.firing = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var lmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var crane := crane_on_mouse()
+	cam.no_zoom = crane != null
+	if crane:
+		_crane_mouse(crane, lmb, Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, dt)
+		machine.firing = false
+	else:
+		_lmb_t = -1.0
+		machine.firing = lmb
 	machine.keyed = true
 	for g in machine.guns:
 		g.key_down = g.key != 0 and Input.is_physical_key_pressed(g.key)
+
+
+## Your crane, when the mouse works it: there's one and no gun's on (a gun on, the left button fires
+## and the crane's on Y).
+func crane_on_mouse() -> MachineHoist:
+	if not is_instance_valid(machine) or builder.active:
+		return null
+	for g in machine.guns:
+		if g.armed:
+			return null
+	for h in machine.hoists:
+		if h.kind == "crane":
+			return h
+	return null
+
+
+## The left button on the crane: a click takes hold or sets down and lets go; held, the rope pays out.
+## The right held winds it in.
+func _crane_mouse(h: MachineHoist, lmb: bool, rmb: bool, dt: float) -> void:
+	if lmb:
+		_lmb_t = 0.0 if _lmb_t < 0.0 else _lmb_t + dt
+		if _lmb_t >= CLICK:
+			h.work_drum("pay")
+	elif _lmb_t >= 0.0:
+		if _lmb_t < CLICK:
+			var said := h.toggle()
+			if said != "":
+				say(said)
+		else:
+			h.work_drum("")
+		_lmb_t = -1.0
+	if rmb:
+		h.work_drum("haul")
+		_lmb_on = true
+	elif _lmb_on:
+		_lmb_on = false
+		h.work_drum("")
 
 
 ## Where the middle of the screen looks: the first thing along the camera's line (not your own machine).
@@ -616,6 +664,8 @@ func _process(dt: float) -> void:
 		_hud.text = ""
 		return
 	machine.wet = weather.wetness
+	var mp := machine.global_position # (the grass pressed down under it: grass.gdshader)
+	RenderingServer.global_shader_parameter_set(&"grass_press", Vector4(mp.x, mp.y - 1.0, mp.z, 2.4))
 	_life_t += dt
 	_cross.visible = not builder.active
 	_hud.text = ""
