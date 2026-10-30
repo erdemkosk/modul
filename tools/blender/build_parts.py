@@ -39,8 +39,11 @@ Output: assets/parts/<id>.glb, assets/parts/previews/*.png (--render).
   saw        2x1x2  a feller's saw head: a flat circular blade (node Blade, spinning about up round Godot
                     0, -0.4, -0.95; r 0.55) low out in front on two arms, its hydraulic motor over the hub,
                     a guard over its back half, the mount bolted on behind
-  collector  2x2x2  an open steel bin with ribbed walls, low at the front, a small log grab folded on a
-                    post at one corner (the game fills it with billets)
+  wood_cab   2x2x2  the wood age's driver's place: a plank floor, boarded sides, a bench, posts, a plank
+                    roof, a spoked wooden wheel
+  wood_crane 2x1x2  a short timber crane: sills, an iron ring, and slewing (node Top) a post, a pole jib to
+                    its sheave (Godot 0, 1.45, -1.8), a windlass, a box of stones behind
+  wood_rail  1x2x1  a metre of rail fencing: two posts, three rails
   wood_frame 1x1x1  a lattice of hand-hewn timber, not quite square, pegged and nailed
   wood_plate 1x1x1  thick planks nailed across two battens on the cell's outer face
   wood_wedge 1x1x1  planks laid down a slope over two side boards
@@ -50,7 +53,6 @@ Output: assets/parts/<id>.glb, assets/parts/previews/*.png (--render).
 
   wood_wheel 1x2x2  a cart wheel: an iron tyre on a rim of wooden felloes, twelve spokes, a turned hub (node
                     Wheel), on a timber axle block bolted on at its inner face
-  wood_rack  2x2x2  a log cradle: two sills, four stakes up each side, a cross rail at each end
 
   ballista   2x1x2  a ballista on a timber ring: Turret > Gun (the stock, two bow limbs, the string, the
                     windlass), its bolt in the groove (node Rocket0), Muzzle at the stock's nose
@@ -85,8 +87,8 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
          "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1),
          "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1), "crane": (2, 1, 2), "winch": (1, 1, 2),
-         "saw": (2, 1, 2), "collector": (2, 2, 2), "wood_frame": (1, 1, 1), "wood_plate": (1, 1, 1), "wood_wedge": (1, 1, 1),
-         "steer": (1, 1, 1), "wood_wheel": (1, 2, 2), "wood_rack": (2, 2, 2),
+         "saw": (2, 1, 2), "wood_cab": (2, 2, 2), "wood_crane": (2, 1, 2), "wood_rail": (1, 2, 1), "wood_frame": (1, 1, 1), "wood_plate": (1, 1, 1), "wood_wedge": (1, 1, 1),
+         "steer": (1, 1, 1), "wood_wheel": (1, 2, 2),
          "ballista": (2, 1, 2), "catapult": (2, 2, 3), "oilpot": (2, 1, 2), "pitch": (1, 1, 1)}
 
 
@@ -122,6 +124,9 @@ def materials():
     m("WoodPale", (0.4, 0.28, 0.16), rough=0.85)
     m("WoodDark", (0.2, 0.13, 0.075), rough=0.9)
     m("Blade", (0.5, 0.5, 0.52), metal=0.95, rough=0.3)
+    m("Stone", (0.3, 0.29, 0.27), rough=0.95)
+    m("Rope", (0.45, 0.37, 0.24), rough=0.95)
+    m("Iron", (0.1, 0.09, 0.085), metal=0.7, rough=0.65)
 
 
 def ext(cells):
@@ -1210,6 +1215,126 @@ def _nail(name, center, normal, grp="Part"):
     cyl(name, 0.008, 0.006, center, axis=normal, segs=6, mat="SteelDark", grp=grp)
 
 
+def build_wood_cab():
+    """The wood age's driver's place: a plank floor on two sills, low boarded sides, a bench with a back,
+    four corner posts holding a plank roof, a dash board in front and a spoked wooden wheel on its shaft."""
+    import random
+    rng = random.Random(31)
+    s = ext(PARTS["wood_cab"])
+    hx, hy, hz = s.x / 2, s.y / 2, s.z / 2
+    for x in (-hx + 0.08, hx - 0.08):
+        _rough_beam(f"Sill{x}", (0.1, s.y - 0.02, 0.09), (x, 0, -hz + 0.045), rng, mat="WoodDark")
+    for k in range(5):
+        y = -hy + s.y / 10 + k * s.y / 5
+        _rough_beam(f"Floor{k}", (s.x - 0.02, s.y / 5 - 0.012, 0.05), (0, y, -hz + 0.115), rng)
+    for x in (-1, 1):
+        for k in range(3):
+            _rough_beam(f"Side{x}{k}", (0.045, s.y - 0.1, 0.11), (x * (hx - 0.03), 0, -hz + 0.2 + k * 0.115), rng)
+    for k in range(3):
+        _rough_beam(f"Back{k}", (s.x - 0.1, 0.045, 0.11), (0, -hy + 0.03, -hz + 0.2 + k * 0.115), rng)
+    _rough_beam("Dash", (s.x - 0.1, 0.045, 0.3), (0, hy - 0.03, -hz + 0.3), rng, mat="WoodDark")
+    for a in (-1, 1):
+        for b in (-1, 1):
+            _rough_beam(f"Post{a}{b}", (0.08, 0.08, s.z - 0.12), (a * (hx - 0.05), b * (hy - 0.05), 0.0), rng, mat="WoodDark")
+            box(f"Strap{a}{b}", (0.1, 0.1, 0.04), (a * (hx - 0.05), b * (hy - 0.05), -hz + 0.22), "Iron", bev=0.004, grp="Part")
+    for k in range(6):
+        x = -hx + s.x / 12 + k * s.x / 6
+        _rough_beam(f"Roof{k}", (s.x / 6 - 0.01, s.y + 0.08, 0.045), (x, 0.0, hz - 0.03 + (0.02 if k % 2 else 0.0)), rng)
+    for y in (-hy + 0.05, hy - 0.05):
+        _rough_beam(f"Purlin{y}", (s.x - 0.02, 0.07, 0.07), (0, y, hz - 0.09), rng, mat="WoodDark")
+    # the bench, its back and legs
+    _rough_beam("Bench", (s.x - 0.24, 0.3, 0.05), (0, -0.12, -0.12), rng, mat="WoodPale")
+    _rough_beam("BenchBack", (s.x - 0.24, 0.05, 0.28), (0, -0.3, 0.06), rng, mat="WoodPale", base=(0.2, 0, 0))
+    for x in (-0.3, 0.3):
+        for y in (-0.22, -0.02):
+            _rough_beam(f"Leg{x}{y}", (0.05, 0.05, 0.25), (x, y, -0.26), rng, mat="WoodDark")
+    box("Cushion", (s.x - 0.32, 0.26, 0.035), (0, -0.12, -0.08), "Seat", bev=0.012, grp="Part")
+    # the wheel: a shaft out of the dash, four spokes, a rim of bent wood
+    cyl_between("Shaft", (0, hy - 0.06, -0.05), (0, 0.18, 0.12), 0.022, mat="Iron", segs=8, grp="Part")
+    w = Vector((0, 0.17, 0.13))
+    for k in range(16):
+        a0 = k * 2 * PI / 16
+        a1 = a0 + 2 * PI / 16
+        p0 = w + Vector((math.cos(a0) * 0.15, math.sin(a0) * 0.15 * 0.5, -math.sin(a0) * 0.15 * 0.85))
+        p1 = w + Vector((math.cos(a1) * 0.15, math.sin(a1) * 0.15 * 0.5, -math.sin(a1) * 0.15 * 0.85))
+        cyl_between(f"Rim{k}", tuple(p0), tuple(p1), 0.016, mat="Wood", segs=6, grp="Part")
+    for k in range(4):
+        a = k * PI / 2 + PI / 4
+        p1 = w + Vector((math.cos(a) * 0.14, math.sin(a) * 0.14 * 0.5, -math.sin(a) * 0.14 * 0.85))
+        cyl_between(f"Spoke{k}", tuple(w), tuple(p1), 0.01, mat="WoodPale", segs=6, grp="Part")
+    for x in (-1, 1):
+        _nail(f"NailBack{x}", (x * 0.4, -hy + 0.002, -hz + 0.3), "Y")
+
+
+def build_wood_crane():
+    """A small slewing crane of timber: a square sill and an iron ring bolted down, and on it, slewing
+    (Top), a plank table, the king post, a short pole jib out forward to its sheave, a brace under it, a
+    windlass drum with its crank on the post and a box of stones behind for the weight. The game hangs the
+    rope from the tip (Godot 0, 1.45, -1.8)."""
+    import random
+    rng = random.Random(17)
+    sx, sy, sz = ext(PARTS["wood_crane"])
+    hz = sz / 2
+    for y in (-sy / 2 + 0.06, sy / 2 - 0.06):
+        _rough_beam(f"SillY{y}", (sx - 0.04, 0.1, 0.08), (0, y, -hz + 0.04), rng, mat="WoodDark")
+    for x in (-sx / 2 + 0.06, sx / 2 - 0.06):
+        _rough_beam(f"SillX{x}", (0.1, sy - 0.2, 0.08), (x, 0, -hz + 0.04), rng, mat="WoodDark")
+    bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.7, sy * 0.7, grp="Part")
+    cyl("Ring", 0.32, 0.06, (0, 0, -hz + 0.11), segs=32, mat="Iron", grp="Part")
+    # what slews
+    for k in range(4):
+        _rough_beam(f"Table{k}", (0.7, 0.17, 0.05), (0, -0.27 + k * 0.18, hz - 0.08), rng, grp="Top")
+    _rough_beam("Post", (0.16, 0.16, 1.2), (0, -0.05, hz + 0.52), rng, mat="WoodDark", grp="Top")
+    box("PostCap", (0.2, 0.2, 0.05), (0, -0.05, hz + 1.13), "Iron", bev=0.006, grp="Top")
+    tip = Vector((0, 1.8, 1.45))
+    root = Vector((0, -0.05, 1.28))
+    cyl_between("Jib", tuple(root), tuple(tip + Vector((0, 0.05, 0.02))), 0.06, mat="Wood", segs=10, grp="Top")
+    cyl_between("Brace", (0, 0.04, hz + 0.32), tuple(root.lerp(tip, 0.55) + Vector((0, 0, -0.04))), 0.04, mat="WoodDark",
+                segs=8, grp="Top")
+    cyl_between("Stay", (0, -0.05, hz + 1.14), (0, -0.42, hz + 0.32), 0.022, mat="Rope", segs=6, grp="Top")
+    for f in (0.2, 0.55, 0.9):
+        q = root.lerp(tip, f)
+        cyl(f"Band{f}", 0.068, 0.04, tuple(q), axis=tuple((tip - root).normalized()), segs=10, mat="Iron", grp="Top")
+    cyl("Sheave", 0.06, 0.04, tuple(tip), axis="X", segs=16, mat="Iron", grp="Top")
+    for x in (-0.04, 0.04):
+        box(f"Cheek{x}", (0.012, 0.16, 0.14), (x, tip.y, tip.z), "WoodDark", bev=0.003, grp="Top")
+    # the windlass: a drum across the post, a crank each side
+    cyl("Drum", 0.07, 0.34, (0, 0.1, hz + 0.42), axis="X", segs=14, mat="WoodPale", grp="Top")
+    cyl("Wound", 0.08, 0.24, (0, 0.1, hz + 0.42), axis="X", segs=14, mat="Rope", grp="Top")
+    for x in (-1, 1):
+        box(f"Cheek2{x}", (0.03, 0.18, 0.2), (x * 0.19, 0.06, hz + 0.42), "WoodDark", bev=0.004, grp="Top")
+        cyl_between(f"Crank{x}", (x * 0.2, 0.1, hz + 0.42), (x * 0.24, 0.1, hz + 0.42), 0.015, mat="Iron", segs=6, grp="Top")
+        cyl_between(f"Arm{x}", (x * 0.24, 0.1, hz + 0.42), (x * 0.24, 0.1, hz + 0.55), 0.014, mat="Iron", segs=6, grp="Top")
+        cyl_between(f"Grip{x}", (x * 0.24, 0.1, hz + 0.55), (x * 0.3, 0.1, hz + 0.55), 0.02, mat="WoodPale", segs=6, grp="Top")
+    tube("Rope", [(0, 0.17, hz + 0.45), (0, 0.4, 1.2), (0, tip.y - 0.1, tip.z + 0.04)], 0.009, mat="Rope", nring=6, sub=2,
+         grp="Top")
+    # the weight: a plank box of stones behind the post
+    for y in (-0.5, -0.24):
+        _rough_beam(f"BoxEnd{y}", (0.5, 0.04, 0.22), (0, y, hz + 0.08), rng, mat="WoodDark", grp="Top")
+    for x in (-0.24, 0.24):
+        _rough_beam(f"BoxSide{x}", (0.04, 0.3, 0.22), (x, -0.37, hz + 0.08), rng, mat="WoodDark", grp="Top")
+    for k in range(9):
+        r = rng.uniform(0.06, 0.09)
+        cyl(f"Stone{k}", r, r * 1.4, (rng.uniform(-0.16, 0.16), rng.uniform(-0.45, -0.29), hz + 0.12 + rng.uniform(0, 0.08)),
+            axis=(rng.uniform(-1, 1), rng.uniform(-1, 1), 1), segs=7, mat="Stone", grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
+def build_wood_rail():
+    """A metre of rail fencing: two posts, three rails across nailed to them, iron straps at the feet."""
+    import random
+    rng = random.Random(23)
+    s = ext(PARTS["wood_rail"])
+    hx, hz = s.x / 2, s.z / 2
+    for x in (-hx + 0.05, hx - 0.05):
+        _rough_beam(f"Post{x}", (0.07, 0.07, s.z - 0.02), (x, 0, 0), rng, mat="WoodDark")
+        box(f"Foot{x}", (0.09, 0.09, 0.05), (x, 0, -hz + 0.03), "Iron", bev=0.003, grp="Part")
+    for k, z in enumerate((-0.28, 0.08, 0.4)):
+        _rough_beam(f"Rail{k}", (s.x - 0.01, 0.045, 0.1), (0, 0.055, z), rng)
+        for x in (-hx + 0.05, hx - 0.05):
+            _nail(f"Nail{k}{x}", (x, 0.079, z), "Y")
+
+
 def build_wood_frame():
     """A lattice of rough-sawn timber, a touch off square, braced across two sides, pegged and nailed."""
     import random
@@ -1281,11 +1406,14 @@ def build_saw():
     sx, sy, sz = ext(PARTS["saw"])
     hy = sy / 2
     c = Vector((0, 0.95, -0.4))  # (the blade's middle, low: Godot 0, -0.4, -0.95)
-    box("Mount", (sx - 0.06, 0.3, sz - 0.08), (0, -hy + 0.15, 0), "Paint", bev=0.015, grp="Part")
+    import random
+    rng = random.Random(4)
+    for x in (-0.3, 0.0, 0.3):
+        _rough_beam(f"Mount{x}", (0.24, 0.3, sz - 0.08), (x, -hy + 0.15, 0), rng, mat="WoodDark")
     bolts("MountBolt", (0, -hy, 0), (0, -1, 0), sx * 0.7, sz * 0.6, grp="Part")
     for x in (-0.16, 0.16):
-        cyl_between(f"Arm{x}", (x, -hy + 0.25, 0.05), (x * 0.4, c.y - 0.05, c.z + 0.11), 0.045, mat="Paint", grp="Part")
-    box("Yoke", (0.24, 0.2, 0.06), (0, c.y - 0.05, c.z + 0.11), "Paint", bev=0.01, grp="Part")
+        cyl_between(f"Arm{x}", (x, -hy + 0.25, 0.05), (x * 0.4, c.y - 0.05, c.z + 0.11), 0.05, mat="WoodDark", grp="Part")
+    box("Yoke", (0.24, 0.2, 0.06), (0, c.y - 0.05, c.z + 0.11), "Iron", bev=0.01, grp="Part")
     cyl("Motor", 0.08, 0.16, (0, c.y, c.z + 0.2), segs=20, mat="SteelDark", bev=0.01, grp="Part")
     cyl("MotorCap", 0.05, 0.03, (0, c.y, c.z + 0.29), segs=16, mat="Steel", grp="Part")
     for x in (-0.05, 0.05):
@@ -1298,10 +1426,9 @@ def build_saw():
         am = (a0 + a1) / 2
         r = 0.6
         p = c + Vector((math.cos(am) * r * 0.5, math.sin(am) * r * 0.5, 0.06))
-        box(f"Hood{k}", (r, r * math.sin(PI / 12) * 1.05, 0.012), tuple(p), "Paint", rot=(0, 0, am), grp="Part")
+        box(f"Hood{k}", (r, r * math.sin(PI / 12) * 1.05, 0.012), tuple(p), "Iron", rot=(0, 0, am), grp="Part")
         q = c + Vector((math.cos(am) * r, math.sin(am) * r, 0.02))
-        box(f"Rim{k}", (0.012, 2 * r * math.sin(PI / 24) * 1.05, 0.08), tuple(q), "Paint", rot=(0, 0, am), grp="Part")
-    box("GuardStripe", (0.5, 0.004, 0.04), (0, c.y - 0.6, c.z + 0.02), "Hazard", grp="Part")
+        box(f"Rim{k}", (0.012, 2 * r * math.sin(PI / 24) * 1.05, 0.08), tuple(q), "Iron", rot=(0, 0, am), grp="Part")
     # the blade
     cyl("Disc", 0.53, 0.012, tuple(c), segs=48, mat="Blade", grp="Blade")
     cyl("Hub", 0.09, 0.04, tuple(c + Vector((0, 0, 0.015))), segs=20, mat="SteelDark", grp="Blade")
@@ -1314,37 +1441,6 @@ def build_saw():
         p = c + Vector((math.cos(a), math.sin(a), 0)) * 0.545
         box(f"Tooth{k}", (0.05, 0.03, 0.026), tuple(p), "SteelDark", rot=(0, 0, a + 0.5), grp="Blade")
     PIVOTS["Blade"] = tuple(c)
-
-
-def build_collector():
-    """An open steel bin: a floor, four ribbed walls (the front one low, to tip in over), and on a post at
-    one back corner a small log grab, folded, its claws hanging."""
-    s = ext(PARTS["collector"])
-    hx, hy, hz = s.x / 2, s.y / 2, s.z / 2
-    t = 0.03
-    box("Floor", (s.x - 0.02, s.y - 0.02, 0.05), (0, 0, -hz + 0.025), "SteelDark", bev=0.005, grp="Part")
-    bolts("FloorBolt", (0, 0, -hz), (0, 0, -1), s.x * 0.7, s.y * 0.7, grp="Part")
-    for x in (-1, 1):
-        box(f"Side{x}", (t, s.y - 0.02, s.z * 0.72), (x * (hx - t / 2), 0, -hz + s.z * 0.36), "Paint", bev=0.006, grp="Part")
-        for k in range(3):
-            box(f"Rib{x}{k}", (0.03, 0.04, s.z * 0.7), (x * (hx + 0.005), -0.3 + k * 0.3, -hz + s.z * 0.36), "Paint",
-                bev=0.004, grp="Part")
-    box("Back", (s.x - 2 * t, t, s.z * 0.72), (0, -hy + t / 2, -hz + s.z * 0.36), "Paint", bev=0.006, grp="Part")
-    box("Front", (s.x - 2 * t, t, s.z * 0.4), (0, hy - t / 2, -hz + s.z * 0.2), "Paint", bev=0.006, grp="Part")
-    box("Lip", (s.x, 0.06, 0.04), (0, hy - 0.03, -hz + s.z * 0.4), "SteelDark", bev=0.005, grp="Part")
-    box("Stripe", (s.x * 0.8, 0.004, 0.05), (0, hy + 0.001, -hz + s.z * 0.3), "Hazard", grp="Part")
-    px, py = hx - 0.09, -hy + 0.09
-    cyl("Post", 0.05, s.z * 0.95, (px, py, -hz + s.z * 0.475), segs=14, mat="SteelDark", grp="Part")
-    top = Vector((px, py, -hz + s.z * 0.95))
-    elbow = top + Vector((-0.45, 0.3, 0.05))
-    cyl_between("Boom", tuple(top), tuple(elbow), 0.035, mat="Paint", grp="Part")
-    cyl_between("Ram", tuple(top + Vector((0, 0, -0.18))), tuple(top.lerp(elbow, 0.6)), 0.02, mat="Steel", grp="Part")
-    hand = elbow + Vector((-0.6, 0.35, -0.3)) * 0.4
-    cyl_between("Stick", tuple(elbow), tuple(hand), 0.028, mat="Paint", grp="Part")
-    cyl("Rotator", 0.04, 0.06, tuple(hand + Vector((0, 0, -0.04))), segs=12, mat="SteelDark", grp="Part")
-    for a in (-1, 1):
-        tube(f"Claw{a}", [tuple(hand + Vector((0, 0, -0.07))), tuple(hand + Vector((a * 0.1, 0, -0.17))),
-                           tuple(hand + Vector((a * 0.05, 0, -0.27)))], 0.016, mat="SteelDark", nring=6, sub=2, grp="Part")
 
 
 def build_steer():
@@ -1404,26 +1500,6 @@ def build_wood_wheel():
     for o in [o for o in bpy.data.objects if o.get("grp") == "Wheel"]:
         o.location = Vector(o.location) + hub
     return hub
-
-
-def build_wood_rack():
-    """A log cradle: two sills along it on the floor, four stakes up each side leaning out a little, a rail
-    across each end, iron straps at the stakes' feet."""
-    import random
-    rng = random.Random(9)
-    e = ext(PARTS["wood_rack"])
-    hx, hy, hz = e.x / 2, e.y / 2, e.z / 2
-    for x in (-hx + 0.1, hx - 0.1):
-        _rough_beam(f"Sill{x}", (0.1, e.y - 0.02, 0.09), (x, 0, -hz + 0.045), rng, mat="WoodDark")
-    for y in (-hy + 0.08, hy - 0.08):
-        _rough_beam(f"Cross{y}", (e.x - 0.02, 0.09, 0.08), (0, y, -hz + 0.13), rng, mat="WoodDark")
-    for x in (-1, 1):
-        for k, y in enumerate((-hy + 0.08, -0.15, 0.15, hy - 0.08)):
-            _rough_beam(f"Stake{x}{k}", (0.07, 0.07, e.z * 0.8), (x * (hx - 0.05), y, -hz + e.z * 0.42), rng,
-                        base=(0, x * 0.06, 0))
-            box(f"Foot{x}{k}", (0.09, 0.09, 0.03), (x * (hx - 0.05), y, -hz + 0.1), "SteelDark", bev=0.003, grp="Part")
-        _rough_beam(f"Rail{x}", (0.06, e.y - 0.05, 0.06), (x * (hx - 0.03), 0, hz - 0.14), rng)
-    bolts("FloorBolt", (0, 0, -hz), (0, 0, -1), e.x * 0.6, e.y * 0.6, grp="Part")
 
 
 def _timber_ring(sx, sy, hz, rng):
@@ -1563,9 +1639,9 @@ BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge
             "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
             "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston,
             "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel, "crane": build_crane, "winch": build_winch,
-            "saw": build_saw, "collector": build_collector, "wood_frame": build_wood_frame, "wood_plate": build_wood_plate,
+            "saw": build_saw, "wood_cab": build_wood_cab, "wood_crane": build_wood_crane, "wood_rail": build_wood_rail, "wood_frame": build_wood_frame, "wood_plate": build_wood_plate,
             "wood_wedge": build_wood_wedge, "steer": build_steer,
-            "wood_wheel": build_wood_wheel, "wood_rack": build_wood_rack, "ballista": build_ballista,
+            "wood_wheel": build_wood_wheel, "ballista": build_ballista,
             "catapult": build_catapult, "oilpot": build_oilpot, "pitch": build_pitch}
 
 
@@ -1582,8 +1658,8 @@ def icon(pid):
         span *= 1.6
     if pid == "track":
         span *= 0.8  # (the barrels reach past the footprint)
-    if pid == "crane":
-        span = 2.4  # (its boom reaches well past the footprint, up and out)
+    if pid in ("crane", "wood_crane"):
+        span = 2.4 if pid == "crane" else 2.0  # (its boom reaches well past the footprint, up and out)
     d = span * 1.45 + 0.2
     os.makedirs(os.path.join(OUT_DIR, "icons"), exist_ok=True)
     bt.OUT_DIR = OUT_DIR
@@ -1592,6 +1668,8 @@ def icon(pid):
     target = Vector((0, 0.15 * span if pid in ("minigun", "cannon") else 0.0, 0))
     if pid == "crane":
         target = Vector((0, 1.1, 0.85))
+    if pid == "wood_crane":
+        target = Vector((0, 0.8, 0.7))
     cam.location = target + Vector((d * 0.75, d * 0.95, d * 0.62))
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     cd.lens = 50

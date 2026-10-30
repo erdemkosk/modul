@@ -67,7 +67,7 @@ func _build() -> void:
 			_put("wood_frame", Vector3i(x, 0, z))
 	var cx := 0
 	var cz := z0
-	_put("cab", Vector3i(cx, 1, cz))
+	_put("wood_cab", Vector3i(cx, 1, cz))
 	_put("engine" if big or style == "kocbasi" else "engine_s", Vector3i(cx, 1, cz + 2))
 	match style:
 		"okcu":

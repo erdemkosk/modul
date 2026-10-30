@@ -78,8 +78,13 @@ const DEFS := {
 		"about": "Arkadan halat (N): 12 m'deki yükü ya da aracı bağlar, sarıp yanına çeker; yükü sürükle, saplanmış aracı çamurdan çek. N yine çözer. 4 t çeker."},
 	"saw": {"name": "Testere", "size": Vector3i(2, 1, 2), "mass": 95.0, "kind": "saw", "hp": 160.0, "scrap": 12,
 		"about": "Önde yatay dairesel testere (R: çalıştır/durdur). Dönerken ağaca sür: gövdeyi keser, ağaç devrilir ve kütüklere ayrılır; kütük ve kütükleri de doğrar. Aküden 3 kW çeker. Araca da keser."},
-	"collector": {"name": "Toplama kasası", "size": Vector3i(2, 2, 2), "mass": 180.0, "kind": "collector", "hp": 220.0, "holds": 8, "scrap": 10,
-		"about": "Kepçeli açık kasa: 4 m'deki kütükleri kendiliğinden içine alır (en çok 8). Atölyenin yanına getirince odun depoya iner."},
+	"wood_cab": {"name": "Sürücü yeri", "size": Vector3i(2, 2, 2), "mass": 90.0, "kind": "cab", "hp": 420.0, "burns": true,
+		"about": "Tahta sandık üstünde sürücü sırası, kalas çatı. Her araçta bir tane olur, sökülmez; yanar."},
+	"wood_crane": {"name": "Ahşap vinç", "size": Vector3i(2, 1, 2), "mass": 85.0, "kind": "crane", "hp": 90.0, "lift": 450.0,
+		"wood": 6, "burns": true, "reach": Vector2(0.5, 1.7), "tip": Vector3(0.0, 1.45, -1.8), "root": Vector3(0.0, 1.25, -0.1), "hang": 1.1, "wind": 1.4,
+		"about": "Kısa kollu döner vinç (6 odun) (Y): baktığın yere döner. Kanca kütüğün üstündeyken Y: tutar, kaldırır; kasanın üstüne çevir, Y: bırakır. 450 kg kaldırır."},
+	"wood_rail": {"name": "Parmaklık", "size": Vector3i(1, 2, 1), "mass": 9.0, "kind": "rail", "hp": 35.0, "wood": 1, "burns": true,
+		"about": "Bir metre boyunda tahta parmaklık (1 odun): kasanın kenarına diz, üstüne koyduğun kütükler düşmesin."},
 	"wood_frame": {"name": "Ahşap kafes", "size": Vector3i(1, 1, 1), "mass": 34.0, "kind": "block", "hp": 45.0, "wood": 2, "burns": true,
 		"about": "Elde yontulmuş kalaslardan kafes (2 odun). Çelik kafesten iki kat ağır, kolay kırılır, alev alır."},
 	"wood_plate": {"name": "Kalas kaplama", "size": Vector3i(1, 1, 1), "mass": 20.0, "kind": "block", "hp": 60.0, "wood": 1, "burns": true,
@@ -89,8 +94,6 @@ const DEFS := {
 	"wood_wheel": {"name": "Ahşap tekerlek", "size": Vector3i(1, 2, 2), "mass": 62.0, "kind": "wheel", "hp": 60.0,
 		"radius": 0.42, "width": 0.12, "rated": 380.0, "travel": 0.05, "lugs": 0.0, "iron": true, "wood": 3, "burns": true,
 		"about": "Tahta jantlı, demir çemberli araba tekerleği (3 odun). Yaysız, dar: sarsar, çamura gömülür, kayar; ağırdır, kırılır, yanar."},
-	"wood_rack": {"name": "Kütük sepeti", "size": Vector3i(2, 2, 2), "mass": 48.0, "kind": "rack", "hp": 60.0, "holds": 6, "wood": 4, "burns": true,
-		"about": "Kazıklı tahta beşik (4 odun): toplama kasasının alabileceğine 6 kütük katar. Kasa olmadan kendi toplamaz. Yanar."},
 	"ballista": {"name": "Arbalet", "size": Vector3i(2, 1, 2), "mass": 75.0, "kind": "weapon", "hp": 90.0, "weapon": "ballista",
 		"wood": 5, "burns": true,
 		"about": "Döner kaideli büyük yay (5 odun): 2,4 sn'de bir ok, 80 m/s. Delip arkasındaki parçaya da işler. Yanına katran fıçısı takarsan oklar yanar: ahşabı tutuşturur. Aküsüz çalışır."},
@@ -105,8 +108,8 @@ const DEFS := {
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
-const ORDER := ["wood_frame", "wood_plate", "wood_wedge", "wood_wheel", "wood_rack", "ballista", "catapult", "oilpot", "pitch", "frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
-	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "steer", "turret", "ammo", "barrel", "crane", "winch", "saw", "collector", "cab"]
+const ORDER := ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel", "wood_crane", "ballista", "catapult", "oilpot", "pitch", "frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
+	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "steer", "turret", "ammo", "barrel", "crane", "winch", "saw", "cab", "wood_cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
 ## Hit points by part (what a hit takes off; at 0 it comes off), if a part doesn't say its own.
@@ -115,6 +118,16 @@ const HP := {"cab": 600.0, "frame": 70.0, "armor": 320.0, "wedge": 220.0, "wheel
 
 static func def(id: String) -> Dictionary:
 	return DEFS.get(id, {})
+
+
+## A driver's place (the cab, or the wood age's seat): one to a machine, never taken off.
+static func is_cab(id: String) -> bool:
+	return str(def(id).get("kind", "")) == "cab"
+
+
+## The valley's parts come to hand a few at a time: one's shown in the builder once this much wood
+## has been brought home all told (Inventory.delivered); what isn't here is there from the start.
+const OPENS := {"wood_wedge": 10, "steer": 10, "pitch": 40, "ballista": 25, "oilpot": 40, "catapult": 70}
 
 
 static func hp_of(id: String) -> float:

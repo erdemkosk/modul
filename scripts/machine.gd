@@ -91,7 +91,7 @@ var firing := false
 var guns: Array[MachineGun] = []
 var flippers: Array[MachineFlipper] = []
 var hoists: Array[MachineHoist] = [] ## (its cranes and winches)
-var tools: Array[MachineTool] = [] ## (its saws and collectors)
+var tools: Array[MachineTool] = [] ## (its saws)
 var joints: Array[MachineJoint] = []
 var _chain := {} ## part index -> the joints that carry it, outermost first
 var _shapes := {} ## part index -> [[its CollisionShape3D, its box at rest]]
@@ -134,7 +134,7 @@ var _root: Node3D
 var _scenes := {}
 var _lamps: Array[SpotLight3D] = []
 var _glows: Array[Node3D] = []
-var _engine_sound: AudioStreamPlayer3D
+var _engine_sound: EngineSound
 var _roll_sound: AudioStreamPlayer3D
 var _rpm := 0.0
 var _fx: Node3D ## the wheels' spray (rebuilt with the parts)
@@ -145,7 +145,7 @@ func _ready() -> void:
 	add_to_group(Hearing.GROUP) # (the terrain makes its soft ground's ruts round these)
 	add_to_group("machines")
 	collision_layer = 2
-	collision_mask = 1 | 2
+	collision_mask = 1 | 2 | 4 # (and what lies about: billets, wrecks' parts; they ride on a bed)
 	continuous_cd = true
 	can_sleep = false
 	contact_monitor = true
@@ -160,7 +160,8 @@ func _ready() -> void:
 	_catch.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_WHEN_MOVED
 	_catch.top_level = true
 	add_child(_catch)
-	_engine_sound = _loop("res://assets/audio/engine_low_loop.ogg", -8.0)
+	_engine_sound = EngineSound.new()
+	add_child(_engine_sound)
 	_roll_sound = _loop("res://assets/audio/dirt_roll_loop.ogg", -60.0)
 	rebuild()
 
@@ -185,7 +186,7 @@ func part_at(cell: Vector3i) -> int:
 
 func cab_index() -> int:
 	for i in design.size():
-		if design[i].id == "cab":
+		if Parts.is_cab(design[i].id):
 			return i
 	return -1
 
@@ -193,7 +194,7 @@ func cab_index() -> int:
 ## Can `id` go at `at` turned `rot`: its cells free, and touching a part it can be bolted to
 ## (not a wheel's or a light's side), a second cab never.
 func can_place(id: String, at: Vector3i, rot: int) -> bool:
-	if id == "cab" and cab_index() >= 0:
+	if Parts.is_cab(id) and cab_index() >= 0:
 		return false
 	if Parts.def(id).kind == "track" and rot % 2 == 1:
 		return false # (a track runs fore and aft)
@@ -231,7 +232,7 @@ func place(id: String, at: Vector3i, rot: int) -> bool:
 
 ## Off it comes, unless it's the cab or something would be left hanging by nothing.
 func can_remove(i: int) -> bool:
-	if i < 0 or i >= design.size() or design[i].id == "cab":
+	if i < 0 or i >= design.size() or Parts.is_cab(design[i].id):
 		return false
 	return _connected_without(i)
 
@@ -409,7 +410,14 @@ func rebuild() -> void:
 				ho.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				hoists.append(ho)
 				_add_shape(ext * Vector3(0.9, 0.8, 0.9), xf.origin)
-			"saw", "collector", "rack":
+			"rail": # (a fence a metre high, a plank thick: what's on the bed stays on)
+				var r := xf.basis.orthonormalized()
+				var half := Vector3(0.24, 0.49, 0.05)
+				var box := Vector3(absf(r.x.x) * half.x + absf(r.y.x) * half.y + absf(r.z.x) * half.z,
+					absf(r.x.y) * half.x + absf(r.y.y) * half.y + absf(r.z.y) * half.z,
+					absf(r.x.z) * half.x + absf(r.y.z) * half.y + absf(r.z.z) * half.z) * 2.0
+				_add_shape(box, xf.origin)
+			"saw":
 				var tl := MachineTool.make(self, node, i, p.id)
 				tl.key = int(p.get("key", 0))
 				tl.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
@@ -921,7 +929,7 @@ func immobile() -> bool:
 ## The cab's share of its hit points left (1 without one).
 func cab_frac() -> float:
 	var i := cab_index()
-	return clampf(float(design[i].hp) / Parts.hp_of("cab"), 0.0, 1.0) if i >= 0 else 0.0
+	return clampf(float(design[i].hp) / Parts.hp_of(design[i].id), 0.0, 1.0) if i >= 0 else 0.0
 
 
 ## The battery: the alternators in (with the engines' revs), the cab, the lights and the guns out.
@@ -1037,8 +1045,15 @@ func _process(dt: float) -> void:
 
 
 func _update_sound(touching: int, dt: float) -> void:
-	if _engine_sound.stream == null:
-		return
+	# the wheels on the ground (engine or none: a cart rolls downhill too)
+	var roll := clampf(absf(speed) / 8.0, 0.0, 1.0) * (1.0 if touching > 0 else 0.0)
+	if _roll_sound.stream:
+		if roll > 0.02 and not _roll_sound.playing:
+			_roll_sound.play()
+		elif roll <= 0.02 and _roll_sound.playing:
+			_roll_sound.stop()
+		_roll_sound.volume_db = linear_to_db(maxf(roll * 0.5, 0.0001))
+		_roll_sound.pitch_scale = 0.85 + roll * 0.3
 	if power_kw <= 0.0:
 		if _engine_sound.playing:
 			_engine_sound.stop()
@@ -1047,12 +1062,8 @@ func _update_sound(touching: int, dt: float) -> void:
 		_engine_sound.play()
 	var want := clampf(absf(speed) / 18.0, 0.0, 1.0) * 0.6 + absf(throttle) * 0.4
 	_rpm = move_toward(_rpm, want, dt * 1.5)
-	_engine_sound.pitch_scale = 0.7 + _rpm * 0.9
-	_engine_sound.volume_db = -10.0 + _rpm * 8.0
-	var roll := clampf(absf(speed) / 8.0, 0.0, 1.0) * (1.0 if touching > 0 else 0.0)
-	if roll > 0.02 and not _roll_sound.playing:
-		_roll_sound.play()
-	_roll_sound.volume_db = linear_to_db(maxf(roll * 0.5, 0.0001))
+	var hurt := clampf((0.7 - power_kw / maxf(_full_power, 1.0)) / 0.5, 0.0, 1.0) # (a badly hurt engine misses)
+	_engine_sound.update(self, _rpm, absf(throttle), hurt, dt)
 
 
 # --- Taking hits --------------------------------------------------------------------------------
@@ -1410,7 +1421,7 @@ const AMMO_PUSH := 3200.0
 ## Part `i` off, and whatever hung on only through it; the cab: all of it (an ammo box goes up).
 func break_off(i: int) -> void:
 	var gone: Array[int] = []
-	if design[i].id == "cab":
+	if Parts.is_cab(design[i].id):
 		for j in design.size():
 			gone.append(j)
 	else:
@@ -1434,7 +1445,7 @@ func break_off(i: int) -> void:
 		if c:
 			var v := velocity_at(xf.origin) + (xf.origin - com_global()).normalized() * randf_range(2.0, 6.0) + Vector3.UP * randf_range(2.0, 5.0)
 			c.debris(p.id, xf, v, Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * spin_scale, _scenes[p.id], self,
-				float(p.hp) > 0.0 and p.id != "cab") # (whole: it came away with another, or the cab went)
+				float(p.hp) > 0.0 and not Parts.is_cab(p.id)) # (whole: it came away with another, or the cab went)
 	gone.sort()
 	gone.reverse()
 	for j in gone:
@@ -1516,7 +1527,7 @@ func _part_near(p: Vector3) -> int:
 func health() -> float:
 	var have := 0.0
 	for p: Dictionary in design:
-		have += maxf(float(p.hp), 0.0) * (2.0 if p.id == "cab" else 1.0)
+		have += maxf(float(p.hp), 0.0) * (2.0 if Parts.is_cab(p.id) else 1.0)
 	return have / maxf(_built_hp, 1.0)
 
 
@@ -1527,7 +1538,7 @@ func _note_built() -> void:
 	_full_power = maxf(power_kw, 1.0)
 	_built_hp = 0.0
 	for p: Dictionary in design:
-		_built_hp += Parts.hp_of(p.id) * (2.0 if p.id == "cab" else 1.0)
+		_built_hp += Parts.hp_of(p.id) * (2.0 if Parts.is_cab(p.id) else 1.0)
 
 
 ## Where the wheels' spray goes (freed with the parts on a rebuild).
@@ -1752,22 +1763,12 @@ func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
 	apply_impulse.call_deferred(-push * 0.25, at - global_position)
 	if Combat.current:
 		Combat.current.call_deferred("_impact", at, -v.normalized(), "metal", clampf(speed / 10.0, 0.3, 1.0))
-		Combat.current.call_deferred("sound", "res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), at, 4.0, randf_range(0.7, 0.9))
+		Combat.current.call_deferred("sound", ("res://assets/audio/wood/log_drop_0%d.wav" % randi_range(1, 3)) if other is Node and (other as Node).is_in_group(Timber.GROUP) \
+			else ("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3)), at, 4.0, randf_range(0.7, 0.9))
 
 
 ## The cranes and winches on `code` (Y a crane with no key of its own, N a winch): hooked on or let
 ## go. What they did, in words ("" if none answers to it).
-## How many billets its bins hold together (a collector's, and the racks it fills).
-func bin_holds() -> int:
-	var n := 0
-	var bins := false
-	for t in tools:
-		if t.kind in ["collector", "rack"]:
-			n += int(Parts.def(design[t.index].id).holds)
-			bins = bins or t.kind == "collector"
-	return n if bins else 0
-
-
 ## The tools on `code` (R for a saw with no key of its own) toggled: what's said, "" if none answers.
 func tool_key(code: int) -> String:
 	var said := ""

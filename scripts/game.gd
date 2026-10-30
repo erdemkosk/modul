@@ -61,7 +61,7 @@ func _ready() -> void:
 	place_name = "TEST ALANI" if arena else "VADİ"
 	Builder.keep_wear = Mode.current == "valley" # (the valley's parts are worn and stay so)
 	if Mode.current == "valley" and Builder.save_path == "user://design.json":
-		Builder.save_path = "user://valley_design.json" # (the valley's machine is its own: built from what you hold)
+		Builder.save_path = "user://valley_design2.json" # (the valley's machine is its own: built from what you hold; the 2: the wood age's start)
 	weather = Weather.new()
 	weather.hour = 11.0
 	weather.day_length_minutes = 0.0 if arena else 40.0
@@ -184,7 +184,7 @@ func _valley_salvage() -> void:
 			return true
 		var plan := Parts.plan_of(id)
 		if Parts.wood_cost(id) > 0:
-			say("%s için %d odun gerek, depoda %d: testereyle ağaç kes, kasayla topla" % [Parts.def(id).name, Parts.wood_cost(id), Inventory.wood])
+			say("%s için %d odun gerek, depoda %d" % [Parts.def(id).name, Parts.wood_cost(id), Inventory.wood])
 		elif plan != "" and not Inventory.knows(plan):
 			say("%s için plan yok (%s): harabelerde, devlerde, uzun seferlerde ara" % [Parts.def(id).name, Parts.PLANS[plan].name])
 		elif Parts.metal_cost(id) > 0:
@@ -200,6 +200,7 @@ func _valley_salvage() -> void:
 			p.hp = Parts.hp_of(p.id) * Inventory.taken
 			m.rebuild())
 	builder.removed.connect(func(id: String, _at: Vector3i, _rot: int) -> void: Inventory.add(id, 1, builder.removed_cond))
+	builder.offered = func(id: String) -> bool: return Inventory.shown(id)
 	builder.price_note = func(id: String) -> String:
 		var b := Inventory.best(id)
 		if Inventory.count(id) <= 0 and Parts.wood_cost(id) > 0:
@@ -257,7 +258,8 @@ func _spawn(data: Array, xf: Transform3D, team: int, ai := false) -> Machine:
 			if Mode.current == "valley":
 				Inventory.add_scrap(3) # (what's left of it)
 			kills += 1
-			say("%s PARÇALANDI  ·  %d" % [m.label, kills]))
+			if arena:
+				say("%s PARÇALANDI  ·  %d" % [m.label, kills]))
 	return m
 
 

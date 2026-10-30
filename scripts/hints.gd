@@ -2,7 +2,9 @@ class_name Hints
 extends CanvasLayer
 ## The first time you're at something (driving, building, the valley's work), a card saying how it's
 ## done: the keys that matter there, once each (kept in the settings: "hints_seen"). It goes after
-## a while, or at once with H; Esc's pause menu has none of it.
+## a while, or at once with H; Esc's pause menu has none of it. The valley's come one step at a time:
+## driving, then felling, then loading (once a tree's down), then home (once something's on the bed),
+## the rest once wood's been brought home.
 
 const CARDS := {
 	"drive": ["SÜRÜŞ", [["W  S", "ileri · geri"], ["A  D", "direksiyon · Space fren"], ["Fare · sol tık", "nişan al · ateş et"],
@@ -11,17 +13,13 @@ const CARDS := {
 	"build": ["İNŞA", [["Sol tık · sağ tık", "parça tak · sök"], ["1-0, Q E Z X C F H", "parça seç (üstteki sekmeler de)"],
 		["R · T · M", "çevir · devir (yan, ters) · ayna"], ["K", "fare üstteki silaha / çeviriciye tuş ver"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],
 		["B", "sür"]]],
-	"valley_wood": ["ODUN", [["R · testere", "çalıştır, ağaca sür: gövdeyi keser, ağaç devrilir, kütüklere ayrılır"],
-		["Toplama kasası", "yanından geçtiğin kütükleri içine alır (en çok 8)"], ["Atölye", "kasayı yanına getir: odun depoya iner"],
-		["Ahşap parçalar", "inşada AHŞAP: odunla yapılır; ağır, çabuk kırılır, alev alır"],
-		["Silahlar", "arbalet, mancınık, kaynar yağ: odundan; yanına katran fıçısı: yanan ok ve çömlek"],
-		["Planlar", "metal parça planla yapılır: harabelerin zulasında, devlerde, uzun seferlerde ışıklı tüp"],
-		["Direksiyon mafsalı", "üstündekini A/D ile çevirir; tuş verirsen (K) o tuşla"]]],
-	"valley_lift": ["VADİ", [["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Y · vinç", "kancayı yükün üstüne getir, Y: kaldırır; kasana çevir, Y: bırakır"], ["N · çeki vinci", "arkadaki yükü ya da saplanmış aracı bağlar, sarıp çeker"],
-		["Teslim", "yükü gideceği yerin halkasına indir, bırak"],
-		["V", "atölye kamyonuna bin / in: inşa ve onarım sadece onun yanında"], ["Işıklı parçalar", "enkazdan çıkan parçalar yıpranmıştır: yüzdesi yazar"],
-		["Hurda", "atölyede onarımın bedeli: seferlerden, enkazdan"], ["Yağmur", "çamur derinleşir, geçitler taşar; yollar heyelanla kapanır"],
-		["Dev makineler", "vurarak değil, sökerek devrilir: silahını, paletini kopar"]]],
+	"valley_drive": ["SÜRÜŞ", [["W  S", "ileri · geri"], ["A  D", "direksiyon · Space fren"], ["C", "kamera"]]],
+	"valley_wood": ["AĞAÇ KES", [["R", "testereyi çalıştır"], ["Ağaca sür", "gövde kesilir, ağaç devrilir, kütüklere ayrılır"]]],
+	"valley_load": ["YÜKLE", [["Fare", "vinç baktığın yere döner"], ["Y", "kanca kütüğün üstündeyken: tutar, kaldırır"],
+		["Kasaya çevir · Y", "bırakır: parmaklıklar düşürmez"]]],
+	"valley_home": ["EVE GÖTÜR", [["Atölye", "kamyonun yanına sür, dur: kütükler odun olur"], ["B", "atölyenin yanında: odunla yeni parça yap"]]],
+	"valley_lift": ["VADİ", [["V", "atölye kamyonuna bin / in: onu da taşıyabilirsin"], ["Enkaz parçaları", "vinçle yükle, atölyeye getir: senin olur"],
+		["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Yağmur", "çamur derinleşir, geçitler taşar"]]],
 }
 const SHOW_FOR := 14.0 ## s a card stays
 
@@ -50,9 +48,30 @@ func _process(dt: float) -> void:
 	if b and b.active:
 		_show("build")
 	elif game.get("player_input") and is_instance_valid(game.get("machine")):
-		_show("drive")
-		if Mode.current == "valley" and _card == null:
-			_show("valley_wood" if not "valley_wood" in _seen else "valley_lift")
+		if Mode.current != "valley":
+			_show("drive")
+			return
+		_show("valley_drive")
+		if _card != null:
+			return
+		_show("valley_wood")
+		if _card == null and Timber.lying() > 0:
+			_show("valley_load")
+		if _card == null and "valley_load" in _seen and _loaded():
+			_show("valley_home")
+		if _card == null and Inventory.delivered > 0:
+			_show("valley_lift")
+
+
+## Is anything riding on your machine (a billet, a wreck's part)?
+func _loaded() -> bool:
+	var m: Machine = game.get("machine")
+	if not is_instance_valid(m):
+		return false
+	for n: Node in get_tree().get_nodes_in_group(Timber.GROUP):
+		if Workshop._riding(n as Node3D, m):
+			return true
+	return false
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

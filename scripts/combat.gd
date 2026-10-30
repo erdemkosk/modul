@@ -1150,7 +1150,9 @@ const LOOKS := {
 	"smoke": {"color": Color(0.45, 0.42, 0.38), "amount": 0.8, "speed": Vector2(1.0, 3.0), "life": 2.5, "size": Vector2(2.5, 5.0), "gravity": -0.4, "glow": 0.0},
 	"flash": {"color": Color(1.0, 0.75, 0.4), "amount": 0.5, "speed": Vector2(4.0, 10.0), "life": 0.15, "size": Vector2(1.0, 2.0), "gravity": 0.0, "glow": 6.0},
 	"column": {"color": Color(0.2, 0.19, 0.18), "amount": 0.7, "speed": Vector2(1.0, 3.5), "life": 7.0, "size": Vector2(3.0, 7.0), "gravity": -0.7, "glow": 0.0},
-	"sawdust": {"color": Color(0.66, 0.52, 0.34), "amount": 0.5, "speed": Vector2(2.0, 5.0), "life": 0.8, "size": Vector2(0.06, 0.14), "gravity": 6.0, "glow": 0.0},
+	"sawdust": {"color": Color(0.66, 0.52, 0.34), "amount": 0.7, "speed": Vector2(2.0, 6.0), "life": 0.9, "size": Vector2(0.05, 0.12), "gravity": 6.0, "glow": 0.0},
+	"chips": {"color": Color(0.74, 0.6, 0.4), "amount": 0.5, "speed": Vector2(4.0, 10.0), "life": 1.1, "size": Vector2(0.08, 0.18), "gravity": 11.0, "glow": 0.0},
+	"needles": {"color": Color(0.33, 0.38, 0.18), "amount": 0.9, "speed": Vector2(0.5, 2.0), "life": 2.6, "size": Vector2(0.06, 0.16), "gravity": 1.6, "glow": 0.0},
 	"embers": {"color": Color(1.0, 0.55, 0.15), "amount": 0.8, "speed": Vector2(6.0, 15.0), "life": 1.6, "size": Vector2(0.08, 0.18), "gravity": 9.8, "glow": 10.0},
 }
 
@@ -1166,7 +1168,7 @@ func _burst(at: Vector3, kind: String, strength: float, dir := Vector3.UP) -> vo
 	var sz: Vector2 = look.size
 	m.color = look.color
 	m.direction = (dir + Vector3.UP * 0.4).normalized()
-	m.spread = 35.0 if kind in ["dirt", "metal", "flash"] else 180.0
+	m.spread = 35.0 if kind in ["dirt", "metal", "flash", "chips", "sawdust"] else 180.0
 	m.initial_velocity_min = sp.x * strength
 	m.initial_velocity_max = sp.y * strength
 	m.gravity = Vector3(0, -float(look.gravity), 0)
@@ -1222,8 +1224,12 @@ func sound(path: String, at: Vector3, db := 0.0, pitch := 1.0) -> void:
 	var s: AudioStream = _streams[path]
 	if s == null:
 		return
-	var p := _players[_player_i]
-	_player_i = (_player_i + 1) % SOUNDS
+	# a free player first: taking the next in turn cut off long ones (a blast, a crash) still sounding
+	var k := 0
+	while k < SOUNDS - 1 and _players[(_player_i + k) % SOUNDS].playing:
+		k += 1
+	var p := _players[(_player_i + k) % SOUNDS]
+	_player_i = (_player_i + k + 1) % SOUNDS
 	p.stream = s
 	p.global_position = at
 	p.volume_db = db

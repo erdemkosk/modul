@@ -23,6 +23,10 @@ static var save_path := "user://design.json" ## (tests point it elsewhere)
 var guard: Callable
 ## What a part costs here, for the part's card ("" when nothing does).
 var price_note: Callable
+## Is a part offered at all (id) -> bool (the valley: what can be had now, Inventory.shown); unset: all.
+## A ready design's shown only if all its parts are.
+var offered: Callable
+var _preset_btns: Array[Button] = []
 var swap_guard: Callable ## (old rows, new rows) -> bool: may the machine become `new`? (the valley: if what you hold covers it)
 signal removed(id: String, at: Vector3i, rot: int)
 signal placed(i: int) ## (part `i` of the design was just bolted on)
@@ -44,10 +48,11 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N", "U", "I", "O",
 	"J", "P", "G", "Y", "L"]
 ## The cards' groups.
-const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
+const GROUPS := [["AHŞAP", ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel"]],
+	["YÜK", ["wood_crane", "crane", "winch", "saw"]], ["ORTAÇAĞ", ["ballista", "pitch", "oilpot", "catapult"]],
+	["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
 	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel", "flipper"]],
-	["HAREKET", ["turret", "steer", "hinge", "rotor", "piston"]], ["YÜK", ["crane", "winch"]], ["ALET", ["saw", "collector"]],
-	["AHŞAP", ["wood_frame", "wood_plate", "wood_wedge", "wood_wheel", "wood_rack"]]]
+	["HAREKET", ["turret", "steer", "hinge", "rotor", "piston"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine
@@ -310,6 +315,7 @@ func _build_designs() -> void:
 			b.custom_minimum_size = Vector2(0, 66)
 		b.tooltip_text = str(Designs.PRESETS[i][1])
 		b.pressed.connect(load_preset.bind(i))
+		_preset_btns.append(b)
 
 
 ## Under them: the tools, paper buttons with their keys, three to a row.
@@ -407,7 +413,7 @@ func _build_cards() -> void:
 	_tiles_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_tiles_box.add_theme_constant_override("separation", 8)
 	col.add_child(_tiles_box)
-	var ids := Parts.ORDER.filter(func(i: String) -> bool: return i != "cab")
+	var ids := Parts.ORDER.filter(func(i: String) -> bool: return not Parts.is_cab(i))
 	for g: Array in GROUPS:
 		for id: String in g[1]:
 			var k := ids.find(id)
@@ -431,7 +437,7 @@ func _show_group(gi: int, sound: bool) -> void:
 	var ids: Array = GROUPS[gi][1]
 	for id: String in _cards:
 		var c := _cards[id] as Control
-		var show := id in ids
+		var show := id in ids and _offers(id)
 		if show and not c.visible:
 			c.visible = true
 			c.modulate.a = 0.0
@@ -680,9 +686,45 @@ func set_active(on: bool) -> void:
 		_root.modulate.a = 0.0
 		_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.2)
 		_refresh_slots()
+		_apply_offered()
 	else:
 		save()
 	_refresh()
+
+
+## Is `id` offered here (see `offered`)?
+func _offers(id: String) -> bool:
+	return not offered.is_valid() or bool(offered.call(id))
+
+
+## Only what's offered: the cards, the groups that have any, the ready designs all of whose parts are.
+func _apply_offered() -> void:
+	if _tiles_box == null:
+		return
+	var first := -1
+	for gi: int in _tabs:
+		var any := false
+		for id: String in GROUPS[gi][1]:
+			any = any or _offers(id)
+		(_tabs[gi] as Button).visible = any
+		if any and first < 0:
+			first = gi
+	for i in _preset_btns.size():
+		var ok := true
+		for e: Array in Designs.preset(i):
+			if not Parts.is_cab(str(e[0])) and not _offers(str(e[0])) and not machine.design.any(func(p: Dictionary) -> bool: return p.id == str(e[0])):
+				ok = false
+				break
+		_preset_btns[i].visible = ok
+	if not (_tabs.get(_group) as Button).visible and first >= 0:
+		_show_group(first, false)
+	else:
+		_show_group(_group, false)
+	if not _offers(selected):
+		for id: String in GROUPS[_group][1]:
+			if _offers(id):
+				select(id, false)
+				break
 
 
 func set_iso(on: bool) -> void:
@@ -873,7 +915,7 @@ func _on_clear() -> void:
 	var keep: Array = [["cab", 0, 1, 0, 0]]
 	if cab >= 0:
 		var p: Dictionary = machine.design[cab]
-		keep = [["cab", p.at.x, p.at.y, p.at.z, p.rot]]
+		keep = [[p.id, p.at.x, p.at.y, p.at.z, p.rot]]
 	_swap_design(keep)
 
 
@@ -946,9 +988,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if key and key.pressed and not key.echo:
-		var ids := Parts.ORDER.filter(func(i: String) -> bool: return i != "cab")
+		var ids := Parts.ORDER.filter(func(i: String) -> bool: return not Parts.is_cab(i))
 		var n := KEYS.find(key.keycode)
-		if n >= 0 and n < ids.size():
+		if n >= 0 and n < ids.size() and _offers(ids[n]):
 			select(ids[n])
 			get_viewport().set_input_as_handled()
 		elif key.keycode == KEY_R:
@@ -1162,7 +1204,7 @@ func mirrored(id: String, at: Vector3i, r: int) -> Dictionary:
 	if cab < 0:
 		return {}
 	var cp: Dictionary = machine.design[cab]
-	var mid2: int = cp.at.x * 2 + Parts.size_of("cab", cp.rot).x # (twice the middle, in cells)
+	var mid2: int = cp.at.x * 2 + Parts.size_of(cp.id, cp.rot).x # (twice the middle, in cells)
 	var r2 := r
 	if str(Parts.def(id).kind) in ["wheel", "track"]:
 		r2 = (r + 2) % 4 if r % 2 == 0 else r

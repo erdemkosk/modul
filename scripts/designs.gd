@@ -4,8 +4,12 @@ extends RefCounted
 ## the builder's ready designs (PRESETS), and the ones the other side drives in the arena (F7's
 ## rivals are Forge's, a new one each time).
 
-## The builder's ready designs: [name, what it is, the function].
+## The builder's ready designs: [name, what it is, the function]. The wood age's haulers first (the
+## valley's builder shows only those it has the parts for: Inventory.shown).
 const PRESETS := [
+	["KÜTÜKÇÜ", "Başlangıç arabası: önde testere, sürücü yerinin üstünde kısa vinç, arkada parmaklıklı kasa.", "logger_cart"],
+	["YÜK ARABASI", "Testeresiz, uzun parmaklıklı kasa, altı tekerlek: çok kütük taşır.", "hauler"],
+	["ÇİFT VİNÇLİ", "Testere, iki kısa vinç, uzun kasa: keser, yükler, taşır.", "logger"],
 	["GEZGİN", "Başlangıç aracı: dört yol tekerleği, bir motor.", "starter"],
 	["AKINCI", "Hafif ve çevik: minigun, küçük gövde.", "raider"],
 	["TOPÇU", "Ağır: top, zırh, iki motor, arazi tekerleği.", "tank"],
@@ -27,11 +31,58 @@ static func starter() -> Array:
 	return out
 
 
-## The valley's first machine: the starter with a saw out in front and a bin on the back (what wood
-## is got with: Timber).
+## The valley's first machine: the wood age's cart (cart()).
 static func valley_start() -> Array:
-	var out := starter()
-	out.append_array([["saw", 0, 0, -4, 0], ["collector", 0, 0, 4, 0]])
+	return logger_cart()
+
+
+## The wood age's cart: a 2 x 3 m bed of timber (frames under the seat and the engine, planks laid
+## flat behind), the driver's seat, a small engine beside it, the short wooden crane on the seat's roof,
+## the saw out in front, a rail fence round the load bed, four wooden wheels. ~1.3 t, 40 kW: slow.
+## What it fells it lifts onto its own bed and carries home.
+static func cart(length := 4) -> Array:
+	var out: Array = []
+	var z1 := length - 1 # (the load bed: z 0 .. z1)
+	for x in range(-1, 3):
+		for z in range(-2, 0):
+			out.append(["wood_frame", x, 0, z, 0])
+		for z in range(0, z1 + 1):
+			out.append(["wood_plate", x, 0, z, 12]) # (planks up)
+	out.append_array([["wood_cab", 0, 1, -2, 0], ["engine_s", -1, 1, -2, 0], ["wood_crane", 0, 3, -2, 0]])
+	for z in range(0, z1 + 1):
+		out.append(["wood_rail", -1, 1, z, 1])
+		out.append(["wood_rail", 2, 1, z, 1])
+	out.append(["wood_rail", 0, 1, z1, 0])
+	out.append(["wood_rail", 1, 1, z1, 0])
+	var zs: Array = [-2, z1 - 1] if length <= 4 else [-2, 1, z1 - 1]
+	for z in zs:
+		out.append(["wood_wheel", 3, -1, z, 0])
+		out.append(["wood_wheel", -2, -1, z, 2])
+	return out
+
+
+## KÜTÜKÇÜ: the cart with its saw out in front.
+static func logger_cart() -> Array:
+	var out := cart()
+	out.append(["saw", 0, 0, -4, 0])
+	return out
+
+
+## YÜK ARABASI: no saw, a bed twice as long on six wheels.
+static func hauler() -> Array:
+	return cart(8)
+
+
+## ÇİFT VİNÇLİ: the saw, a long bed on six wheels, a second crane on a post of frames at the bed's end.
+static func logger() -> Array:
+	var out := cart(7)
+	out.append(["saw", 0, 0, -4, 0])
+	for e: Array in out:
+		if e[0] == "wood_rail" and e[3] == 6 and e[1] in [0, 1]:
+			e[0] = "x"
+	out = out.filter(func(e: Array) -> bool: return e[0] != "x")
+	out.append_array([["wood_frame", 0, 1, 6, 0], ["wood_frame", 1, 1, 6, 0], ["wood_frame", 0, 2, 6, 0], ["wood_frame", 1, 2, 6, 0],
+		["wood_crane", 0, 3, 6, 2]])
 	return out
 
 

@@ -48,6 +48,7 @@ func _init() -> void:
 		_surfaces[id] = Surface.preset(id)
 	var s: Dictionary = meta.spawn
 	var at := Vector3(s.x, 0.0, s.z)
+	_flatten_start(at.x, at.z)
 	at.y = height_at(at.x, at.z)
 	spawn = Transform3D(Basis(Vector3.UP, deg_to_rad(float(s.heading))), at)
 	_build_soft()
@@ -55,6 +56,68 @@ func _init() -> void:
 		RutStore.load_marks()
 	if not RutStore.churned.is_empty():
 		_apply_churned()
+
+
+## Where you begin (START_R m round the spawn) is easy ground: the slopes eased (the heights drawn
+## toward their average over START_BLUR m, wholly in the middle, less and less out to the edge) and
+## little mud (_build_soft), as a first cart's small engine needs.
+const START_R := 110.0
+const START_BLUR := 16
+
+
+func _flatten_start(cx: float, cz: float) -> void:
+	var r := int(START_R) + START_BLUR + 2
+	var gx0 := clampi(int(cx) + half - r, 0, size - 1)
+	var gx1 := clampi(int(cx) + half + r, 0, size - 1)
+	var gz0 := clampi(int(cz) + half - r, 0, size - 1)
+	var gz1 := clampi(int(cz) + half + r, 0, size - 1)
+	var w := gx1 - gx0 + 1
+	var h := gz1 - gz0 + 1
+	var rows := PackedFloat32Array()
+	rows.resize(w * h)
+	for z in h: # (along x, then along z: a box blur each way)
+		var acc := 0.0
+		var n := 0
+		for x in range(-START_BLUR, w + START_BLUR):
+			var add := x + START_BLUR
+			if add < w:
+				acc += _heights[(gz0 + z) * size + gx0 + add]
+				n += 1
+			var out := x - START_BLUR - 1
+			if out >= 0:
+				acc -= _heights[(gz0 + z) * size + gx0 + out]
+				n -= 1
+			if x >= 0 and x < w:
+				rows[z * w + x] = acc / n
+	var blur := PackedFloat32Array()
+	blur.resize(w * h)
+	for x in w:
+		var acc := 0.0
+		var n := 0
+		for z in range(-START_BLUR, h + START_BLUR):
+			var add := z + START_BLUR
+			if add < h:
+				acc += rows[add * w + x]
+				n += 1
+			var out := z - START_BLUR - 1
+			if out >= 0:
+				acc -= rows[out * w + x]
+				n -= 1
+			if z >= 0 and z < h:
+				blur[z * w + x] = acc / n
+	for z in h:
+		for x in w:
+			var d := Vector2(gx0 + x - half - cx, gz0 + z - half - cz).length()
+			var k := smoothstep(START_R, START_R * 0.45, d)
+			if k > 0.0:
+				var i := (gz0 + z) * size + gx0 + x
+				_heights[i] = lerpf(_heights[i], blur[z * w + x], k * 0.9)
+
+
+## How much of a start's ease there is at (x, z): 1 in the middle, 0 past START_R.
+func start_ease(x: float, z: float) -> float:
+	var s: Dictionary = meta.spawn
+	return smoothstep(START_R * 1.1, START_R * 0.5, Vector2(x - float(s.x), z - float(s.z)).length())
 
 
 func _read_gz(file: String, raw_size: int) -> PackedByteArray:
@@ -429,6 +492,7 @@ func _build_soft() -> void:
 			mud = maxf(mud, smoothstep(5.5, 2.0, river[k]) * (0.2 + blob))
 			mud = maxf(mud, shore * (0.1 + blob) * 0.9)
 			mud *= 1.0 - rock * 0.95
+			mud *= 1.0 - 0.9 * start_ease((tx + 0.5) * step - half, (tz + 0.5) * step - half) # (the start's dry)
 			var snow := zone_snow[k] * (0.3 + blob)
 			snow = maxf(snow, snow_s * blob)
 			snow = maxf(snow, smoothstep(snowline, snowline + 35.0, h) * (0.05 + blob) * (1.0 - rock * 0.8))

@@ -448,6 +448,7 @@ func _wood_steps() -> Array:
 			_m.invulnerable = true
 			_m.brake = 1.0],
 		[1.5, func(_s: float) -> void: _cam(PI * 0.8, -0.22, 7.5), func() -> void: _shoot("wood_machine")],
+		[1.0, func(_s: float) -> void: _cam(PI * 0.8, -0.45, 45.0), func() -> void: _shoot("start_area")],
 		[0.5, _noop, func() -> void:
 			var props := Timber.props_of(_g)
 			var at := _m.global_position
@@ -461,36 +462,50 @@ func _wood_steps() -> Array:
 			_st.base = base
 			_m.tool_key(KEY_R)
 			_m.brake = 0.0],
-		[3.2, func(_s: float) -> void:
-			_m.throttle = 0.25
+		[2.6, func(_s: float) -> void:
+			_m.throttle = 0.3
 			var d: Vector3 = _st.d
 			_look_at(Vector3(_st.base), -0.12, 9.0)
 			(_g.get("cam") as OrbitCamera).yaw += 1.0, func() -> void: _shoot("sawing")],
+		[8.0, func(_s: float) -> void:
+			_m.throttle = 0.3 if not Timber.props_of(_g).cut.has(int(_st.tree)) else 0.0
+			_look_at(Vector3(_st.base), -0.12, 9.0), _none],
 		[1.4, func(_s: float) -> void:
 			_m.throttle = 0.0
 			_m.brake = 1.0
 			_look_at(Vector3(_st.base), -0.05, 24.0)
 			(_g.get("cam") as OrbitCamera).yaw += 1.4, func() -> void: _shoot("falling")],
 		[5.0, func(_s: float) -> void: _look_at(Vector3(_st.base) + Vector3(_st.d) * 6.0, -0.3, 16.0), func() -> void: _shoot("billets")],
+		# loading: the crane over a billet, Y, lifted, swung over the bed, set down (twice)
 		[0.5, _noop, func() -> void:
 			_m.tool_key(KEY_R)
-			var mid := Vector3.ZERO
-			var k := 0
-			for b: Node in get_nodes_in_group(Timber.GROUP):
-				mid += (b as Node3D).global_position
-				k += 1
-			mid /= maxi(k, 1)
-			_st.mid = mid
-			_put_at(mid - Vector3(_st.d) * 2.3)
-			_m.global_basis = Basis(Vector3.UP, atan2(-Vector3(_st.d).x, -Vector3(_st.d).z))],
-		[0.35, func(_s: float) -> void: _cam(PI * 0.75 + _m.global_basis.get_euler().y, -0.3, 9.0), func() -> void: _shoot("gathering")],
-		[4.0, func(_s: float) -> void: _cam(PI * 0.85 + _m.global_basis.get_euler().y, -0.45, 6.5), func() -> void: _shoot("bin_full")],
+			_next_billet()],
+		[2.5, func(_s: float) -> void:
+			_m.aim_point = (_st.b as Node3D).global_position
+			_cam(PI * 0.7 + _m.global_basis.get_euler().y, -0.25, 9.0), func() -> void:
+			_m.hoist_key(KEY_Y)],
+		[2.6, func(_s: float) -> void:
+			_m.aim_point = (_st.b as Node3D).global_position + Vector3.UP * 0.5, func() -> void: _shoot("crane_lifting")],
+		[3.5, func(_s: float) -> void: _m.aim_point = _m.global_transform * Vector3(0.25, 1.0, 0.9), func() -> void: _shoot("crane_over_bed")],
+		[3.5, func(_s: float) -> void:
+			if _s < 0.02:
+				_m.hoist_key(KEY_Y), func() -> void: _shoot("set_down")],
+		[0.5, _noop, func() -> void: _next_billet(true)],
+		[2.5, func(_s: float) -> void: _m.aim_point = (_st.b as Node3D).global_position, func() -> void: _m.hoist_key(KEY_Y)],
+		[2.6, func(_s: float) -> void: _m.aim_point = (_st.b as Node3D).global_position + Vector3.UP * 0.5, _none],
+		[3.5, func(_s: float) -> void: _m.aim_point = _m.global_transform * Vector3(0.25, 1.0, 0.4), _none],
+		[3.5, func(_s: float) -> void:
+			if _s < 0.02:
+				_m.hoist_key(KEY_Y)
+			_cam(PI * 0.9 + _m.global_basis.get_euler().y, -0.55, 7.0), func() -> void: _shoot("loaded")],
+		# the HUD as you'd see it driving
+		[2.0, func(_s: float) -> void: _cam(_m.global_basis.get_euler().y, -0.2, 10.0), func() -> void: _shoot("driving_view")],
 		[0.5, _noop, func() -> void:
 			var d := []
 			for x in range(-1, 3):
 				for z in range(-2, 4):
 					d.append(["wood_frame", x, 0, z, 0])
-			d.append_array([["cab", 0, 1, 0, 0], ["engine", 0, 1, 2, 0],
+			d.append_array([["wood_cab", 0, 1, 0, 0], ["engine", 0, 1, 2, 0],
 				["wheel_s", 3, -1, -2, 0], ["wheel_s", 3, -1, 2, 0], ["wheel_s", -2, -1, -2, 2], ["wheel_s", -2, -1, 2, 2]])
 			for z in range(-2, 4):
 				d.append(["wood_plate", -1, 1, z, 1])
@@ -511,7 +526,7 @@ func _wood_steps() -> Array:
 			var shop: Workshop = _g.get("workshop")
 			_st.range = shop.truck.global_position + Vector3(45, 0, 0)
 			var d := Designs.valley_start()
-			d.append_array([["ballista", 0, 3, 0, 0], ["pitch", 2, 3, 0, 0], ["steer", -1, 1, -1, 0], ["wood_rack", 0, 2, 4, 0]])
+			d.append_array([["ballista", 0, 3, 0, 0], ["pitch", 2, 3, 0, 0]])
 			_m.from_data(d)
 			_put_at(Vector3(_st.range))
 			_m.global_basis = Basis(Vector3.UP, -PI * 0.5)
@@ -566,6 +581,19 @@ func _wood_steps() -> Array:
 	]
 
 
+## The cart put beside a billet lying (not one on its bed), its seat by it: `_st.b`.
+func _next_billet(keep_place := false) -> void:
+	for n: Node in get_nodes_in_group(Timber.GROUP):
+		if not Workshop._riding(n as Node3D, _m) and n != _st.get("b"):
+			_st.b = n
+			if not keep_place or (n as Node3D).global_position.distance_to(_m.global_position) > 3.5:
+				var at := (n as Node3D).global_position
+				var yaw := _m.global_basis.get_euler().y
+				_put_at(at - Basis(Vector3.UP, yaw).x * 1.5 + Basis(Vector3.UP, yaw).z * 0.6)
+				_m.global_basis = Basis(Vector3.UP, yaw)
+			return
+
+
 ## A wooden cart of the other side's at `at` (no crew).
 func _cart(at: Vector3) -> Machine:
 	var made := WoodForge.make(11, 1, "okcu")
@@ -589,6 +617,10 @@ func _put_at(at: Vector3) -> void:
 	_m.angular_velocity = Vector3.ZERO
 	_m.brake = 1.0
 	_m.set_down()
+
+
+func _none() -> void:
+	pass
 
 
 func _noop(_s: float) -> void:

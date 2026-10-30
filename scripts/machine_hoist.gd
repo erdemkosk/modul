@@ -8,7 +8,8 @@ extends RefCounted
 ##   crane  (the part "crane": Y) slews round to where you look, its rope from a trolley that runs
 ##          out along its jib to as far as you look (REACH: so it sets a load down on your own bed as
 ##          well as picking one up beside you). Y with the hook over a load (within GRAB of the tip, below or beside it):
-##          hooked, and the drum winds it up till it hangs HANG under the tip; Y again lets it go.
+##          hooked, and the drum winds it up till it hangs HANG under the tip; Y again pays the rope out
+##          till the load rests on something (LOWER m/s; LOWER_MAX s at most), and then lets it go.
 ##          So: hook it, look round over your bed, set it down there. It lifts its `lift` (1.5 t) at
 ##          most: heavier, the rope's as tight as it'll go and the load stays on the ground. And no
 ##          more than its machine stands up to (a load moment limiter, as a real one has): the load's
@@ -18,6 +19,11 @@ extends RefCounted
 ##          within GRAB_WINCH behind, the rope as long as it is, and winds it in to TOW; it pulls
 ##          `lift` (4 t) at most. Dragging a load, or pulling a machine (yours, sunk) out of the mud.
 ##
+## The wood age's crane ("wood_crane") is the same, smaller: a short pole jib (its own `tip`, `root`,
+## `reach` and `hang` in its part's def), 450 kg. What a crane takes hold of: a load, a billet lying
+## (Timber), a part off a wreck (Salvage): set on your own bed, it rides there (rails keep it on) and
+## it's taken into the store beside the workshop (Workshop).
+##
 ## The rope is drawn between the two (a thin line); the hook hangs at its end.
 
 const GRAB := 6.0 ## m from the crane's tip a load can be hooked
@@ -25,6 +31,8 @@ const GRAB_WINCH := 12.0
 const HANG := 1.4 ## m the crane winds the rope in to
 const TOW := 3.0 ## m the winch winds the rope in to
 const WIND := 0.9 ## m/s the drum winds
+const LOWER := 1.2 ## m/s it pays out, setting a load down
+const LOWER_MAX := 4.0 ## s
 const SLEW := 1.4 ## rad/s the crane turns
 const TIP := Vector3(0.0, 1.85, -2.5) ## the crane's sheave, in the part's space with the boom straight ahead
 const ROOT := Vector3(0.0, 1.5, -0.1) ## where its jib leaves the post
@@ -38,6 +46,12 @@ var index := -1 ## its part in the design
 var kind := "crane"
 var key := 0
 var lift := 1500.0 ## kg
+var tip_at := TIP ## (its own, if its part says: the wood age's is shorter)
+var root_at := ROOT
+var reach_range := REACH
+var hang := HANG
+var wind := WIND
+var _lower_t := 0.0
 var condition := 1.0
 var boom: Node3D ## (the crane's: what slews)
 var slew := 0.0 ## rad, the boom turned from straight ahead (left +)
@@ -57,9 +71,15 @@ static func make(m: Machine, part: Node3D, i: int, id: String) -> MachineHoist:
 	h.kind = str(Parts.def(id).kind)
 	h.lift = float(Parts.def(id).get("lift", 1500.0))
 	h.boom = part.find_child("Top", true, false) as Node3D
+	var d := Parts.def(id)
+	h.tip_at = d.get("tip", TIP)
+	h.root_at = d.get("root", ROOT)
+	h.reach_range = d.get("reach", REACH)
+	h.hang = float(d.get("hang", HANG))
+	h.wind = float(d.get("wind", WIND))
 	var p: Dictionary = m.design[i]
 	h.slew = float(p.get("slew", 0.0))
-	h.reach = float(p.get("reach", REACH.y))
+	h.reach = clampf(float(p.get("reach", h.reach_range.y)), h.reach_range.x, h.reach_range.y)
 	return h
 
 
@@ -72,8 +92,8 @@ func hooked() -> PhysicsBody3D:
 ## Where the rope leaves it (world).
 func tip() -> Vector3:
 	if kind == "crane":
-		var f := (reach - absf(ROOT.z)) / (absf(TIP.z) - absf(ROOT.z))
-		return node.global_transform * (Basis(Vector3.UP, slew) * ROOT.lerp(TIP, f))
+		var f := (reach - absf(root_at.z)) / (absf(tip_at.z) - absf(root_at.z))
+		return node.global_transform * (Basis(Vector3.UP, slew) * root_at.lerp(tip_at, f))
 	return node.global_transform * FAIRLEAD
 
 
@@ -81,6 +101,8 @@ func tip() -> Vector3:
 static func eye(b: PhysicsBody3D) -> Vector3:
 	if b is Machine:
 		return (b as Machine).com_global()
+	if not b.has_meta("size"): # (a billet, a part off a wreck: by its middle)
+		return b.global_position + Vector3.UP * 0.12
 	var size: Vector3 = b.get_meta("size", Vector3.ONE)
 	return b.global_transform * Vector3(0.0, size.y * 0.5, 0.0)
 
@@ -88,13 +110,19 @@ static func eye(b: PhysicsBody3D) -> Vector3:
 ## Y / N: hook on, or let go. Says what happened (for the screen); "" if nothing.
 func toggle() -> String:
 	if hooked():
+		if kind == "crane" and not machine.design[index].has("lowering"):
+			machine.design[index].lowering = true # (set down first, then let go: update())
+			_lower_t = 0.0
+			return "İndiriyor"
 		_let_go()
 		return "%s bıraktı" % ("Vinç" if kind == "crane" else "Halat")
 	var t := tip()
 	var best: PhysicsBody3D = null
 	var bd := GRAB if kind == "crane" else GRAB_WINCH
-	for n: Node in machine.get_tree().get_nodes_in_group("loads"):
+	for n: Node in liftable(machine.get_tree()):
 		var b := n as PhysicsBody3D
+		if b == null or b.has_meta("taken"):
+			continue
 		var d := eye(b).distance_to(t)
 		if d < bd:
 			bd = d
@@ -113,17 +141,42 @@ func toggle() -> String:
 	var p: Dictionary = machine.design[index]
 	_warned = false
 	p.rope_to = best
-	p.rope_len = maxf(eye(best).distance_to(t), HANG if kind == "crane" else TOW)
+	p.erase("lowering")
+	p.rope_len = maxf(eye(best).distance_to(t), hang if kind == "crane" else TOW)
+	if best is RigidBody3D and not best is Machine: # (it swings less, hung on a hook)
+		(best as RigidBody3D).angular_damp = maxf((best as RigidBody3D).angular_damp, 3.0)
 	if Combat.current:
-		Combat.current.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), eye(best), 0.0, 0.8)
-	var what := str(best.get_meta("title", "")) if not best is Machine else (best as Machine).label
+		Combat.current.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), eye(best), -3.0 if best.is_in_group(Timber.GROUP) else 0.0, 0.8)
+		if best.is_in_group(Timber.GROUP): # (the hook's iron on the chain, and the log knocked as it takes)
+			Combat.current.sound("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4), eye(best), 0.0, randf_range(0.8, 0.95))
+	var what := (best as Machine).label if best is Machine else what_is(best)
 	return "Kancada: %s" % what if what != "" else "Kancada"
+
+
+## What there is to take hold of: loads, billets lying, parts off wrecks.
+static func liftable(tree: SceneTree) -> Array[Node]:
+	var out := tree.get_nodes_in_group("loads")
+	out.append_array(tree.get_nodes_in_group(Timber.GROUP))
+	for n: Node in tree.get_nodes_in_group("salvage"):
+		if not n.has_meta("plan"):
+			out.append(n)
+	return out
+
+
+## A load's name, in a word or two.
+static func what_is(b: Node) -> String:
+	if b.is_in_group(Timber.GROUP):
+		return "kütük"
+	if b.has_meta("salvage"):
+		return Parts.def(str(b.get_meta("salvage"))).get("name", "parça")
+	return str(b.get_meta("title", ""))
 
 
 func _let_go() -> void:
 	var p: Dictionary = machine.design[index]
 	p.erase("rope_to")
 	p.erase("rope_len")
+	p.erase("lowering")
 
 
 ## Every physics step: the crane slews to the aim; the rope winds in and pulls.
@@ -137,7 +190,7 @@ func update(dt: float) -> void:
 			var turn := clampf(angle_difference(slew, want), -SLEW * dt, SLEW * dt) * (1.0 if machine.powered else 0.0)
 			slew = wrapf(slew + turn, -PI, PI)
 			machine.design[index].slew = slew
-			var out := clampf(Vector2(to.x, to.z).length(), REACH.x, REACH.y)
+			var out := clampf(Vector2(to.x, to.z).length(), reach_range.x, reach_range.y)
 			reach = move_toward(reach, out, TROLLEY * dt)
 			machine.design[index].reach = reach
 		boom.transform = Transform3D(Basis(Vector3.UP, slew), Vector3.ZERO)
@@ -147,11 +200,20 @@ func update(dt: float) -> void:
 		return
 	var p: Dictionary = machine.design[index]
 	var len := float(p.rope_len)
-	p.rope_len = maxf(len - WIND * dt * (1.0 if machine.powered else 0.0), HANG if kind == "crane" else TOW)
 	var t := tip()
 	var e := eye(b)
 	var d := e - t
 	var l := d.length()
+	if p.has("lowering"): # (paying out: once the rope's gone slack under it, it's down)
+		_lower_t += dt
+		p.rope_len = len + LOWER * dt
+		var still := (b as RigidBody3D).linear_velocity.length() < 0.5 if b is RigidBody3D else true
+		if (l < float(p.rope_len) - 0.25 and still) or _lower_t > LOWER_MAX:
+			_let_go()
+			_show(Vector3.INF)
+			return
+	else:
+		p.rope_len = maxf(len - wind * dt * (1.0 if machine.powered else 0.0), hang if kind == "crane" else TOW)
 	if l > 30.0: # (torn away: the rope parts)
 		_let_go()
 		return
@@ -200,7 +262,7 @@ func _steady(t: Vector3, u: Vector3) -> float:
 	var per := ((t - e).cross(u)).dot(axis)
 	if signf(per) == signf(held) or absf(per) < 0.001:
 		return INF
-	return absf(held) * 0.85 / absf(per)
+	return absf(held) * 0.7 / absf(per)
 
 
 ## The rope drawn from the tip to `e` (INF: none), the hook at its end.

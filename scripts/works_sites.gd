@@ -133,8 +133,6 @@ func _physics_process(_dt: float) -> void:
 		var up := not (s.nodes as Array).is_empty()
 		if d < NEAR and not up:
 			_raise(i)
-			if not s.cleared and game.has_method("say"):
-				game.call("say", "Korunan saha yakında: %s" % s.name)
 		elif d > FAR and up:
 			_lower(i)
 

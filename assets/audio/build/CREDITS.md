@@ -15,3 +15,6 @@ files are released under CC0 as well.
 | `heavy_01.wav` | [399449](https://freesound.org/people/celadon_noise/sounds/399449/) | celadon_noise | an iron gate shutting, 0.00-1.20 s |
 | `tick.wav` | [399011](https://freesound.org/people/Anthousai/sounds/399011/) | Anthousai | wrench tap |
 | `turn.wav` | [495238](https://freesound.org/people/CallFlan/sounds/495238/) | CallFlan | a single ratchet click |
+
+10-30: `bolt_on_01`, `bolt_on_03` and `bolt_off_01` stopped dead mid-sound (cut from a longer burst); they
+now fade over their last 0.06-0.12 s instead of clicking off.

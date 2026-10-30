@@ -78,13 +78,16 @@ func _physics_process(_d: float) -> bool:
 			Input.action_press("left")
 			_next("turn")
 		"turn":
-			if since < 3.0:
+			var y := _m.global_basis.get_euler().y # (added up a step at a time: it may go right round)
+			_r.turned = float(_r.get("turned", 0.0)) + angle_difference(float(_r.yaw), y)
+			_r.yaw = y
+			if since < 1.2: # (full lock at 60 km/h: the first moment's what tells; after it, it may spin)
 				return false
 			Input.action_release("left")
 			Input.action_release("throttle")
-			var turned := rad_to_deg(angle_difference(float(_r.yaw), _m.global_basis.get_euler().y))
-			print("A 3 s: turned %.0f deg" % turned)
-			_expect(turned > 25.0, "A turns it left")
+			var turned := rad_to_deg(float(_r.turned))
+			print("A 1.2 s: turned %.0f deg" % turned)
+			_expect(turned > 15.0, "A turns it left")
 			Input.action_press("brake")
 			_next("stop")
 		"stop":

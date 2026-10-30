@@ -62,7 +62,8 @@ func _check(data: Array, what: String, style := "", tier := 0) -> void:
 	var s := _sum(data)
 	_expect(s.cab == 1, "%s: one cab (%d)" % [what, s.cab])
 	var kwt: float = s.power / (s.mass / 1000.0)
-	_expect(kwt >= 55.0 + 8.0 * tier, "%s: power for its weight %.0f kW/t (%.0f kg, %.0f kW)" % [what, kwt, s.mass, s.power])
+	var carts := data.any(func(e: Array) -> bool: return str(e[0]) == "wood_cab") # (the wood age's haulers: slow on purpose)
+	_expect(kwt >= (18.0 if carts else 55.0 + 8.0 * tier), "%s: power for its weight %.0f kW/t (%.0f kg, %.0f kW)" % [what, kwt, s.mass, s.power])
 	_expect(s.rated >= s.mass * 1.05, "%s: running gear rated %.0f for %.0f kg" % [what, s.rated, s.mass])
 	if style == "rammer" or style == "spinner":
 		_expect((s.guns as Array).is_empty(), "%s: a rammer or a spinner carries no gun" % what)
@@ -133,7 +134,7 @@ func _physics_process(_d: float) -> bool:
 			var data := Designs.preset(i)
 			_check(data, "preset %s" % Designs.PRESETS[i][0])
 		builder.set_active(true)
-		builder.load_preset(5)
+		builder.load_preset(Designs.PRESETS.map(func(p: Array) -> String: return str(p[0])).find("ATEŞBAZ"))
 		var me: Machine = _g.get("machine")
 		_expect(me.guns.size() >= 1 and me.guns[0].kind == "flamer", "the builder loads ATEŞBAZ (flamer: %s)" % [me.guns.map(func(g: MachineGun) -> String: return g.kind)])
 		builder.set_active(false)

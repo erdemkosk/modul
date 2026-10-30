@@ -6,8 +6,10 @@ extends Node
 ## SWAP of it), and back: it's slow and heavy (3 t), it sinks where your machine wouldn't, and it
 ## carries what your machine can't (Expeditions). Left, it's braked.
 ##
-## Wood: a collector's bin brought beside it is emptied into the store (Inventory.wood); the wood age's
-## weapons are stocked again there (bolts, stones, oil: a quarter of a load for a billet, ARM_EVERY s).
+## What's brought home is taken in: billets (Timber) and wrecks' parts (Salvage) set down within YARD of
+## it, or riding on your machine's bed stopped within REACH, go into the store one at a time (TAKE_EVERY
+## s): wood into Inventory.wood, parts into what you hold. The wood age's weapons are stocked again
+## there (bolts, stones, oil: a quarter of a load for a billet, ARM_EVERY s).
 ## Mending: your machine stopped beside it, its hurt parts are put right a little at a time, the steel
 ## paid in scrap (Inventory.scrap: SCRAP_PER for each whole part's worth), the wooden in wood
 ## (Inventory.wood: WOOD_PER); what there's nothing to pay for waits; a part that's gone stays gone.
@@ -19,6 +21,8 @@ const MEND := 0.05 ## of a part's hit points a step
 const MEND_EVERY := 0.5 ## s
 const SCRAP_PER := 10.0 ## scrap a whole part's worth of mending costs
 const WOOD_PER := 2.0 ## billets a whole wooden part's worth of mending costs
+const YARD := 12.0 ## m round the truck what's set down is taken in
+const TAKE_EVERY := 0.35 ## s
 
 static var path := "user://valley_workshop.cfg" ## (tests point it elsewhere)
 
@@ -32,6 +36,9 @@ var _save_t := 0.0
 var _owe := 0.0
 var _owe_wood := 0.0
 var _arm_t := 0.0
+var _take_t := 0.0
+var _brought := 0 ## (wood taken in this time: said once it's all in)
+var _brought_t := 0.0
 const ARM_EVERY := 1.0 ## s
 
 
@@ -138,8 +145,15 @@ func _physics_process(dt: float) -> void:
 		save()
 	# mending: your machine, stopped beside it, not being built on
 	var m := yours()
-	if m and near(m) and Inventory.bin > 0 and not m.tools.is_empty():
-		_unload(m)
+	_take_t -= dt
+	if _take_t <= 0.0:
+		_take_t = TAKE_EVERY
+		_take_in(m)
+	if _brought > 0:
+		_brought_t -= dt
+		if _brought_t <= 0.0:
+			game.call("say", "+%d odun  ·  depoda %d" % [_brought, Inventory.wood])
+			_brought = 0
 	if m and near(m) and not driving():
 		_arm_t += dt
 		if _arm_t >= ARM_EVERY:
@@ -220,16 +234,45 @@ static func compass(a: float) -> String:
 	return names[posmod(roundi(a / (TAU / 8.0)), 8)]
 
 
-## The bin's billets into the store.
-func _unload(m: Machine) -> void:
-	var n := Inventory.bin
-	Inventory.bin = 0
-	Inventory.add_wood(n)
-	for t in m.tools:
-		t.show_pile()
-	if Combat.current:
-		Combat.current.sound("res://assets/audio/build/heavy_01.wav", m.global_position, 0.0, 0.9)
-	game.call("say", "+%d odun depoya indi  ·  depoda %d" % [n, Inventory.wood])
+## One thing brought home taken in: set down in the yard, or riding on `m` stopped near.
+func _take_in(m: Machine) -> void:
+	var shop := truck.global_position
+	var on_bed := m != null and near(m) and absf(m.speed) < 0.6 and not m.building
+	for n: Node in get_tree().get_nodes_in_group(Timber.GROUP) + get_tree().get_nodes_in_group("salvage"):
+		var b := n as RigidBody3D
+		if b == null or b.has_meta("taken") or b.has_meta("plan") or b.linear_velocity.length() > 1.2:
+			continue
+		var in_yard := b.global_position.distance_to(shop) < YARD
+		if not in_yard and not (on_bed and _riding(b, m)):
+			continue
+		var to := truck.global_transform * Vector3(0.0, 1.6, 1.5)
+		if b.is_in_group(Timber.GROUP):
+			var w := Timber.worth(b)
+			Inventory.bring_wood(w)
+			_brought += w
+			_brought_t = 1.2
+			Timber.take(b, to)
+		else:
+			var id := str(b.get_meta("salvage"))
+			var c := float(b.get_meta("cond", 1.0))
+			Inventory.add(id, 1, c)
+			b.remove_from_group("salvage")
+			Timber.take(b, to)
+			game.call("say", "+ %s %s" % [Parts.def(id).name, Salvage.cond_word(c)])
+		return
+
+
+## Is `b` on `m` (over its bed, within its outline and a little above it)?
+static func _riding(b: Node3D, m: Machine) -> bool:
+	var l := m.global_transform.affine_inverse() * b.global_position
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for p: Dictionary in m.design:
+		var xf := Parts.xform_of(p.id, p.at, p.rot)
+		var ext := Vector3(Parts.size_of(p.id, p.rot)) * Parts.CELL * 0.5
+		lo = lo.min(xf.origin - ext)
+		hi = hi.max(xf.origin + ext)
+	return l.x > lo.x - 0.2 and l.x < hi.x + 0.2 and l.z > lo.z - 0.2 and l.z < hi.z + 0.2 and l.y > lo.y and l.y < hi.y + 1.5
 
 
 ## The wood age's weapons stocked from the store: a quarter of a load each, a billet for it.

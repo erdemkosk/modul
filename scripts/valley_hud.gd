@@ -1,8 +1,7 @@
 class_name ValleyHud
 extends CanvasLayer
-## The valley's lines on the screen (top left, under the place's name): the expedition (what, where to,
-## how far, how it's holding up, the time left), the workshop (where, or what it's doing), the scrap
-## held, the ground (how soaked), the roads shut and the fords in flood, a giant near.
+## The valley's line on the screen (top left), small: the wood in the store, the saw's cut while it's
+## biting, the expedition only while there's one, the workshop only when it's far, a giant near.
 ## And the radio (J): the jobs offered, each with ÜSTLEN, and the one taken with BIRAK.
 
 var game: Node
@@ -16,6 +15,7 @@ var _warn: Label
 var _board: PanelContainer
 var _list: VBoxContainer
 var _t := 0.0
+var _box: Control
 
 
 func _ready() -> void:
@@ -23,14 +23,15 @@ func _ready() -> void:
 	var box := PanelContainer.new()
 	box.add_theme_stylebox_override("panel", Ui.glass(true, 10.0))
 	box.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	box.offset_left = 30
-	box.offset_top = 100
+	box.offset_left = 26
+	box.offset_top = 22
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(box)
 	var v := VBoxContainer.new()
 	box.add_child(v)
-	_lines = Ui.label(v, "", 16, Ui.INK, "head")
-	_warn = Ui.label(v, "", 15, Ui.ACCENT, "head")
+	_lines = Ui.label(v, "", 15, Ui.INK, "head")
+	_warn = Ui.label(v, "", 14, Ui.ACCENT, "head")
+	_box = box
 	_board = PanelContainer.new()
 	_board.add_theme_stylebox_override("panel", Ui.glass(false, 22.0))
 	_board.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -95,30 +96,21 @@ func _process(dt: float) -> void:
 		return
 	_t = 0.25
 	var lines := PackedStringArray()
-	lines.append("SEFER  " + exp_.status())
-	var s := shop.status() if shop else ""
-	if s != "":
-		lines.append(s)
 	var me: Machine = shop.yours() if shop else null
-	var binned := ""
-	if me and me.bin_holds() > 0:
-		binned = "  ·  Kasa %d/%d" % [Inventory.bin, me.bin_holds()]
-	var sawing := ""
+	var top := "Odun %d" % Inventory.wood
+	if Inventory.scrap > 0:
+		top += "   Hurda %d" % Inventory.scrap
 	if me:
 		for t in me.tools:
-			if t.kind == "saw":
-				sawing = "  ·  Testere %s" % ("kesiyor %%%d" % roundi(t.cut_frac() * 100.0) if t.cutting >= 0 else ("açık" if t.on else "kapalı (R)"))
-	lines.append("Odun %d%s%s" % [Inventory.wood, binned, sawing])
-	lines.append("%s  ·  Planlar %d/%d  ·  Hurda %d  ·  Zemin %s  ·  Gün %d" % ["AHŞAP ÇAĞI" if Inventory.age() == 1 else "METAL ÇAĞI",
-		Inventory.plans.size(), Parts.PLANS.size(), Inventory.scrap, life.ground_word(), ValleyLife.day])
+			if t.kind == "saw" and t.cutting >= 0:
+				top += "   ·   kesiliyor %%%d" % roundi(t.cut_frac() * 100.0)
+	lines.append(top)
+	if not exp_.job.is_empty():
+		lines.append(exp_.status())
+	if shop and me and not shop.driving() and shop.dist(me) > Workshop.REACH * 2.0:
+		var to := shop.truck.global_position - me.global_position
+		lines.append("Atölye %d m %s" % [roundi(shop.dist(me)), Workshop.compass(atan2(to.x, -to.z))])
 	_lines.text = "\n".join(lines)
-	var warn := PackedStringArray()
-	for r in life.shut_roads():
-		warn.append("Kapalı: " + r)
-	for f in life.flooded():
-		warn.append(f)
 	var g := giants.status() if giants else ""
-	if g != "":
-		warn.append(g)
-	_warn.text = "\n".join(warn)
-	_warn.visible = not warn.is_empty()
+	_warn.text = g
+	_warn.visible = g != ""

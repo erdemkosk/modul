@@ -1,11 +1,12 @@
 class_name Timber
 extends RefCounted
 ## The valley's wood: trees felled with a saw (MachineTool), the logs and stumps lying in the forest
-## cut up, all of it left on the ground as billets (bodies of their own, group GROUP) for a collector
-## to take in. A felled tree goes over away from the saw, hinged at the cut (what it comes down on
+## cut up, all of it left on the ground as billets (bodies of their own, group GROUP, solid to a
+## machine and its wheels) for a crane to lift onto a bed and carry home (Workshop takes them in). A felled tree goes over away from the saw, hinged at the cut (what it comes down on
 ## it strikes), its stump left standing, and where it lies its trunk is billets (as many as its height
 ## gives, as thick as its trunk; the crown's left); a log on the ground or a stump is cut up where it lies. Billets lie LIFE s if no one takes
-## them. What's felled stays felled (WorldProps.cut_tree: RutStore keeps it).
+## them (not while one's by a machine: on its bed, say). What's felled stays felled (WorldProps.cut_tree:
+## RutStore keeps it).
 
 const GROUP := "timber"
 const BILLET := 1.0 ## m long
@@ -28,7 +29,7 @@ static func cut(by: Machine, props: WorldProps, i: int, away: Vector3) -> void:
 	props.cut_tree(i)
 	var tree := by.get_tree()
 	if Combat.current:
-		Combat.current.sound("res://assets/audio/impact/dirt_0%d.wav" % randi_range(1, 3), info.origin + Vector3.UP, 4.0, 0.6)
+		Combat.current.sound("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4), info.origin + Vector3.UP, 2.0, 0.7) # (the last of the wood parting)
 	match str(info.kind):
 		"tree":
 			_fall(tree, props, i, info, away)
@@ -90,7 +91,7 @@ static func _fall(tree: SceneTree, props: WorldProps, i: int, info: Dictionary, 
 static func _landed(tree: SceneTree, base: Vector3, up: Vector3, h: float, r: float) -> void:
 	var mid := base + up * h * 0.45
 	if Combat.current:
-		Combat.current.sound("res://assets/audio/build/heavy_01.wav", mid, 6.0, 0.55)
+		Combat.current.sound("res://assets/audio/wood/tree_fall.wav", mid, 8.0, clampf(1.15 - h * 0.015, 0.85, 1.05)) # (the crown's crash, the trunk's thud: deeper the taller)
 		Combat.current._burst(mid, "smoke", 0.9)
 		Combat.current._burst(base + up * h * 0.75, "dirt", 1.0, Vector3.UP)
 	for n: Node in tree.get_nodes_in_group("machines"):
@@ -146,12 +147,16 @@ static func _lay_along(tree: SceneTree, from: Vector3, ax: Vector3, length: floa
 static func billet(tree: SceneTree, at: Vector3, lie: Vector3, radius: float) -> RigidBody3D:
 	var b := RigidBody3D.new()
 	b.name = "Billet"
-	b.collision_layer = 4
+	b.collision_layer = 1 | 4 # (ground to wheels: driven over, it's a bump; on a bed, it rides)
 	b.collision_mask = 1 | 2 | 4
 	b.mass = PI * radius * radius * BILLET * DENSITY
 	var pm := PhysicsMaterial.new()
-	pm.friction = 0.8
+	pm.friction = 0.9
 	b.physics_material_override = pm
+	b.angular_damp = 1.5 # (bark and stubs: it rolls a little way, not off down the hill)
+	b.contact_monitor = true # (the knock of it landing on something)
+	b.max_contacts_reported = 1
+	b.body_entered.connect(_knocked.bind(b))
 	var cs := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
 	cyl.radius = radius
@@ -190,19 +195,63 @@ static func billet(tree: SceneTree, at: Vector3, lie: Vector3, radius: float) ->
 	b.global_transform = Transform3D(Basis(x, y, x.cross(y)), at) # (the cylinder's axis: along `lie`)
 	b.angular_velocity = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
 	_lying.append(b)
-	var gone := func() -> void:
-		if is_instance_valid(b) and not b.has_meta("taken"):
-			b.queue_free()
-	tree.create_timer(LIFE, false, true).timeout.connect(gone)
-	while _lying.size() > MAX:
-		var old: RigidBody3D = _lying.pop_front()
+	_expire(tree, b, LIFE)
+	var k := 0
+	while _lying.size() > MAX and k < _lying.size():
+		var old: RigidBody3D = _lying[k]
+		if is_instance_valid(old) and not old.has_meta("taken") and _by_machine(old):
+			k += 1 # (one on a bed, or being lifted, stays)
+			continue
+		_lying.remove_at(k)
 		if is_instance_valid(old) and not old.has_meta("taken"):
 			old.queue_free()
 	return b
 
 
-## A billet taken into a bin (`into` at `at`): lifted over and dropped in, then gone (the bin shows it).
-static func take(b: RigidBody3D, into: Node3D, at: Vector3) -> void:
+static var _knock_ms := 0
+
+
+## A billet `b` coming down on something: a wooden knock, a heavier thud the faster it came.
+static func _knocked(_on: Node, b: RigidBody3D) -> void:
+	if Combat.current == null or not is_instance_valid(b) or b.has_meta("taken"):
+		return
+	var t := Time.get_ticks_msec()
+	if t - _knock_ms < 70 or t - int(b.get_meta("knock_ms", -1000)) < 300:
+		return
+	_knock_ms = t
+	b.set_meta("knock_ms", t)
+	var v := b.linear_velocity.length() + b.angular_velocity.length() * 0.2
+	var path := "res://assets/audio/wood/log_drop_0%d.wav" % randi_range(1, 3) if v > 2.5 \
+		else "res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4)
+	Combat.current.sound(path, b.global_position, clampf(-10.0 + v * 2.5, -10.0, 3.0), randf_range(0.75, 0.95) * clampf(1.25 - b.mass / 200.0, 0.8, 1.15))
+
+
+## `b` gone in `t` s, unless it's by a machine then (it's asked again later).
+static func _expire(tree: SceneTree, b: RigidBody3D, t: float) -> void:
+	tree.create_timer(t, false, true).timeout.connect(func() -> void:
+		if not is_instance_valid(b) or b.has_meta("taken"):
+			return
+		if _by_machine(b):
+			_expire(tree, b, 60.0)
+		else:
+			_lying.erase(b)
+			b.queue_free())
+
+
+static func _by_machine(b: Node3D) -> bool:
+	for n: Node in b.get_tree().get_nodes_in_group("machines"):
+		if (n as Node3D).global_position.distance_squared_to(b.global_position) < 36.0:
+			return true
+	return false
+
+
+## What a billet's worth in the store (its weight: a thin one one, a thick one up to three).
+static func worth(b: RigidBody3D) -> int:
+	return clampi(roundi(b.mass / 90.0), 1, 3)
+
+
+## Something brought home (a billet, a wreck's part) taken in at `to`: lifted over in an arc and gone.
+static func take(b: RigidBody3D, to: Vector3) -> void:
 	b.set_meta("taken", true)
 	b.remove_from_group(GROUP)
 	b.freeze = true
@@ -211,20 +260,19 @@ static func take(b: RigidBody3D, into: Node3D, at: Vector3) -> void:
 	_lying.erase(b)
 	var tw := b.create_tween()
 	var from := b.global_position
-	var top := (from + at) * 0.5 + Vector3.UP * 1.6
+	var top := (from + to) * 0.5 + Vector3.UP * 2.0
 	tw.tween_method(func(f: float) -> void:
-		if is_instance_valid(into):
-			var to := into.global_transform * MachineTool.BIN_AT
-			b.global_position = from.lerp(top, f).lerp(top.lerp(to, f), f), 0.0, 1.0, 0.45)
+		b.global_position = from.lerp(top, f).lerp(top.lerp(to, f), f), 0.0, 1.0, 0.6)
 	tw.tween_callback(b.queue_free)
 	if Combat.current:
-		Combat.current.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), at, -4.0, 0.7)
+		Combat.current.sound(("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4)) if str(b.name).begins_with("Billet") \
+			else ("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3)), from, -4.0, randf_range(0.8, 0.95))
 
 
-## Chips flying where the blade bites.
-static func sawdust(at: Vector3) -> void:
+## Sawdust flying where the blade bites (thrown `dir`).
+static func sawdust(at: Vector3, dir := Vector3.UP) -> void:
 	if Combat.current:
-		Combat.current._burst(at, "sawdust", 0.7, Vector3.UP)
+		Combat.current._burst(at, "sawdust", 0.8, dir)
 
 
 static func bark() -> StandardMaterial3D:

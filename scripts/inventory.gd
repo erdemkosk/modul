@@ -6,24 +6,25 @@ extends RefCounted
 ## A part has a past: each one held has what's left of it (0..1: its hit points when it's bolted on).
 ## What comes off a wreck is rusted, bent, half burnt (Salvage); what a job pays is good. Bolting one
 ## on takes the best of that kind; one taken off comes back as it was. Scrap (`scrap`) is what
-## mending is paid in (the workshop: Workshop). Wood (`wood`, in billets: felled with a saw, carried
-## home in a collector) is what wooden parts are made of, beside the workshop (Parts.wood_cost).
+## mending is paid in (the workshop: Workshop). Wood (`wood`: billets felled with a saw, craned onto
+## your bed and carried home) is what wooden parts are made of, beside the workshop (Parts.wood_cost);
+## all the wood ever brought home (`delivered`) opens the builder's parts a few at a time (Parts.OPENS).
 
-static var path := "user://valley_inventory.cfg" ## (tests point it elsewhere)
+static var path := "user://valley_inventory2.cfg" ## (tests point it elsewhere; the 2: the wood age's start)
 static var counts := {}
 static var cond := {} ## id -> Array of 0..1, best first (as many as counts[id])
 static var scrap := 0
 static var wood := 0 ## billets in the workshop's store
-static var bin := 0 ## billets in the collector's bin, not yet brought home
+static var delivered := 0 ## all the wood brought home, ever
 static var plans: Array = [] ## the plans found (Parts.PLANS keys): what metal can be made
 static var taken := 1.0 ## (what the part last taken had left)
 static var _loaded := false
-## What a new start in the valley has spare (little: the starter machine has a saw and a bin on, and
-## the rest is cut out of the forest or taken off wrecks).
-const START := {"frame": 2}
+## What a new start in the valley has spare (little: the starter cart has its saw and its crane on,
+## and the rest is cut out of the forest or taken off wrecks).
+const START := {"wood_rail": 2}
 ## Given once each to a valley begun before there were any: flag -> parts.
-const GIFTS := {"gift_hoist": {"crane": 1, "winch": 1}, "gift_wood": {"saw": 1, "collector": 1}}
-const START_SCRAP := 10
+const GIFTS := {}
+const START_SCRAP := 0
 const START_WOOD := 4
 
 
@@ -36,7 +37,7 @@ static func load_all() -> void:
 		counts = START.duplicate()
 		scrap = START_SCRAP
 		wood = START_WOOD
-		bin = 0
+		delivered = 0
 		plans = []
 		save_all()
 		return
@@ -46,7 +47,7 @@ static func load_all() -> void:
 		cond[k] = c.slice(0, counts[k])
 	scrap = int(cf.get_value("res", "scrap", 0))
 	wood = int(cf.get_value("res", "wood", 0))
-	bin = int(cf.get_value("res", "bin", 0))
+	delivered = int(cf.get_value("res", "delivered", 0))
 	plans = cf.get_value("res", "plans", [])
 	var gave := false
 	for flag: String in GIFTS:
@@ -66,7 +67,7 @@ static func save_all() -> void:
 			cf.set_value("cond", k, _conds(k))
 	cf.set_value("res", "scrap", scrap)
 	cf.set_value("res", "wood", wood)
-	cf.set_value("res", "bin", bin)
+	cf.set_value("res", "delivered", delivered)
 	cf.set_value("res", "plans", plans)
 	for flag: String in GIFTS:
 		cf.set_value("res", flag, true)
@@ -132,6 +133,28 @@ static func add_wood(n: int) -> void:
 		load_all()
 	wood = maxi(wood + n, 0)
 	save_all()
+
+
+## Wood brought home (what opens parts as it adds up).
+static func bring_wood(n: int) -> void:
+	delivered += n
+	add_wood(n)
+
+
+## Is `id` offered in the valley's builder: held; wooden, once enough wood's come home for it
+## (Parts.OPENS); metal, once its plan's known (the workshop's own scrap pieces in the metal age).
+## What can't be had yet isn't shown at all.
+static func shown(id: String) -> bool:
+	if count(id) > 0:
+		return true
+	if Parts.is_cab(id):
+		return false
+	if Parts.wood_cost(id) > 0:
+		return delivered >= int(Parts.OPENS.get(id, 0))
+	var plan := Parts.plan_of(id)
+	if plan != "":
+		return knows(plan)
+	return Parts.metal_cost(id) > 0 and age() >= 2
 
 
 ## One of `id` made of wood (if it's made so and there's wood enough): paid, and held. True if made.
@@ -237,5 +260,5 @@ static func reset() -> void:
 	cond.clear()
 	scrap = 0
 	wood = 0
-	bin = 0
+	delivered = 0
 	plans = []

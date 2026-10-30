@@ -9,21 +9,16 @@ extends RefCounted
 ##              as billets (Timber); a log lying in the forest or a stump it cuts into billets too.
 ##              What else it meets it cuts: a crate or a log in pieces quickly, stone and steel
 ##              slowly and in sparks, and another machine's parts.
-##   collector  (the part "collector") an open steel bin with a small grab: billets lying within
-##              GATHER of it are taken in, up to its `holds`; it's emptied into the workshop's store
-##              beside the workshop truck (Workshop). What it holds is kept with what you hold
-##              (Inventory.bin) and shows in it as a pile.
-##   rack       (the part "wood_rack") a wooden cradle: the collector's bin holds its `holds` more,
-##              piled in it (it takes nothing in itself).
-## A bin's pile shows the billets held past those its machine's earlier bins show.
+##              Biting, it's felt: chips thrown out of the cut sideways, a spark off the teeth now
+##              and then, the machine shuddering and the view with it, needles shaken down out of
+##              the crown, and nearly through, the tree cracks.
+## What it cuts lies as billets (Timber): a crane (MachineHoist) lifts them onto a bed.
 
 const BLADE := Vector3(0.0, -0.4, -0.95) ## the blade's middle, in the part's space (low: under the bed, as a feller's is)
 const BLADE_R := 0.55 ## m
 const SAW_KW := 3.0
 const CUT_BASE := 0.6 ## s to cut through the thinnest trunk
 const CUT_PER_M := 7.0 ## s more for each m of trunk radius
-const GATHER := 4.0 ## m from the bin a billet's taken in
-const BIN_AT := Vector3(0.0, 0.1, 0.0)
 
 var machine: Machine
 var node: Node3D
@@ -36,11 +31,13 @@ var spin := 0.0 ## 0..1 of the blade's speed
 var cutting := -1 ## (the prop the blade's in, or -1)
 var _progress := {} ## prop index -> s cut so far
 var _blade: Node3D
-var _hum: AudioStreamPlayer3D
+var _hum: AudioStreamPlayer3D ## the blade turning free
+var _bite_snd: AudioStreamPlayer3D ## and biting into wood (a child of _hum)
+var _in_wood := 0.0 ## (0..1: the free whine faded into the bite)
 var _dust_t := 0.0
-var _gather_t := 0.0
-var _full_said := false
-var _pile: Array[MeshInstance3D] = []
+var _shake_t := 0.0
+var _cracked := -1 ## (the prop that's cracked: once each)
+var _shook := -1 ## (the prop whose crown's been shaken: once each)
 
 
 static func make(m: Machine, part: Node3D, i: int, id: String) -> MachineTool:
@@ -52,13 +49,7 @@ static func make(m: Machine, part: Node3D, i: int, id: String) -> MachineTool:
 	t._blade = part.find_child("Blade", true, false) as Node3D
 	var p: Dictionary = m.design[i]
 	t.on = bool(p.get("tool_on", false))
-	if t.kind in ["collector", "rack"]:
-		t._make_pile(int(Parts.def(id).holds))
 	return t
-
-
-func holds() -> int:
-	return machine.bin_holds()
 
 
 ## Of what's to cut, how far through (0..1; 0 when it's not cutting).
@@ -91,14 +82,6 @@ func draw_kw() -> float:
 func update(dt: float) -> void:
 	if not is_instance_valid(node):
 		return
-	if kind == "rack":
-		return
-	if kind == "collector":
-		_gather_t -= dt
-		if _gather_t <= 0.0:
-			_gather_t = 0.2
-			_gather()
-		return
 	var run := on and machine.powered
 	spin = move_toward(spin, 1.0 if run else 0.0, dt * (1.0 if run else 0.5))
 	if _blade:
@@ -124,9 +107,8 @@ func update(dt: float) -> void:
 				_progress[i] = float(_progress.get(i, 0.0)) + dt * bite
 				# the wood holds the machine back as it bites
 				machine.apply_central_force(-machine.linear_velocity * machine.total_mass * 1.5)
-				if _dust_t <= 0.0:
-					_dust_t = 0.12
-					Timber.sawdust(c)
+				_bite_feel(c, base, float(info.radius), float(_progress[i]) / need, i, str(info.kind) == "tree",
+					float(info.get("height", 6.0)), dt)
 				if float(_progress[i]) >= need:
 					_progress.erase(i)
 					var away := Vector3(base.x - machine.global_position.x, 0.0, base.z - machine.global_position.z)
@@ -168,71 +150,63 @@ func _sound() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if _hum == null:
-		_hum = AudioStreamPlayer3D.new()
-		_hum.stream = load("res://assets/audio/weapons/minigun_motor_loop.wav")
-		_hum.unit_size = 6.0
+		_hum = _saw_loop("res://assets/audio/tools/saw_idle.ogg")
 		node.add_child(_hum)
+		_bite_snd = _saw_loop("res://assets/audio/tools/saw_cut.ogg")
+		_hum.add_child(_bite_snd)
 	if spin < 0.02:
 		if _hum.playing:
 			_hum.stop()
+			_bite_snd.stop()
 		return
 	if not _hum.playing:
-		_hum.play()
-	_hum.pitch_scale = 0.5 + spin * (0.9 if cutting < 0 else 0.6) # (it labours in the wood)
-	_hum.volume_db = linear_to_db(clampf(spin, 0.05, 1.0)) + (4.0 if cutting >= 0 else 0.0)
+		_hum.play(randf() * 8.0)
+		_bite_snd.play(randf() * 14.0)
+	_in_wood = move_toward(_in_wood, 1.0 if cutting >= 0 else 0.0, machine.get_physics_process_delta_time() * 5.0)
+	var s := spin * (1.0 - 0.1 * _in_wood) # (the blade slows a little as it labours in the wood)
+	_hum.pitch_scale = 0.4 + 0.6 * s # (winding up from a growl to its whine)
+	_bite_snd.pitch_scale = 0.55 + 0.45 * s
+	_hum.volume_db = linear_to_db(clampf(spin, 0.03, 1.0) * (1.0 - 0.75 * _in_wood))
+	_bite_snd.volume_db = linear_to_db(maxf(_in_wood * spin, 0.0001)) + 3.0
 
 
-## The collector: billets within reach taken in.
-func _gather() -> void:
-	var at := node.global_transform * BIN_AT
-	for n: Node in machine.get_tree().get_nodes_in_group(Timber.GROUP):
-		var b := n as RigidBody3D
-		if b.has_meta("taken") or b.global_position.distance_to(at) > GATHER:
-			continue
-		if Inventory.bin >= holds():
-			if not _full_said:
-				_full_said = true
-				machine.system_hit.emit("Kasa dolu (%d kütük): atölyeye götür" % holds(), at)
-			break
-		Timber.take(b, node, at)
-		Inventory.bin += 1
-		Inventory.save_all()
-	if Inventory.bin < holds():
-		_full_said = false
-	for t in machine.tools:
-		t.show_pile()
+static func _saw_loop(path: String) -> AudioStreamPlayer3D:
+	var p := AudioStreamPlayer3D.new()
+	var s := load(path) as AudioStreamOggVorbis
+	if s:
+		s.loop = true
+	p.stream = s
+	p.unit_size = 7.0
+	return p
 
 
-## The pile in the bin: one billet showing for each held, past what the bins before it show.
-func show_pile() -> void:
-	var before := 0
-	for t in machine.tools:
-		if t == self:
-			break
-		before += t._pile.size()
-	for k in _pile.size():
-		_pile[k].visible = k < Inventory.bin - before
-
-
-func _make_pile(n: int) -> void:
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.09
-	cm.bottom_radius = 0.1
-	cm.height = 0.8
-	cm.radial_segments = 10
-	cm.material = Timber.bark()
-	var per := 4 if kind == "collector" else 3
-	for k in n:
-		var mi := MeshInstance3D.new()
-		mi.mesh = cm
-		var row := k % per
-		var layer := k / per
-		mi.transform = Transform3D(Basis(Vector3.BACK, PI * 0.5) * Basis(Vector3.UP, randf_range(-0.1, 0.1)),
-			Vector3(0.0, -0.3 + layer * 0.17, -0.3 + row * 0.2 + layer * 0.1) if kind == "collector" \
-				else Vector3(0.0, -0.32 + layer * 0.19, -0.2 + row * 0.2 + layer * 0.1))
-		mi.visible = false
-		node.add_child(mi)
-		_pile.append(mi)
+## What biting into wood at `c` feels like: chips out of the kerf, now and then a spark off the teeth,
+## the machine shuddering (and the view), needles out of the crown, the crack when it's nearly through.
+func _bite_feel(c: Vector3, base: Vector3, r: float, frac: float, i: int, tree: bool, h: float, dt: float) -> void:
+	if _dust_t <= 0.0:
+		_dust_t = 0.06
+		var side := machine.global_basis.x * (1.0 if randf() < 0.5 else -1.0) # (thrown off the blade's edge as it turns)
+		var rim := c + (Vector3(base.x, c.y, base.z) - c).normalized() * minf(r, 0.4)
+		Timber.sawdust(rim, side + Vector3.UP * 0.3)
+		if Combat.current:
+			Combat.current._burst(rim, "chips", 0.9, side - machine.global_basis.z * 0.3)
+			if randf() < 0.18:
+				Combat.current._burst(rim, "metal", 0.25, side + Vector3.UP * 0.5) # (a stone in the bark, a knot)
+	_shake_t -= dt
+	if _shake_t <= 0.0:
+		_shake_t = 0.09
+		var k := machine.total_mass * 0.35
+		machine.apply_torque_impulse(Vector3(randf_range(-k, k), randf_range(-k, k) * 0.3, randf_range(-k, k)))
+		if Combat.current:
+			Combat.current.shook.emit(c, 0.05 + 0.06 * frac, machine, 0.0)
+	if tree and _shook != i and frac > 0.15 and Combat.current:
+		_shook = i
+		Combat.current._burst(base + Vector3.UP * h * 0.7, "needles", 1.0, Vector3.DOWN)
+	if tree and _cracked != i and frac > 0.82:
+		_cracked = i
+		if Combat.current:
+			Combat.current._burst(base + Vector3.UP * h * 0.75, "needles", 1.0, Vector3.DOWN)
+			Combat.current.sound("res://assets/audio/wood/tree_crack.wav", base + Vector3.UP * 1.5, 2.0, randf_range(0.9, 1.05))
 
 
 func free_fx() -> void:

@@ -1,17 +1,18 @@
 extends SceneTree
 ## Headless check of the valley's wood (Mode "valley"):
 ##   godot --headless --path . -s res://tests/wood_test.gd
-## 1. A new valley starts with little: the first machine has a saw and a bin on, two frames spare,
-##    a little wood in the store.
+## 1. A new valley starts with little: the first machine is a wooden cart with a saw and a short
+##    crane on, two rails spare, a little wood in the store; the builder offers only what can be had.
 ## 2. R starts the saw; driven into a tree it cuts through it, the tree goes over and lies as
 ##    billets, and it stays felled (kept).
-## 3. The bin takes in the billets lying near it; brought beside the workshop it's emptied into the
-##    store.
+## 3. The crane hooks a billet (Y), lifts it, swings it over the bed and lets it go: it rides there
+##    between the rails. Brought beside the workshop and stopped, what's on the bed goes into the
+##    store (and opens parts).
 ## 4. A wooden part's made out of the store when none's held (and not without the wood); it's heavy,
 ##    a flame takes it far harder than steel, and it burns on.
 ## 5. A log lying in the forest is cut into billets too.
 ## 6. The ages: no metal part's made without its plan; a plan found, the metal age, and it's made of
-##    scrap; plans are kept. A rack adds to the bin. The wood age's weapons on a wooden cart: the
+##    scrap; plans are kept; parts open as wood comes home. The wood age's weapons on a wooden cart: the
 ##    ballista's bolts hurt it, with pitch beside it they set it alight; the catapult's stones land on
 ##    it at 55 m; boiling oil burns it.
 ## 7. A steering joint turns what's on it with the steering, a wheel on it too.
@@ -74,6 +75,37 @@ static func _yaw(d: Vector3) -> float:
 	return atan2(-d.x, -d.z)
 
 
+## A billet lying, not on the cart.
+func _billet_off(m: Machine) -> RigidBody3D:
+	for n: Node in get_nodes_in_group(Timber.GROUP):
+		var b := n as RigidBody3D
+		if not b.has_meta("loaded") and not Workshop._riding(b, m):
+			return b
+	return null
+
+
+func _on_bed(m: Machine) -> Array:
+	var out := []
+	for n: Node in get_nodes_in_group(Timber.GROUP):
+		if Workshop._riding(n as Node3D, m):
+			out.append(n)
+	return out
+
+
+## `m` and what rides on it, moved to `at` (as driving there would, quicker).
+func _carry(m: Machine, at: Vector3) -> void:
+	var rides := _on_bed(m)
+	var rel := []
+	for b: RigidBody3D in rides:
+		rel.append(m.global_transform.affine_inverse() * b.global_transform)
+	_put(m, at, m.global_basis.get_euler().y)
+	for k in rides.size():
+		var b: RigidBody3D = rides[k]
+		b.global_transform = m.global_transform * (rel[k] as Transform3D)
+		b.linear_velocity = Vector3.ZERO
+		b.angular_velocity = Vector3.ZERO
+
+
 func _physics_process(_d: float) -> bool:
 	_frame += 1
 	if _frame > 150 * HZ:
@@ -89,9 +121,13 @@ func _physics_process(_d: float) -> bool:
 			_g.set("player_input", false)
 			var m := _me()
 			var ids := m.design.map(func(p: Dictionary) -> String: return str(p.id))
-			print("first machine: %d parts, saw %s, bin %s; held %s, wood %d" % [ids.size(), "saw" in ids, "collector" in ids, Inventory.counts, Inventory.wood])
-			_expect("saw" in ids and "collector" in ids and m.tools.size() == 2, "the first machine has a saw and a bin")
-			_expect(Inventory.counts.size() == 1 and Inventory.count("frame") == 2 and Inventory.wood == Inventory.START_WOOD, "little spare: two frames, a little wood")
+			print("first machine: %d parts, %.0f kg, %.0f kW, saw %s, crane %s; held %s, wood %d" % [ids.size(), m.total_mass, m.power_kw, "saw" in ids,
+				"wood_crane" in ids, Inventory.counts, Inventory.wood])
+			_expect("saw" in ids and "wood_crane" in ids and "wood_cab" in ids and m.tools.size() == 1 and m.hoists.size() == 1,
+				"the first machine is a wooden cart with a saw and a crane")
+			_expect(Inventory.counts.size() == 1 and Inventory.count("wood_rail") == 2 and Inventory.wood == Inventory.START_WOOD, "little spare: two rails, a little wood")
+			_expect(Inventory.shown("wood_frame") and Inventory.shown("wood_crane") and not Inventory.shown("ballista") and not Inventory.shown("armor")
+				and not Inventory.shown("engine") and not Inventory.shown("crane"), "the builder offers only what can be had")
 			# a tree to fell, not far
 			var at := m.global_position
 			var i := props.prop_near(Vector2(at.x, at.z), 300.0, ["tree"])
@@ -135,38 +171,88 @@ func _physics_process(_d: float) -> bool:
 			_expect(props.prop_near(Vector2((_r.d as Vector3).x, 0) * 0.0 + Vector2(props.prop_info(int(_r.tree)).origin.x, props.prop_info(int(_r.tree)).origin.z), 0.5, ["tree"]) != int(_r.tree),
 				"and it's gone from where it stood")
 			_r.lying = n
-			# the bin over them
-			var mid := Vector3.ZERO
-			var k := 0
-			for b: Node in get_nodes_in_group(Timber.GROUP):
-				mid += (b as Node3D).global_position
-				k += 1
-			mid /= maxi(k, 1)
+			_me().tool_key(KEY_R)
+			_r.loaded = 0
+			_r.tries = 0
+			_next("hook")
+		# 3. loading: the cart beside a billet, the crane swung over it, Y; swung over the bed, Y
+		"hook":
 			var m := _me()
-			m.tool_key(KEY_R)
-			_put(m, mid - m.global_basis.z * 2.3, m.global_basis.get_euler().y) # (its back, the bin, over them)
-			_next("gather")
-		"gather":
-			# along the trunk: the bin brought by each billet still lying, in turn
-			if since < 8.0:
-				if int(since * 120) % 96 == 0:
-					var m := _me()
-					for b: Node in get_nodes_in_group(Timber.GROUP):
-						var at := (b as Node3D).global_position
-						_put(m, at - m.global_basis.z * 2.3, m.global_basis.get_euler().y)
-						break
+			if since < 0.2:
+				var b := _billet_off(m)
+				if b == null:
+					_expect(false, "a billet to lift")
+					return _done()
+				_r.b = b
+				var at := b.global_position
+				var side := m.global_basis.x
+				_put(m, at - side * 1.5 + m.global_basis.z * 0.6, m.global_basis.get_euler().y) # (beside it, the seat by it)
 				return false
-			print("in the bin: %d of %d lying" % [Inventory.bin, int(_r.lying)])
-			_expect(Inventory.bin >= mini(int(_r.lying), 8) - 1 and Inventory.bin >= 2, "the bin takes them in")
+			var b: RigidBody3D = _r.b
+			m.aim_point = b.global_position
+			if since < 2.5:
+				return false
+			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			_expect(m.hoists[0].hooked() is RigidBody3D, "the crane takes hold of a billet")
+			if m.hoists[0].hooked():
+				_r.b = m.hoists[0].hooked()
+			_next("lift")
+		"lift":
+			var m := _me()
+			var b: RigidBody3D = _r.b
+			if since < 2.5:
+				m.aim_point = b.global_position + Vector3.UP * 0.5
+				if _frame % 30 == 0:
+					var h := m.hoists[0]
+					print("  rope %.2f / %.2f, tip %s, eye %s, limited %s, powered %s, charge %.2f" % [float(m.design[h.index].get("rope_len", -1.0)),
+						h.tip().distance_to(MachineHoist.eye(b)), h.tip() - m.global_position, MachineHoist.eye(b) - m.global_position, h.limited, m.powered, m.charge_frac()])
+				return false
+			if since < 3.0:
+				_r.lifted = b.global_position.y - float(_g.get("terrain").call("height_at", b.global_position.x, b.global_position.z))
+			m.aim_point = m.global_transform * Vector3(0.25, 1.0, 0.9) # (over the bed)
+			if since < 7.0:
+				return false
+			print("lifted %.2f m off the ground; over the bed: %s" % [float(_r.lifted), Workshop._riding(b, m)])
+			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			_next("set_down")
+		"set_down":
+			if since < 4.5:
+				return false
+			_expect(_me().hoists[0].hooked() == null, "set down, it's let go")
+			var m := _me()
+			var b: RigidBody3D = _r.b
+			var on := Workshop._riding(b, m)
+			print("let go: on the bed %s (at %s in the cart)" % [on, m.global_transform.affine_inverse() * b.global_position])
+			_r.tries = int(_r.tries) + 1
+			if on:
+				_r.loaded = int(_r.loaded) + 1
+				b.set_meta("loaded", true)
+			if int(_r.loaded) < 2 and int(_r.tries) < 4:
+				_next("hook")
+				return false
+			_expect(int(_r.loaded) >= 2, "two billets lifted onto the bed")
+			# driven home with them: they ride along
 			_r.wood0 = Inventory.wood
-			_r.bin0 = Inventory.bin
-			_put(_me(), shop.truck.global_position + Vector3(9, 0, 0))
+			_r.on_bed = _on_bed(m)
+			_r.worth = 0
+			for x: RigidBody3D in _r.on_bed:
+				_r.worth = int(_r.worth) + Timber.worth(x)
+			_carry(m, shop.truck.global_position + shop.truck.global_basis.x * -16.0)
 			_next("unload")
 		"unload":
-			if since < 1.5:
+			var m := _me()
+			if since < 0.6:
 				return false
-			print("beside the workshop: wood %d -> %d, bin %d" % [int(_r.wood0), Inventory.wood, Inventory.bin])
-			_expect(Inventory.bin == 0 and Inventory.wood == int(_r.wood0) + int(_r.bin0), "emptied into the store beside the workshop")
+			if since < 1.0 and not _r.has("said_still"):
+				_r.said_still = true
+				var still := _on_bed(m).size()
+				print("at the workshop, still on the bed: %d of %d" % [still, (_r.on_bed as Array).size()])
+				return false
+			if since < 4.0:
+				return false
+			print("beside the workshop: wood %d -> %d (worth %d), all told %d" % [int(_r.wood0), Inventory.wood, int(_r.worth), Inventory.delivered])
+			_expect(Inventory.wood == int(_r.wood0) + int(_r.worth) and _on_bed(m).is_empty() and int(_r.worth) > 0, "what's on the bed goes into the store")
+			_expect(Inventory.delivered == int(_r.worth), "and counts toward what opens")
 			# 4. wooden parts
 			var b: Builder = _g.get("builder")
 			var w0 := Inventory.wood
@@ -176,9 +262,8 @@ func _physics_process(_d: float) -> bool:
 			Inventory.wood = 0
 			_expect(not bool(b.guard.call("wood_plate", Vector3i.ZERO, 0)), "not without the wood")
 			_expect(Parts.def("wood_frame").mass > Parts.def("frame").mass * 2.0 and Parts.hp_of("wood_frame") < Parts.hp_of("frame"), "heavier and weaker than steel")
-			var m := _me()
 			_put(m, shop.truck.global_position + Vector3(80, 0, 0)) # (away from the workshop: it'd mend them)
-			var ok := m.place("wood_frame", Vector3i(-1, 1, 0), 0) and m.place("frame", Vector3i(2, 1, 0), 0)
+			var ok := m.place("wood_frame", Vector3i(0, 1, 1), 0) and m.place("frame", Vector3i(1, 1, 1), 0)
 			_expect(ok, "a wooden and a steel frame bolted on")
 			var wi := m.design.size() - 2
 			var si := m.design.size() - 1
@@ -201,6 +286,7 @@ func _physics_process(_d: float) -> bool:
 			var left := float(_r.w_row.hp) if m.design.has(_r.w_row) else 0.0
 			print("burning on: %.1f -> %.1f" % [float(_r.w_after), left])
 			_expect(left < float(_r.w_after) - 10.0, "it burns on")
+			m.from_data(Designs.valley_start()) # (a fresh cart: the fire's had this one)
 			# 5. a log lying in the forest
 			var at := m.global_position
 			var i := props.prop_near(Vector2(at.x, at.z), 400.0, ["log"])
@@ -227,6 +313,9 @@ func _physics_process(_d: float) -> bool:
 				m.tool_key(KEY_R)
 				m.brake = 0.0
 			m.throttle = 0.5
+			if _frame % 120 == 0 and not m.tools.is_empty():
+				var c := m.tools[0].node.global_transform * MachineTool.BLADE
+				print("  up %s, blade %.2f over the ground, speed %.2f" % [m.global_basis.y, c.y - float(_g.get("terrain").call("height_at", c.x, c.z)), m.speed])
 			if props.cut.has(int(_r.log)):
 				m.throttle = 0.0
 				m.brake = 1.0
@@ -257,16 +346,12 @@ func _physics_process(_d: float) -> bool:
 			_expect(not bool(b.guard.call("minigun", Vector3i.ZERO, 0)), "but not a minigun (another plan)")
 			Inventory.load_all()
 			_expect(Inventory.knows("celik"), "the plans are kept")
-			# the bins: a rack adds to the bin
+			Inventory.delivered = 30
+			_expect(Inventory.shown("ballista") and not Inventory.shown("catapult"), "parts open as wood comes home")
 			var m := _me()
-			var d := Designs.valley_start()
-			d.append(["wood_rack", 0, 2, 4, 0])
-			m.from_data(d)
-			print("a bin and a rack hold %d" % m.bin_holds())
-			_expect(m.bin_holds() == 14, "a rack adds six to the bin")
 			# a wooden enemy to shoot at, out ahead on the open ground by the workshop
 			_r.range_at = shop.truck.global_position + Vector3(45, 0, 0)
-			d = Designs.valley_start()
+			var d := Designs.valley_start()
 			d.append(["ballista", 0, 3, 0, 0])
 			m.from_data(d)
 			_put(m, Vector3(_r.range_at), _yaw(Vector3.RIGHT))
@@ -382,16 +467,16 @@ func _physics_process(_d: float) -> bool:
 				var weapons := ids.filter(func(id: String) -> bool: return str(Parts.def(id).kind) == "weapon")
 				print("a wood age crew (%s): %s, %d parts, weapons %s" % [style, made.name, ids.size(), weapons])
 				_expect((not weapons.is_empty() or style == "kocbasi") and weapons.all(func(id: String) -> bool: return Parts.burns(id)), "its weapons are the wood age's")
-				_expect(ids.count("wood_frame") > 4 and ids.has("cab"), "built of wood, on a cab")
+				_expect(ids.count("wood_frame") > 4 and ids.has("wood_cab"), "built of wood, on a wooden seat")
 			# 9. mending wood with wood
 			var d := Designs.valley_start()
-			d.append(["wood_frame", -1, 1, 0, 0])
+			d.append(["wood_frame", 0, 1, 1, 0])
 			m.from_data(d)
 			var wi := m.design.size() - 1
 			m.design[wi].hp = Parts.hp_of("wood_frame") * 0.3
 			_put(m, shop.truck.global_position + Vector3(9, 0, 0))
 			Inventory.wood = 10
-			Inventory.bin = 0
+			pass
 			_r.wood0 = 10
 			_r.w_row = m.design[wi]
 			_next("mend_wood")

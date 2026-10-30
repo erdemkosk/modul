@@ -110,7 +110,8 @@ func _physics_process(_d: float) -> bool:
 			_build_key()
 			_expect(not b.active, "no building from the truck")
 			_expect(shop.swap() and _me() == own, "and back")
-			# 2. worn parts
+			# 2. worn parts (on a steel machine: the starter, not the wood age's cart)
+			own.from_data(Designs.starter())
 			Inventory.add("armor", 1, 0.4)
 			Inventory.add("armor", 1, 0.7)
 			var m := _me()
@@ -214,7 +215,7 @@ func _physics_process(_d: float) -> bool:
 			var moved := Vector2(ex.crate.global_position.x - _r.p0.x, ex.crate.global_position.z - _r.p0.z).length()
 			print("swung round: the load carried %.1f m, the job %s" % [moved, ex.job.state])
 			_expect(moved > 2.0 and str(ex.job.state) == "moved", "slewed round, the load goes with it")
-			print("Y: '%s'" % m.hoist_key(KEY_Y))
+			print("Y: '%s', Y: '%s'" % [m.hoist_key(KEY_Y), m.hoist_key(KEY_Y)]) # (it'd set it down: again, and it drops)
 			_expect(m.hoists[0].hooked() == null, "Y again lets it go")
 			_next("set_down")
 		"set_down":
@@ -272,6 +273,8 @@ func _physics_process(_d: float) -> bool:
 				m.hoist_key(KEY_Y)
 				_r.hground = float(_g.terrain.height_at(ex.crate.global_position.x, ex.crate.global_position.z))
 			if since < 6.0:
+				if _frame % 60 == 0:
+					print("  upright %.2f, limited %s, rope %s" % [m.global_basis.y.y, m.hoists[0].limited, m.design[m.hoists[0].index].get("rope_len")])
 				return false
 			var up := ex.crate.global_position.y - float(_r.hground)
 			print("steel beams (1600 kg) on the 1.5 t crane: %.2f m up (resting: 0.30)" % up)

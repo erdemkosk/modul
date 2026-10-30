@@ -22,16 +22,25 @@ are this project's own.
   big loads). Parts have a past (salvage is worn, a worn part may give on the road). The valley soaks
   and dries (the mud's depth), its fords flood, its roads are shut some mornings (a slide, trees down),
   and two giants roam it, taken apart rather than shot down.
-  You start with little: the first machine has a saw out in front and a bin on the back, and two
-  spare frames. Wood is the first stuff: R starts the saw, drive it into a tree and it cuts through
-  the trunk; the tree goes over away from you (whatever it lands on is hit) and lies as billets, a
-  log on the forest floor is cut up too; the bin takes in the billets you pass (8 at most), and
-  beside the workshop truck it's emptied into the store. Wooden parts (AHŞAP: a timber frame,
-  planking, a wedge) are made out of the store as you place them: twice the steel frame's weight,
-  quick to break, and a flame takes them three times as hard and sets them burning on, spreading to
-  the wood beside them; a wooden wheel (no springs, an iron tyre: it slides and sinks), a log rack
-  (six more billets in the bin); they're mended with wood. A steering joint turns what's bolted on it
-  with A/D (a wheel on a block on it steers), or with a key of its own while it's held.
+  You start with little, on easy ground (the start's slopes eased, little mud): a small wooden cart
+  (KÜTÜKÇÜ: a driver's seat of planks, a 40 kW engine, the saw out in front, a short wooden crane on
+  the seat's roof, a load bed fenced with rails, four wooden wheels), two spare rails and a little
+  wood. Wood is the first stuff: R starts the saw, drive it into a tree and it cuts through the trunk
+  (chips thrown out of the cut, the cart shuddering, needles shaken down, a crack before it goes); the
+  tree goes over away from you (whatever it lands on is hit) and lies as billets, solid on the ground,
+  a log on the forest floor is cut up too. The crane lifts them: Y with the hook over a billet takes
+  hold and winds it up, look over your bed, Y sets it down there and lets go; the rails keep the load
+  on. Stopped beside the workshop truck (or set down within 12 m of it), what's on the bed goes into
+  the store, and parts off wrecks are brought home the same way. Wooden parts (AHŞAP: a timber frame,
+  planking, rails, a wedge, a wooden wheel, the wooden crane) are made out of the store as you place
+  them: heavy, quick to break, and a flame takes them three times as hard and sets them burning on,
+  spreading to the wood beside them; they're mended with wood. The builder shows only what can be had
+  now: more parts open as wood comes home (Parts.OPENS), metal ones once their plan's found; its ready
+  designs are haulers (KÜTÜKÇÜ, YÜK ARABASI, ÇİFT VİNÇLİ) and the rest once their parts can be had.
+  A steering joint turns what's bolted on it with A/D (a wheel on a block on it steers), or with a key
+  of its own while it's held. The screen keeps quiet: the wood in the store, the saw's cut, the way
+  to the workshop when it's far; the machine's plate only once it's hurt; short cards, one step at a
+  time (drive, fell, load, bring home).
   The valley goes through ages. In the wood age the weapons are the wood age's, made of wood and
   worked by hand: a ballista (its bolt goes through into the part behind and sticks there), a
   catapult (a stone lobbed high to come down where you look, ~230 m), a cask of boiling oil (tipped
@@ -132,9 +141,14 @@ are this project's own.
   swap_guard hooks keep the building to what's held; each part held has its wear (`Inventory.cond`).
 - Cranes and winches: `machine_hoist.gd` (the rope as a spring that only pulls, the crane's slew and
   trolley, its load moment limiter, drawing the rope); models in tools/blender/build_parts.py.
-- Wood: `machine_tool.gd` (the saw and the bin on a machine), `timber.gd` (felling, the stump,
-  billets, taking them in), `world_props.gd` (prop_near, prop_info, felled_mesh; felled trees kept
-  in RutStore.cut), `Inventory.wood`/`bin`; wooden parts burn in `machine.gd` (`_burn`).
+- Wood: `machine_tool.gd` (the saw on a machine, what biting feels like), `timber.gd` (felling, the
+  stump, billets, taking them in), `workshop.gd` (`_take_in`: what's brought home), `world_props.gd`
+  (prop_near, prop_info, felled_mesh; felled trees kept in RutStore.cut), `Inventory.wood`/`delivered`/
+  `shown()`; wooden parts burn in `machine.gd` (`_burn`); the start's ground in
+  `world_terrain.gd` (`_flatten_start`, `start_ease`).
+- Sound: `engine_sound.gd` (each engine's four loops crossfaded by revs), the saw's idle and cutting
+  loops in `machine_tool.gd`, wood knocks and the tree's crack and fall in `timber.gd`; sources and
+  how they're built in assets/audio/CREDITS.md and tools/audio/build_insa_sounds.py.
 - Ages: `Parts.PLANS` (what each plan makes), `Inventory.plans`/`age()`/`make_metal()`, plans dropped
   by `Salvage.drop_plan` (works sites, giants) and paid by expeditions; the wood age's weapons in
   `machine_gun.gd` (ballista, catapult, oil) and `combat.gd` (bolts, stones, burning oil);
@@ -165,5 +179,6 @@ godot --headless --path . -s res://tests/keys_test.gd
 godot --headless --path . -s res://tests/joints_test.gd
 godot --headless --path . -s res://tests/valley_test.gd
 godot --headless --path . -s res://tests/wood_test.gd
+godot --headless --path . -s res://tests/sound_check.gd
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --forge | --flip | --sites | --spin | --robots | --worksite | --expedition | --wood]
 ```

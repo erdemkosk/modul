@@ -96,7 +96,8 @@ func new_day() -> void:
 	_save()
 	var shut := shut_roads()
 	if game and game.has_method("say"):
-		game.call("say", ("GÜN %d  ·  yol kapalı: %s" % [day, ", ".join(shut)]) if not shut.is_empty() else "GÜN %d  ·  yollar açık" % day)
+		if not shut.is_empty():
+			game.call("say", "Yol kapalı: %s" % ", ".join(shut))
 
 
 ## Today's shut roads (the same for the same day): one or two, somewhere on the valley's roads.
@@ -306,7 +307,7 @@ func _fatigue(dt: float, me: Machine) -> void:
 	for i in range(me.design.size() - 1, -1, -1):
 		var p: Dictionary = me.design[i]
 		var frac := clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
-		if frac >= WEAR_UNDER or p.id == "cab":
+		if frac >= WEAR_UNDER or Parts.is_cab(p.id):
 			continue
 		if randf() < FATIGUE * (1.0 - frac / WEAR_UNDER) * clampf(absf(me.speed) / 10.0, 0.4, 1.5):
 			var name_ := str(Parts.def(p.id).name)

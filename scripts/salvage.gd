@@ -1,15 +1,16 @@
 class_name Salvage
 extends Node
 ## Wrecks you can take from (the valley): a part that comes off the other side's
-## machine whole lies where it falls with a light over it; drive up to it (within REACH) and it's
-## yours (Inventory). Parts shot to nothing leave nothing to take. They lie LIFE s, then they're
-## gone (the oldest first past MAX).
+## machine whole lies where it falls with a light over it, solid: lift it onto your bed with a crane
+## (MachineHoist) and bring it home, and it's yours (Workshop takes it in: Inventory). A plan's light
+## enough to pick up: drive up to it (within REACH). Parts shot to nothing leave nothing to take. They
+## lie LIFE s (not while they're by a machine), then they're gone (the oldest first past MAX).
 ##
 ## Nothing taken off a wreck is new: each comes with what's left of it (WORN: rusted, bent, burnt),
 ## less than a cache's or a job's pay; what it has is said when it's taken (Inventory keeps it).
 
 const REACH := 4.5 ## m
-const LIFE := 240.0 ## s
+const LIFE := 600.0 ## s
 const MAX := 40
 const WORN := Vector2(0.3, 0.85) ## what a wreck's part has left: between these
 
@@ -36,6 +37,8 @@ func mark(b: RigidBody3D, id: String, cond := -1.0) -> void:
 	b.set_meta("cond", cond if cond >= 0.0 else randf_range(WORN.x, WORN.y))
 	b.set_meta("age", 0.0)
 	b.add_to_group("salvage")
+	b.collision_layer = 1 | 4 # (solid: it can be driven over, lifted, carried on a bed)
+	b.collision_mask = 1 | 2 | 4
 	if Combat.current:
 		Combat.current._debris.erase(b)
 	if DisplayServer.get_name() != "headless":
@@ -141,11 +144,14 @@ func _physics_process(dt: float) -> void:
 		if beam:
 			beam.global_position = b.global_position + Vector3.UP * 1.9
 			beam.scale = Vector3.ONE * (1.0 + 0.12 * sin(age * 4.0))
-		if age > LIFE and not b.has_meta("plan"): # (a plan lies till it's taken)
+		if b.has_meta("taken") or not b.is_in_group("salvage"): # (taken in at the workshop)
+			_items.remove_at(k)
+			continue
+		if age > LIFE and not b.has_meta("plan") and not Timber._by_machine(b): # (a plan lies till it's taken)
 			b.queue_free()
 			_items.remove_at(k)
 			continue
-		if me and me.alive and not me.building and me.global_position.distance_to(b.global_position) < REACH:
+		if b.has_meta("plan") and me and me.alive and not me.building and me.global_position.distance_to(b.global_position) < REACH:
 			_take(b)
 			_items.remove_at(k)
 

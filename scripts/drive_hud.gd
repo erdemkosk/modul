@@ -8,7 +8,9 @@ extends CanvasLayer
 ##                  tubes); over them the battery as a thin bar with what goes in and out, and a red tag
 ##                  for anything shed for want of charge
 ##   bottom right   the speed, big, a leaning bar under it, which way it's going and its power
-##   top left       where you are and the tally; top right the camera (C) and the frame rate
+##   top left       the test arena's tally; top right the frame rate (if it's asked for)
+## Little shows when nothing's the matter: the machine's plate only once it's hurt (or can't move), the
+## battery only when it runs low, the ground only when it's sinking you.
 ## Under the panels, CombatOverlay: the screen going red when you're hurt, where it came from, the enemy.
 
 const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets", "flamer": "flamer", "ballista": "ballista",
@@ -45,6 +47,9 @@ var _hull := 1.0
 var _bat := 1.0
 var _bat_low := false
 var _hp_seen := {} ## part key -> hp last seen (a drop flashes it)
+var _plate: Control ## (the machine's, bottom left: shown when it's hurt)
+var _hurt_t := 0.0 ## s the plate stays after a hit
+var _bat_row: Control
 var _hp_flash := {} ## part key -> seconds of red left
 
 
@@ -91,6 +96,7 @@ func _build_machine() -> void:
 	row.add_theme_constant_override("separation", 14)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(row)
+	_plate = row
 	var plate := PanelContainer.new()
 	plate.add_theme_stylebox_override("panel", Ui.glass(false, 8.0))
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -147,7 +153,7 @@ func _draw_map(c: Control) -> void:
 			col = Color(1.0, 0.25, 0.2)
 		col.a = 0.55 + 0.4 * (p.at.y + 2) / 6.0
 		c.draw_rect(r, col)
-		if p.id == "cab":
+		if Parts.is_cab(p.id):
 			c.draw_rect(r.grow(1.0), Ui.INK, false, 1.5)
 	# where its weight sits (it moves as parts come off)
 	var cm := off + (Vector2(m.com.x, m.com.z) / Parts.CELL - lo) * k
@@ -182,6 +188,7 @@ func _build_guns() -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	col.add_child(head)
+	_bat_row = head
 	_bat_head = Ui.label(head, "", 14, Ui.INK, "head")
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -444,7 +451,7 @@ func _build_speed() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
-	_speed = Ui.label(row, "0", 88, Ui.INK, "display")
+	_speed = Ui.label(row, "0", 56, Ui.INK, "display")
 	_speed.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_speed.custom_minimum_size.x = 130
 	var unit := VBoxContainer.new()
@@ -513,6 +520,7 @@ func _process(dt: float) -> void:
 		seen[key] = true
 		if _hp_seen.has(key) and float(p.hp) < float(_hp_seen[key]) - 0.01:
 			_hp_flash[key] = 0.6
+			_hurt_t = 6.0
 		_hp_seen[key] = float(p.hp)
 	for key: String in _hp_flash.keys():
 		_hp_flash[key] = float(_hp_flash[key]) - dt
@@ -537,18 +545,19 @@ func _slow(m: Machine) -> void:
 		warn = "KABİN %%%d  ·  KABİN GİDERSE ARAÇ GİDER" % int(cab * 100.0)
 	_status.text = warn
 	_status.visible = warn != ""
+	_hurt_t = maxf(_hurt_t - 0.1, 0.0)
+	_plate.visible = warn != "" or _hurt_t > 0.0 or _hull < 0.9
 	_status.modulate.a = 1.0 if fmod(_flash, 0.8) < 0.55 else 0.45
 	_hull_pct.text = "%%%d" % int(_hull * 100.0)
 	_hull_pct.add_theme_color_override("font_color", Ui.INK if _hull > 0.3 else Ui.BAD)
 	_hull_bar.queue_redraw()
-	_mass.text = "%d KG   ·   %d KW   ·   %d KW/T" % [int(m.total_mass), int(m.power_kw), int(m.power_kw / maxf(m.total_mass / 1000.0, 0.01))]
+	_mass.visible = false
 	var sink := 0.0
 	for w in m.wheels:
 		sink = maxf(sink, w.sink)
-	var ground := Ui.upper(game.call("_ground_name", m.ground_label) as String) if m.ground_label != "" else "HAVADA"
-	_ground.text = ground + ("   ·   %d CM BATTI" % int(sink * 100.0) if sink > 0.02 else "")
-	_ground.add_theme_color_override("font_color", Ui.ACCENT if sink > 0.08 else Ui.INK)
-	_engine.text = "%d KW MOTOR   ·   %d KW/T" % [int(m.power_kw), int(m.power_kw / maxf(m.total_mass / 1000.0, 0.01))]
+	_ground.text = "%d CM BATTI" % int(sink * 100.0) if sink > 0.08 else ""
+	_ground.add_theme_color_override("font_color", Ui.ACCENT)
+	_engine.visible = false
 	# the battery
 	_bat = m.charge_frac()
 	_bat_low = not m.powered or m.shed > 0
@@ -566,6 +575,9 @@ func _slow(m: Machine) -> void:
 	else:
 		when = "DOLUYOR"
 	_bat_flow.text = "+%.1f KW   −%.1f KW   ·   %s" % [m.charge_kw, m.draw_kw, when]
+	var bat_show := _bat < 0.35 or _bat_low
+	_bat_row.visible = bat_show
+	_bat_bar.visible = bat_show
 	_bat_flow.add_theme_color_override("font_color", Ui.BAD if net < -0.05 else Ui.DIM)
 	# what's been shed, as red tags
 	var tags: Array[String] = []
@@ -585,12 +597,12 @@ func _slow(m: Machine) -> void:
 			((_shed_row.get_child(k) as PanelContainer).get_child(0) as Label).text = tags[k]
 	# the top
 	var arena: bool = game.get("arena")
-	_where.text = str(game.get("place_name"))
+	_where.text = ""
 	var enemies := 0
 	for n in m.get_tree().get_nodes_in_group("machines"):
 		if n != m and (n as Machine).team != 0:
 			enemies += 1
 	_tally.text = ("Düşman %d   ·   Vurulan %d%s" % [enemies, game.get("kills"), "   ·   HASAR KAPALI" if m.invulnerable else ""]) if arena else ""
 	var cam := game.get("cam") as OrbitCamera
-	_cam.text = "KAMERA  ·  %s   [C]" % Ui.upper(OrbitCamera.MODE_NAMES[cam.mode]) if cam else ""
+	_cam.text = ""
 	_fps.text = "%d FPS" % Engine.get_frames_per_second() if bool(Settings.get_value("show_fps")) else ""

@@ -1,12 +1,13 @@
 extends SceneTree
 ## Headless check of the valley's salvage (Mode "valley"):
 ##   godot --headless --path . -s res://tests/salvage_test.gd
-## 1. A new start: the starter on, a few spare parts held.
+## 1. A new start: the wood age's cart on, a few spare parts held.
 ## 2. Building takes from what's held (none left: refused), taking off gives back.
 ## 3. A ready design you can't cover is refused (the machine as it was); with the parts held, it's
 ##    built and they're spent.
 ## 4. A wanderer comes in on dry ground 170-260 m off; one of the other side's machines torn apart
-##    leaves its whole parts lying lit; driving up to one takes it.
+##    leaves its whole parts lying lit, solid (a crane lifts them); one brought home to the workshop's
+##    yard is taken in.
 
 var _g: Node
 var _frame := 0
@@ -50,28 +51,29 @@ func _physics_process(_d: float) -> bool:
 			_g.set("player_input", false)
 			var b: Builder = _g.get("builder")
 			var m: Machine = _g.get("machine")
-			Inventory.count("frame")
+			Inventory.count("wood_rail")
 			print("held: %s; on the machine %d parts" % [Inventory.counts, m.design.size()])
-			_expect(Inventory.count("frame") == 2 and Inventory.count("plate") == 0, "a new start holds little spare")
-			_expect(m.design.size() == Designs.valley_start().size(), "the first machine's on (the starter, a saw, a bin)")
+			_expect(Inventory.count("wood_rail") == 2 and Inventory.count("plate") == 0, "a new start holds little spare")
+			_expect(m.design.size() == Designs.valley_start().size(), "the first machine's on (the wood age's cart)")
 			# 2. building takes and gives back
-			_expect(bool(b.guard.call("frame", Vector3i.ZERO, 0)) and Inventory.count("frame") == 1, "a frame bolted on comes out of what's held")
+			_expect(bool(b.guard.call("wood_rail", Vector3i.ZERO, 0)) and Inventory.count("wood_rail") == 1, "a rail bolted on comes out of what's held")
 			_expect(not bool(b.guard.call("cannon", Vector3i.ZERO, 0)), "a cannon you don't hold is refused")
-			b.removed.emit("frame", Vector3i.ZERO, 0)
-			_expect(Inventory.count("frame") == 2, "taken off, it's held again")
+			b.removed.emit("wood_rail", Vector3i.ZERO, 0)
+			_expect(Inventory.count("wood_rail") == 2, "taken off, it's held again")
 			# 3. a ready design
 			b.set_active(true)
 			var before := m.design.size()
-			b.load_preset(2) # (TOPÇU: a cannon, armour, off-road wheels)
+			var topcu := Designs.PRESETS.map(func(p: Array) -> String: return str(p[0])).find("TOPÇU")
+			b.load_preset(topcu) # (TOPÇU: a cannon, armour, off-road wheels)
 			_expect(m.design.size() == before, "a design you can't cover is refused")
 			for e: Array in Designs.tank():
 				Inventory.add(str(e[0]))
 			var held := Inventory.count("frame")
-			b.load_preset(2)
+			b.load_preset(topcu)
 			var tank := Designs.tank().size()
 			print("with the parts held: %d parts on (TOPÇU has %d); frames held %d -> %d" % [m.design.size(), tank, held, Inventory.count("frame")])
 			_expect(m.design.size() == tank, "with the parts held, it's built")
-			_expect(Inventory.count("cannon") == 0 and Inventory.count("engine") >= 1, "the parts it took are spent (and the starter's back in hand)")
+			_expect(Inventory.count("cannon") == 0 and Inventory.count("engine_s") >= 1, "the parts it took are spent (and the cart's back in hand)")
 			b.set_active(false)
 			_next("wander")
 		"wander":
@@ -110,14 +112,30 @@ func _physics_process(_d: float) -> bool:
 			_r.id = str(item.get_meta("salvage")) if item else ""
 			_r.before = Inventory.count(str(_r.id))
 			var m: Machine = _g.get("machine")
-			if item:
-				item.global_position = m.global_position + m.global_basis.x * 2.5 + Vector3.UP * 0.5 # (as if you'd driven up to it)
+			if item: # (out away from the workshop, the machine driven up beside it)
+				var shop: Workshop = _g.get("workshop")
+				var away := shop.truck.global_position + Vector3(45, 0, 0)
+				away.y = float(_g.get("terrain").call("height_at", away.x, away.z))
+				m.global_position = away + Vector3.UP * 1.6
+				m.linear_velocity = Vector3.ZERO
+				item.global_position = away + m.global_basis.x * 2.5 + Vector3.UP * 0.8
+				_r.item = item
+			_next("solid")
+		"solid":
+			if since < 1.0:
+				return false
+			_expect(Inventory.count(str(_r.id)) == int(_r.before), "driven up to, it's not taken: it's to be brought home")
+			var shop: Workshop = _g.get("workshop")
+			var item: RigidBody3D = _r.item
+			if is_instance_valid(item):
+				item.global_position = shop.truck.global_position + shop.truck.global_basis.x * 7.0 + Vector3.UP * 1.0 # (as if craned there)
+				item.linear_velocity = Vector3.ZERO
 			_next("taken")
 		"taken":
-			if since < 0.5:
+			if since < 2.5:
 				return false
 			print("took a %s: held %d -> %d" % [_r.id, _r.before, Inventory.count(str(_r.id))])
-			_expect(Inventory.count(str(_r.id)) == int(_r.before) + 1, "driving up to it takes it")
+			_expect(Inventory.count(str(_r.id)) == int(_r.before) + 1, "brought home, it's taken in")
 			return _done()
 	return false
 
