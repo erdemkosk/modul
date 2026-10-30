@@ -62,6 +62,8 @@ const DEFS := {
 		"about": "Üstüne taktığını tuşla döndürür (16 rad/sn). Bıçak takarsan dönen silah olur: hızla vuran yer ağır hasar alır."},
 	"piston": {"name": "Piston", "size": Vector3i(1, 1, 1), "mass": 55.0, "kind": "joint", "joint": "piston", "hp": 200.0,
 		"about": "Üstüne taktığını tuşla bir hücre iter, tekrar basınca çeker. Hızlı iter: üstündekini fırlatır."},
+	"steer": {"name": "Direksiyon mafsalı", "size": Vector3i(1, 1, 1), "mass": 38.0, "kind": "joint", "joint": "steer", "hp": 200.0, "wood": 3,
+		"about": "Üstüne bağladığını dik ekseni çevresinde sağa sola çevirir (35°): A/D ile, bisiklet gidonu gibi. Üstüne bir blok, onun yanına tekerlek tak: tekerlek döner. Arkadaysa ters çevirir (forklift gibi). Tuş verirsen (K) o tuşa basılı tuttukça döner, bırakınca ortalar: istediğin şeyi döndür."},
 	"turret": {"name": "Taret", "size": Vector3i(2, 1, 2), "mass": 130.0, "kind": "joint", "joint": "turret", "hp": 300.0,
 		"about": "Kendi kendine nişana döner: üstüne ne takarsan (silah, zırh, alev, diken) baktığın yere çevirir. Yük arttıkça yavaşlar. Tuş verirsen o tuşla önde kilitlenir."},
 	"ammo": {"name": "Cephane sandığı", "size": Vector3i(1, 1, 1), "mass": 60.0, "kind": "ammo", "hp": 90.0,
@@ -74,11 +76,37 @@ const DEFS := {
 		"about": "Döner vinç (Y): baktığın yere döner, kancası kolunda baktığın uzaklığa (0,8-2,5 m) kayar. Kanca yükün üstündeyken Y: tutar, sarıp kaldırır; kasanın üstüne çevir, Y: bırakır. 1,5 t kaldırır; ağır yük hafif aracı devirir."},
 	"winch": {"name": "Çeki vinci", "size": Vector3i(1, 1, 2), "mass": 90.0, "kind": "winch", "hp": 180.0, "lift": 4000.0,
 		"about": "Arkadan halat (N): 12 m'deki yükü ya da aracı bağlar, sarıp yanına çeker; yükü sürükle, saplanmış aracı çamurdan çek. N yine çözer. 4 t çeker."},
+	"saw": {"name": "Testere", "size": Vector3i(2, 1, 2), "mass": 95.0, "kind": "saw", "hp": 160.0, "scrap": 12,
+		"about": "Önde yatay dairesel testere (R: çalıştır/durdur). Dönerken ağaca sür: gövdeyi keser, ağaç devrilir ve kütüklere ayrılır; kütük ve kütükleri de doğrar. Aküden 3 kW çeker. Araca da keser."},
+	"collector": {"name": "Toplama kasası", "size": Vector3i(2, 2, 2), "mass": 180.0, "kind": "collector", "hp": 220.0, "holds": 8, "scrap": 10,
+		"about": "Kepçeli açık kasa: 4 m'deki kütükleri kendiliğinden içine alır (en çok 8). Atölyenin yanına getirince odun depoya iner."},
+	"wood_frame": {"name": "Ahşap kafes", "size": Vector3i(1, 1, 1), "mass": 34.0, "kind": "block", "hp": 45.0, "wood": 2, "burns": true,
+		"about": "Elde yontulmuş kalaslardan kafes (2 odun). Çelik kafesten iki kat ağır, kolay kırılır, alev alır."},
+	"wood_plate": {"name": "Kalas kaplama", "size": Vector3i(1, 1, 1), "mass": 20.0, "kind": "block", "hp": 60.0, "wood": 1, "burns": true,
+		"about": "Çivili kalınca kalaslar (1 odun). Mermiyi biraz tutar, ateşte yanar."},
+	"wood_wedge": {"name": "Ahşap kama", "size": Vector3i(1, 1, 1), "mass": 30.0, "kind": "wedge", "hp": 70.0, "wood": 2, "burns": true,
+		"about": "Eğik çakılmış kalaslar (2 odun): burun ve kuyruk için. Yanar, kırılır."},
+	"wood_wheel": {"name": "Ahşap tekerlek", "size": Vector3i(1, 2, 2), "mass": 62.0, "kind": "wheel", "hp": 60.0,
+		"radius": 0.42, "width": 0.12, "rated": 380.0, "travel": 0.05, "lugs": 0.0, "iron": true, "wood": 3, "burns": true,
+		"about": "Tahta jantlı, demir çemberli araba tekerleği (3 odun). Yaysız, dar: sarsar, çamura gömülür, kayar; ağırdır, kırılır, yanar."},
+	"wood_rack": {"name": "Kütük sepeti", "size": Vector3i(2, 2, 2), "mass": 48.0, "kind": "rack", "hp": 60.0, "holds": 6, "wood": 4, "burns": true,
+		"about": "Kazıklı tahta beşik (4 odun): toplama kasasının alabileceğine 6 kütük katar. Kasa olmadan kendi toplamaz. Yanar."},
+	"ballista": {"name": "Arbalet", "size": Vector3i(2, 1, 2), "mass": 75.0, "kind": "weapon", "hp": 90.0, "weapon": "ballista",
+		"wood": 5, "burns": true,
+		"about": "Döner kaideli büyük yay (5 odun): 2,4 sn'de bir ok, 80 m/s. Delip arkasındaki parçaya da işler. Yanına katran fıçısı takarsan oklar yanar: ahşabı tutuşturur. Aküsüz çalışır."},
+	"catapult": {"name": "Mancınık", "size": Vector3i(2, 2, 3), "mass": 190.0, "kind": "weapon", "hp": 140.0, "weapon": "catapult",
+		"wood": 8, "burns": true,
+		"about": "Burgulu halat mancınığı (8 odun): 5 sn'de bir taş, kavisle 150 m'ye. Taş parçaları koparır, siperi kırar. Yanında katran fıçısı varsa yanan çömlek atar: düştüğü yer yanar."},
+	"oilpot": {"name": "Kaynar yağ", "size": Vector3i(2, 1, 2), "mass": 95.0, "kind": "weapon", "hp": 80.0, "weapon": "oil",
+		"wood": 4, "burns": true,
+		"about": "Mangal üstünde devrilen yağ fıçısı (4 odun): 8 m'ye kadar önüne yanan yağ döker; yer 8 sn yanar, üstündekini yakar. Yakın dövüş için."},
+	"pitch": {"name": "Katran fıçısı", "size": Vector3i(1, 1, 1), "mass": 45.0, "kind": "pitch", "hp": 40.0, "wood": 2, "burns": true,
+		"about": "Yanına değen arbaletin okları, mancınığın çömlekleri yanar (2 odun). Kırılırsa alev alır, yanındakini tutuşturur."},
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
-const ORDER := ["frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
-	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "turret", "ammo", "barrel", "crane", "winch", "cab"]
+const ORDER := ["wood_frame", "wood_plate", "wood_wedge", "wood_wheel", "wood_rack", "ballista", "catapult", "oilpot", "pitch", "frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
+	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "steer", "turret", "ammo", "barrel", "crane", "winch", "saw", "collector", "cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
 ## Hit points by part (what a hit takes off; at 0 it comes off), if a part doesn't say its own.
@@ -94,6 +122,46 @@ static func hp_of(id: String) -> float:
 	if d.has("hp"):
 		return float(d.hp)
 	return float(HP.get(id, HP.get(str(d.kind), 100.0)))
+
+
+## The valley's ages: wood first (what's made of the forest), then metal: a metal part's made (out of
+## scrap) only once its plan's been found (in the old works, a giant's heart, a long haul's pay). A
+## part held (taken off a wreck, given) can always go on; what isn't on a plan (wood, the saw, the bin,
+## the steering joint) needs none.
+const PLANS := {
+	"celik": {"name": "Çelik işleri", "parts": ["frame", "plate", "wedge", "armor", "spike"]},
+	"teker": {"name": "Tekerlek ve palet", "parts": ["wheel_s", "wheel_l", "track"]},
+	"motor": {"name": "Motor ve akü", "parts": ["engine_s", "engine", "engine_l", "battery", "light"]},
+	"makine": {"name": "Makine işleri", "parts": ["hinge", "rotor", "piston", "turret", "flipper", "crane", "winch"]},
+	"barut": {"name": "Ateşli silahlar", "parts": ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel"]},
+}
+const PLAN_ORDER := ["celik", "teker", "motor", "makine", "barut"]
+
+
+## The plan `id`'s made by ("": none, it's wood or it's found only).
+static func plan_of(id: String) -> String:
+	for k: String in PLANS:
+		if id in PLANS[k].parts:
+			return k
+	return ""
+
+
+## What making one of `id` takes in scrap once its plan's known (its weight's worth); a few (the
+## saw, the bin) the workshop can always knock up out of scrap, with no plan.
+static func metal_cost(id: String) -> int:
+	if def(id).has("scrap"):
+		return int(def(id).scrap)
+	return maxi(ceili(float(def(id).mass) / 15.0), 1) if plan_of(id) != "" else 0
+
+
+## What making one of `id` takes in wood (0: it isn't made, only found).
+static func wood_cost(id: String) -> int:
+	return int(def(id).get("wood", 0))
+
+
+## Wood: it catches fire.
+static func burns(id: String) -> bool:
+	return bool(def(id).get("burns", false))
 
 
 static func model(id: String) -> String:

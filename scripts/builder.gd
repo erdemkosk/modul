@@ -19,11 +19,10 @@ extends CanvasLayer
 
 static var save_path := "user://design.json" ## (tests point it elsewhere)
 
-## Asked before a part goes on (id, at, rot) -> may it (the cage's workshop: if you can pay for it).
+## Asked before a part goes on (id, at, rot) -> may it (the valley: if you hold one).
 var guard: Callable
 ## What a part costs here, for the part's card ("" when nothing does).
 var price_note: Callable
-var lock_note: Callable ## (id) -> "" if it may be built with, else what it still needs (KAFES: its fame)
 var swap_guard: Callable ## (old rows, new rows) -> bool: may the machine become `new`? (the valley: if what you hold covers it)
 signal removed(id: String, at: Vector3i, rot: int)
 signal placed(i: int) ## (part `i` of the design was just bolted on)
@@ -47,7 +46,8 @@ const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", 
 ## The cards' groups.
 const GROUPS := [["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
 	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel", "flipper"]],
-	["HAREKET", ["turret", "hinge", "rotor", "piston"]], ["YÜK", ["crane", "winch"]]]
+	["HAREKET", ["turret", "steer", "hinge", "rotor", "piston"]], ["YÜK", ["crane", "winch"]], ["ALET", ["saw", "collector"]],
+	["AHŞAP", ["wood_frame", "wood_plate", "wood_wedge", "wood_wheel", "wood_rack"]]]
 const SND := "res://assets/audio/build/"
 
 var machine: Machine
@@ -71,7 +71,6 @@ const DRIVE_KEYS := [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_B, KEY_TAB, KEY_
 var _remove_i := -1
 var _glowing: Node3D
 var _cards := {}
-var _locks := {} ## id -> its tile's lock tag
 var _root: Control
 var _part_name: Label
 var _part_about: Label
@@ -492,34 +491,8 @@ func _card(id: String, key: String) -> Control:
 	var kl := _label(badge, key, 11, Color.WHITE)
 	kl.custom_minimum_size.x = 12
 	kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var lock := PanelContainer.new()
-	lock.add_theme_stylebox_override("panel", _box(Color(0.12, 0.12, 0.13, 0.92), Color(0.12, 0.12, 0.13), 5, 3.0))
-	lock.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	lock.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	lock.grow_vertical = Control.GROW_DIRECTION_BOTH
-	lock.offset_top = -30
-	lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lock.visible = false
-	b.add_child(lock)
-	var ll := _label(lock, "", 11, Color.WHITE)
-	ll.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_locks[id] = lock
 	_cards[id] = b
 	return b
-
-
-## The tiles of parts not open yet (lock_note): greyed, a tag with what they need, not to be picked.
-func _refresh_locks() -> void:
-	for id: String in _cards:
-		var note := str(lock_note.call(id)) if lock_note.is_valid() else ""
-		var b := _cards[id] as Button
-		b.disabled = note != ""
-		(b.get_child(0) as Control).modulate = Color(1, 1, 1, 0.3) if note != "" else Color.WHITE
-		var lock := _locks[id] as PanelContainer
-		lock.visible = note != ""
-		(lock.get_child(0) as Label).text = "KİLİTLİ\n" + note
-	if lock_note.is_valid() and str(lock_note.call(selected)) != "":
-		select("frame", false)
 
 
 func _build_part_info() -> void:
@@ -606,9 +579,6 @@ func _refresh() -> void:
 
 
 func select(id: String, sound := true) -> void:
-	if lock_note.is_valid() and str(lock_note.call(id)) != "":
-		_play("tick.wav", -4.0, 0.6)
-		return
 	selected = id
 	if _tiles_box and _group_of(id) != _group:
 		_show_group(_group_of(id), false)
@@ -710,7 +680,6 @@ func set_active(on: bool) -> void:
 		_root.modulate.a = 0.0
 		_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.2)
 		_refresh_slots()
-		_refresh_locks()
 	else:
 		save()
 	_refresh()
@@ -1230,7 +1199,7 @@ static func load_saved() -> Array:
 ## mouse or F).
 func _listen_for_key() -> void:
 	var i := _remove_i
-	if i < 0 or i >= machine.design.size() or not str(Parts.def(machine.design[i].id).kind) in ["weapon", "flipper", "joint", "crane", "winch"]:
+	if i < 0 or i >= machine.design.size() or not str(Parts.def(machine.design[i].id).kind) in ["weapon", "flipper", "joint", "crane", "winch", "saw"]:
 		_hint_say("Tuş vermek için farenin altında bir silah, çevirici ya da hareketli parça olsun, sonra K")
 		return
 	_listen = i

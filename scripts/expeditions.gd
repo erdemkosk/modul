@@ -213,7 +213,11 @@ func _drop_crate() -> void:
 	crate = null
 
 
-## Delivered: paid in parts and scrap.
+## Delivered: paid in parts and scrap (in the wood age in wood: billets into the store, and no metal
+## parts); a long haul (its pay PLAN_PAY or more) carries a plan half the time, while there are any.
+const PLAN_PAY := 2
+
+
 func _deliver() -> void:
 	var g: Dictionary = GOODS[job.goods]
 	var c := float(job.cond)
@@ -222,10 +226,17 @@ func _deliver() -> void:
 	var pool: Array = PAY_PARTS[int(job.pay)]
 	var n := maxi(roundi((2 + int(job.pay)) * k), 1)
 	var got := []
-	for i in n:
-		var id: String = pool[_rng.randi() % pool.size()]
-		Inventory.add(id, 1, _rng.randf_range(0.85, 1.0))
-		got.append(Parts.def(id).name)
+	if Inventory.age() == 1:
+		Inventory.add_wood(n * 2)
+		got.append("%d odun" % (n * 2))
+	else:
+		for i in n:
+			var id: String = pool[_rng.randi() % pool.size()]
+			Inventory.add(id, 1, _rng.randf_range(0.85, 1.0))
+			got.append(Parts.def(id).name)
+	var plan := Inventory.next_plan()
+	if int(job.pay) >= PLAN_PAY and plan != "" and not late and _rng.randf() < 0.5 and Inventory.learn(plan):
+		got.append("PLAN: " + str(Parts.PLANS[plan].name))
 	var scrap := roundi((4.0 + float(job.dist) / 100.0) * k)
 	Inventory.add_scrap(scrap)
 	if Combat.current and is_instance_valid(crate):
@@ -436,7 +447,10 @@ func describe(o: Dictionary) -> String:
 		depot(o.from).name, depot(o.to).name, float(o.dist) / 1000.0]
 	if float(o.due) > 0.0:
 		s += " · ACİL %d dk" % ceili(float(o.due) / 60.0)
-	s += "\nÖdül: %d parça (%s…), %d hurda" % [2 + int(o.pay), Parts.def(PAY_PARTS[int(o.pay)][0]).name, roundi(4.0 + float(o.dist) / 100.0)]
+	if Inventory.age() == 1:
+		s += "\nÖdül: %d odun, %d hurda%s" % [(2 + int(o.pay)) * 2, roundi(4.0 + float(o.dist) / 100.0), "  ·  belki bir plan" if int(o.pay) >= PLAN_PAY else ""]
+	else:
+		s += "\nÖdül: %d parça (%s…), %d hurda" % [2 + int(o.pay), Parts.def(PAY_PARTS[int(o.pay)][0]).name, roundi(4.0 + float(o.dist) / 100.0)]
 	return s
 
 

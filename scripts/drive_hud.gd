@@ -11,8 +11,10 @@ extends CanvasLayer
 ##   top left       where you are and the tally; top right the camera (C) and the frame rate
 ## Under the panels, CombatOverlay: the screen going red when you're hurt, where it came from, the enemy.
 
-const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets", "flamer": "flamer"}
-const NAME := {"minigun": "MİNİGUN", "cannon": "TOP 76", "rockets": "ROKET", "flamer": "ALEV"}
+const ICON := {"minigun": "minigun", "cannon": "cannon", "rockets": "rockets", "flamer": "flamer", "ballista": "ballista",
+	"catapult": "catapult", "oil": "oilpot"}
+const NAME := {"minigun": "MİNİGUN", "cannon": "TOP 76", "rockets": "ROKET", "flamer": "ALEV", "ballista": "ARBALET",
+	"catapult": "MANCINIK", "oil": "KAYNAR YAĞ"}
 const TOP_SPEED := 90.0 ## km/h at the speed bar's end
 
 var game: Node
@@ -313,7 +315,7 @@ func _joint_chip(jt: MachineJoint) -> PanelContainer:
 	plate.set_meta("flipper", null)
 	plate.set_meta("joint", jt)
 	var row := plate.get_child(0)
-	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = OS.get_keycode_string(jt.key) if jt.key != 0 else ("OTO" if jt.kind == "turret" else "E")
+	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = OS.get_keycode_string(jt.key) if jt.key != 0 else ("OTO" if jt.kind == "turret" else ("A D" if jt.kind == "steer" else "E"))
 	var id: String = jt.kind # (the part's id is its kind)
 	if ResourceLoader.exists("res://assets/parts/icons/%s.png" % id):
 		(row.get_child(1) as TextureRect).texture = load("res://assets/parts/icons/%s.png" % id)
@@ -401,11 +403,14 @@ func _weapons(m: Machine) -> void:
 			"flamer":
 				frac = 1.0
 				text = "YAKIYOR" if g._spin > 0.5 else "HAZIR  ·  14 M"
+			"ballista", "catapult", "oil":
+				frac = 1.0 - g.reload_frac()
+				text = ("HAZIR" if frac >= 1.0 else "KURULUYOR") + ("  ·  YANAN" if g.fiery else "")
 		if g.limited:
 			# what it has left: rounds (the flamer's fuel in seconds); none, it's said plainly
 			var left := ("%d SN" % ceili(g.ammo)) if g.kind == "flamer" else str(int(g.ammo))
 			text = "CEPHANE YOK" if not g.has_ammo() else "%s  ·  %s" % [text, left]
-		if not m.powered:
+		if not m.powered and not g.kind in MachineGun.MANUAL:
 			text = "AKÜ BİTTİ"
 		var lit := g.armed
 		var st := plate.get_meta("state") as Label

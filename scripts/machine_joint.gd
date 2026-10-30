@@ -7,6 +7,10 @@ extends RefCounted
 ## out a cell along it (again: draws it back), fast enough to throw what's on it. A joint inside what
 ## another carries moves with it. What it carries keeps its parts' boxes and hit points; where a
 ## moving part strikes something, the blow is by how fast that point's going (Machine works it out).
+## A steering joint (kind "steer") turns what it carries about its up as the machine's steered (A/D),
+## up to STEER_MAX each way, less at speed, the wrong way round behind the middle (a rear-steered
+## machine turns so); given a key, it turns that way while the key's held and comes back when it's let
+## go. Wheels it carries turn with it (Machine moves them).
 ## A turret needs no key: it turns what it carries about its up toward where the machine aims
 ## (slower the more it carries); given a key, that key brings it round to the front and holds it there.
 
@@ -19,7 +23,9 @@ const PUSH_RATE := 5.0 ## m/s out
 const DRAW_RATE := 1.6 ## m/s back
 const TURN_RATE := 2.2 ## rad/s a turret turns, carrying nothing
 const TURN_LOAD := 500.0 ## kg on it that halves that
-const DRAW := {"hinge": 1.5, "rotor": 4.0, "piston": 2.5, "turret": 1.6} ## kW while it moves
+const STEER_MAX := 0.61 ## rad a steering joint turns each way (35°)
+const STEER_RATE := 2.6 ## rad/s
+const DRAW := {"hinge": 1.5, "rotor": 4.0, "piston": 2.5, "turret": 1.6, "steer": 0.6} ## kW while it moves
 
 var machine: Machine
 var kind := "hinge"
@@ -108,6 +114,15 @@ func update(dt: float, powered: bool) -> void:
 			rate = angle_difference(was, angle) / maxf(dt, 1e-4)
 			_show_top()
 			return
+		"steer":
+			var want := 0.0
+			if key != 0:
+				want = STEER_MAX if machine.keyed and Input.is_physical_key_pressed(key) else 0.0
+			else:
+				want = -machine.steer * STEER_MAX / (1.0 + absf(machine.speed) / 10.0)
+				if pivot.z > machine.com.z + 0.4:
+					want = -want # (behind the middle: it turns the other way to bring the machine round)
+			angle = move_toward(angle, want, STEER_RATE * dt) if powered else angle
 		"piston":
 			var want := STROKE if on else 0.0
 			angle = move_toward(angle, want, (PUSH_RATE if on else DRAW_RATE) * dt) if powered else angle

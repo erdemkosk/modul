@@ -1,14 +1,11 @@
 extends SceneTree
-## Headless check of the rivals' AI in the cage (Mode "cage"):
+## Headless check of the other side's AI on the proving ground (Mode "arena"):
 ##   godot --headless --path . -s res://tests/ai_test.gd
-## 1. Driving at you across the cage with a spinner between, it goes round the spinner.
+## 1. A rammer across the asphalt comes and gets to you.
 ## 2. It aims at a part that matters and that it can see (not just your middle).
-## 3. You near the open pit, a rammer goes round behind you and shoves you toward it.
 
 const HZ := 120
 var _g: Node
-var _c: Cage
-var _a: CageArena
 var _m: Machine
 var _e: Machine
 var _frame := 0
@@ -21,8 +18,8 @@ var _r := {}
 func _initialize() -> void:
 	Builder.save_path = "user://test_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
-	seed(int(OS.get_environment("AI_SEED")) if OS.get_environment("AI_SEED") != "" else 4) # (the crews' dice fixed: the same fight each time; the shove into the pit comes off for about two seeds in three)
-	Mode.current = "cage"
+	seed(int(OS.get_environment("AI_SEED")) if OS.get_environment("AI_SEED") != "" else 4) # (the crews' dice fixed: the same fight each time)
+	Mode.current = "arena"
 	_g = load("res://scenes/game.tscn").instantiate()
 	root.add_child(_g)
 
@@ -56,7 +53,7 @@ func _rival(data: Array, at: Vector2, yaw: float) -> Machine:
 
 func _physics_process(_d: float) -> bool:
 	_frame += 1
-	if _frame > 80 * HZ:
+	if _frame > 60 * HZ:
 		_expect(false, "timed out at " + _step)
 		return _done()
 	var since := (_frame - _mark) / float(HZ)
@@ -64,34 +61,25 @@ func _physics_process(_d: float) -> bool:
 		"start":
 			if _frame < HZ:
 				return false
-			_c = _g.get("cage")
-			_a = _c.arena
-			(_g.get("builder") as Builder).set_active(false) # (the cage opens on the builder)
+			(_g.get("builder") as Builder).set_active(false)
 			_m = _g.get("machine")
 			_g.set("player_input", false)
 			_m.invulnerable = true
-			# 1. a spinner between: the rammer must go round it to reach you
-			_a.set_round({"spinners": [Vector2(0, 0)]})
-			_put(_m, Vector2(16, 0), PI * 0.5)
-			_rival(Designs.rammer(), Vector2(-16, 0), -PI * 0.5) # (its nose toward you, +x)
-			_r.closest = INF
-			_next("round_spinner")
-		"round_spinner":
-			var p := _e.global_position
-			_r.closest = minf(float(_r.closest), Vector2(p.x, p.z).length())
+			# 1. a rammer at the far end of the asphalt: it must come and get to you
+			_put(_m, Vector2(0, -28), 0.0)
+			_rival(Designs.rammer(), Vector2(0, -56), PI) # (its nose toward you, +z)
+			_next("ram")
+		"ram":
 			if OS.get_environment("TRACE") != "" and _frame % 60 == 0:
 				var ai0: AiDriver = _e.find_children("*", "AiDriver", false, false)[0]
-				print("   s %.1f rammer %s throttle %.1f steer %.1f rev %s speed %.1f stuck %.2f back %.2f" % [since, p, _e.throttle, _e.steer, ai0._reversing, _e.speed, ai0._stuck_t, ai0._back_t])
-			if since < 13.0 and _e.global_position.distance_to(_m.global_position) > 6.0: # (time to back off a spinner it caught and go round)
+				print("   s %.1f rammer %s throttle %.1f steer %.1f rev %s speed %.1f stuck %.2f back %.2f" % [since, _e.global_position, _e.throttle, _e.steer, ai0._reversing, _e.speed, ai0._stuck_t, ai0._back_t])
+			if since < 13.0 and _e.global_position.distance_to(_m.global_position) > 6.0:
 				return false
-			print("rammer at you past a spinner: came within %.1f m of its middle, %.1f m from you after %.1f s" % [
-				_r.closest, _e.global_position.distance_to(_m.global_position), since])
-			_expect(float(_r.closest) > 1.5 + 0.8, "it goes round the spinner, not into it")
-			_expect(_e.global_position.distance_to(_m.global_position) < 12.0, "and still gets to you")
+			print("rammer across the asphalt: %.1f m from you after %.1f s" % [_e.global_position.distance_to(_m.global_position), since])
+			_expect(_e.global_position.distance_to(_m.global_position) < 8.0, "the rammer gets to you")
 			# 2. a gunned rival: what it aims at
-			_a.set_round({})
-			_put(_m, Vector2(0, 14), 0.0)
-			_rival(Designs.raider(), Vector2(0, -16), PI)
+			_put(_m, Vector2(0, -26), 0.0)
+			_rival(Designs.raider(), Vector2(0, -56), PI)
 			_next("aim")
 		"aim":
 			if since < 3.0:
@@ -100,29 +88,6 @@ func _physics_process(_d: float) -> bool:
 			var part: Dictionary = ai.get("_part")
 			print("the raider aims at: %s" % (part.id if not part.is_empty() else "your middle"))
 			_expect(not part.is_empty() and str(Parts.def(part.id).kind) in ["cab", "engine", "weapon", "wheel"], "it aims at a part that matters")
-			# 3. the pit open just behind you; a rammer comes
-			_a.set_round({"pit": Rect2(-3, -3, 6, 6)})
-			_a.open_pit()
-			_put(_m, Vector2(6.5, 0), PI * 0.5)
-			_rival(Designs.rammer(), Vector2(20, 6), PI * 0.5)
-			_r.d0 = INF
-			_next("shove")
-		"shove":
-			if since < 4.0:
-				_r.d0 = Vector2(_m.global_position.x, _m.global_position.z).length()
-				return false
-			var ai: AiDriver = _e.find_children("*", "AiDriver", false, false)[0] if is_instance_valid(_e) else null
-			if ai and ai.shoving:
-				_r.shoved = true
-			var d := Vector2(_m.global_position.x, _m.global_position.z).length()
-			if OS.get_environment("TRACE") != "" and _frame % 60 == 0 and is_instance_valid(_e):
-				print("   t %.1f you %s  rammer %s  shoving %s lined %s throttle %.1f back %.1f rev %s stuck %.1f" % [since, _m.global_position, _e.global_position, ai.shoving if ai else false, ai._lined, _e.throttle, ai._back_t, ai._reversing, ai._stuck_t])
-			if since < 16.0 and not _m.falling:
-				return false
-			print("by the open pit: the rammer went to shove %s; you %s (%.1f m -> %.1f m off its middle)" % [
-				_r.get("shoved", false), "fell in" if _m.falling else "held on", _r.d0, d])
-			_expect(bool(_r.get("shoved", false)), "the rammer sets out to shove you in")
-			_expect(_m.falling or d < float(_r.d0) - 1.0, "and shoves you toward it")
 			return _done()
 	return false
 

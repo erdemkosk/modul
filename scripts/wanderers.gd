@@ -3,7 +3,8 @@ extends Node
 ## The valley's other machines: Forge's, with crews, out there to be hunted (and hunting). There are
 ## up to `keep` of them within RANGE of you; a new one comes in now and then, SPAWN_MIN..SPAWN_MAX m
 ## off on dry ground, as strong as the machine you've built (by its weight: build bigger, they come
-## bigger); one that's further than GONE is taken away. What comes off them whole is salvage.
+## bigger); one that's further than GONE is taken away. What comes off them whole is salvage. In the
+## wood age they're wooden, with the wood age's weapons (WoodForge); after, now and then still.
 
 const RANGE := 400.0
 const GONE := 550.0
@@ -54,7 +55,7 @@ func spawn_near(at: Vector3) -> Machine:
 			continue
 		p.y = float(terrain.call("height_at", p.x, p.z)) + 1.8
 		_n += 1
-		var made := Forge.make(randi() + _n, tier)
+		var made := WoodForge.make(randi() + _n, tier) if Inventory.age() == 1 or randf() < 0.3 else Forge.make(randi() + _n, tier)
 		var face := Basis(Vector3.UP, atan2(p.x - at.x, p.z - at.z))
 		var e: Machine = game.call("_spawn", made.data, Transform3D(face, p), 1, true)
 		e.label = made.name

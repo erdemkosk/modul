@@ -1,6 +1,5 @@
 extends Node3D
-## İnşa: a machine you put together from parts and drive and fight with. Three places (Mode):
-##   cage     KAFES: a tournament of rounds in a walled cage inside a stadium, before its crowd (Cage, CageArena, Stadium)
+## İnşa: a machine you put together from parts and drive and fight with. Two places (Mode):
 ##   valley   the open valley (WorldTerrain: its mud, snow, roads; WorldDecor's trees; Weather's sky)
 ##   arena    the proving ground (TestTerrain): asphalt, gravel, mud pits, a bog, snow, ice, ramps;
 ##            build on the spot and set the other side's machines on yourself
@@ -30,9 +29,7 @@ var builder: Builder
 var combat: Combat
 var arena := false
 var arena_node: Arena
-var cage: Cage
 var hit_feel: HitFeel
-var missions: Missions
 var salvage: Salvage
 var wanderers: Wanderers
 var sites: Node ## (the valley's works sites: works_sites.gd)
@@ -61,40 +58,16 @@ var _banner_t := 0.0
 func _ready() -> void:
 	_bind_keys()
 	arena = Mode.current == "arena"
-	var caged := Mode.current == "cage"
-	var mission := Mode.current == "mission"
-	var md := Missions.find(Mode.mission) if mission else {}
-	place_name = "KAFES" if caged else ("TEST ALANI" if arena else ("GÖREV" if mission else "VADİ"))
+	place_name = "TEST ALANI" if arena else "VADİ"
 	Builder.keep_wear = Mode.current == "valley" # (the valley's parts are worn and stay so)
 	if Mode.current == "valley" and Builder.save_path == "user://design.json":
 		Builder.save_path = "user://valley_design.json" # (the valley's machine is its own: built from what you hold)
-	elif Mode.current == "cage" and Builder.save_path == "user://design.json":
-		Builder.save_path = "user://cage_design.json" # (the cage's too: built from the parts its fame has opened)
 	weather = Weather.new()
-	weather.hour = 21.6 if caged else (float(md.hour) if mission else 11.0) # (the cage fights at night, under its lights)
-	weather.day_length_minutes = 0.0 if arena or caged or mission else 40.0
-	weather.preset = str(md.weather) if mission else "clear"
+	weather.hour = 11.0
+	weather.day_length_minutes = 0.0 if arena else 40.0
+	weather.preset = "clear"
 	add_child(weather)
-	if mission:
-		var mt := TestTerrain.new()
-		Missions.ground(Mode.mission, mt)
-		terrain = mt
-		add_child(mt)
-	elif caged:
-		var ct := TestTerrain.new()
-		ct.default_surface = Surface.preset("asphalt")
-		ct.noise_from = 125.0 # (flat to the corners, and under the stadium)
-		ct.features = false
-		ct.grid_strength = 0.0
-		terrain = ct
-		add_child(ct)
-		var ca := CageArena.new()
-		ca.terrain = ct
-		add_child(ca)
-		cage = Cage.new()
-		cage.arena = ca
-		cage.game = self
-	elif arena:
+	if arena:
 		var t := TestTerrain.new()
 		t.default_surface = Surface.preset("grass") # (a meadow round the zones)
 		t.noise_from = Arena.R + 12.0 # (the arena's floor flat out to its stands)
@@ -124,7 +97,7 @@ func _ready() -> void:
 	add_child(hit_feel)
 	machine = _spawn(Builder.load_saved(), _start_xform(), 0)
 	if machine.design.is_empty():
-		machine.from_data(Designs.starter())
+		machine.from_data(_first_design())
 	machine.died.connect(_on_player_died)
 	cam = OrbitCamera.new()
 	cam.target = machine
@@ -148,21 +121,11 @@ func _ready() -> void:
 	_death = DeathCard.new()
 	_death.respawn.connect(_respawn)
 	add_child(_death)
-	if cage:
-		cage.arena.set_night(weather.is_night())
-		add_child(cage)
 	if Mode.current == "valley":
 		_valley_salvage()
-	if mission:
-		missions = Missions.new()
-		missions.game = self
-		missions.terrain = terrain
-		missions.def = md
-		add_child(missions)
 	Settings.apply(get_tree())
 	machine.label = "SEN"
-	if cage == null and missions == null: # (the cage and a mission open on their start panels: the pointer stays free)
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if arena:
 		say("Test alanı · B: inşa · F1 akıncı · F2 tank · F3 hedef · F5 paletli · F4 dalga · F6 temizle · G hasar")
 
@@ -213,7 +176,21 @@ func _valley_salvage() -> void:
 	builder.guard = func(id: String, _at: Vector3i, _rot: int) -> bool:
 		if Inventory.take(id):
 			return true
-		say("Elinde %s yok: parçalanan araçlardan topla, seferlerden kazan" % Parts.def(id).name)
+		if Inventory.make_wood(id) and Inventory.take(id): # (wooden: made here and now, out of the store)
+			say("%s yapıldı: %d odun  ·  depoda %d" % [Parts.def(id).name, Parts.wood_cost(id), Inventory.wood])
+			return true
+		if Inventory.make_metal(id) and Inventory.take(id): # (metal: its plan's known, made of scrap)
+			say("%s yapıldı: %d hurda  ·  kalan %d" % [Parts.def(id).name, Parts.metal_cost(id), Inventory.scrap])
+			return true
+		var plan := Parts.plan_of(id)
+		if Parts.wood_cost(id) > 0:
+			say("%s için %d odun gerek, depoda %d: testereyle ağaç kes, kasayla topla" % [Parts.def(id).name, Parts.wood_cost(id), Inventory.wood])
+		elif plan != "" and not Inventory.knows(plan):
+			say("%s için plan yok (%s): harabelerde, devlerde, uzun seferlerde ara" % [Parts.def(id).name, Parts.PLANS[plan].name])
+		elif Parts.metal_cost(id) > 0:
+			say("%s için %d hurda gerek, elde %d" % [Parts.def(id).name, Parts.metal_cost(id), Inventory.scrap])
+		else:
+			say("Elinde %s yok: parçalanan araçlardan topla" % Parts.def(id).name)
 		return false
 	# (the part bolted on is the one taken: as worn as it was)
 	builder.placed.connect(func(i: int) -> void:
@@ -225,6 +202,12 @@ func _valley_salvage() -> void:
 	builder.removed.connect(func(id: String, _at: Vector3i, _rot: int) -> void: Inventory.add(id, 1, builder.removed_cond))
 	builder.price_note = func(id: String) -> String:
 		var b := Inventory.best(id)
+		if Inventory.count(id) <= 0 and Parts.wood_cost(id) > 0:
+			return "%d odun (depoda %d)" % [Parts.wood_cost(id), Inventory.wood]
+		if Inventory.count(id) <= 0 and Parts.plan_of(id) != "" and not Inventory.knows(Parts.plan_of(id)):
+			return "plan yok"
+		if Inventory.count(id) <= 0 and Parts.metal_cost(id) > 0:
+			return "%d hurda (elde %d)" % [Parts.metal_cost(id), Inventory.scrap]
 		return "elde %d" % Inventory.count(id) + (" · en iyisi %%%d" % roundi(b * 100.0) if b >= 0.0 and b < 0.995 else "")
 	builder.swap_guard = func(old: Array, new: Array) -> bool:
 		var r := Inventory.swap(old, new)
@@ -239,12 +222,6 @@ func _valley_salvage() -> void:
 
 
 func _start_xform() -> Transform3D:
-	if Mode.current == "mission":
-		var mp := Vector3(0.0, float(terrain.call("height_at", 0.0, -6.0)) + 1.5, -6.0)
-		return Transform3D(Basis(Vector3.UP, PI), mp) # (on the pad, facing the site)
-	if Mode.current == "cage":
-		var at := Vector3(-CageArena.HALF + 4.5, float(terrain.call("height_at", -CageArena.HALF + 4.5, -CageArena.HALF + 4.5)) + 1.5, -CageArena.HALF + 4.5)
-		return Transform3D(Basis.looking_at(-at * Vector3(1, 0, 1), Vector3.UP), at)
 	if arena:
 		return Transform3D(Basis.IDENTITY, Vector3(0.0, terrain.call("height_at", 0.0, -40.0) + 2.0, -40.0))
 	if Mode.current == "valley":
@@ -337,13 +314,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			say("Atölyeyi sürerken inşa olmaz: V ile aracına geç")
 		elif workshop and not builder.active and not workshop.near(machine):
 			say("İnşa ve onarım yalnız atölyenin yanında: %s" % workshop.status())
-		elif cage and not cage.can_build() and not builder.active:
-			say("Dövüş sırasında araç değiştirilemez: turlar arası atölyede")
-		elif missions and not missions.can_build() and not builder.active:
-			say("Görev sürerken araç değiştirilemez: R ile baştan başla")
 		else:
-			if cage and not builder.active:
-				cage.on_build_open()
 			builder.set_active(not builder.active)
 	elif event.is_action_pressed("lights"):
 		machine.set_lights(not machine.lights_on)
@@ -357,6 +328,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var hoisted := machine.hoist_key(code)
 		if hoisted != "":
 			say(hoisted)
+		var tooled := machine.tool_key(code)
+		if tooled != "":
+			say(tooled)
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and not builder.active:
 		if key.keycode >= KEY_0 and key.keycode <= KEY_9:
@@ -401,8 +375,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				spawn_enemy("tank")
 				spawn_enemy("tracked")
 				say("Dalga: iki akıncı, bir tank, bir paletli roketatar")
-	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active \
-			and not (cage and cage.panel_up()) and not (missions and missions.panel_up()):
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not builder.active:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -458,11 +431,6 @@ func _fire_flippers(code: int) -> bool:
 
 
 func right_up() -> void:
-	if cage and cage.state == "fight":
-		# in the cage there's no crane: on your back, only your own flipper gets you up
-		if not machine.flip():
-			say("Kafeste ters dönersen ancak çeviriciyle doğrulursun (F)" if machine.flippers.is_empty() else "Çevirici dolmadı")
-		return
 	var p := machine.global_position
 	var yaw := machine.global_basis.get_euler().y
 	machine.linear_velocity = Vector3.ZERO
@@ -496,7 +464,7 @@ func _physics_process(dt: float) -> void:
 	_apply_armed() # (a rebuild makes the guns anew)
 	# K held: a machine that can't move any more (no engine, nothing to run on) or that won't come right
 	# is rebuilt where it started
-	if Input.is_physical_key_pressed(KEY_K) and cage == null and missions == null and not (workshop and workshop.driving()):
+	if Input.is_physical_key_pressed(KEY_K) and not (workshop and workshop.driving()):
 		_recover_t += dt
 		if _recover_t >= 1.5:
 			_recover_t = 0.0
@@ -530,18 +498,12 @@ func _on_player_died() -> void:
 	if workshop and workshop.driving(): # (the machine you left's gone: a new one beside the workshop)
 		say("Bıraktığın araç parçalandı: atölyenin yanında yenisi kuruldu")
 		var data := Builder.load_saved()
-		var m := _spawn(data if not data.is_empty() else Designs.starter(), _start_xform(), 0)
+		var m := _spawn(data if not data.is_empty() else _first_design(), _start_xform(), 0)
 		m.died.connect(_on_player_died)
 		m.brake = 1.0
 		workshop.own = m
 		builder.machine = m
 		builder.rebind()
-		return
-	if cage:
-		cage.on_player_died()
-		return
-	if missions:
-		missions.on_player_died()
 		return
 	var by := machine.last_hit_by
 	var who := by.label if is_instance_valid(by) and by != machine else ""
@@ -564,13 +526,9 @@ func drive(m: Machine) -> void:
 	cam.target = m
 
 
-## A new machine from the saved design where you start, without a word (the cage's new run).
-func _respawn_quiet() -> void:
-	if is_instance_valid(machine):
-		if machine.died.is_connected(_on_player_died):
-			machine.died.disconnect(_on_player_died)
-		machine.queue_free()
-	_respawn()
+## What a machine's built as with nothing saved.
+func _first_design() -> Array:
+	return Designs.valley_start() if Mode.current == "valley" else Designs.starter()
 
 
 ## A new machine from the saved design where you start.
@@ -579,7 +537,7 @@ func _respawn() -> void:
 	_life_t = 0.0
 	_kills_at_spawn = kills
 	var data := Builder.load_saved()
-	machine = _spawn(data if not data.is_empty() else Designs.starter(), _start_xform(), 0)
+	machine = _spawn(data if not data.is_empty() else _first_design(), _start_xform(), 0)
 	machine.died.connect(_on_player_died)
 	cam.target = machine
 	builder.machine = machine
@@ -625,7 +583,7 @@ func _make_hud() -> void:
 	# a row across the top, the plate in its middle as wide as its words
 	var top := HBoxContainer.new()
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	top.offset_top = 70 if Mode.current != "cage" else 150 # (under the cage's own bar)
+	top.offset_top = 70
 	top.alignment = BoxContainer.ALIGNMENT_CENTER
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(top)

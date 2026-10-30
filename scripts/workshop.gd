@@ -6,8 +6,11 @@ extends Node
 ## SWAP of it), and back: it's slow and heavy (3 t), it sinks where your machine wouldn't, and it
 ## carries what your machine can't (Expeditions). Left, it's braked.
 ##
-## Mending: your machine stopped beside it, its hurt parts are put right a little at a time, paid in
-## scrap (Inventory.scrap: SCRAP_PER for each whole part's worth); a part that's gone stays gone.
+## Wood: a collector's bin brought beside it is emptied into the store (Inventory.wood); the wood age's
+## weapons are stocked again there (bolts, stones, oil: a quarter of a load for a billet, ARM_EVERY s).
+## Mending: your machine stopped beside it, its hurt parts are put right a little at a time, the steel
+## paid in scrap (Inventory.scrap: SCRAP_PER for each whole part's worth), the wooden in wood
+## (Inventory.wood: WOOD_PER); what there's nothing to pay for waits; a part that's gone stays gone.
 ## Where it stands is kept (`path`); a machine lost is built anew beside it.
 
 const REACH := 25.0 ## m: building and mending
@@ -15,6 +18,7 @@ const SWAP := 12.0 ## m: getting in and out
 const MEND := 0.05 ## of a part's hit points a step
 const MEND_EVERY := 0.5 ## s
 const SCRAP_PER := 10.0 ## scrap a whole part's worth of mending costs
+const WOOD_PER := 2.0 ## billets a whole wooden part's worth of mending costs
 
 static var path := "user://valley_workshop.cfg" ## (tests point it elsewhere)
 
@@ -26,6 +30,9 @@ var mending := false
 var _mend_t := 0.0
 var _save_t := 0.0
 var _owe := 0.0
+var _owe_wood := 0.0
+var _arm_t := 0.0
+const ARM_EVERY := 1.0 ## s
 
 
 ## Where it was left (or beside the valley's start): its transform.
@@ -131,16 +138,24 @@ func _physics_process(dt: float) -> void:
 		save()
 	# mending: your machine, stopped beside it, not being built on
 	var m := yours()
+	if m and near(m) and Inventory.bin > 0 and not m.tools.is_empty():
+		_unload(m)
+	if m and near(m) and not driving():
+		_arm_t += dt
+		if _arm_t >= ARM_EVERY:
+			_arm_t = 0.0
+			_stock(m)
 	mending = false
 	if m == null or driving() or m.building or not near(m) or absf(m.speed) > 0.5:
 		_mend_t = 0.0
 		return
-	var hurt := 0.0
-	for p: Dictionary in m.design:
-		hurt += 1.0 - clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
-	if hurt < 0.005:
-		return
-	if Inventory.scrap <= 0:
+	# what's hurt that can be paid for: steel with scrap, wood with wood
+	var can := func(p: Dictionary) -> bool:
+		if float(p.hp) >= Parts.hp_of(p.id) * 0.995:
+			return false
+		return Inventory.wood > 0 if Parts.burns(p.id) else Inventory.scrap > 0
+	var hurt := m.design.filter(can)
+	if hurt.is_empty():
 		mending = false
 		return
 	mending = true
@@ -148,15 +163,31 @@ func _physics_process(dt: float) -> void:
 	if _mend_t < MEND_EVERY:
 		return
 	_mend_t = 0.0
-	var mended := 0.0
-	for p: Dictionary in m.design:
-		mended += minf(MEND, 1.0 - clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0))
-	m.repair(MEND)
-	_owe += mended * SCRAP_PER
+	for p: Dictionary in hurt:
+		var full := Parts.hp_of(p.id)
+		var gain := minf(MEND, 1.0 - float(p.hp) / full)
+		if Parts.burns(p.id):
+			_owe_wood += gain * WOOD_PER
+		else:
+			_owe += gain * SCRAP_PER
+		p.hp = float(p.hp) + gain * full
+		var f := float(p.hp) / full
+		if f >= 0.5:
+			p.erase("weak")
+			p.erase("sputter")
+		if f >= Machine.TYRE_BURST:
+			p.erase("flat")
+		if f >= Machine.TRACK_THROWN:
+			p.erase("thrown")
+	m.rebuild()
 	var pay := floori(_owe)
 	if pay > 0:
 		_owe -= pay
 		Inventory.add_scrap(-pay)
+	var pay_w := floori(_owe_wood)
+	if pay_w > 0:
+		_owe_wood -= pay_w
+		Inventory.add_wood(-pay_w)
 	if Combat.current and randf() < 0.5:
 		Combat.current.sound("res://assets/audio/build/bolt_on_0%d.wav" % randi_range(1, 3), m.global_position, -8.0, randf_range(0.9, 1.1))
 
@@ -176,8 +207,8 @@ func status() -> String:
 		var s := "Atölye yanında  ·  B: inşa"
 		if mending:
 			s += "  ·  ONARILIYOR"
-		elif Inventory.scrap <= 0:
-			s += "  ·  onarım için hurda yok"
+		elif Inventory.scrap <= 0 or Inventory.wood <= 0:
+			s += "  ·  onarım için %s yok" % ("hurda" if Inventory.scrap <= 0 else "odun")
 		return s
 	var to := truck.global_position - me.global_position
 	return "Atölye %d m %s" % [roundi(d), compass(atan2(to.x, -to.z))]
@@ -187,3 +218,25 @@ func status() -> String:
 static func compass(a: float) -> String:
 	var names := ["kuzey", "kuzeydoğu", "doğu", "güneydoğu", "güney", "güneybatı", "batı", "kuzeybatı"]
 	return names[posmod(roundi(a / (TAU / 8.0)), 8)]
+
+
+## The bin's billets into the store.
+func _unload(m: Machine) -> void:
+	var n := Inventory.bin
+	Inventory.bin = 0
+	Inventory.add_wood(n)
+	for t in m.tools:
+		t.show_pile()
+	if Combat.current:
+		Combat.current.sound("res://assets/audio/build/heavy_01.wav", m.global_position, 0.0, 0.9)
+	game.call("say", "+%d odun depoya indi  ·  depoda %d" % [n, Inventory.wood])
+
+
+## The wood age's weapons stocked from the store: a quarter of a load each, a billet for it.
+func _stock(m: Machine) -> void:
+	for g in m.guns:
+		if g.kind in MachineGun.MANUAL and g.limited and g.ammo < g.ammo_max - 0.5 and Inventory.wood > 0:
+			g.refill(0.25)
+			Inventory.add_wood(-1)
+			if Combat.current:
+				Combat.current.sound("res://assets/audio/build/ratchet_0%d.wav" % randi_range(1, 3), m.global_position, -8.0, 0.9)

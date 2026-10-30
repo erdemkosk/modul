@@ -13,6 +13,16 @@ extends RefCounted
 ##             wobble, then falling), bursting at 170 hp over 2.8 m; empty tubes refill one every 1.5 s
 ##             while it isn't firing (or once all are gone)
 ##
+## The wood age's (worked by hand: no battery):
+##   ballista  a bolt every BOLT_RELOAD s at BOLT_SPEED m/s, falling a little (Combat flies it): it goes
+##             through the part it hits into the one behind; with a cask of pitch beside it the bolt's
+##             alight and sets wood burning; it sticks in what it hits
+##   catapult  a stone every STONE_RELOAD s, lobbed high (STONE_ANGLE) and hard enough to come down
+##             where you look (out to ~230 m, STONE_MAX m/s): what it lands on is battered, cover broken; with pitch beside it a pot of
+##             burning pitch instead, and the ground there burns
+##   oil       a cask of boiling oil tipped out on the ground ahead (to OIL_REACH m): it burns there
+##             for a while and burns what's on it (Combat.oil_fire)
+##
 ## How they feel: the cannon's barrel runs back in its cradle and returns, the pod kicks with each
 ## rocket, the minigun shivers; its motor whines up and down with the barrels and its empties spill
 ## out of the side and tinkle off what they land on; each shot shakes the view (Combat.shake) and a
@@ -24,7 +34,7 @@ extends RefCounted
 ##
 ## What it carries (where ammunition's limited: everywhere but the proving ground): AMMO rounds of its
 ## own (the flamethrower: seconds of fuel), and as many again for each ammo box (cephane) bolted beside
-## it (two at most); spent, it only clicks. It's taken up again from a supply crate (Supply). A barrel
+## it (two at most); spent, it only clicks (the wood age's are stocked again at the workshop). A barrel
 ## kit (namlu takımı) beside it gives it a longer barrel, its round faster and truer, a flame further,
 ## a heavier gun turning slower. The long barrel shows on the gun.
 ##
@@ -36,9 +46,15 @@ const KINDS := {
 	"cannon": {"yaw_rate": 0.9, "pitch_rate": 0.6, "pitch": Vector2(-0.12, 0.45), "on": 0.015},
 	"rockets": {"yaw_rate": 1.4, "pitch_rate": 1.0, "pitch": Vector2(-0.1, 0.75), "on": 0.03},
 	"flamer": {"yaw_rate": 2.4, "pitch_rate": 2.0, "pitch": Vector2(-0.35, 0.6), "on": 0.14},
+	"ballista": {"yaw_rate": 1.5, "pitch_rate": 1.1, "pitch": Vector2(-0.15, 0.5), "on": 0.02},
+	"catapult": {"yaw_rate": 0.7, "pitch_rate": 1.4, "pitch": Vector2(0.05, 1.1), "on": 0.012},
+	"oil": {"yaw_rate": 1.2, "pitch_rate": 1.5, "pitch": Vector2(-0.6, 0.3), "on": 0.2},
 }
+## The ones worked by hand (no battery: they turn and load with it flat).
+const MANUAL := ["ballista", "catapult", "oil"]
 ## kW: the minigun's motor at full spin, each mount's traverse at full slew, a loader at work.
-const DRAW := {"minigun": [4.0, 0.8, 0.0], "cannon": [0.0, 3.0, 1.5], "rockets": [0.0, 1.2, 1.0], "flamer": [1.2, 0.8, 0.0]}
+const DRAW := {"minigun": [4.0, 0.8, 0.0], "cannon": [0.0, 3.0, 1.5], "rockets": [0.0, 1.2, 1.0], "flamer": [1.2, 0.8, 0.0],
+	"ballista": [0.0, 0.0, 0.0], "catapult": [0.0, 0.0, 0.0], "oil": [0.0, 0.0, 0.0]}
 const FLAME_RANGE := 14.0 ## m
 const FLAME_DPS := 90.0 ## hp a second at the stream's heart
 const MINIGUN_RATE := 40.0
@@ -66,6 +82,19 @@ const ROCKET_WOBBLE := 2.5 ## m/s2 sideways, at random, while it burns (about a 
 const ROCKET_DAMAGE := 170.0
 const ROCKET_RADIUS := 2.8
 const ROCKET_PUSH := 2600.0
+const BOLT_RELOAD := 2.4
+const BOLT_SPEED := 80.0
+const BOLT_DAMAGE := 55.0
+const BOLT_PUSH := 250.0
+const STONE_RELOAD := 5.0
+const STONE_ANGLE := 0.75 ## rad it's thrown up at
+const STONE_MAX := 48.0 ## m/s the most it throws at
+const STONE_UP := 1.0 ## m over its mount the stone leaves the arm
+const STONE_DAMAGE := 170.0
+const STONE_RADIUS := 1.8
+const STONE_PUSH := 4500.0
+const OIL_RELOAD := 4.0
+const OIL_REACH := 8.0 ## m ahead it's tipped out at most
 
 var machine: Machine
 var node: Node3D
@@ -97,7 +126,8 @@ var armed := true ## (you pick which of your guns fire: 1-9, 0 all)
 var key := 0 ## the key it fires on (0: the mouse's left button, with the rest)
 var key_down := false
 var feed := 0 ## ammo boxes beside it
-const AMMO := {"minigun": 360.0, "cannon": 10.0, "rockets": 18.0, "flamer": 12.0} ## its own (rounds; the flamer s of fuel)
+const AMMO := {"minigun": 360.0, "cannon": 10.0, "rockets": 18.0, "flamer": 12.0, "ballista": 16.0, "catapult": 10.0, "oil": 6.0} ## its own (rounds; the flamer s of fuel)
+var fiery := false ## (a cask of pitch beside it: its bolts and pots burn)
 var limited := false ## (its ammunition runs out)
 var ammo := 0.0 ## left (rockets: the ones in the pod too)
 var ammo_max := 0.0
@@ -114,7 +144,9 @@ var _brass: GPUParticles3D
 var _fire: GPUParticles3D ## (a flamethrower's stream)
 var _flash: MeshInstance3D
 var _flash_t := 0.0
-const RECOIL := {"minigun": 0.006, "cannon": 0.28, "rockets": 0.05, "flamer": 0.002} ## m back at full recoil
+const RECOIL := {"minigun": 0.006, "cannon": 0.28, "rockets": 0.05, "flamer": 0.002, "ballista": 0.04, "catapult": 0.0, "oil": 0.0} ## m back at full recoil
+var _arm := 0.0 ## (a catapult's arm: 0 lying back, 1 thrown over)
+var _lob_v := 30.0 ## (a catapult's throw: m/s for where it's aimed)
 
 
 static func make(m: Machine, part: Node3D, id: String, feed_ := 0, kit_ := 0) -> MachineGun:
@@ -210,12 +242,12 @@ func flame_range() -> float:
 
 
 ## The long barrel: a jacketed sleeve out of the muzzle (its end where the rounds now leave).
-const KIT_LEN := {"minigun": 0.3, "cannon": 0.55, "rockets": 0.25, "flamer": 0.35} ## m a kit
-const KIT_R := {"minigun": 0.055, "cannon": 0.075, "rockets": 0.0, "flamer": 0.045}
+const KIT_LEN := {"minigun": 0.3, "cannon": 0.55, "rockets": 0.25, "flamer": 0.35, "ballista": 0.0, "catapult": 0.0, "oil": 0.0} ## m a kit
+const KIT_R := {"minigun": 0.055, "cannon": 0.075, "rockets": 0.0, "flamer": 0.045, "ballista": 0.0, "catapult": 0.0, "oil": 0.0}
 
 
 func _fit_kit() -> void:
-	if kit <= 0 or muzzle == null:
+	if kit <= 0 or muzzle == null or float(KIT_LEN[kind]) <= 0.0:
 		return
 	var l: float = float(KIT_LEN[kind]) * kit
 	_kit_muzzle = Node3D.new()
@@ -416,8 +448,10 @@ static func _star() -> ImageTexture:
 func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	if turret == null or gun == null or not is_instance_valid(node):
 		return
+	if kind in MANUAL:
+		powered = true # (a crew winds it, loads it, swings it)
 	var k: Dictionary = KINDS[kind]
-	if kind != "minigun":
+	if kind in ["ballista", "rockets", "cannon"]:
 		var t := flight_time(kind, aim.distance_to(turret.global_position), speed_k())
 		aim.y += 0.5 * SHELL_DROP * t * t
 	var local := node.global_transform.basis.inverse() * (aim - turret.global_position)
@@ -425,6 +459,11 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	var flat := Vector2(local.x, local.z).length()
 	var lim: Vector2 = k.pitch
 	var want_pitch := clampf(atan2(local.y, flat), lim.x, lim.y)
+	if kind == "catapult":
+		want_pitch = STONE_ANGLE
+		var off := aim - turret.global_position # (by the world's level and up: the machine may be leaning)
+		_lob_v = minf(lob_speed(Vector2(off.x, off.z).length(), off.y - STONE_UP, STONE_ANGLE), STONE_MAX)
+	var aim_pitch := want_pitch if kind == "catapult" else atan2(local.y, flat)
 	var dyaw := 0.0
 	var dpitch := 0.0
 	if powered:
@@ -451,7 +490,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 	# the recoil: a stiff spring back to battery (the cannon's barrel, the pod), a shiver for the minigun
 	_recoil_v += (-_recoil * 260.0 - _recoil_v * 26.0) * dt
 	_recoil = maxf(_recoil + _recoil_v * dt, 0.0)
-	var gb := _gun_rest.basis * Basis(Vector3.RIGHT, pitch)
+	var gb := _gun_rest.basis * Basis(Vector3.RIGHT, 0.0 if kind == "catapult" else pitch) # (a catapult's laid by its arm's throw, not by tilting it)
 	var back := gb * Vector3(0.0, 0.0, float(RECOIL[kind]) * _recoil)
 	if kind == "minigun" and _spin > 0.95 and firing:
 		back += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 0.004
@@ -470,7 +509,7 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 			_motor.stop()
 	if _brass:
 		_brass.emitting = firing and _spin > 0.95 and powered
-	var err := absf(angle_difference(yaw, want_yaw)) + absf(pitch - atan2(local.y, flat))
+	var err := absf(angle_difference(yaw, want_yaw)) + absf(pitch - (aim_pitch if kind != "oil" else pitch))
 	on_target = err < float(k.on) * (3.0 if local.length() < 15.0 else 1.0)
 	_cool -= dt
 	if kind == "minigun":
@@ -519,6 +558,8 @@ func update(dt: float, aim: Vector3, firing: bool, powered := true) -> void:
 					Combat.current.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), _rockets[0].global_position, -10.0, 1.3)
 		else:
 			_reload_t = 0.0
+	elif kind in MANUAL:
+		_hand_work(dt, firing, local)
 	elif not powered or (not can_load and _cool > 0.0):
 		_cool += dt # (the loader stops)
 	elif firing and on_target and _cool <= 0.0:
@@ -600,11 +641,93 @@ func _rocket_shot() -> void:
 	c.backblast(from - dir * 0.9, -dir)
 
 
+## The wood age's: loaded by hand, loosed when it's on and loaded (`local`: the aim, in the part's space).
+func _hand_work(dt: float, firing: bool, local: Vector3) -> void:
+	var reload: float = {"ballista": BOLT_RELOAD, "catapult": STONE_RELOAD, "oil": OIL_RELOAD}[kind]
+	if firing and on_target and _cool <= 0.0:
+		_cool = reload * reload_k()
+		_spend(1.0)
+		match kind:
+			"ballista":
+				_bolt_shot()
+			"catapult":
+				_stone_shot()
+			"oil":
+				_oil_shot(Vector2(local.x, local.z).length())
+	elif _cool < 0.0:
+		_cool = 0.0
+	# what's loaded shows: the bolt in its groove, the stone in its bucket (once it's wound back)
+	if not _rockets.is_empty():
+		_rockets[0].visible = _cool <= reload * 0.35 and has_ammo()
+	if kind == "catapult" and barrels:
+		_arm = move_toward(_arm, 0.0, dt / (reload * 0.6)) if _arm < 0.99 or _cool < reload * 0.85 else _arm
+		barrels.transform = Transform3D(Basis(Vector3.RIGHT, -2.1 * ease(_arm, 0.4)) * _barrels_rest.basis, _barrels_rest.origin)
+
+
+func _bolt_shot() -> void:
+	var c := Combat.current
+	if c == null:
+		return
+	var b := _bore()
+	var dir := -gun.global_basis.z
+	c.fire_bolt(b.origin + dir * 0.1, dir * BOLT_SPEED * speed_k() + machine.velocity_at(b.origin), machine, fiery)
+	machine.apply_impulse(-dir * 120.0, b.origin - machine.global_position)
+	c.sound("res://assets/audio/weapons/flip_air.wav", b.origin, -2.0, randf_range(1.6, 1.8))
+	c.sound("res://assets/audio/build/clank_0%d.wav" % randi_range(1, 3), b.origin, -6.0, 0.6)
+	_recoil_v = 22.0
+
+
+## The arm thrown over: the stone (or the pot) off on the arc the arm's laid for.
+func _stone_shot() -> void:
+	var c := Combat.current
+	_arm = 1.0
+	if c == null:
+		return
+	var from := turret.global_position + Vector3.UP * STONE_UP
+	var fwd := -turret.global_basis.z
+	fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+	var dir := (fwd * cos(pitch) + Vector3.UP * sin(pitch)).normalized()
+	c.fire_stone(from, dir * _lob_v + machine.velocity_at(from), machine, fiery)
+	machine.apply_impulse(-dir * 900.0 + Vector3.DOWN * 600.0, from - machine.global_position)
+	c.shake(from, 0.25, machine, 1.0)
+	c.sound("res://assets/audio/build/heavy_01.wav", from, 2.0, 0.7)
+	c.sound("res://assets/audio/weapons/flip_air.wav", from, 0.0, 0.7)
+
+
+## The cask tipped: burning oil out on the ground ahead, as far as it's aimed (OIL_REACH at most).
+func _oil_shot(dist: float) -> void:
+	var c := Combat.current
+	if c == null:
+		return
+	var b := _bore()
+	var fwd := -turret.global_basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var at := b.origin + fwd * clampf(dist, 2.5, OIL_REACH)
+	c.oil_fire(at, 2.2, 8.0, machine)
+	c.sound("res://assets/audio/weapons/flame_loop.wav", at, 0.0, 0.8)
+
+
+## The speed (m/s) a throw at `angle` (rad) up needs to come down `x` m off and `y` m up (INF: it can't).
+static func lob_speed(x: float, y: float, angle: float) -> float:
+	var c := cos(angle)
+	var drop := x * tan(angle) - y
+	if drop <= 0.01 or x < 0.01:
+		return INF
+	return sqrt(SHELL_DROP * x * x / (2.0 * c * c * drop))
+
+
 ## Seconds a round of `kind` takes to go `dist` m: a shell at its muzzle speed; a rocket off the rail,
 ## speeding up while its motor burns, then on at the speed it had. (k: a barrel kit's speed-up.)
 static func flight_time(kind: String, dist: float, k := 1.0) -> float:
 	if kind == "cannon":
 		return dist / (CANNON_SPEED * k)
+	if kind == "ballista":
+		return dist / (BOLT_SPEED * k)
+	if kind == "catapult":
+		return dist / (minf(lob_speed(dist, 0.0, STONE_ANGLE), STONE_MAX) * cos(STONE_ANGLE))
+	if kind == "oil":
+		return 0.0
 	if kind == "rockets":
 		var v0 := ROCKET_SPEED * k
 		var burn_d := v0 * ROCKET_BURN + 0.5 * ROCKET_THRUST * ROCKET_BURN * ROCKET_BURN
@@ -637,4 +760,7 @@ func reload_frac() -> float:
 		return clampf(_cool / (CANNON_RELOAD * reload_k()), 0.0, 1.0)
 	if kind == "rockets":
 		return 1.0 - float(loaded) / ROCKETS
+	if kind in MANUAL:
+		var reload: float = {"ballista": BOLT_RELOAD, "catapult": STONE_RELOAD, "oil": OIL_RELOAD}[kind]
+		return clampf(_cool / (reload * reload_k()), 0.0, 1.0)
 	return 0.0

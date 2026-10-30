@@ -1,6 +1,6 @@
 class_name Hints
 extends CanvasLayer
-## The first time you're at something (driving, building, the cage's start), a card saying how it's
+## The first time you're at something (driving, building, the valley's work), a card saying how it's
 ## done: the keys that matter there, once each (kept in the settings: "hints_seen"). It goes after
 ## a while, or at once with H; Esc's pause menu has none of it.
 
@@ -11,18 +11,17 @@ const CARDS := {
 	"build": ["İNŞA", [["Sol tık · sağ tık", "parça tak · sök"], ["1-0, Q E Z X C F H", "parça seç (üstteki sekmeler de)"],
 		["R · T · M", "çevir · devir (yan, ters) · ayna"], ["K", "fare üstteki silaha / çeviriciye tuş ver"], ["V", "izometrik görünüm"], ["Ctrl Z / Y", "geri al / ileri al"], ["Sol panel", "hazır tasarımlar ve kayıtlar"],
 		["B", "sür"]]],
-	"mission": ["GÖREV", [["B", "önce aracını kur: görev başlayınca değişmez"], ["BAŞLA · Enter", "saat işlemeye başlar"],
-		["Turuncu işaretler", "yıkılacak yapılar; hepsi yıkılınca biter"], ["Ahşap ve yakıt", "alevle, patlamayla tutuşur; ıslakta zor"],
-		["Ayaklar, dipler", "taşıyanı kır: üstündeki devrilir"], ["R", "baştan başla"]]],
+	"valley_wood": ["ODUN", [["R · testere", "çalıştır, ağaca sür: gövdeyi keser, ağaç devrilir, kütüklere ayrılır"],
+		["Toplama kasası", "yanından geçtiğin kütükleri içine alır (en çok 8)"], ["Atölye", "kasayı yanına getir: odun depoya iner"],
+		["Ahşap parçalar", "inşada AHŞAP: odunla yapılır; ağır, çabuk kırılır, alev alır"],
+		["Silahlar", "arbalet, mancınık, kaynar yağ: odundan; yanına katran fıçısı: yanan ok ve çömlek"],
+		["Planlar", "metal parça planla yapılır: harabelerin zulasında, devlerde, uzun seferlerde ışıklı tüp"],
+		["Direksiyon mafsalı", "üstündekini A/D ile çevirir; tuş verirsen (K) o tuşla"]]],
 	"valley_lift": ["VADİ", [["J", "telsiz: sefer al (bir yükü bir yerden ötekine taşı)"], ["Y · vinç", "kancayı yükün üstüne getir, Y: kaldırır; kasana çevir, Y: bırakır"], ["N · çeki vinci", "arkadaki yükü ya da saplanmış aracı bağlar, sarıp çeker"],
 		["Teslim", "yükü gideceği yerin halkasına indir, bırak"],
 		["V", "atölye kamyonuna bin / in: inşa ve onarım sadece onun yanında"], ["Işıklı parçalar", "enkazdan çıkan parçalar yıpranmıştır: yüzdesi yazar"],
 		["Hurda", "atölyede onarımın bedeli: seferlerden, enkazdan"], ["Yağmur", "çamur derinleşir, geçitler taşar; yollar heyelanla kapanır"],
 		["Dev makineler", "vurarak değil, sökerek devrilir: silahını, paletini kopar"]]],
-	"cage": ["KAFES", [["B", "önce aracını kur: turnuvada sadece atölyede değişir"], ["DÖVÜŞE BAŞLA · Enter", "ilk tura çık"],
-		["Kazanmak", "rakibi parçala ya da 8 sn hareketsiz bırak"], ["Turlar arası", "atölyede hasarı kredinle onar"],
-		["Ters dönmek", "8 sn'de sayılırsın; ancak çeviriciyle (F) doğrulursun"],
-		["Dikkat", "çukur 0:45'te açılır; köşelerde ev robotları"]]],
 }
 const SHOW_FOR := 14.0 ## s a card stays
 
@@ -48,19 +47,12 @@ func _process(dt: float) -> void:
 			_close()
 		return
 	var b := game.get("builder") as Builder
-	var cage := game.get("cage") as Cage
-	var ms := game.get("missions") as Missions
 	if b and b.active:
 		_show("build")
-	elif cage and cage.state == "prep" and cage.panel_up():
-		_show("cage")
-	elif ms and ms.state == "prep" and ms.panel_up():
-		_show("mission")
-	elif (cage == null or cage.state == "fight") and (ms == null or ms.state == "run") and game.get("player_input") \
-			and is_instance_valid(game.get("machine")):
+	elif game.get("player_input") and is_instance_valid(game.get("machine")):
 		_show("drive")
 		if Mode.current == "valley" and _card == null:
-			_show("valley_lift")
+			_show("valley_wood" if not "valley_wood" in _seen else "valley_lift")
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -94,11 +86,10 @@ func _show(key: String) -> void:
 		Ui.label(grid, str(row[0]), 15, Ui.INK, "head")
 		Ui.label(grid, str(row[1]), 15, Ui.DIM)
 	Ui.label(col, "H  kapat", 12, Ui.DIM, "label")
-	# driving: top middle, under the round's bar (the HUD's along the bottom); building and at the
-	# cage's start: bottom middle (the parts' tray and the start panel are up top and in the middle)
+	# driving: top middle (the HUD's along the bottom); building: bottom middle (the parts' tray is up top)
 	if key == "drive":
 		_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-		_card.offset_top = 120.0 if game.get("missions") == null else 250.0 # (a mission's targets list is up there)
+		_card.offset_top = 120.0
 	else:
 		_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 		_card.grow_vertical = Control.GROW_DIRECTION_BEGIN

@@ -52,13 +52,13 @@ func _physics_process(_d: float) -> bool:
 			var m: Machine = _g.get("machine")
 			Inventory.count("frame")
 			print("held: %s; on the machine %d parts" % [Inventory.counts, m.design.size()])
-			_expect(Inventory.count("frame") == 6 and Inventory.count("plate") == 3, "a new start holds a few spare parts")
-			_expect(m.design.size() == Designs.starter().size(), "the starter's on")
+			_expect(Inventory.count("frame") == 2 and Inventory.count("plate") == 0, "a new start holds little spare")
+			_expect(m.design.size() == Designs.valley_start().size(), "the first machine's on (the starter, a saw, a bin)")
 			# 2. building takes and gives back
-			_expect(bool(b.guard.call("plate", Vector3i.ZERO, 0)) and Inventory.count("plate") == 2, "a plate bolted on comes out of what's held")
+			_expect(bool(b.guard.call("frame", Vector3i.ZERO, 0)) and Inventory.count("frame") == 1, "a frame bolted on comes out of what's held")
 			_expect(not bool(b.guard.call("cannon", Vector3i.ZERO, 0)), "a cannon you don't hold is refused")
-			b.removed.emit("plate", Vector3i.ZERO, 0)
-			_expect(Inventory.count("plate") == 3, "taken off, it's held again")
+			b.removed.emit("frame", Vector3i.ZERO, 0)
+			_expect(Inventory.count("frame") == 2, "taken off, it's held again")
 			# 3. a ready design
 			b.set_active(true)
 			var before := m.design.size()

@@ -210,8 +210,11 @@ func _on_robot_died(r: Node) -> void:
 			for id: String in s.cache:
 				Salvage.current.drop(id, (s.at as Vector3) + Vector3(randf_range(-2, 2), 0.0, randf_range(-2, 2)), randf_range(0.75, 1.0)) # (kept: in good order)
 		Inventory.add_scrap(6)
+		var plan := Inventory.next_plan()
+		if Salvage.current and plan != "":
+			Salvage.current.drop_plan(plan, (s.at as Vector3) + Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(-1.5, 1.5)))
 		if game.has_method("say"):
-			game.call("say", "%s TEMİZLENDİ  ·  zulası orada, al" % s.name)
+			game.call("say", "%s TEMİZLENDİ  ·  zulası orada, al%s" % [s.name, "  ·  içinde bir plan var" if plan != "" else ""])
 	_save()
 
 

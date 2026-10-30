@@ -189,6 +189,9 @@ func _fell(g: Dictionary) -> void:
 		for id: String in RARE[str(g.kind)]:
 			Salvage.current.drop(id, at + Vector3(randf_range(-4, 4), 1.0, randf_range(-4, 4)), randf_range(0.8, 1.0))
 	Inventory.add_scrap(40)
+	var plan := Inventory.next_plan()
+	if Salvage.current and plan != "":
+		Salvage.current.drop_plan(plan, at + Vector3(0, 1.0, 0))
 	if game.has_method("say"):
 		game.call("say", "%s DEVRİLDİ  ·  kalbi orada: nadir parçalar, +40 hurda" % g.name)
 	_save()

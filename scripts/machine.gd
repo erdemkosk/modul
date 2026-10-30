@@ -91,6 +91,7 @@ var firing := false
 var guns: Array[MachineGun] = []
 var flippers: Array[MachineFlipper] = []
 var hoists: Array[MachineHoist] = [] ## (its cranes and winches)
+var tools: Array[MachineTool] = [] ## (its saws and collectors)
 var joints: Array[MachineJoint] = []
 var _chain := {} ## part index -> the joints that carry it, outermost first
 var _shapes := {} ## part index -> [[its CollisionShape3D, its box at rest]]
@@ -100,8 +101,6 @@ var keyed := false ## (yours: its parts answer to the keys they're given)
 var last_hit_by: Machine
 var last_hit_kind := "" ## (what hurt it last: the death card's line)
 var label := "" ## what it's called on the screen (AKINCI, TANK, ...)
-var house := false ## (a cage's house robot: the rivals leave it be)
-var falling := false ## going down the cage's pit: nothing holds it up any more
 var invulnerable := false ## (the proving ground's G) hits push it but take nothing off
 var ammo_limited := false ## its guns' ammunition runs out (Game: everywhere but the proving ground)
 var ammo_k := 1.0 ## how many loads its guns carry (a crew's: more)
@@ -326,6 +325,9 @@ func rebuild() -> void:
 	for h in hoists:
 		h.free_fx()
 	hoists.clear()
+	for t in tools:
+		t.free_fx()
+	tools.clear()
 	joints.clear()
 	_chain.clear()
 	_shapes.clear()
@@ -360,6 +362,7 @@ func rebuild() -> void:
 		match str(d.kind):
 			"wheel":
 				var mw := MachineWheel.make(self, node, p.id, xf)
+				mw.part = i
 				mw.flat = bool(p.get("flat", false))
 				wheels.append(mw)
 				rated_kg += float(d.rated)
@@ -385,6 +388,7 @@ func rebuild() -> void:
 			"weapon":
 				var mg := MachineGun.make(self, node, p.id, mini(_beside(i, "ammo"), 2), mini(_beside(i, "barrel"), 2))
 				mg.key = int(p.get("key", 0))
+				mg.fiery = _beside(i, "pitch") > 0
 				mg.supply(ammo_limited, ammo_k, p)
 				mg.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				guns.append(mg)
@@ -405,6 +409,12 @@ func rebuild() -> void:
 				ho.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
 				hoists.append(ho)
 				_add_shape(ext * Vector3(0.9, 0.8, 0.9), xf.origin)
+			"saw", "collector", "rack":
+				var tl := MachineTool.make(self, node, i, p.id)
+				tl.key = int(p.get("key", 0))
+				tl.condition = clampf(float(p.hp) / Parts.hp_of(p.id), 0.0, 1.0)
+				tools.append(tl)
+				_add_shape(ext * Vector3(0.9, 0.8, 0.9), xf.origin)
 			"flipper":
 				var fl := MachineFlipper.make(self, node)
 				fl.key = int(p.get("key", 0))
@@ -423,7 +433,7 @@ func rebuild() -> void:
 	frontal = maxf((hi.x - lo.x) * (hi.y - lo.y), 0.25)
 	top_y = hi.y
 	for w in wheels:
-		w.steers = w.rest.z < com.z - 0.4 and not w.track
+		w.steers = w.rest.z < com.z - 0.4 and not w.track and not _chain.has(w.part) # (one on a joint turns with it)
 		w.side = signf(w.rest.x - com.x)
 	energy_kj = capacity_kj * _energy_frac
 	_set_lamps()
@@ -468,9 +478,8 @@ static func _stand_in(id: String) -> PackedScene:
 	return ps
 
 
-## The other side's colours, on the parts' paint (yours stays the works yellow): the rivals oxide red,
-## the cage's house robots gunmetal.
-const TEAM_PAINT := {1: Color(0.36, 0.06, 0.045), 2: Color(0.11, 0.115, 0.12)}
+## The other side's colours, on the parts' paint (yours stays the works yellow): the rivals oxide red.
+const TEAM_PAINT := {1: Color(0.36, 0.06, 0.045)}
 static var _team_mats := {} ## [team, painted material] -> that material in the team's colour
 
 
@@ -690,10 +699,6 @@ func set_building(on: bool) -> void:
 func _physics_process(dt: float) -> void:
 	if building or total_mass <= 0.0 or not alive:
 		return
-	if falling:
-		throttle = 0.0
-		firing = false
-		return
 	# nothing real throws it up faster than this or spins it faster: a guard against a bad contact
 	if linear_velocity.y > MAX_RISE:
 		linear_velocity.y = MAX_RISE
@@ -727,10 +732,15 @@ func _physics_process(dt: float) -> void:
 		f.update(dt, powered)
 	for h in hoists:
 		h.update(dt)
+	for t in tools:
+		t.update(dt)
+	if not _burning.is_empty():
+		_burn(dt)
 	if not joints.is_empty():
 		for jt in joints:
 			jt.update(dt, powered)
 		_place_moving()
+		_turn_wheels()
 		for k: Variant in _struck.keys():
 			_struck[k] = float(_struck[k]) - dt
 			if float(_struck[k]) <= 0.0 or not is_instance_valid(k):
@@ -852,7 +862,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 			hard_on = o
 	if hardest > IMPACT_SAFE:
 		struck.emit(hard_at, hardest, hard_on)
-	# the cage's cover driven into: the blow lands on it (its weight times how hard it stopped, all its
+	# cover driven into (a Breakable): the blow lands on it (its weight times how hard it stopped, all its
 	# contacts together; more on a ram's spikes)
 	for o: Object in sums:
 		if o is Breakable and float(sums[o][0]) > IMPACT_SAFE:
@@ -880,18 +890,6 @@ signal knocked(at: Vector3, dv: float)
 signal struck(at: Vector3, dv: float, other: Object)
 ## Part `id` torn off at `at` (HitFeel).
 signal torn(at: Vector3, id: String)
-
-
-## Into the cage's pit: it no longer touches the floor or the walls, and drops.
-func fall() -> void:
-	if falling:
-		return
-	falling = true
-	collision_mask = 0
-	collision_layer = 0
-	for w in wheels:
-		w.contact = false
-	linear_velocity.y = minf(linear_velocity.y, -1.0)
 
 
 ## Just put down somewhere (made, built, righted): for a moment it can land without harm.
@@ -946,6 +944,8 @@ func _power(dt: float) -> void:
 		load_kw += f.draw_kw()
 	for jt in joints:
 		load_kw += jt.draw_kw()
+	for t in tools:
+		load_kw += t.draw_kw()
 	draw_kw = 0.1 + lamps_kw + spin_kw + turn_kw + load_kw
 	energy_kj = clampf(energy_kj + (charge_kw - draw_kw) * dt, 0.0, capacity_kj)
 	var was := powered
@@ -1108,7 +1108,54 @@ func blast(at: Vector3, radius: float, damage: float, push: float, by: Machine =
 	for e: Array in parts:
 		var at_i := design.find(e[0])
 		if at_i >= 0 and alive:
-			damage_part(at_i, float(e[1]), global_transform * part_xform(at_i).origin, by)
+			var wood := Parts.burns(str(e[0].id))
+			if wood and kind == "alev": # (wood takes fire: it burns hotter and goes on burning)
+				_alight(e[0])
+			damage_part(at_i, float(e[1]) * (WOOD_HEAT if wood and kind == "alev" else 1.0), global_transform * part_xform(at_i).origin, by)
+
+
+const WOOD_HEAT := 3.0 ## how much harder a flame takes a wooden part
+const BURN_FOR := 6.0 ## s a wooden part burns on once it's caught
+const BURN_DPS := 7.0 ## what burning takes off it a second
+var _burning: Array[Dictionary] = [] ## the parts' rows alight (each its "burn": s it burns on)
+var _burn_fx := 0.0
+
+
+func _alight(row: Dictionary) -> void:
+	if not row.has("burn") or float(row.burn) <= 0.0:
+		_burning.append(row)
+	row.burn = BURN_FOR
+
+
+## Wooden parts alight: burning on, and catching what's beside them now and then.
+func _burn(dt: float) -> void:
+	_burn_fx -= dt
+	var fx := _burn_fx <= 0.0
+	if fx:
+		_burn_fx = 0.3
+	for row: Dictionary in _burning.duplicate():
+		var i := design.find(row)
+		row.burn = float(row.burn) - dt
+		if i < 0 or float(row.burn) <= 0.0:
+			row.erase("burn")
+			_burning.erase(row)
+			continue
+		var at := global_transform * part_xform(i).origin
+		if fx and Combat.current:
+			Combat.current._burst(at + Vector3.UP * 0.2, "embers" if randf() < 0.5 else "explosion", 0.25, Vector3.UP)
+		if randf() < dt * 0.35: # (it spreads to the wood touching it)
+			for c in Parts.cells_of(row.id, row.at, row.rot):
+				for d: Vector3i in [Vector3i.LEFT, Vector3i.RIGHT, Vector3i.UP, Vector3i.DOWN, Vector3i.FORWARD, Vector3i.BACK]:
+					var j: int = _occ.get(c + d, -1)
+					if j >= 0 and j != i and Parts.burns(design[j].id) and not burning(j):
+						_alight(design[j])
+		last_hit_kind = "yanık"
+		damage_part(i, BURN_DPS * dt, at)
+
+
+## Whether a part's alight.
+func burning(i: int) -> bool:
+	return i >= 0 and i < design.size() and float(design[i].get("burn", 0.0)) > 0.0
 
 
 ## Part `i` takes `amount` (at `at`, by `by`, for the HUD); at none it comes off; on the way, what it
@@ -1375,6 +1422,11 @@ func break_off(i: int) -> void:
 		var at := global_transform * part_xform(i).origin
 		c.call_deferred("explode", at, AMMO_RADIUS, AMMO_DAMAGE, AMMO_PUSH, last_hit_by if is_instance_valid(last_hit_by) else null, true)
 		system_hit.emit("CEPHANE PATLADI", at)
+	if design[i].id == "pitch" and c: # (the pitch goes up in flames where it was, and catches what's by it)
+		var at := global_transform * part_xform(i).origin
+		c.call_deferred("oil_fire", at, 2.0, 7.0, last_hit_by if is_instance_valid(last_hit_by) else null)
+		blast(at, 1.6, 20.0, 0.0, last_hit_by, "alev")
+		system_hit.emit("KATRAN TUTUŞTU", at)
 	torn.emit(global_transform * part_xform(i).origin, str(design[i].id))
 	for j in gone:
 		var p: Dictionary = design[j]
@@ -1641,6 +1693,18 @@ func _place_moving() -> void:
 				(e[0] as CollisionShape3D).transform = t * (e[1] as Transform3D)
 
 
+## The wheels a joint carries (a steering joint's, mostly) where it has them: their hubs and the way
+## they roll turned with it.
+func _turn_wheels() -> void:
+	for w in wheels:
+		if w.part < 0 or not _chain.has(w.part):
+			continue
+		var t := _joint_xform(w.part)
+		w.rest = t * w.rest0
+		w.roll_dir = (t.basis * w.roll0).normalized()
+		w.axle = (t.basis * w.axle0).normalized()
+
+
 ## How fast a point on part `i` (machine space, now) is going from its joints.
 func _joint_velocity(i: int, local: Vector3) -> Vector3:
 	var v := Vector3.ZERO
@@ -1693,6 +1757,26 @@ func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
 
 ## The cranes and winches on `code` (Y a crane with no key of its own, N a winch): hooked on or let
 ## go. What they did, in words ("" if none answers to it).
+## How many billets its bins hold together (a collector's, and the racks it fills).
+func bin_holds() -> int:
+	var n := 0
+	var bins := false
+	for t in tools:
+		if t.kind in ["collector", "rack"]:
+			n += int(Parts.def(design[t.index].id).holds)
+			bins = bins or t.kind == "collector"
+	return n if bins else 0
+
+
+## The tools on `code` (R for a saw with no key of its own) toggled: what's said, "" if none answers.
+func tool_key(code: int) -> String:
+	var said := ""
+	for t in tools:
+		if t.kind == "saw" and (t.key if t.key != 0 else KEY_R) == code:
+			said = t.toggle()
+	return said
+
+
 func hoist_key(code: int) -> String:
 	var said := ""
 	for h in hoists:
@@ -1705,6 +1789,8 @@ func hoist_key(code: int) -> String:
 func joint_key(code: int) -> bool:
 	var any := false
 	for jt in joints:
+		if jt.kind == "steer":
+			continue # (it turns while its key's held, or with the steering)
 		if (jt.key if jt.key != 0 else (0 if jt.kind == "turret" else KEY_E)) == code: # (a turret with no key just follows the aim)
 			jt.toggle()
 			any = true

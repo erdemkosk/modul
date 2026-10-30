@@ -99,7 +99,18 @@ func _process(dt: float) -> void:
 	var s := shop.status() if shop else ""
 	if s != "":
 		lines.append(s)
-	lines.append("Hurda %d  ·  Zemin %s  ·  Gün %d" % [Inventory.scrap, life.ground_word(), ValleyLife.day])
+	var me: Machine = shop.yours() if shop else null
+	var binned := ""
+	if me and me.bin_holds() > 0:
+		binned = "  ·  Kasa %d/%d" % [Inventory.bin, me.bin_holds()]
+	var sawing := ""
+	if me:
+		for t in me.tools:
+			if t.kind == "saw":
+				sawing = "  ·  Testere %s" % ("kesiyor %%%d" % roundi(t.cut_frac() * 100.0) if t.cutting >= 0 else ("açık" if t.on else "kapalı (R)"))
+	lines.append("Odun %d%s%s" % [Inventory.wood, binned, sawing])
+	lines.append("%s  ·  Planlar %d/%d  ·  Hurda %d  ·  Zemin %s  ·  Gün %d" % ["AHŞAP ÇAĞI" if Inventory.age() == 1 else "METAL ÇAĞI",
+		Inventory.plans.size(), Parts.PLANS.size(), Inventory.scrap, life.ground_word(), ValleyLife.day])
 	_lines.text = "\n".join(lines)
 	var warn := PackedStringArray()
 	for r in life.shut_roads():

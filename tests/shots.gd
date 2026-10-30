@@ -17,17 +17,16 @@ var _polish := false
 var _forge := false
 var _flip := false
 var _sites := false
-var _mission := ""
 var _spin := false
 var _robots := false
 var _worksite := false
 var _st := {}
-var _cage := false
 var _t := 0.0
 var _step := 0
 var _mark := 0.0
 var _shots: Array[Image] = []
 var _expedition := false
+var _wood := false
 var _pending := ""
 var _wait := 0
 var _m: Machine
@@ -45,8 +44,6 @@ func _initialize() -> void:
 			_arena = true
 		if a == "--polish":
 			_polish = true
-		if a == "--cage":
-			_cage = true
 		if a == "--forge":
 			_forge = true
 		if a == "--flip":
@@ -62,8 +59,17 @@ func _initialize() -> void:
 			_valley = true
 			(load("res://scripts/works_sites.gd") as GDScript).set("path", "user://shots_sites.cfg")
 			Inventory.path = "user://shots_inventory.cfg"
-		if a.begins_with("--mission="):
-			_mission = a.substr(10)
+		if a == "--wood":
+			_wood = true
+			_valley = true
+			Inventory.path = "user://shots_inventory.cfg"
+			Inventory.reset()
+			SaveGame.save_file = "user://shots_world.save"
+			RutStore.clear()
+			for pair: Array in [[Workshop, "user://shots_workshop.cfg"], [Expeditions, "user://shots_jobs.cfg"],
+					[ValleyLife, "user://shots_life.cfg"], [Colossus, "user://shots_giants.cfg"]]:
+				(pair[0] as GDScript).set("path", pair[1])
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(str(pair[1])))
 		if a == "--expedition":
 			_expedition = true
 			_valley = true
@@ -76,12 +82,7 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	Builder.save_path = "user://shots_design.json"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Builder.save_path))
-	CageRecord.save_path = "user://shots_cage_record.cfg"
-	Mode.current = "valley" if _valley else ("cage" if _cage else "arena")
-	if _mission != "":
-		Mode.current = "mission"
-		Mode.mission = _mission
-		Missions.save_path = "user://shots_missions.cfg"
+	Mode.current = "valley" if _valley else "arena"
 	_g = load("res://scenes/game.tscn").instantiate()
 	root.add_child(_g)
 
@@ -117,7 +118,7 @@ func _process(dt: float) -> bool:
 			_pending = ""
 		return false
 	var since := _t - _mark
-	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else (_expedition_steps() if _expedition else _all_steps()))
+	var steps := _robot_steps() if _robots else (_worksite_steps() if _worksite else (_expedition_steps() if _expedition else (_wood_steps() if _wood else _all_steps())))
 	if _step >= steps.size():
 		_sheet()
 		return true
@@ -132,7 +133,7 @@ func _process(dt: float) -> bool:
 
 
 func _all_steps() -> Array:
-	return _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_cage_steps() if _cage else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_mission_steps() if _mission != "" else (_spin_steps() if _spin else _arena_steps())))))))))
+	return _valley_steps() if _valley else (_tracks_steps() if _tracks else (_arena2_steps() if _arena else (_polish_steps() if _polish else (_forge_steps() if _forge else (_flip_steps() if _flip else (_sites_steps() if _sites else (_spin_steps() if _spin else _arena_steps())))))))
 
 
 ## Forge's rivals, one of each style, side by side; the builder's ready designs; the flamethrower.
@@ -240,39 +241,6 @@ func _sites_steps() -> Array:
 			_cam(PI * 0.0, -0.12, 30.0), func() -> void: _shoot("sites_falling")],
 		[6.0, func(_s: float) -> void:
 			_cam(PI * 0.0, -0.12, 30.0), func() -> void: _shoot("sites_after")],
-	]
-
-
-## A mission: its brief, under way (the targets marked), coming down, done.
-func _mission_steps() -> Array:
-	return [
-		[3.0, func(_s: float) -> void:
-			_cam(PI, -0.28, 12.0), func() -> void: _shoot("mission_brief")],
-		[0.5, _noop, func() -> void:
-			var ms: Missions = _g.get("missions")
-			_g.set("player_input", false)
-			_m = _g.get("machine")
-			_m.invulnerable = true
-			ms.start()],
-		[2.5, func(_s: float) -> void:
-			_m.throttle = 0.4
-			_cam(PI, -0.18, 12.0), func() -> void: _shoot("mission_run")],
-		[0.2, _noop, func() -> void:
-			var ms: Missions = _g.get("missions")
-			_m.throttle = 0.0
-			for k in ms.targets.size() - 1:
-				var st := ms.targets[k]
-				for p in st.pieces.filter(func(p: StructurePiece) -> bool: return p.grounded and p.global_position.x < st.global_position.x + 0.5):
-					p.hit(99999.0, p.global_position, Vector3.RIGHT, true)],
-		[2.0, func(_s: float) -> void:
-			_cam(PI, -0.18, 14.0), func() -> void: _shoot("mission_falling")],
-		[0.2, _noop, func() -> void:
-			var ms: Missions = _g.get("missions")
-			var st := ms.targets[ms.targets.size() - 1]
-			for p in st.pieces.filter(func(p: StructurePiece) -> bool: return p.grounded):
-				p.hit(99999.0, p.global_position, Vector3.RIGHT, true)],
-		[3.0, func(_s: float) -> void:
-			_cam(PI, -0.18, 14.0), func() -> void: _shoot("mission_done")],
 	]
 
 
@@ -471,6 +439,143 @@ func _expedition_steps() -> Array:
 
 
 ## The camera behind you, looking toward `at`.
+## The wood: the first machine, a tree sawn and going over, its billets, the bin taking them in, a
+## wooden machine, and it alight.
+func _wood_steps() -> Array:
+	return [
+		[8.0, func(_s: float) -> void: _g.set("player_input", false), func() -> void:
+			_m = _g.get("machine")
+			_m.invulnerable = true
+			_m.brake = 1.0],
+		[1.5, func(_s: float) -> void: _cam(PI * 0.8, -0.22, 7.5), func() -> void: _shoot("wood_machine")],
+		[0.5, _noop, func() -> void:
+			var props := Timber.props_of(_g)
+			var at := _m.global_position
+			var i := props.prop_near(Vector2(at.x, at.z), 300.0, ["tree"])
+			var base: Vector3 = props.prop_info(i).origin
+			var d := Vector3(base.x - at.x, 0.0, base.z - at.z).normalized()
+			_put_at(base - d * 4.6)
+			_m.global_basis = Basis(Vector3.UP, atan2(-d.x, -d.z))
+			_st.tree = i
+			_st.d = d
+			_st.base = base
+			_m.tool_key(KEY_R)
+			_m.brake = 0.0],
+		[3.2, func(_s: float) -> void:
+			_m.throttle = 0.25
+			var d: Vector3 = _st.d
+			_look_at(Vector3(_st.base), -0.12, 9.0)
+			(_g.get("cam") as OrbitCamera).yaw += 1.0, func() -> void: _shoot("sawing")],
+		[1.4, func(_s: float) -> void:
+			_m.throttle = 0.0
+			_m.brake = 1.0
+			_look_at(Vector3(_st.base), -0.05, 24.0)
+			(_g.get("cam") as OrbitCamera).yaw += 1.4, func() -> void: _shoot("falling")],
+		[5.0, func(_s: float) -> void: _look_at(Vector3(_st.base) + Vector3(_st.d) * 6.0, -0.3, 16.0), func() -> void: _shoot("billets")],
+		[0.5, _noop, func() -> void:
+			_m.tool_key(KEY_R)
+			var mid := Vector3.ZERO
+			var k := 0
+			for b: Node in get_nodes_in_group(Timber.GROUP):
+				mid += (b as Node3D).global_position
+				k += 1
+			mid /= maxi(k, 1)
+			_st.mid = mid
+			_put_at(mid - Vector3(_st.d) * 2.3)
+			_m.global_basis = Basis(Vector3.UP, atan2(-Vector3(_st.d).x, -Vector3(_st.d).z))],
+		[0.35, func(_s: float) -> void: _cam(PI * 0.75 + _m.global_basis.get_euler().y, -0.3, 9.0), func() -> void: _shoot("gathering")],
+		[4.0, func(_s: float) -> void: _cam(PI * 0.85 + _m.global_basis.get_euler().y, -0.45, 6.5), func() -> void: _shoot("bin_full")],
+		[0.5, _noop, func() -> void:
+			var d := []
+			for x in range(-1, 3):
+				for z in range(-2, 4):
+					d.append(["wood_frame", x, 0, z, 0])
+			d.append_array([["cab", 0, 1, 0, 0], ["engine", 0, 1, 2, 0],
+				["wheel_s", 3, -1, -2, 0], ["wheel_s", 3, -1, 2, 0], ["wheel_s", -2, -1, -2, 2], ["wheel_s", -2, -1, 2, 2]])
+			for z in range(-2, 4):
+				d.append(["wood_plate", -1, 1, z, 1])
+				d.append(["wood_plate", 2, 1, z, 3])
+			for x in range(-1, 3):
+				d.append(["wood_wedge", x, 0, -3, 0])
+			_m.from_data(d)
+			_put_at(_m.global_position + Vector3(12, 0, 0))],
+		[2.0, func(_s: float) -> void: _cam(PI * 0.75, -0.25, 8.0), func() -> void: _shoot("wood_built")],
+		[0.3, _noop, func() -> void:
+			_m.invulnerable = false
+			for i in _m.design.size():
+				if _m.design[i].id == "wood_plate" and int(_m.design[i].at.x) == 2:
+					_m.blast(_m.global_transform * _m.part_xform(i).origin, 0.6, 2.0, 0.0, null, "alev")],
+		[2.5, func(_s: float) -> void: _cam(PI * 0.6, -0.2, 8.0), func() -> void: _shoot("wood_burning")],
+		# the wood age's weapons, by the workshop: a ballista with pitch at a wooden cart
+		[0.5, _noop, func() -> void:
+			var shop: Workshop = _g.get("workshop")
+			_st.range = shop.truck.global_position + Vector3(45, 0, 0)
+			var d := Designs.valley_start()
+			d.append_array([["ballista", 0, 3, 0, 0], ["pitch", 2, 3, 0, 0], ["steer", -1, 1, -1, 0], ["wood_rack", 0, 2, 4, 0]])
+			_m.from_data(d)
+			_put_at(Vector3(_st.range))
+			_m.global_basis = Basis(Vector3.UP, -PI * 0.5)
+			_st.target = _cart(Vector3(_st.range) + Vector3(28, 0, 0))],
+		[2.0, func(_s: float) -> void:
+			_m.aim_point = (_st.target as Machine).com_global()
+			_cam(-PI * 0.5 + 2.4, -0.18, 7.0), func() -> void: _shoot("ballista")],
+		[4.0, func(_s: float) -> void:
+			_m.aim_point = (_st.target as Machine).com_global()
+			_m.firing = true
+			_look_at((_st.target as Machine).global_position, -0.15, 12.0), func() -> void:
+			_m.firing = false
+			_shoot("fire_arrows")],
+		[0.5, _noop, func() -> void:
+			var d := Designs.valley_start()
+			d.append(["catapult", 0, 3, 0, 0])
+			_m.from_data(d)
+			_put_at(Vector3(_st.range))
+			_m.global_basis = Basis(Vector3.UP, -PI * 0.5)
+			(_st.target as Machine).queue_free()
+			_st.target = _cart(Vector3(_st.range) + Vector3(60, 0, 0))],
+		[2.5, func(_s: float) -> void:
+			_m.aim_point = (_st.target as Machine).com_global()
+			_cam(-PI * 0.5 + 2.2, -0.12, 9.0), func() -> void: _shoot("catapult")],
+		[0.35, func(_s: float) -> void:
+			_m.aim_point = (_st.target as Machine).com_global()
+			_m.firing = true, func() -> void: _shoot("catapult_throw")],
+		[3.5, func(_s: float) -> void:
+			_m.firing = false
+			_look_at((_st.target as Machine).global_position, -0.2, 14.0), func() -> void: _shoot("stone_lands")],
+		[0.5, _noop, func() -> void:
+			var d := Designs.valley_start()
+			d.append(["oilpot", 0, 3, 0, 0])
+			_m.from_data(d)
+			_put_at(Vector3(_st.range) + Vector3(0, 0, 20))
+			_m.global_basis = Basis(Vector3.UP, -PI * 0.5)
+			(_st.target as Machine).queue_free()
+			_st.target = _cart(Vector3(_st.range) + Vector3(7.5, 0, 20))],
+		[2.5, func(_s: float) -> void:
+			_m.aim_point = (_st.target as Machine).global_position
+			_m.firing = _s > 1.5, func() -> void:
+			_m.firing = false],
+		[2.0, func(_s: float) -> void: _cam(-PI * 0.5 + 2.0, -0.25, 11.0), func() -> void: _shoot("boiling_oil")],
+		# a plan lying lit, and a wood age crew
+		[0.5, _noop, func() -> void:
+			(_st.target as Machine).queue_free()
+			Salvage.current.drop_plan("celik", Vector3(_st.range) + Vector3(5, 0, 40))
+			_st.crew = _g.call("_spawn", WoodForge.make(3, 2, "mancinik").data, Transform3D(Basis(Vector3.UP, PI * 0.8),
+				Vector3(_st.range) + Vector3(14, 2.0, 44)), 1, false)
+			_put_at(Vector3(_st.range) + Vector3(-2, 0, 40))],
+		[2.5, func(_s: float) -> void: _look_at(Vector3(_st.range) + Vector3(8, 0, 42), -0.2, 13.0), func() -> void: _shoot("plan_and_crew")],
+	]
+
+
+## A wooden cart of the other side's at `at` (no crew).
+func _cart(at: Vector3) -> Machine:
+	var made := WoodForge.make(11, 1, "okcu")
+	var t: Node = _g.get("terrain")
+	at.y = float(t.call("height_at", at.x, at.z)) + 1.8
+	var e: Machine = _g.call("_spawn", made.data, Transform3D(Basis(Vector3.UP, PI * 0.5), at), 1, false)
+	e.brake = 1.0
+	return e
+
+
 func _look_at(at: Vector3, pitch: float, dist: float) -> void:
 	var to := at - _m.global_position
 	_cam(atan2(-to.x, -to.z), pitch, dist)
@@ -632,74 +737,6 @@ func _arena2_steps() -> Array:
 
 ## The polish: a hurt machine smoking and sooted, enemies marked, a hit from the side, the pause
 ## menu, the death card.
-## KAFES: the start panel, the round's maze from above and from in it, the cage with its crowd, the countdown, the fight, the crowd up
-## close on its feet, the workshop.
-func _cage_steps() -> Array:
-	return [
-		[3.0, _noop, func() -> void:
-			_m = _g.get("machine")
-			var data := Designs.starter()
-			data.append(["minigun", 0, 3, 0, 0])
-			data.append(["cannon", 0, 1, -2, 0])
-			_m.from_data(data)
-			_cam(PI * 1.25, -0.3, 12.0)
-			_shoot("cage_prep")],
-		[1.0, func(_s: float) -> void:
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
-			_cam(PI * 1.25, -1.1, 125.0), func() -> void: _shoot("cage_maze")],
-		[1.0, func(_s: float) -> void: _cam(PI * 1.1, -0.35, 30.0), func() -> void: _shoot("cage_maze_low")],
-		[1.0, _noop, func() -> void:
-			(_g.get("cage") as Cage).start_run()],
-		[1.6, func(_s: float) -> void: _cam(PI * 1.25, -0.25, 12.0), func() -> void: _shoot("cage_countdown")],
-		[6.0, func(_s: float) -> void:
-			_g.set("player_input", false)
-			var c: Cage = _g.get("cage")
-			if not c.rivals.is_empty() and is_instance_valid(c.rivals[0]):
-				_m.aim_point = c.rivals[0].com_global()
-				_m.firing = _s > 2.0
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
-			_cam(PI * 1.25, -0.35, 14.0), func() -> void: _shoot("cage_fight")],
-		[2.0, func(_s: float) -> void:
-			(_g.get("cage") as Cage).excite = 1.0
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.CHASE
-			_cam(PI * 0.25, 0.25, 6.0), func() -> void: _shoot("cage_crowd")],
-		[2.0, func(_s: float) -> void:
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
-			_cam(PI * 1.25, -0.42, 110.0), func() -> void: _shoot("cage_stadium")],
-		[2.0, func(_s: float) -> void:
-			if _once("shell"):
-				(_g.get("cage") as Cage).camp_t = Cage.CAMP_SHELL
-			_cam(PI * 1.1, -0.2, 16.0), func() -> void: _shoot("cage_shelled")],
-		[0.5, _noop, func() -> void:
-			_m.firing = false
-			var c: Cage = _g.get("cage")
-			for e in c.rivals:
-				if is_instance_valid(e):
-					e.damage_part(e.cab_index(), 99999.0)],
-		[5.0, func(_s: float) -> void: _cam(PI * 1.25, -0.3, 12.0), func() -> void: _shoot("cage_workshop")],
-		[0.5, _noop, func() -> void:
-			var c: Cage = _g.get("cage")
-			(c.get("_ui") as CageUi).close()
-			c.call("_begin_round", 5)],
-		[5.5, func(_s: float) -> void:
-			var c: Cage = _g.get("cage")
-			_g.set("player_input", false)
-			for e in c.rivals:
-				if is_instance_valid(e):
-					_m.aim_point = e.com_global()
-					break
-			_m.firing = _s > 4.0
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.CHASE
-			_cam(PI * 1.25, -0.2, 11.0), func() -> void: _shoot("final_hits")],
-		[0.5, _noop, func() -> void:
-			_m.firing = false
-			(_g.get("cage") as Cage).arena.open_pit()],
-		[4.0, func(_s: float) -> void:
-			(_g.get("cam") as OrbitCamera).mode = OrbitCamera.HIGH
-			_cam(PI * 1.25, -0.6, 22.0), func() -> void: _shoot("final_overview")],
-	]
-
-
 func _polish_steps() -> Array:
 	return [
 		[3.0, _noop, func() -> void:

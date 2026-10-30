@@ -15,7 +15,7 @@ const HALF := (SIZE - 1) / 2
 
 var default_surface := Surface.preset("dirt")
 var noise_from := 70.0 ## m from the middle the rolling noise starts (the arena keeps its floor flat)
-var features := true ## the mogul field and the two hills (the cage, 160 m across, has none)
+var features := true ## the mogul field and the two hills
 var grid_strength := 0.08 ## how much of the metre grid shows on it (the arena: none)
 const CHUNK := 32 ## m a mesh piece
 
@@ -53,8 +53,8 @@ func _ready() -> void:
 			zone.patch = patch
 
 
-## The zones anew while it's running (the cage's floor changing between rounds): the old soft
-## patches go, the new ones are made, the ground's colours repainted.
+## The zones anew while it's running: the old soft patches go, the new ones are made, the ground's
+## colours repainted.
 func set_zones(zones: Array) -> void:
 	for zone in _zones:
 		if zone.patch:

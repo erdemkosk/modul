@@ -503,11 +503,81 @@ func tree_info(i: int) -> Dictionary:
 		"basis": _xf[i].basis, "lod0": m.lod0}
 
 
+## The standing prop of a kind in `kinds` ("tree", "log", "stump", ...) nearest a ground point within
+## `reach` of its edge (its trunk's or log's radius taken off), or -1.
+func prop_near(p: Vector2, reach: float, kinds: Array) -> int:
+	var best := -1
+	var best_gap := reach
+	var r := int(ceil((reach + 4.0) / CELL))
+	var c := Vector2i(floori(p.x / CELL), floori(p.y / CELL))
+	for dz in range(-1, 2) if r <= 1 else range(-r, r + 1):
+		for dx in range(-1, 2) if r <= 1 else range(-r, r + 1):
+			for i: int in _grid.get(c + Vector2i(dx, dz), []):
+				if cut.has(i) or not str(_models[_kind[i]].kind) in kinds:
+					continue
+				var info := prop_info(i)
+				var gap: float
+				if info.kind == "log": # (along its length: the nearest point of its axis)
+					var o: Vector3 = info.origin
+					var ax: Vector3 = info.axis
+					var a := Vector2(o.x, o.z)
+					var d := Vector2(ax.x, ax.z) * float(info.length) * 0.5
+					var q := Geometry2D.get_closest_point_to_segment(p, a - d, a + d)
+					gap = p.distance_to(q) - float(info.radius)
+				else:
+					gap = p.distance_to(Vector2(info.origin.x, info.origin.z)) - float(info.radius)
+				if gap < best_gap:
+					best_gap = gap
+					best = i
+	return best
+
+
+## A prop's kind, base, radius (a trunk's, a log's), height, and a log's axis and length.
+func prop_info(i: int) -> Dictionary:
+	var m := _models[_kind[i]]
+	var xf := _xf[i]
+	var s := xf.basis.get_scale().x
+	var info: Dictionary = m.info
+	var out := {"kind": m.kind, "origin": xf.origin, "scale": s, "height": float(m.height) * s, "basis": xf.basis}
+	match str(m.kind):
+		"tree":
+			out.radius = float(info.get("trunk_radius", 0.28)) * s
+		"stump":
+			out.radius = float(info.get("trunk_radius", 0.3)) * s
+		"log":
+			out.radius = float(info.get("radius", 0.2)) * s
+			out.length = float(info.get("length", 6.0)) * s
+			out.axis = (xf.basis.orthonormalized() * Vector3.RIGHT).normalized() # (its collision lies along x)
+			out.origin = xf.origin + Vector3.UP * float(out.radius)
+		_:
+			out.radius = 0.5 * s
+	return out
+
+
+## The tree's detailed model as one mesh for a felled trunk to fall with: not bending in the wind, not
+## fading with distance (it's a body of its own now).
+func felled_mesh(i: int) -> Mesh:
+	var m := _models[_kind[i]]
+	if m.has("felled"):
+		return m.felled
+	var out := (m.lod0 as Mesh).duplicate() as Mesh
+	for k in out.get_surface_count():
+		var mat := out.surface_get_material(k)
+		if mat is ShaderMaterial:
+			mat = mat.duplicate()
+			(mat as ShaderMaterial).set_shader_parameter("sway", 0.0)
+			(mat as ShaderMaterial).set_shader_parameter("lod_near", 0.0)
+			(out as ArrayMesh).surface_set_material(k, mat)
+	m.felled = out
+	return out
+
+
 ## Fells tree `i`: gone from the world (drawn, solid, a winch anchor), and remembered.
 func cut_tree(i: int) -> void:
 	if cut.has(i):
 		return
 	RutStore.cut[i] = SaveGame.day
+	RutStore.save_marks()
 	_remove(i)
 
 

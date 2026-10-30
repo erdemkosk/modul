@@ -6,21 +6,6 @@ are this project's own.
 
 ## Play
 
-- **Görevler**: industrial sites to bring down, Besiege's way but our own: a water tower, a factory
-  chimney, fuel tanks, a warehouse, scaffolding, a transformer, a tower crane, a silo. Each is built
-  of pieces (steel shrugs off rounds, brick and concrete break into lumps, wood splinters and burns,
-  fuel goes up and lights what's round it); take out what holds a piece up and it comes down (a
-  water tower stands on three legs of four, not on two). The mud, snow and rain work on it all: wet
-  wood hardly catches, the rain puts fires out, wheels sink. Six missions, each opened by the one
-  before; stars by the time; some have guards (Forge's machines). Build first, then start.
-- **Kafes**: a six-round tournament in a small walled cage before a crowd. Each round lays its own
-  floor (a mud pit, an ice rink, fire vents, spikes, a bog, fenced islands) and sends its own rivals,
-  built fresh for each run (`forge.gd`) and stronger each round; win by tearing them apart or leaving them unable to move for 8 s, or on the
-  judges' decision at the bell. The damage stays between rounds: each win pays credits, and the
-  workshop buys back what you lost, the cab first, and sells you new parts (B; half back for one
-  taken off). From the third round house robots keep two hatched corners and drive into whatever comes
-  in; some rounds have a pit that opens at 0:45 (what goes over it falls and is out); spinners and
-  floor saws tear at what touches them. Your cab gone, you're out.
 - **Test Alanı**: the proving ground, built as an arena: a ring of jersey barriers under a catch fence,
   grandstands, floodlight masts (lit at night), a gate the other side drives in through, the surface
   zones and ramps, and cover that breaks (concrete blocks, containers, sandbags, crates, drums).
@@ -37,6 +22,25 @@ are this project's own.
   big loads). Parts have a past (salvage is worn, a worn part may give on the road). The valley soaks
   and dries (the mud's depth), its fords flood, its roads are shut some mornings (a slide, trees down),
   and two giants roam it, taken apart rather than shot down.
+  You start with little: the first machine has a saw out in front and a bin on the back, and two
+  spare frames. Wood is the first stuff: R starts the saw, drive it into a tree and it cuts through
+  the trunk; the tree goes over away from you (whatever it lands on is hit) and lies as billets, a
+  log on the forest floor is cut up too; the bin takes in the billets you pass (8 at most), and
+  beside the workshop truck it's emptied into the store. Wooden parts (AHŞAP: a timber frame,
+  planking, a wedge) are made out of the store as you place them: twice the steel frame's weight,
+  quick to break, and a flame takes them three times as hard and sets them burning on, spreading to
+  the wood beside them; a wooden wheel (no springs, an iron tyre: it slides and sinks), a log rack
+  (six more billets in the bin); they're mended with wood. A steering joint turns what's bolted on it
+  with A/D (a wheel on a block on it steers), or with a key of its own while it's held.
+  The valley goes through ages. In the wood age the weapons are the wood age's, made of wood and
+  worked by hand: a ballista (its bolt goes through into the part behind and sticks there), a
+  catapult (a stone lobbed high to come down where you look, ~230 m), a cask of boiling oil (tipped
+  out ahead: the ground burns), and a cask of pitch beside the ballista or the catapult makes fire
+  arrows and burning pots; they're stocked again at the workshop for wood. The crews out there are
+  wooden carts (WoodForge: archers, catapults, oil casks, rams). Metal parts are made of scrap only
+  once their plan's found: five plans (steel work, wheels and tracks, engines, machinery, guns), lit
+  tubes in a cleared works site's cache, a giant's heart, now and then a long haul's pay; the first
+  opens the metal age (jobs pay parts again, steel crews come out too). A part held can always go on.
 
 | Key | |
 |---|---|
@@ -46,7 +50,7 @@ are this project's own.
 | 1-9 · 0 | turn that gun on or off (the others stay as they are: any of them fire together) · all on |
 | C | the camera: chase (behind, up, looking where you aim) · high (over the fight) · from the turret |
 | Esc · K held | pause (go on, settings, the start menu) · rebuild a machine that can't move |
-| L · T | lights · back on its wheels (in the cage only with a flipper) |
+| L · T | lights · back on its wheels |
 | F | fire the flipper |
 | E | the hinges, rotors and pistons with no key of their own (each press: up/down, spin/stop, out/in) |
 | F1 F2 F3 F5 F4 | raider (minigun) · tank (cannon) · target · tracked rocket carrier · a wave (proving ground) |
@@ -80,20 +84,19 @@ are this project's own.
 - `scripts/ai_driver.gd`: the other side's crews. `scripts/designs.gd`: ready machines, and the build
   screen's ready designs (HAZIR TASARIMLAR: Gezgin, Akıncı, Topçu, Roketatar, Koçbaşı, Ateşbaz, Gürz),
   each with a picture (`assets/ui/presets`, rendered by `godot --path . -s res://tools/preset_icons.gd`).
-- The other side is painted its own colours (`machine.gd` TEAM_PAINT): the rivals oxide red, the
-  cage's house robots gunmetal; their pieces keep them when they come off.
-- `scripts/hints.gd`: the first time you drive, build or stand at the cage's start, a card with the
+- The other side is painted its own colours (`machine.gd` TEAM_PAINT): the rivals oxide red; their
+  pieces keep it when they come off.
+- `scripts/hints.gd`: the first time you drive, build or take up the valley's work, a card with the
   keys that matter there (once each; AYARLAR can show them again).
 - `scripts/forge.gd`: builds the other side's machines from sensible parts, a different one from each
   seed: a style (skirmisher, gunner, artillery, rocketeer, flamethrower brawler, rammer) picks the guns
   and the nose; then the cab at the front, a battery if the guns draw more than an engine charges,
-  engines until its kW per tonne reaches the round's mark, and wheels or tracks rated for its weight;
+  engines until its kW per tonne reaches the tier's mark, and wheels or tracks rated for its weight;
   everything checked to bolt to the cab.
 - The flipper (`machine_flipper.gd`): a hinged plate on a pneumatic ram (F). It throws what's
   standing on it up and over onto its back, and rights its own machine on its back; it fills with
-  air from the battery in 3 s. In the cage there's no crane: on your back, only a flipper gets you
-  up, and 8 s on your back counts you out, rival or you. Forge has a flipper style (a flipper out
-  in front, a minigun), whose crew drives under you and fires it.
+  air from the battery in 3 s. Forge has a flipper style (a flipper out in front, a minigun), whose
+  crew drives under you and fires it.
 - Joints (`machine_joint.gd`, the HAREKET tab): a hinge swings what's bolted on its top up 90°, a
   rotor spins it (16 rad/s), a piston pushes it out half a metre, each on its key (E if none). What
   a joint carries is everything on its top that doesn't reach the cab another way (if it does, the
@@ -122,9 +125,6 @@ are this project's own.
   engine or nothing to run on, it can't move. Hurt parts soot over and smoke (`shaders/part_wear`).
   `combat_overlay.gd` shows being hurt and where from, and marks the enemy; `death_card.gd` says what
   did it. `pause_menu.gd`, `settings.gd` (user://settings.cfg), `settings_panel.gd`.
-- KAFES: `cage.gd` (the rounds, the judges, the credits, the workshop), `cage_arena.gd` (the cage, its
-  stands and crowd (`shaders/crowd.gdshader`), its hazards), `cage_ui.gd`; crowd sounds in
-  `assets/audio/crowd` (CC0, see its CREDITS).
 - Fire control (`machine_gun.gd`): the cannon and the pod lay themselves over for their round's drop at
   the aim's range; the crosshair's rings show where each would land.
 - Salvage: `inventory.gd` (what you hold, user://valley_inventory.cfg), `salvage.gd` (the lit parts
@@ -132,15 +132,20 @@ are this project's own.
   swap_guard hooks keep the building to what's held; each part held has its wear (`Inventory.cond`).
 - Cranes and winches: `machine_hoist.gd` (the rope as a spring that only pulls, the crane's slew and
   trolley, its load moment limiter, drawing the rope); models in tools/blender/build_parts.py.
+- Wood: `machine_tool.gd` (the saw and the bin on a machine), `timber.gd` (felling, the stump,
+  billets, taking them in), `world_props.gd` (prop_near, prop_info, felled_mesh; felled trees kept
+  in RutStore.cut), `Inventory.wood`/`bin`; wooden parts burn in `machine.gd` (`_burn`).
+- Ages: `Parts.PLANS` (what each plan makes), `Inventory.plans`/`age()`/`make_metal()`, plans dropped
+  by `Salvage.drop_plan` (works sites, giants) and paid by expeditions; the wood age's weapons in
+  `machine_gun.gd` (ballista, catapult, oil) and `combat.gd` (bolts, stones, burning oil);
+  `wood_forge.gd` (the wood age's crews); the steering joint in `machine_joint.gd` ("steer").
 - The valley's work: `expeditions.gd` (places, jobs, the load and its knocks, delivery),
   `workshop.gd` (the truck, building and mending beside it), `valley_life.gd` (soaking mud, fords in
   flood, shut roads, worn parts giving), `colossus.gd` (the giants), `valley_hud.gd` (the lines and
   the radio); saved in user://valley_jobs.cfg, valley_workshop.cfg, valley_life.cfg, valley_giants.cfg.
-- Missions: `missions.gd` (the list, the yard, the flow, the record in user://missions.cfg),
-  `mission_ui.gd` (the brief, the clock and targets, markers, done and failed), `structure.gd` and
-  `structure_piece.gd` (what stands on what, falling, hit points by stuff, fire), `structures.gd`
-  (the industrial structures). The menu's GÖREVLER lists them.
-- `scripts/game.gd`: every mode. `scripts/menu.gd`: the start.
+- Structures (the valley's works sites): `structure.gd` and `structure_piece.gd` (what stands on
+  what, falling, hit points by stuff, fire), `structures.gd` (the industrial structures).
+- `scripts/game.gd`: both modes (Vadi, Test Alanı). `scripts/menu.gd`: the start.
 
 ## Tests
 
@@ -150,15 +155,15 @@ godot --headless --path . -s res://tests/combat_test.gd
 godot --headless --path . -s res://tests/tracks_test.gd
 godot --headless --path . -s res://tests/build_test.gd
 godot --headless --path . -s res://tests/arena_test.gd
-godot --headless --path . -s res://tests/cage_test.gd
 godot --headless --path . -s res://tests/hazard_test.gd
 godot --headless --path . -s res://tests/ai_test.gd
 godot --headless --path . -s res://tests/designs_test.gd
 godot --headless --path . -s res://tests/flipper_test.gd
 godot --headless --path . -s res://tests/structures_test.gd
-godot --headless --path . -s res://tests/missions_test.gd
 godot --headless --path . -s res://tests/salvage_test.gd
 godot --headless --path . -s res://tests/keys_test.gd
 godot --headless --path . -s res://tests/joints_test.gd
-godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --cage | --forge | --flip | --sites | --mission=<id> | --spin | --expedition]
+godot --headless --path . -s res://tests/valley_test.gd
+godot --headless --path . -s res://tests/wood_test.gd
+godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --forge | --flip | --sites | --spin | --robots | --worksite | --expedition | --wood]
 ```

@@ -6,19 +6,25 @@ extends RefCounted
 ## A part has a past: each one held has what's left of it (0..1: its hit points when it's bolted on).
 ## What comes off a wreck is rusted, bent, half burnt (Salvage); what a job pays is good. Bolting one
 ## on takes the best of that kind; one taken off comes back as it was. Scrap (`scrap`) is what
-## mending is paid in (the workshop: Workshop).
+## mending is paid in (the workshop: Workshop). Wood (`wood`, in billets: felled with a saw, carried
+## home in a collector) is what wooden parts are made of, beside the workshop (Parts.wood_cost).
 
 static var path := "user://valley_inventory.cfg" ## (tests point it elsewhere)
 static var counts := {}
 static var cond := {} ## id -> Array of 0..1, best first (as many as counts[id])
 static var scrap := 0
+static var wood := 0 ## billets in the workshop's store
+static var bin := 0 ## billets in the collector's bin, not yet brought home
+static var plans: Array = [] ## the plans found (Parts.PLANS keys): what metal can be made
 static var taken := 1.0 ## (what the part last taken had left)
 static var _loaded := false
-## What a new start in the valley has spare (with the starter machine on).
-const START := {"frame": 6, "plate": 3, "wedge": 2, "crane": 1, "winch": 1}
-## Given once to a valley begun before there were any (what loads are lifted and dragged with).
-const GIFT := {"crane": 1, "winch": 1}
-const START_SCRAP := 20
+## What a new start in the valley has spare (little: the starter machine has a saw and a bin on, and
+## the rest is cut out of the forest or taken off wrecks).
+const START := {"frame": 2}
+## Given once each to a valley begun before there were any: flag -> parts.
+const GIFTS := {"gift_hoist": {"crane": 1, "winch": 1}, "gift_wood": {"saw": 1, "collector": 1}}
+const START_SCRAP := 10
+const START_WOOD := 4
 
 
 static func load_all() -> void:
@@ -29,6 +35,9 @@ static func load_all() -> void:
 	if cf.load(path) != OK:
 		counts = START.duplicate()
 		scrap = START_SCRAP
+		wood = START_WOOD
+		bin = 0
+		plans = []
 		save_all()
 		return
 	for k: String in cf.get_section_keys("parts") if cf.has_section("parts") else []:
@@ -36,9 +45,16 @@ static func load_all() -> void:
 		var c: Array = cf.get_value("cond", k, [])
 		cond[k] = c.slice(0, counts[k])
 	scrap = int(cf.get_value("res", "scrap", 0))
-	if not bool(cf.get_value("res", "gift_hoist", false)):
-		for k: String in GIFT:
-			counts[k] = int(counts.get(k, 0)) + int(GIFT[k])
+	wood = int(cf.get_value("res", "wood", 0))
+	bin = int(cf.get_value("res", "bin", 0))
+	plans = cf.get_value("res", "plans", [])
+	var gave := false
+	for flag: String in GIFTS:
+		if not bool(cf.get_value("res", flag, false)):
+			gave = true
+			for k: String in GIFTS[flag]:
+				counts[k] = int(counts.get(k, 0)) + int(GIFTS[flag][k])
+	if gave:
 		save_all()
 
 
@@ -49,7 +65,11 @@ static func save_all() -> void:
 			cf.set_value("parts", k, int(counts[k]))
 			cf.set_value("cond", k, _conds(k))
 	cf.set_value("res", "scrap", scrap)
-	cf.set_value("res", "gift_hoist", true)
+	cf.set_value("res", "wood", wood)
+	cf.set_value("res", "bin", bin)
+	cf.set_value("res", "plans", plans)
+	for flag: String in GIFTS:
+		cf.set_value("res", flag, true)
 	cf.save(path)
 
 
@@ -107,6 +127,64 @@ static func add_scrap(n: int) -> void:
 	save_all()
 
 
+static func add_wood(n: int) -> void:
+	if not _loaded:
+		load_all()
+	wood = maxi(wood + n, 0)
+	save_all()
+
+
+## One of `id` made of wood (if it's made so and there's wood enough): paid, and held. True if made.
+static func make_wood(id: String) -> bool:
+	var c := Parts.wood_cost(id)
+	if c <= 0 or wood < c:
+		return false
+	wood -= c
+	add(id, 1, 1.0)
+	return true
+
+
+## The age the valley's in: 1 wood, 2 metal (a plan's been found).
+static func age() -> int:
+	if not _loaded:
+		load_all()
+	return 2 if not plans.is_empty() else 1
+
+
+static func knows(plan: String) -> bool:
+	if not _loaded:
+		load_all()
+	return plan in plans
+
+
+## A plan found: true if it's new (and kept).
+static func learn(plan: String) -> bool:
+	if knows(plan) or not Parts.PLANS.has(plan):
+		return false
+	plans.append(plan)
+	save_all()
+	return true
+
+
+## The next plan not yet found (in Parts.PLAN_ORDER), or "".
+static func next_plan() -> String:
+	for k: String in Parts.PLAN_ORDER:
+		if not knows(k):
+			return k
+	return ""
+
+
+## One of `id` made of scrap (its plan known, scrap enough): paid, and held. True if made.
+static func make_metal(id: String) -> bool:
+	var plan := Parts.plan_of(id)
+	var c := Parts.metal_cost(id)
+	if c <= 0 or plan != "" and not knows(plan) or scrap < c:
+		return false
+	scrap -= c
+	add(id, 1, 1.0)
+	return true
+
+
 ## Swapping the machine's parts `old` (rows, worn as Machine.to_data(true) gives them) for `new`: if
 ## what's held and what comes off cover the new, it's done (the difference kept, each part as worn as
 ## it was; the new ones the best there are) and true, `rows` being `new` with its parts' wear; else
@@ -158,3 +236,6 @@ static func reset() -> void:
 	counts.clear()
 	cond.clear()
 	scrap = 0
+	wood = 0
+	bin = 0
+	plans = []

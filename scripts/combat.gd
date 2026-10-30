@@ -29,6 +29,13 @@ const ROCKET_VIS := 18
 
 var terrain: Node
 var _shells: Array[Dictionary] = []
+var _bolts: Array[Dictionary] = [] ## {pos, vel, owner, fiery, life, vis}
+var _stones: Array[Dictionary] = [] ## {pos, vel, owner, fiery, life, vis}
+var _fires: Array[Dictionary] = [] ## burning oil on the ground: {at, r, life, owner, t, light}
+var _stuck: Array[Node3D] = [] ## bolts stuck in what they hit
+const STUCK_MAX := 40
+const FIRES_MAX := 10
+const OIL_DPS := 45.0 ## hp a second to what stands in burning oil
 var _rockets: Array[Dictionary] = []
 var _rocket_vis: Array[Node3D] = []
 var _rocket_trails: Array[GPUParticles3D] = []
@@ -148,6 +155,299 @@ func fire_shell(from: Vector3, vel: Vector3, owner: Machine) -> void:
 	_shells.append({"pos": from, "vel": vel, "owner": owner, "life": 6.0})
 
 
+# --- The wood age's: bolts, stones, burning oil --------------------------------------------------
+
+## A ballista's bolt off at `vel`: alight if `fiery`.
+func fire_bolt(from: Vector3, vel: Vector3, owner: Machine, fiery: bool) -> void:
+	_bolts.append({"pos": from, "vel": vel, "owner": owner, "fiery": fiery, "life": 5.0, "vis": _bolt_vis(fiery)})
+
+
+## A catapult's stone (or, `fiery`, a pot of burning pitch) off at `vel`.
+func fire_stone(from: Vector3, vel: Vector3, owner: Machine, fiery: bool) -> void:
+	_stones.append({"pos": from, "vel": vel, "owner": owner, "fiery": fiery, "life": 9.0, "vis": _stone_vis(fiery)})
+
+
+## Burning oil spilled over `r` m round `at` (on the ground there), for `life` s.
+func oil_fire(at: Vector3, r: float, life: float, owner: Machine) -> void:
+	if terrain:
+		at.y = float(terrain.call("height_at", at.x, at.z)) + 0.05
+	var light: OmniLight3D = null
+	if not _headless:
+		light = OmniLight3D.new()
+		light.light_color = Color(1.0, 0.5, 0.15)
+		light.omni_range = r * 3.0
+		light.light_energy = 2.5
+		add_child(light)
+		light.global_position = at + Vector3.UP * 0.8
+	_fires.append({"at": at, "r": r, "life": life, "owner": owner, "t": 0.0, "light": light})
+	scorch(at, r)
+	_burst(at, "explosion", 0.7)
+	while _fires.size() > FIRES_MAX:
+		var old: Dictionary = _fires.pop_front()
+		if is_instance_valid(old.light):
+			(old.light as Node).queue_free()
+
+
+func _fly_wood_age(space: PhysicsDirectSpaceState3D, dt: float) -> void:
+	for which in 2:
+		var list := _bolts if which == 0 else _stones
+		var stone := which == 1
+		for i in range(list.size() - 1, -1, -1):
+			var b := list[i]
+			var p: Vector3 = b.pos
+			var v: Vector3 = b.vel + Vector3.DOWN * SHELL_GRAVITY * dt
+			if not stone:
+				v -= v * 0.01 * dt # (a stone's too heavy for the air to slow much)
+			var n := p + v * dt
+			var q := PhysicsRayQueryParameters3D.create(p, n, RAY_MASK)
+			if is_instance_valid(b.owner):
+				q.exclude = [(b.owner as Machine).get_rid()]
+			var hit := space.intersect_ray(q)
+			b.life = float(b.life) - dt
+			var vis: Node3D = b.vis
+			if not hit.is_empty():
+				var owner: Machine = b.owner if is_instance_valid(b.owner) else null
+				if stone:
+					_stone_lands(hit, v, owner, bool(b.fiery))
+					if is_instance_valid(vis):
+						vis.queue_free()
+				else:
+					_bolt_strikes(hit, v, owner, bool(b.fiery), vis)
+				list.remove_at(i)
+				continue
+			if float(b.life) <= 0.0:
+				if is_instance_valid(vis):
+					vis.queue_free()
+				list.remove_at(i)
+				continue
+			b.pos = n
+			b.vel = v
+			if is_instance_valid(vis):
+				vis.global_transform = Transform3D(Basis.looking_at(v, Vector3.UP if absf(v.normalized().y) < 0.99 else Vector3.RIGHT), n)
+				if stone and not bool(b.fiery):
+					vis.rotate_object_local(Vector3.RIGHT, float(b.life) * 9.0)
+			if bool(b.fiery) and randf() < dt * 20.0:
+				_burst(n, "embers", 0.2, -v.normalized())
+
+
+## A bolt into what it hit: through the part it hits into the one behind; alight, it sets wood
+## burning; it sticks there.
+func _bolt_strikes(hit: Dictionary, v: Vector3, owner: Machine, fiery: bool, vis: Node3D) -> void:
+	var at: Vector3 = hit.position
+	var dir := v.normalized()
+	var body: Object = hit.collider
+	var dmg := MachineGun.BOLT_DAMAGE * clampf(v.length() / MachineGun.BOLT_SPEED, 0.5, 1.2)
+	if body is Machine:
+		var m := body as Machine
+		var i := m._part_near(at + dir * 0.06)
+		m.apply_impulse(dir * MachineGun.BOLT_PUSH, at - m.global_position)
+		if i >= 0:
+			m.last_hit_by = owner
+			m.last_hit_kind = "ok"
+			m.damaged.emit(dmg, owner.global_position if owner else at - dir * 20.0, "ok")
+			var row: Dictionary = m.design[i]
+			m.damage_part(i, dmg * (1.5 if Parts.burns(str(row.id)) else 1.0), at, owner)
+			var j := m._part_near(at + dir * 0.6) if m.alive else -1 # (on through, into what's behind)
+			if j >= 0 and m.alive and (i >= m.design.size() or m.design[j] != row):
+				m.damage_part(j, dmg * 0.4, at + dir * 0.6, owner)
+		if fiery and m.alive:
+			m.blast(at, 0.9, 8.0, 0.0, owner, "alev")
+		_impact(at, hit.normal, "metal", 0.3)
+		if owner and m.team != owner.team:
+			hit_confirmed.emit(owner, not m.alive)
+	elif body is Breakable:
+		var br := body as Breakable
+		var wood := br.kind in ["crate", "log"]
+		br.hit(dmg * (2.0 if wood else 0.5) * (2.0 if fiery and wood else 1.0), at, dir)
+		_impact(at, hit.normal, br.chip_kind(), 0.3)
+	elif body is StructurePiece:
+		(body as StructurePiece).hit(dmg, at, dir)
+		if fiery:
+			(body as StructurePiece).heat(dmg)
+		_impact(at, hit.normal, (body as StructurePiece).chip_kind(), 0.3)
+	elif body.has_method("take_hit"):
+		body.call("take_hit", dmg, at, dir)
+		_impact(at, hit.normal, "metal", 0.3)
+		if owner:
+			hit_confirmed.emit(owner, false)
+	else:
+		_impact(at, hit.normal, "dirt", 0.3)
+	sound("res://assets/audio/impact/%s_0%d.wav" % ["metal" if body is Machine else "dirt", randi_range(1, 3)], at, -2.0, 0.8)
+	if is_instance_valid(vis):
+		_stick(vis, body, at - dir * 0.35, dir)
+
+
+## A stuck bolt: left in what it hit (moving with it), a while.
+func _stick(vis: Node3D, body: Object, at: Vector3, dir: Vector3) -> void:
+	var holder: Node3D = body as Node3D if body is Node3D and not body is StaticBody3D else self
+	if vis.get_parent() != holder:
+		vis.reparent(holder, false)
+	vis.global_transform = Transform3D(Basis.looking_at(dir, Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT), at)
+	if vis.has_node("Fire"):
+		vis.get_node("Fire").queue_free()
+	_stuck.append(vis)
+	while _stuck.size() > STUCK_MAX:
+		var old: Node3D = _stuck.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+
+
+## A stone come down: what's there battered (a burst without fire: STONE_DAMAGE over STONE_RADIUS, a
+## shove), cover broken; a pot of pitch bursts into burning oil.
+func _stone_lands(hit: Dictionary, v: Vector3, owner: Machine, fiery: bool) -> void:
+	var at: Vector3 = hit.position
+	if fiery:
+		oil_fire(at, 2.8, 9.0, owner)
+		for m: Node in get_tree().get_nodes_in_group("machines"):
+			var mach := m as Machine
+			if mach.alive and mach.global_position.distance_to(at) < 5.0:
+				mach.blast(at, 2.5, 30.0, 300.0, owner, "alev")
+		sound("res://assets/audio/explosion/close_0%d.wav" % randi_range(1, 3), at, -2.0, 1.4)
+		return
+	for m: Node in get_tree().get_nodes_in_group("machines"):
+		var mach := m as Machine
+		if not mach.alive or mach.global_position.distance_to(at) > MachineGun.STONE_RADIUS + 6.0:
+			continue
+		var before := mach.health()
+		mach.blast(at, MachineGun.STONE_RADIUS, MachineGun.STONE_DAMAGE, MachineGun.STONE_PUSH, owner, "taş")
+		if owner and mach.team != owner.team and mach.health() < before:
+			hit_confirmed.emit(owner, not mach.alive)
+	for n: Node in get_tree().get_nodes_in_group(Breakable.GROUP):
+		var br := n as Breakable
+		if not br.broken and maxf(br.center().distance_to(at) - br.size.length() * 0.3, 0.0) < MachineGun.STONE_RADIUS:
+			br.hit(MachineGun.STONE_DAMAGE * 2.0, at, v.normalized(), true)
+	for n: Node in get_tree().get_nodes_in_group("robots"):
+		var rb := n as Node3D
+		if rb.global_position.distance_to(at) < MachineGun.STONE_RADIUS + 0.8:
+			rb.call("take_hit", MachineGun.STONE_DAMAGE, at, (rb.global_position - at).normalized(), MachineGun.STONE_PUSH)
+	_burst_pieces(at, MachineGun.STONE_RADIUS, MachineGun.STONE_DAMAGE, MachineGun.STONE_PUSH)
+	var on_machine: bool = hit.collider is Machine
+	_burst(at, "metal" if on_machine else "dirt", 1.2, Vector3.UP)
+	_burst(at, "smoke", 0.6)
+	if not on_machine:
+		_throw_clods(at, 1.4)
+	shake(at, 0.35, null)
+	sound("res://assets/audio/build/heavy_01.wav", at, 4.0, randf_range(0.5, 0.65))
+	sound("res://assets/audio/impact/%s_0%d.wav" % ["metal" if on_machine else "dirt", randi_range(1, 3)], at, 2.0, 0.7)
+
+
+## Burning oil: it burns what's in it (a slow fire, wood the worst), flickers and smokes, and dies down.
+func _burn_oil(dt: float) -> void:
+	for i in range(_fires.size() - 1, -1, -1):
+		var f := _fires[i]
+		f.life = float(f.life) - dt
+		f.t = float(f.t) - dt
+		var at: Vector3 = f.at
+		var r: float = f.r
+		var light: OmniLight3D = f.light
+		if is_instance_valid(light):
+			light.light_energy = clampf(float(f.life), 0.0, 1.0) * randf_range(2.0, 3.2)
+		if float(f.life) <= 0.0:
+			if is_instance_valid(light):
+				light.queue_free()
+			_fires.remove_at(i)
+			continue
+		if float(f.t) > 0.0:
+			continue
+		f.t = 0.3
+		var p := at + Vector3(randf_range(-r, r) * 0.7, 0.1, randf_range(-r, r) * 0.7)
+		_burst(p, "explosion" if randf() < 0.6 else "embers", 0.35, Vector3.UP)
+		if randf() < 0.3:
+			_burst(at + Vector3.UP, "smoke", 0.5)
+		var owner: Machine = f.owner if is_instance_valid(f.owner) else null
+		for m: Node in get_tree().get_nodes_in_group("machines"):
+			var mach := m as Machine
+			if not mach.alive:
+				continue
+			var c := mach.global_position
+			if Vector2(c.x - at.x, c.z - at.z).length() < r + 1.5 and absf(c.y - at.y) < 3.0:
+				mach.blast(Vector3(c.x, at.y + 0.3, c.z), r + 1.5, OIL_DPS * 0.3, 0.0, owner, "alev")
+		for n: Node in get_tree().get_nodes_in_group(Breakable.GROUP):
+			var br := n as Breakable
+			if not br.broken and br.kind in ["crate", "log", "sandbags"] and br.center().distance_to(at) < r + 1.0:
+				br.hit(OIL_DPS * 0.3, at, Vector3.UP)
+
+
+## What a bolt looks like in flight: a shaft, its iron head, its fletching (alight: a flame at its head).
+func _bolt_vis(fiery: bool) -> Node3D:
+	if _headless:
+		return null
+	var n := Node3D.new()
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.012
+	cm.bottom_radius = 0.012
+	cm.height = 0.95
+	cm.radial_segments = 6
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.5, 0.38, 0.24)
+	cm.material = wood
+	mi.mesh = cm
+	mi.rotation.x = PI * 0.5 # (along -z)
+	n.add_child(mi)
+	var head := MeshInstance3D.new()
+	var hm := CylinderMesh.new()
+	hm.top_radius = 0.0
+	hm.bottom_radius = 0.022
+	hm.height = 0.09
+	hm.radial_segments = 6
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = Color(0.12, 0.12, 0.12)
+	iron.metallic = 0.6
+	hm.material = iron
+	head.mesh = hm
+	head.rotation.x = -PI * 0.5
+	head.position = Vector3(0, 0, -0.5)
+	n.add_child(head)
+	var fl := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.06, 0.004, 0.1)
+	var feather := StandardMaterial3D.new()
+	feather.albedo_color = Color(0.8, 0.78, 0.7)
+	bm.material = feather
+	fl.mesh = bm
+	fl.position = Vector3(0, 0, 0.4)
+	n.add_child(fl)
+	if fiery:
+		var l := OmniLight3D.new()
+		l.name = "Fire"
+		l.light_color = Color(1.0, 0.55, 0.2)
+		l.omni_range = 3.0
+		l.light_energy = 1.5
+		l.position = Vector3(0, 0, -0.4)
+		n.add_child(l)
+	add_child(n)
+	return n
+
+
+## A stone in flight (or a pot of pitch, glowing).
+func _stone_vis(fiery: bool) -> Node3D:
+	if _headless:
+		return null
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.16 if not fiery else 0.13
+	sm.height = sm.radius * 1.7
+	sm.radial_segments = 8
+	sm.rings = 5
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.36, 0.34, 0.31) if not fiery else Color(0.25, 0.12, 0.05)
+	m.roughness = 0.95
+	if fiery:
+		m.emission_enabled = true
+		m.emission = Color(1.0, 0.45, 0.1)
+		m.emission_energy_multiplier = 2.0
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.5, 0.15)
+		l.omni_range = 4.0
+		l.light_energy = 2.0
+		mi.add_child(l)
+	sm.material = m
+	mi.mesh = sm
+	add_child(mi)
+	return mi
+
+
 ## A rocket off its rail at `from` along `dir`, carrying `inherit` (the launcher's own speed).
 func fire_rocket(from: Vector3, dir: Vector3, inherit: Vector3, owner: Machine) -> void:
 	var vis := -1
@@ -165,6 +465,10 @@ func fire_rocket(from: Vector3, dir: Vector3, inherit: Vector3, owner: Machine) 
 func _physics_process(dt: float) -> void:
 	var space := get_world_3d().direct_space_state
 	_fly_rockets(space, dt)
+	if not _bolts.is_empty() or not _stones.is_empty():
+		_fly_wood_age(space, dt)
+	if not _fires.is_empty():
+		_burn_oil(dt)
 	for i in range(_shells.size() - 1, -1, -1):
 		var s := _shells[i]
 		var p: Vector3 = s.pos
@@ -846,6 +1150,7 @@ const LOOKS := {
 	"smoke": {"color": Color(0.45, 0.42, 0.38), "amount": 0.8, "speed": Vector2(1.0, 3.0), "life": 2.5, "size": Vector2(2.5, 5.0), "gravity": -0.4, "glow": 0.0},
 	"flash": {"color": Color(1.0, 0.75, 0.4), "amount": 0.5, "speed": Vector2(4.0, 10.0), "life": 0.15, "size": Vector2(1.0, 2.0), "gravity": 0.0, "glow": 6.0},
 	"column": {"color": Color(0.2, 0.19, 0.18), "amount": 0.7, "speed": Vector2(1.0, 3.5), "life": 7.0, "size": Vector2(3.0, 7.0), "gravity": -0.7, "glow": 0.0},
+	"sawdust": {"color": Color(0.66, 0.52, 0.34), "amount": 0.5, "speed": Vector2(2.0, 5.0), "life": 0.8, "size": Vector2(0.06, 0.14), "gravity": 6.0, "glow": 0.0},
 	"embers": {"color": Color(1.0, 0.55, 0.15), "amount": 0.8, "speed": Vector2(6.0, 15.0), "life": 1.6, "size": Vector2(0.08, 0.18), "gravity": 9.8, "glow": 10.0},
 }
 

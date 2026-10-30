@@ -4,7 +4,7 @@ extends RefCounted
 ## ram. Fired (F; the crews when their target's on it), the flap snaps up in a tenth of a second and
 ## whatever's standing on it is thrown: lifted at that end and rolled over, the harder the lighter it
 ## is (and the machine firing it pushed down into the ground). On its back or its side, a machine
-## fires it into the ground and rights itself with it, the only way back up in the cage. The ram runs
+## fires it into the ground and rights itself with it, no crane needed. The ram runs
 ## on air its compressor makes from the battery: a flip takes FLIP_KJ, then RECHARGE s to fill again.
 
 const ANGLE := 1.2 ## rad the flap comes up to

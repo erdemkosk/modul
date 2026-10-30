@@ -1,8 +1,8 @@
 class_name Designs
 extends RefCounted
 ## Ready machines (the same [id, x, y, z, rot] rows a saved design has): the starter you begin with,
-## the builder's ready designs (PRESETS), and the ones the other side drives in the arena. (The
-## cage's rivals are Forge's, a new one each fight.)
+## the builder's ready designs (PRESETS), and the ones the other side drives in the arena (F7's
+## rivals are Forge's, a new one each time).
 
 ## The builder's ready designs: [name, what it is, the function].
 const PRESETS := [
@@ -24,6 +24,14 @@ static func starter() -> Array:
 	var out := _bed(-1, 2, -2, 3)
 	out.append_array([["cab", 0, 1, 0, 0], ["engine", 0, 1, 2, 0], ["light", -1, 1, -2, 0], ["light", 2, 1, -2, 0],
 		["wheel_s", 3, -1, -2, 0], ["wheel_s", 3, -1, 2, 0], ["wheel_s", -2, -1, -2, 2], ["wheel_s", -2, -1, 2, 2]])
+	return out
+
+
+## The valley's first machine: the starter with a saw out in front and a bin on the back (what wood
+## is got with: Timber).
+static func valley_start() -> Array:
+	var out := starter()
+	out.append_array([["saw", 0, 0, -4, 0], ["collector", 0, 0, 4, 0]])
 	return out
 
 
@@ -87,22 +95,6 @@ static func brawler() -> Array:
 ## The heavy gunner: V8s on tracks, the cannon and a second gun (Forge's, always the same).
 static func heavy() -> Array:
 	return Forge.make(11, 4, "artillery").data
-
-
-## The cage's house robot: wide and low, armour all over the front and the top, two engines on big
-## wheels, a light on top. ~2.6 t, 180 kW. (It takes no harm: HouseDriver drives it.)
-static func house() -> Array:
-	var out := _bed(-2, 2, -2, 2)
-	out.append_array([["cab", -1, 1, -1, 0], ["engine", -2, 1, 1, 0], ["engine", 1, 1, 1, 0],
-		["wheel_l", 3, -1, -2, 0], ["wheel_l", 3, -1, 1, 0], ["wheel_l", -4, -1, -2, 2], ["wheel_l", -4, -1, 1, 2],
-		["light", 0, 3, 0, 0]])
-	for x in range(-2, 3):
-		out.append(["wedge", x, 0, -3, 0])
-		out.append(["armor", x, 1, -2, 0])
-		out.append(["wedge", x, 1, -3, 0])
-	for x: int in [-2, 1, 2]:
-		out.append(["armor", x, 1, -1, 0])
-	return out
 
 
 ## A target that doesn't move: a cab behind an armour wall on a bed, no engine.

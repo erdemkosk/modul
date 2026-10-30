@@ -36,6 +36,31 @@ Output: assets/parts/<id>.glb, assets/parts/previews/*.png (--render).
   winch      1x1x2  a recovery winch: a drum of wire rope between side plates, its motor, the fairlead's
                     rollers at the back where the rope comes out (Godot 0, -0.05, 0.5), a hook stowed there
 
+  saw        2x1x2  a feller's saw head: a flat circular blade (node Blade, spinning about up round Godot
+                    0, -0.4, -0.95; r 0.55) low out in front on two arms, its hydraulic motor over the hub,
+                    a guard over its back half, the mount bolted on behind
+  collector  2x2x2  an open steel bin with ribbed walls, low at the front, a small log grab folded on a
+                    post at one corner (the game fills it with billets)
+  wood_frame 1x1x1  a lattice of hand-hewn timber, not quite square, pegged and nailed
+  wood_plate 1x1x1  thick planks nailed across two battens on the cell's outer face
+  wood_wedge 1x1x1  planks laid down a slope over two side boards
+
+  steer      1x1x1  a steering knuckle: a base bolted down, the kingpin's housing, the steering ram to one
+                    side and its arm; on top (node Top, turning about up) the flange what's carried bolts to
+
+  wood_wheel 1x2x2  a cart wheel: an iron tyre on a rim of wooden felloes, twelve spokes, a turned hub (node
+                    Wheel), on a timber axle block bolted on at its inner face
+  wood_rack  2x2x2  a log cradle: two sills, four stakes up each side, a cross rail at each end
+
+  ballista   2x1x2  a ballista on a timber ring: Turret > Gun (the stock, two bow limbs, the string, the
+                    windlass), its bolt in the groove (node Rocket0), Muzzle at the stock's nose
+  catapult   2x2x3  a torsion catapult: Turret (the timber bed, the uprights) > Gun (the axle and its rope
+                    skein) > Barrels (the throwing arm, lying back, its sling bucket; swings over the top),
+                    the stone in the bucket (node Rocket0)
+  oilpot     2x1x2  a tipping cask of boiling oil: Turret > Gun (the cradle, the cask, its spout), a brazier
+                    under it; Muzzle at the spout
+  pitch      1x1x1  a cask of pitch: staves, iron hoops, the black pitch at the top, a ladle
+
 Only some: -- --only=crane,winch
 """
 
@@ -59,7 +84,10 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "minigun": (2, 1, 2), "cannon": (2, 2, 2), "track": (2, 2, 6), "rockets": (2, 2, 2),
          "battery": (1, 1, 2), "engine_l": (2, 2, 3), "engine_s": (1, 1, 2), "spike": (1, 1, 1), "flamer": (2, 1, 2),
          "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1),
-         "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1), "crane": (2, 1, 2), "winch": (1, 1, 2)}
+         "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1), "crane": (2, 1, 2), "winch": (1, 1, 2),
+         "saw": (2, 1, 2), "collector": (2, 2, 2), "wood_frame": (1, 1, 1), "wood_plate": (1, 1, 1), "wood_wedge": (1, 1, 1),
+         "steer": (1, 1, 1), "wood_wheel": (1, 2, 2), "wood_rack": (2, 2, 2),
+         "ballista": (2, 1, 2), "catapult": (2, 2, 3), "oilpot": (2, 1, 2), "pitch": (1, 1, 1)}
 
 
 def materials():
@@ -90,6 +118,10 @@ def materials():
     m("TerminalNeg", (0.02, 0.02, 0.02), rough=0.5)
     m("Engine", (0.07, 0.16, 0.1), metal=0.35, rough=0.5)  # engine-green cast iron
     m("HeatWrap", (0.42, 0.38, 0.3), rough=0.9)
+    m("Wood", (0.3, 0.2, 0.11), rough=0.88)
+    m("WoodPale", (0.4, 0.28, 0.16), rough=0.85)
+    m("WoodDark", (0.2, 0.13, 0.075), rough=0.9)
+    m("Blade", (0.5, 0.5, 0.52), metal=0.95, rough=0.3)
 
 
 def ext(cells):
@@ -1166,13 +1198,375 @@ def build_winch():
     box("Stripe", (0.3, 0.004, 0.05), (0, -0.485, 0.07), "Hazard", grp="Part")
 
 
+def _rough_beam(name, size, center, rng, mat=None, grp="Part", base=(0, 0, 0)):
+    """A hand-hewn beam: a little off true (turned and swollen a touch), one of the woods."""
+    mat = mat or rng.choice(["Wood", "WoodPale", "WoodDark", "Wood"])
+    k = [1.0 + rng.uniform(-0.12, 0.12) if v < 0.2 else 1.0 for v in size]
+    rot = tuple(b + rng.uniform(-0.035, 0.035) for b in base)
+    return box(name, (size[0] * k[0], size[1] * k[1], size[2] * k[2]), center, mat, rot=rot, bev=0.008, grp=grp)
+
+
+def _nail(name, center, normal, grp="Part"):
+    cyl(name, 0.008, 0.006, center, axis=normal, segs=6, mat="SteelDark", grp=grp)
+
+
+def build_wood_frame():
+    """A lattice of rough-sawn timber, a touch off square, braced across two sides, pegged and nailed."""
+    import random
+    rng = random.Random(7)
+    s = CELL
+    h = s / 2
+    t = 0.085
+    for a in (-1, 1):
+        for b in (-1, 1):
+            _rough_beam(f"EdgeZ{a}{b}", (t, t, s), (a * (h - t / 2), b * (h - t / 2), 0), rng)
+            _rough_beam(f"EdgeY{a}{b}", (t, s - 2 * t, t), (a * (h - t / 2), 0, b * (h - t / 2)), rng)
+            _rough_beam(f"EdgeX{a}{b}", (s - 2 * t, t, t), (0, a * (h - t / 2), b * (h - t / 2)), rng)
+    for a in (-1, 1):
+        cyl_between(f"Brace{a}", (a * (h - t / 2), -h + t, -h + t), (a * (h - t / 2), h - t, h - t), 0.03, mat="WoodDark",
+                    segs=6, grp="Part")
+    for a in (-1, 1):
+        for b in (-1, 1):
+            for c in (-1, 1):
+                _nail(f"Nail{a}{b}{c}", (a * (h + 0.001), b * (h - t / 2), c * (h - t / 2)), "X")
+                cyl(f"Peg{a}{b}{c}", 0.014, 0.012, (a * (h - t / 2), b * (h - t / 2), c * (h + 0.002)), axis="Z", segs=8,
+                    mat="WoodPale", grp="Part")
+
+
+def build_wood_plate():
+    """Four thick planks across the cell's outer face, nailed to two battens on two legs."""
+    import random
+    rng = random.Random(11)
+    s = CELL
+    h = s / 2
+    th = 0.07
+    for k in range(4):
+        w = s / 4 - 0.006
+        x = -h + s / 8 + k * s / 4
+        _rough_beam(f"Plank{k}", (w, th, s - 0.01), (x, h - th / 2, rng.uniform(-0.006, 0.006)), rng)
+        for z in (-0.17, 0.17):
+            _nail(f"Nail{k}{z}", (x, h + 0.001, z), "Y")
+    for z in (-0.17, 0.17):
+        _rough_beam(f"Batten{z}", (s - 0.03, 0.07, 0.08), (0, h - th - 0.035, z), rng, mat="WoodDark")
+    for x in (-0.17, 0.17):
+        _rough_beam(f"Leg{x}", (0.07, s - th - 0.1, 0.07), (x, -0.06, 0), rng, mat="WoodDark")
+    _rough_beam("Back", (s - 0.05, 0.04, 0.12), (0, -h + 0.02, 0), rng, mat="WoodDark")
+
+
+def build_wood_wedge():
+    """Two side boards high at the back, planks nailed down the slope between them, a sill at the foot."""
+    import random
+    rng = random.Random(5)
+    s = CELL
+    h = s / 2
+    for x in (-h + 0.02, h - 0.02):
+        prof = [(-h, -h), (h, -h), (-h, h)]
+        verts = [(x + dx, y, z) for dx in (-0.02, 0.02) for (y, z) in prof]
+        faces = [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)]
+        bt.mk(f"Side{x}", verts, faces, ("WoodDark",), grp="Part", smooth=0)
+    n = Vector((0, 1, 1)).normalized()
+    length = s * math.sqrt(2)
+    for k in range(5):
+        f = (k + 0.5) / 5
+        p = Vector((0, -h + f * s, h - f * s)) + n * 0.03
+        _rough_beam(f"Plank{k}", (s - 0.01, length / 5 - 0.008, 0.055), tuple(p), rng, base=(-PI / 4, 0, 0))
+        for x in (-0.2, 0.2):
+            _nail(f"Nail{k}{x}", tuple(p + n * 0.029 + Vector((x, 0, 0))), tuple(n))
+    _rough_beam("Sill", (s - 0.03, 0.08, 0.08), (0, -h + 0.04, -h + 0.04), rng, mat="WoodDark")
+
+
+def build_saw():
+    """A feller's saw head: the mount bolted on behind, two arms forward to the hub, the hydraulic motor
+    over it, the blade under (node Blade: spins about up) with its teeth, a guard over its back half."""
+    sx, sy, sz = ext(PARTS["saw"])
+    hy = sy / 2
+    c = Vector((0, 0.95, -0.4))  # (the blade's middle, low: Godot 0, -0.4, -0.95)
+    box("Mount", (sx - 0.06, 0.3, sz - 0.08), (0, -hy + 0.15, 0), "Paint", bev=0.015, grp="Part")
+    bolts("MountBolt", (0, -hy, 0), (0, -1, 0), sx * 0.7, sz * 0.6, grp="Part")
+    for x in (-0.16, 0.16):
+        cyl_between(f"Arm{x}", (x, -hy + 0.25, 0.05), (x * 0.4, c.y - 0.05, c.z + 0.11), 0.045, mat="Paint", grp="Part")
+    box("Yoke", (0.24, 0.2, 0.06), (0, c.y - 0.05, c.z + 0.11), "Paint", bev=0.01, grp="Part")
+    cyl("Motor", 0.08, 0.16, (0, c.y, c.z + 0.2), segs=20, mat="SteelDark", bev=0.01, grp="Part")
+    cyl("MotorCap", 0.05, 0.03, (0, c.y, c.z + 0.29), segs=16, mat="Steel", grp="Part")
+    for x in (-0.05, 0.05):
+        tube(f"Hose{x}", [(x, -hy + 0.3, 0.12), (x * 2, 0.3, 0.2), (x, c.y - 0.08, c.z + 0.25)], 0.014, mat="Rubber",
+             nring=6, sub=2, grp="Part")
+    # the guard: a flat hood over the blade's back half, its rim turned down
+    for k in range(12):
+        a0 = PI + k * PI / 12
+        a1 = a0 + PI / 12
+        am = (a0 + a1) / 2
+        r = 0.6
+        p = c + Vector((math.cos(am) * r * 0.5, math.sin(am) * r * 0.5, 0.06))
+        box(f"Hood{k}", (r, r * math.sin(PI / 12) * 1.05, 0.012), tuple(p), "Paint", rot=(0, 0, am), grp="Part")
+        q = c + Vector((math.cos(am) * r, math.sin(am) * r, 0.02))
+        box(f"Rim{k}", (0.012, 2 * r * math.sin(PI / 24) * 1.05, 0.08), tuple(q), "Paint", rot=(0, 0, am), grp="Part")
+    box("GuardStripe", (0.5, 0.004, 0.04), (0, c.y - 0.6, c.z + 0.02), "Hazard", grp="Part")
+    # the blade
+    cyl("Disc", 0.53, 0.012, tuple(c), segs=48, mat="Blade", grp="Blade")
+    cyl("Hub", 0.09, 0.04, tuple(c + Vector((0, 0, 0.015))), segs=20, mat="SteelDark", grp="Blade")
+    for k in range(6):
+        a = k * PI / 3
+        cyl(f"Bolt{k}", 0.012, 0.02, tuple(c + Vector((math.cos(a) * 0.06, math.sin(a) * 0.06, 0.035))), segs=6,
+            mat="Bolt", grp="Blade")
+    for k in range(30):
+        a = k * 2 * PI / 30
+        p = c + Vector((math.cos(a), math.sin(a), 0)) * 0.545
+        box(f"Tooth{k}", (0.05, 0.03, 0.026), tuple(p), "SteelDark", rot=(0, 0, a + 0.5), grp="Blade")
+    PIVOTS["Blade"] = tuple(c)
+
+
+def build_collector():
+    """An open steel bin: a floor, four ribbed walls (the front one low, to tip in over), and on a post at
+    one back corner a small log grab, folded, its claws hanging."""
+    s = ext(PARTS["collector"])
+    hx, hy, hz = s.x / 2, s.y / 2, s.z / 2
+    t = 0.03
+    box("Floor", (s.x - 0.02, s.y - 0.02, 0.05), (0, 0, -hz + 0.025), "SteelDark", bev=0.005, grp="Part")
+    bolts("FloorBolt", (0, 0, -hz), (0, 0, -1), s.x * 0.7, s.y * 0.7, grp="Part")
+    for x in (-1, 1):
+        box(f"Side{x}", (t, s.y - 0.02, s.z * 0.72), (x * (hx - t / 2), 0, -hz + s.z * 0.36), "Paint", bev=0.006, grp="Part")
+        for k in range(3):
+            box(f"Rib{x}{k}", (0.03, 0.04, s.z * 0.7), (x * (hx + 0.005), -0.3 + k * 0.3, -hz + s.z * 0.36), "Paint",
+                bev=0.004, grp="Part")
+    box("Back", (s.x - 2 * t, t, s.z * 0.72), (0, -hy + t / 2, -hz + s.z * 0.36), "Paint", bev=0.006, grp="Part")
+    box("Front", (s.x - 2 * t, t, s.z * 0.4), (0, hy - t / 2, -hz + s.z * 0.2), "Paint", bev=0.006, grp="Part")
+    box("Lip", (s.x, 0.06, 0.04), (0, hy - 0.03, -hz + s.z * 0.4), "SteelDark", bev=0.005, grp="Part")
+    box("Stripe", (s.x * 0.8, 0.004, 0.05), (0, hy + 0.001, -hz + s.z * 0.3), "Hazard", grp="Part")
+    px, py = hx - 0.09, -hy + 0.09
+    cyl("Post", 0.05, s.z * 0.95, (px, py, -hz + s.z * 0.475), segs=14, mat="SteelDark", grp="Part")
+    top = Vector((px, py, -hz + s.z * 0.95))
+    elbow = top + Vector((-0.45, 0.3, 0.05))
+    cyl_between("Boom", tuple(top), tuple(elbow), 0.035, mat="Paint", grp="Part")
+    cyl_between("Ram", tuple(top + Vector((0, 0, -0.18))), tuple(top.lerp(elbow, 0.6)), 0.02, mat="Steel", grp="Part")
+    hand = elbow + Vector((-0.6, 0.35, -0.3)) * 0.4
+    cyl_between("Stick", tuple(elbow), tuple(hand), 0.028, mat="Paint", grp="Part")
+    cyl("Rotator", 0.04, 0.06, tuple(hand + Vector((0, 0, -0.04))), segs=12, mat="SteelDark", grp="Part")
+    for a in (-1, 1):
+        tube(f"Claw{a}", [tuple(hand + Vector((0, 0, -0.07))), tuple(hand + Vector((a * 0.1, 0, -0.17))),
+                           tuple(hand + Vector((a * 0.05, 0, -0.27)))], 0.016, mat="SteelDark", nring=6, sub=2, grp="Part")
+
+
+def build_steer():
+    """A steering knuckle: the base plate bolted down, the kingpin housing standing on it with its grease
+    nipple, the hydraulic steering ram lying along one side to the arm on the turning part; on top (node
+    Top) the flange plate, its bolts, the steering arm and a chevron for its front."""
+    s = CELL
+    h = s / 2
+    box("Base", (s - 0.03, s - 0.03, 0.06), (0, 0, -h + 0.03), "SteelDark", bev=0.006, grp="Part")
+    bolts("BaseBolt", (0, 0, -h), (0, 0, -1), 0.32, 0.32, grp="Part")
+    cyl("Housing", 0.11, 0.3, (0, 0, -h + 0.2), segs=24, mat="Paint", bev=0.01, grp="Part")
+    for z in (-h + 0.09, -h + 0.31):
+        cyl(f"Collar{z}", 0.125, 0.03, (0, 0, z), segs=24, mat="SteelDark", grp="Part")
+    cyl("Nipple", 0.012, 0.03, (0.12, 0, -h + 0.22), axis="X", segs=8, mat="Steel", grp="Part")
+    box("RamFoot", (0.06, 0.08, 0.08), (-0.17, -0.17, -h + 0.1), "Paint", bev=0.006, grp="Part")
+    cyl_between("Ram", (-0.17, -0.17, -h + 0.14), (-0.17, 0.08, h - 0.14), 0.03, mat="Paint", segs=12, grp="Part")
+    cyl_between("RamRod", (-0.17, 0.08, h - 0.14), (-0.15, 0.17, h - 0.1), 0.014, mat="Steel", segs=10, grp="Part")
+    tube("Hose", [(-0.17, -0.2, -h + 0.12), (-0.22, -0.1, -h + 0.08), (-0.2, 0.1, -h + 0.06)], 0.009, mat="Rubber",
+         nring=6, sub=2, grp="Part")
+    # what turns
+    cyl("Spindle", 0.06, 0.1, (0, 0, h - 0.13), segs=16, mat="Steel", grp="Top")
+    box("Flange", (s - 0.05, s - 0.05, 0.05), (0, 0, h - 0.025), "Paint", bev=0.008, grp="Top")
+    bolts("FlangeBolt", (0, 0, h), (0, 0, 1), 0.3, 0.3, grp="Top")
+    box("Arm", (0.06, 0.16, 0.04), (-0.15, 0.15, h - 0.08), "PaintDark", bev=0.006, grp="Top")
+    for k, sgn in enumerate((-1, 1)):
+        box(f"Chevron{k}", (0.12, 0.03, 0.004), (sgn * 0.04, h - 0.09, h + 0.002), "Hazard", rot=(0, 0, sgn * 0.6), grp="Top")
+    PIVOTS["Top"] = (0, 0, 0)
+
+
+def build_wood_wheel():
+    """A cart wheel on a timber block: the iron tyre round a rim of felloes, twelve spokes into a turned
+    hub with its iron bands; the block it turns on bolted on at the inner face, an iron strap round it."""
+    import random
+    rng = random.Random(3)
+    fx, fy, fz = ext(PARTS["wood_wheel"])
+    r, w = 0.42, 0.12
+    hub = Vector((fx / 2 - w / 2 - 0.02, 0, 0))
+    revolve("Tyre", [(-w / 2, r - 0.025), (-w / 2, r), (w / 2, r), (w / 2, r - 0.025)], 40, ("SteelDark",), axis="X",
+            grp="Wheel", smooth=40)
+    revolve("Felloe", [(-w * 0.42, r - 0.09), (-w * 0.42, r - 0.025), (w * 0.42, r - 0.025), (w * 0.42, r - 0.09)], 36,
+            ("Wood",), axis="X", grp="Wheel", smooth=40)
+    for k in range(12):
+        a = k * 2 * PI / 12 + rng.uniform(-0.02, 0.02)
+        p0 = Vector((0, math.cos(a) * 0.07, math.sin(a) * 0.07))
+        p1 = Vector((0, math.cos(a) * (r - 0.08), math.sin(a) * (r - 0.08)))
+        cyl_between(f"Spoke{k}", tuple(p0), tuple(p1), 0.018, mat=rng.choice(["Wood", "WoodPale"]), segs=6, grp="Wheel")
+    cyl("Hub", 0.08, w * 1.5, (0, 0, 0), axis="X", segs=16, mat="WoodDark", grp="Wheel")
+    for x in (-w * 0.6, w * 0.6):
+        cyl(f"Band{x}", 0.085, 0.02, (x, 0, 0), axis="X", segs=16, mat="SteelDark", grp="Wheel")
+    cyl("Cap", 0.04, 0.03, (w * 0.8, 0, 0), axis="X", segs=10, mat="SteelDark", grp="Wheel")
+    # the block it turns on
+    mx = -fx / 2 + 0.02
+    _rough_beam("Block", (0.16, CELL * 0.8, CELL * 0.6), (mx + 0.08, 0, 0), rng, mat="WoodDark")
+    box("Strap", (0.17, 0.03, CELL * 0.62), (mx + 0.08, 0.12, 0), "SteelDark", bev=0.003, grp="Part")
+    bolts("MountBolt", (mx - 0.005, 0, 0), (-1, 0, 0), CELL * 0.5, CELL * 0.4, grp="Part")
+    cyl_between("Axle", (mx + 0.16, 0, 0), (hub.x - w * 0.5, 0, 0), 0.03, mat="SteelDark", segs=10, grp="Part")
+    for o in [o for o in bpy.data.objects if o.get("grp") == "Wheel"]:
+        o.location = Vector(o.location) + hub
+    return hub
+
+
+def build_wood_rack():
+    """A log cradle: two sills along it on the floor, four stakes up each side leaning out a little, a rail
+    across each end, iron straps at the stakes' feet."""
+    import random
+    rng = random.Random(9)
+    e = ext(PARTS["wood_rack"])
+    hx, hy, hz = e.x / 2, e.y / 2, e.z / 2
+    for x in (-hx + 0.1, hx - 0.1):
+        _rough_beam(f"Sill{x}", (0.1, e.y - 0.02, 0.09), (x, 0, -hz + 0.045), rng, mat="WoodDark")
+    for y in (-hy + 0.08, hy - 0.08):
+        _rough_beam(f"Cross{y}", (e.x - 0.02, 0.09, 0.08), (0, y, -hz + 0.13), rng, mat="WoodDark")
+    for x in (-1, 1):
+        for k, y in enumerate((-hy + 0.08, -0.15, 0.15, hy - 0.08)):
+            _rough_beam(f"Stake{x}{k}", (0.07, 0.07, e.z * 0.8), (x * (hx - 0.05), y, -hz + e.z * 0.42), rng,
+                        base=(0, x * 0.06, 0))
+            box(f"Foot{x}{k}", (0.09, 0.09, 0.03), (x * (hx - 0.05), y, -hz + 0.1), "SteelDark", bev=0.003, grp="Part")
+        _rough_beam(f"Rail{x}", (0.06, e.y - 0.05, 0.06), (x * (hx - 0.03), 0, hz - 0.14), rng)
+    bolts("FloorBolt", (0, 0, -hz), (0, 0, -1), e.x * 0.6, e.y * 0.6, grp="Part")
+
+
+def _timber_ring(sx, sy, hz, rng):
+    """A turning mount of timber: a square sill bolted down, an iron ring, the table (Turret) on it."""
+    for y in (-sy / 2 + 0.06, sy / 2 - 0.06):
+        _rough_beam(f"SillY{y}", (sx - 0.04, 0.1, 0.08), (0, y, -hz + 0.04), rng, mat="WoodDark")
+    for x in (-sx / 2 + 0.06, sx / 2 - 0.06):
+        _rough_beam(f"SillX{x}", (0.1, sy - 0.2, 0.08), (x, 0, -hz + 0.04), rng, mat="WoodDark")
+    bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.7, sy * 0.7, grp="Part")
+    cyl("Ring", 0.3, 0.05, (0, 0, -hz + 0.1), segs=28, mat="SteelDark", grp="Part")
+    cyl("Table", 0.32, 0.05, (0, 0, -hz + 0.15), segs=28, mat="Wood", grp="Turret")
+    return -hz + 0.15
+
+
+def build_ballista():
+    """A ballista: the stock along its groove on a yoke, two bow limbs out of the head, the string drawn
+    back to the nut, the windlass at the back with its spokes, a bolt in the groove (node Rocket0)."""
+    import random
+    rng = random.Random(21)
+    sx, sy, sz = ext(PARTS["ballista"])
+    hz = sz / 2
+    yaw_z = _timber_ring(sx, sy, hz, rng)
+    for x in (-0.12, 0.12):
+        _rough_beam(f"Yoke{x}", (0.06, 0.12, 0.22), (x, 0.0, yaw_z + 0.12), rng, mat="WoodDark", grp="Turret")
+    trun = Vector((0, 0.0, yaw_z + 0.22))
+    _rough_beam("Stock", (0.12, 1.15, 0.1), tuple(trun + Vector((0, 0.1, 0.02))), rng, grp="Gun")
+    box("Groove", (0.03, 1.1, 0.01), tuple(trun + Vector((0, 0.1, 0.075))), "WoodDark", grp="Gun")
+    head = trun + Vector((0, 0.55, 0.05))
+    box("Head", (0.22, 0.12, 0.14), tuple(head), "WoodDark", bev=0.01, grp="Gun")
+    for k in range(2):
+        box(f"HeadBand{k}", (0.23, 0.015, 0.15), tuple(head + Vector((0, -0.04 + k * 0.08, 0))), "SteelDark", grp="Gun")
+    tips = []
+    for sgn in (-1, 1):
+        pts = [tuple(head + Vector((sgn * 0.1, 0, 0))), tuple(head + Vector((sgn * 0.35, -0.05, 0))),
+               tuple(head + Vector((sgn * 0.55, -0.16, 0)))]
+        tube(f"Limb{sgn}", pts, 0.03, mat="Wood", nring=8, sub=3, grp="Gun")
+        tips.append(head + Vector((sgn * 0.55, -0.16, 0)))
+    nut = trun + Vector((0, -0.25, 0.08))
+    for k, t in enumerate(tips):
+        tube(f"String{k}", [tuple(t), tuple(nut)], 0.006, mat="Seat", nring=5, sub=1, grp="Gun")
+    cyl("Windlass", 0.05, 0.26, tuple(trun + Vector((0, -0.4, 0.0))), axis="X", segs=12, mat="WoodDark", grp="Gun")
+    for sgn in (-1, 1):
+        for k in range(4):
+            a = k * PI / 2
+            cyl_between(f"Spoke{sgn}{k}", tuple(trun + Vector((sgn * 0.14, -0.4, 0))),
+                        tuple(trun + Vector((sgn * 0.14, -0.4 + math.cos(a) * 0.12, math.sin(a) * 0.12))), 0.01,
+                        mat="Wood", segs=6, grp="Gun")
+    # the bolt
+    b0 = trun + Vector((0, -0.22, 0.1))
+    cyl_between("Shaft", tuple(b0), tuple(b0 + Vector((0, 0.95, 0))), 0.012, mat="WoodPale", segs=8, grp="Rocket0")
+    cyl("BoltHead", 0.022, 0.09, tuple(b0 + Vector((0, 0.99, 0))), axis="Y", r2=0.002, segs=8, mat="SteelDark", grp="Rocket0")
+    for k in range(3):
+        a = k * 2 * PI / 3
+        box(f"Fletch{k}", (0.002, 0.1, 0.03), tuple(b0 + Vector((math.sin(a) * 0.02, 0.06, math.cos(a) * 0.02))), "Seat",
+            rot=(0, a, 0), grp="Rocket0")
+    PIVOTS.update({"Turret": (0, 0, yaw_z), "Gun": tuple(trun), "Rocket0": tuple(trun), "Muzzle": tuple(trun + Vector((0, 0.8, 0.1)))})
+
+
+def build_catapult():
+    """A torsion catapult: the timber bed on the ring with its uprights (Turret); the axle through its
+    twisted rope skein (Gun); the arm lying back from it with the sling bucket at its end (Barrels: it
+    swings up and over to throw), the stone in the bucket (Rocket0); a padded stop bar on the uprights."""
+    import random
+    rng = random.Random(33)
+    sx, sy, sz = ext(PARTS["catapult"])
+    hz = sz / 2
+    yaw_z = _timber_ring(sx, sy, hz, rng)
+    for x in (-0.38, 0.38):
+        _rough_beam(f"Rail{x}", (0.1, sy - 0.1, 0.1), (x, 0, yaw_z + 0.08), rng, mat="WoodDark", grp="Turret")
+    for y in (-0.6, 0.0, 0.6):
+        _rough_beam(f"Cross{y}", (0.86, 0.09, 0.08), (0, y, yaw_z + 0.16), rng, grp="Turret")
+    top = yaw_z + 0.7
+    for x in (-0.33, 0.33):
+        _rough_beam(f"Upright{x}", (0.1, 0.1, 0.62), (x, 0.1, yaw_z + 0.42), rng, grp="Turret")
+        cyl_between(f"Brace{x}", (x, -0.3, yaw_z + 0.16), (x, 0.08, top - 0.12), 0.03, mat="WoodDark", segs=6, grp="Turret")
+    _rough_beam("StopBar", (0.76, 0.1, 0.1), (0, 0.22, top + 0.05), rng, grp="Turret")
+    cyl("Pad", 0.06, 0.3, (0, 0.17, top + 0.05), axis="X", segs=10, mat="Seat", grp="Turret")
+    axle = Vector((0, 0.1, top - 0.2))
+    cyl("Axle", 0.04, 0.72, tuple(axle), axis="X", segs=12, mat="SteelDark", grp="Gun")
+    for x in (-0.2, 0.2):
+        cyl(f"Skein{x}", 0.09, 0.2, tuple(axle + Vector((x, 0, 0))), axis="X", segs=14, mat="Seat", grp="Gun")
+    # the arm, lying back (Blender -y is the back) and a little up
+    back = Vector((0, -0.95, 0.18))
+    end = axle + back
+    cyl_between("Arm", tuple(axle), tuple(end), 0.05, mat="Wood", segs=10, grp="Barrels")
+    for k in range(3):
+        f = 0.25 + k * 0.25
+        cyl(f"Lash{k}", 0.058, 0.03, tuple(axle.lerp(end, f)), axis=tuple(back.normalized()), segs=10, mat="SteelDark", grp="Barrels")
+    cyl("Bucket", 0.14, 0.1, tuple(end + Vector((0, 0, 0.04))), segs=14, mat="WoodDark", grp="Barrels")
+    cyl("BucketIn", 0.11, 0.02, tuple(end + Vector((0, 0, 0.09))), segs=14, mat="Seat", grp="Barrels")
+    revolve("Stone", [(-0.09, 0.0), (-0.07, 0.06), (0.0, 0.09), (0.07, 0.07), (0.09, 0.0)], 10, ("PaintDark",), axis="Z",
+            center=tuple(end + Vector((0, 0, 0.18))), grp="Rocket0")
+    PIVOTS.update({"Turret": (0, 0, yaw_z), "Gun": tuple(axle), "Barrels": tuple(axle), "Rocket0": tuple(axle),
+                   "Muzzle": tuple(end + Vector((0, 0, 0.18)))})
+
+
+def build_oilpot():
+    """A cask of boiling oil on a tipping cradle (Gun) over a little brazier: the cask's staves and hoops,
+    a spout at its front, a lever arm at its back; Muzzle at the spout."""
+    import random
+    rng = random.Random(44)
+    sx, sy, sz = ext(PARTS["oilpot"])
+    hz = sz / 2
+    yaw_z = _timber_ring(sx, sy, hz, rng)
+    box("Brazier", (0.24, 0.24, 0.07), (0, 0.05, yaw_z + 0.06), "SteelDark", bev=0.01, grp="Turret")
+    m = bt.make_mat("Coals", (0.5, 0.1, 0.02), emit=(1.0, 0.35, 0.05), strength=4.0)
+    box("Coals", (0.2, 0.2, 0.02), (0, 0.05, yaw_z + 0.1), "Coals", grp="Turret")
+    for x in (-0.22, 0.22):
+        _rough_beam(f"Post{x}", (0.06, 0.08, 0.3), (x, 0.05, yaw_z + 0.16), rng, mat="WoodDark", grp="Turret")
+    trun = Vector((0, 0.05, yaw_z + 0.3))
+    cyl("Cask", 0.16, 0.36, tuple(trun + Vector((0, 0.02, 0.06))), axis="Y", segs=18, mat="Wood", grp="Gun")
+    for k in range(3):
+        cyl(f"Hoop{k}", 0.168, 0.025, tuple(trun + Vector((0, -0.12 + k * 0.14, 0.06))), axis="Y", segs=18, mat="SteelDark", grp="Gun")
+    cyl("Spout", 0.04, 0.16, tuple(trun + Vector((0, 0.27, 0.12))), axis="Y", r2=0.03, segs=10, mat="SteelDark", grp="Gun")
+    _rough_beam("Lever", (0.05, 0.4, 0.05), tuple(trun + Vector((0.18, -0.3, 0.02))), rng, mat="WoodDark", grp="Gun")
+    cyl("Pivot", 0.025, 0.5, tuple(trun), axis="X", segs=8, mat="SteelDark", grp="Gun")
+    PIVOTS.update({"Turret": (0, 0, yaw_z), "Gun": tuple(trun), "Muzzle": tuple(trun + Vector((0, 0.36, 0.12)))})
+
+
+def build_pitch():
+    """A cask of pitch standing: bellied staves, three iron hoops, the black pitch at its open top, a ladle."""
+    s = CELL
+    h = s / 2
+    revolve("Staves", [(-h + 0.02, 0.17), (-0.1, 0.2), (0.0, 0.21), (0.1, 0.2), (h - 0.04, 0.17)], 20, ("Wood",), axis="Z",
+            grp="Part")
+    for z in (-h + 0.06, 0.0, h - 0.08):
+        cyl(f"Hoop{z}", 0.205 if abs(z) < 0.01 else 0.18, 0.025, (0, 0, z), segs=20, mat="SteelDark", grp="Part")
+    cyl("Pitch", 0.165, 0.02, (0, 0, h - 0.05), segs=20, mat="Hazard", grp="Part")
+    cyl_between("Ladle", (0.05, 0.0, h - 0.06), (0.16, 0.08, h + 0.12), 0.012, mat="WoodPale", segs=6, grp="Part")
+    bolts("BaseBolt", (0, 0, -h), (0, 0, -1), 0.24, 0.24, grp="Part")
+
+
 BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge": build_wedge,
             "wheel_s": lambda: build_wheel("wheel_s"), "wheel_l": lambda: build_wheel("wheel_l"),
             "engine": build_engine, "light": build_light, "minigun": build_minigun, "cannon": build_cannon,
             "track": build_track, "rockets": build_rockets, "battery": build_battery, "engine_l": build_engine_l,
             "engine_s": build_engine_s, "spike": build_spike, "flamer": build_flamer, "plate": build_plate,
             "flipper": build_flipper, "hinge": build_hinge, "rotor": build_rotor, "piston": build_piston,
-            "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel, "crane": build_crane, "winch": build_winch}
+            "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel, "crane": build_crane, "winch": build_winch,
+            "saw": build_saw, "collector": build_collector, "wood_frame": build_wood_frame, "wood_plate": build_wood_plate,
+            "wood_wedge": build_wood_wedge, "steer": build_steer,
+            "wood_wheel": build_wood_wheel, "wood_rack": build_wood_rack, "ballista": build_ballista,
+            "catapult": build_catapult, "oilpot": build_oilpot, "pitch": build_pitch}
 
 
 def icon(pid):
@@ -1184,7 +1578,7 @@ def icon(pid):
     scene.render.film_transparent = True
     e = ext(PARTS[pid])
     span = max(e.x, e.y, e.z)
-    if pid in ("minigun", "cannon", "flamer"):
+    if pid in ("minigun", "cannon", "flamer", "ballista", "oilpot"):
         span *= 1.6
     if pid == "track":
         span *= 0.8  # (the barrels reach past the footprint)
@@ -1224,7 +1618,7 @@ def main():
             nodes.append(bt.bake_group("Wheel", "Wheel", tuple(hub)))
         if any(o.get("grp") == "Glow" for o in bpy.data.objects):
             nodes.append(bt.bake_group("Glow", "Glow"))
-        for g in ["Road%d" % k for k in range(5)] + ["Sprocket", "Idler", "Belt"]:
+        for g in ["Road%d" % k for k in range(5)] + ["Sprocket", "Idler", "Belt", "Blade"]:
             if any(o.get("grp") == g for o in bpy.data.objects):
                 nodes.append(bt.bake_group(g, g, PIVOTS[g]))
         if any(o.get("grp") == "Turret" for o in bpy.data.objects):

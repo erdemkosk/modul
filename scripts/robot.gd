@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## A works robot guarding a site (Missions puts them out, held till you start): built for the
+## A works robot guarding a site (the valley's works sites put them out): built for the
 ## works, not for war, and turned on whoever comes in.
 ##
 ##   sentry   NÖBETÇİ: a perimeter gun on a bolted tripod; its head turns to you (slowly) once it

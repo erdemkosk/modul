@@ -57,6 +57,11 @@ var _spin_speed := 0.0
 var _stamp_d := 0.0
 var _spinner_rest := Transform3D.IDENTITY
 var spray: WheelSpray
+var part := -1 ## (its part in the design: a joint may carry it)
+var iron := false ## (a wooden wheel's iron tyre: it slides on hard ground and finds little in soft)
+var rest0 := Vector3.ZERO ## (where it is, the way it rolls and its axle, with every joint at rest)
+var roll0 := Vector3.FORWARD
+var axle0 := Vector3.RIGHT
 
 
 static func make(m: Machine, part: Node3D, p_id: String, xf: Transform3D, spinner_name := "Wheel", sprays := true) -> MachineWheel:
@@ -70,6 +75,7 @@ static func make(m: Machine, part: Node3D, p_id: String, xf: Transform3D, spinne
 	w.rated = d.rated
 	w.travel = d.travel
 	w.lugs = d.lugs
+	w.iron = bool(d.get("iron", false))
 	var g := 9.8
 	w.k = w.rated * g / (w.travel * 1.2) # rated load: 1.2 x half travel compressed of the 2 x half travel
 	w.c = 2.0 * DAMPING * sqrt(w.k * w.rated)
@@ -87,6 +93,9 @@ static func make(m: Machine, part: Node3D, p_id: String, xf: Transform3D, spinne
 	if w.roll_dir.dot(Vector3.FORWARD) < 0.0:
 		w.roll_dir = -w.roll_dir
 	w._hub_drop = w.travel
+	w.rest0 = w.rest
+	w.roll0 = w.roll_dir
+	w.axle0 = w.axle
 	if sprays:
 		w.spray = WheelSpray.new()
 		m.fx_root().add_child(w.spray)
@@ -213,6 +222,8 @@ func _tyre_factor(s: Surface) -> float:
 	var soft := s.is_soft() or s.label in ["wet", "grass", "snowpack", "snow"]
 	if track:
 		return 1.4 if soft else (0.7 if s.label == "ice" else 0.95) # (grousers; steel on ice slides)
+	if iron:
+		return 0.6 if soft else 0.75
 	if soft:
 		return lerpf(0.85, 1.3, lugs)
 	return lerpf(1.05, 0.92, lugs)

@@ -295,8 +295,40 @@ static func _connected(rows: Array) -> Array:
 	var parts := []
 	for e: Array in rows:
 		parts.append({"id": str(e[0]), "at": Vector3i(int(e[1]), int(e[2]), int(e[3])), "rot": int(e[4])})
-	var kept := Cage._connected(parts)
+	var kept := _reaching_cab(parts)
 	var outr := []
 	for p: Dictionary in kept:
 		outr.append([p.id, p.at.x, p.at.y, p.at.z, p.rot])
 	return outr
+
+
+## Only the parts ({id, at, rot}) still reaching the cab through bolted faces.
+static func _reaching_cab(parts: Array) -> Array:
+	var occ := {}
+	var cab := -1
+	for i in parts.size():
+		var p: Dictionary = parts[i]
+		if p.id == "cab":
+			cab = i
+		for c in Parts.cells_of(p.id, p.at, p.rot):
+			occ[c] = i
+	if cab < 0:
+		return parts
+	var seen := {cab: true}
+	var queue: Array[int] = [cab]
+	while not queue.is_empty():
+		var i: int = queue.pop_back()
+		var p: Dictionary = parts[i]
+		if i != cab and not Machine._structural(p.id):
+			continue
+		for c in Parts.cells_of(p.id, p.at, p.rot):
+			for n in Machine._NEIGHBOURS:
+				var j: int = occ.get(c + n, -1)
+				if j >= 0 and not seen.has(j):
+					seen[j] = true
+					queue.append(j)
+	var out: Array = []
+	for i in parts.size():
+		if seen.has(i):
+			out.append(parts[i])
+	return out

@@ -281,6 +281,7 @@ func _physics_process(_d: float) -> bool:
 			ex.job.goods = "medicine"
 			ex.job.cond = 0.9
 			_r.scrap = Inventory.scrap
+			_r.wood = Inventory.wood
 			_r.held = 0
 			for k: String in Inventory.counts:
 				_r.held = int(_r.held) + int(Inventory.counts[k])
@@ -294,9 +295,10 @@ func _physics_process(_d: float) -> bool:
 			var held := 0
 			for k: String in Inventory.counts:
 				held += int(Inventory.counts[k])
-			print("on the pad: job %s, delivered %d, parts held %d -> %d, scrap %d -> %d" % ["done" if ex.job.is_empty() else ex.job.state, ex.done,
+			print("on the pad: job %s, delivered %d, wood %d -> %d (age %d), parts held %d -> %d, scrap %d -> %d" % ["done" if ex.job.is_empty() else ex.job.state, ex.done, int(_r.wood), Inventory.wood, Inventory.age(),
 				_r.held, held, _r.scrap, Inventory.scrap])
-			_expect(ex.job.is_empty() and ex.done == 1 and held > int(_r.held) and Inventory.scrap > int(_r.scrap), "set down on its pad: delivered and paid")
+			_expect(ex.job.is_empty() and ex.done == 1 and (Inventory.wood > int(_r.wood) or held > int(_r.held)) and Inventory.scrap > int(_r.scrap),
+				"set down on its pad: delivered and paid (in wood in the wood age, parts after)")
 			_expect(not is_instance_valid(ex.crate), "and it's taken")
 			# 6. the valley soaked
 			var mud := Surface.preset("mud")
