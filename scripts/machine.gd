@@ -56,7 +56,8 @@ signal damaged(amount: float, from: Vector3, kind: String)
 signal system_hit(text: String, at: Vector3)
 
 const RAY_MASK := 1
-const DRIVER_AT := {"wood_cab": Vector3(0.0, -0.1, 0.12), "cab": Vector3(0.0, -0.3, 0.12)} ## the driver's seat, in the cab's space
+const DRIVER_SCALE := 0.72 ## TIKI's size at the wheel
+const DRIVER_AT := {"wood_cab": Vector3(0.0, -0.08, 0.14), "cab": Vector3(0.0, -0.3, 0.12)} ## the driver's seat, in the cab's space
 const MAX_STEER := 0.55 ## rad, slow; less going faster
 const AIR_DENSITY := 1.2
 const CD := 0.9
@@ -356,7 +357,7 @@ func rebuild() -> void:
 		_root.add_child(node)
 		if Parts.is_cab(p.id) and DisplayServer.get_name() != "headless": # (TIKI's kind at the wheel: Mascot)
 			var drv := Mascot.creature()
-			drv.transform = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * 0.85), DRIVER_AT.get(p.id, Vector3(0, -0.25, 0.1)))
+			drv.transform = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * DRIVER_SCALE), DRIVER_AT.get(p.id, Vector3(0, -0.25, 0.1)))
 			node.add_child(drv)
 		part_nodes.append(node)
 		var m: float = d.mass

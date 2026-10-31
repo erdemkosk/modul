@@ -1281,7 +1281,10 @@ def build_wood_crane():
         _rough_beam(f"SillX{x}", (0.1, sy - 0.2, 0.08), (x, 0, -hz + 0.04), rng, mat="WoodDark")
     bolts("BaseBolt", (0, 0, -hz), (0, 0, -1), sx * 0.7, sy * 0.7, grp="Part")
     cyl("Ring", 0.32, 0.06, (0, 0, -hz + 0.11), segs=32, mat="Iron", grp="Part")
-    # what slews
+    # what slews: a timber hub turning on the ring, up to the table, bound with iron
+    cyl("Hub", 0.27, 0.25, (0, 0, -hz + 0.265), segs=20, mat="WoodDark", grp="Top")
+    for z in (-hz + 0.17, -hz + 0.36):
+        cyl(f"HubBand{z}", 0.28, 0.035, (0, 0, z), segs=20, mat="Iron", grp="Top")
     for k in range(4):
         _rough_beam(f"Table{k}", (0.7, 0.17, 0.05), (0, -0.27 + k * 0.18, hz - 0.08), rng, grp="Top")
     _rough_beam("Post", (0.16, 0.16, 1.2), (0, -0.05, hz + 0.52), rng, mat="WoodDark", grp="Top")
