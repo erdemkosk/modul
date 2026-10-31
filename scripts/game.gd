@@ -641,9 +641,9 @@ func _make_hud() -> void:
 	_drive_hud = DriveHud.new()
 	_drive_hud.game = self
 	add_child(_drive_hud)
-	var tiki := Mascot.new() # (TIKI, who drives: its face at the bottom left)
-	tiki.game = self
-	add_child(tiki)
+	var usta := Mascot.new() # (Budak Usta, who drives: his face at the bottom left)
+	usta.game = self
+	add_child(usta)
 	var hints := Hints.new() # (the first time at each thing: how it's done)
 	hints.game = self
 	add_child(hints)
@@ -664,6 +664,8 @@ func _process(dt: float) -> void:
 	machine.wet = weather.wetness
 	var mp := machine.global_position # (the grass pressed down under it: grass.gdshader)
 	RenderingServer.global_shader_parameter_set(&"grass_press", Vector4(mp.x, mp.y - 1.0, mp.z, 2.4))
+	# (what the view's on: the crowns between it and the camera dissolve, nature.gdshader)
+	RenderingServer.global_shader_parameter_set(&"view_focus", Vector4(mp.x, mp.y + 1.0, mp.z, 1.0))
 	_life_t += dt
 	_cross.visible = not builder.active
 	_hud.text = ""

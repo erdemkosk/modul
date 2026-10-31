@@ -44,9 +44,12 @@ are this project's own.
   to the cross's height (cut a trunk where you like), and the wood holds the blade off as deep as it's
   cut. The crane slews and luffs its jib to the cross: the left held lets the hook down and it takes
   hold of what it touches, the right winds it up, Q lets go anywhere (a hook to drag things with too).
-  TIKI drives: a small fuzzy creature in a driving cap sitting in every cab, its face live at the
-  bottom left (blinking, looking where you aim, thrown about by the machine's pull, and hurt, scared,
-  dizzy, focused, straining, amazed, worried or happy by what happens: `mascot.gd`). The screen keeps quiet: the wood in the store, the saw's cut, the way
+  Budak Usta drives: a stocky bearded woodsman in a green wool hood, his axe across his back, seated
+  in every cab with his hands on the wheel (a dwarf's build, which is what the carts' half-metre cells
+  fit; `tools/blender/build_mascot.py`). His face is live at the bottom left: blinking, looking where
+  you aim, thrown about by the machine's pull, and by what happens hurt, scared, dizzy, focused,
+  straining, amazed, worried or happy, shown by his brows, lids, moustache, cheeks and his jaw (the
+  beard drops as he opens his mouth): `mascot.gd`. The screen keeps quiet: the wood in the store, the saw's cut, the way
   to the workshop when it's far; the machine's plate only once it's hurt; short cards, one step at a
   time (drive, fell, load, bring home).
   The valley goes through ages. In the wood age the weapons are the wood age's, made of wood and

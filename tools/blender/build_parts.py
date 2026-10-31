@@ -1243,15 +1243,16 @@ def build_wood_cab():
     for y in (-hy + 0.05, hy - 0.05):
         _rough_beam(f"Purlin{y}", (s.x - 0.02, 0.07, 0.07), (0, y, hz - 0.09), rng, mat="WoodDark")
     # the bench, its back and legs
-    _rough_beam("Bench", (s.x - 0.24, 0.3, 0.05), (0, -0.12, -0.12), rng, mat="WoodPale")
-    _rough_beam("BenchBack", (s.x - 0.24, 0.05, 0.28), (0, -0.3, 0.06), rng, mat="WoodPale", base=(0.2, 0, 0))
+    # (low: Budak Usta's a short man and his head's under the roof; the game seats him at Godot y -0.225)
+    _rough_beam("Bench", (s.x - 0.24, 0.3, 0.05), (0, -0.12, -0.275), rng, mat="WoodPale")
+    _rough_beam("BenchBack", (s.x - 0.24, 0.05, 0.3), (0, -0.3, -0.1), rng, mat="WoodPale", base=(0.2, 0, 0))
     for x in (-0.3, 0.3):
         for y in (-0.22, -0.02):
-            _rough_beam(f"Leg{x}{y}", (0.05, 0.05, 0.25), (x, y, -0.26), rng, mat="WoodDark")
-    box("Cushion", (s.x - 0.32, 0.26, 0.035), (0, -0.12, -0.08), "Seat", bev=0.012, grp="Part")
+            _rough_beam(f"Leg{x}{y}", (0.05, 0.05, 0.1), (x, y, -0.33), rng, mat="WoodDark")
+    box("Cushion", (s.x - 0.32, 0.26, 0.03), (0, -0.12, -0.24), "Seat", bev=0.01, grp="Part")
     # the wheel: a shaft out of the dash, four spokes, a rim of bent wood
-    cyl_between("Shaft", (0, hy - 0.06, -0.05), (0, 0.18, 0.12), 0.022, mat="Iron", segs=8, grp="Part")
-    w = Vector((0, 0.17, 0.13))
+    cyl_between("Shaft", (0, hy - 0.06, -0.15), (0, 0.16, 0.01), 0.022, mat="Iron", segs=8, grp="Part")
+    w = Vector((0, 0.15, 0.02)) # (where his hands are: build_mascot.py's HAND)
     for k in range(16):
         a0 = k * 2 * PI / 16
         a1 = a0 + 2 * PI / 16

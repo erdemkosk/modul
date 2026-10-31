@@ -30,6 +30,7 @@ global uniform vec3 weather_wind;
 global uniform float weather_wetness;
 global uniform float weather_snow;
 global uniform vec3 props_lod_center;
+global uniform vec4 view_focus; // xyz: what the view is on (your machine); w: 1 when there is one
 
 varying vec3 w_normal;
 varying float v_tint;
@@ -121,6 +122,27 @@ void fragment() {
 		// Interleaved gradient noise: a fine, even dither that reads as a soft dissolve.
 		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
 		if (lod_role < 0.5 ? n < v_lod : n >= v_lod) {
+			discard;
+		}
+	}
+	if ((leaf > 0.5 || sway > 0.5) && !shadow_pass) {
+		// A crown the camera's come into (leaves and branches have nothing to stop it; the trunk does):
+		// dissolved round the lens, gone within 1.5 m, whole again by 4.5, not a wall of leaf and
+		// branch across the view.
+		float keep = smoothstep(1.5, 4.5, length(VERTEX));
+		// and between the camera and your machine: a crown in the line of sight dissolved round it,
+		// the trees either side of the line as they are
+		if (view_focus.w > 0.5) {
+			vec3 p = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+			vec3 eye = CAMERA_POSITION_WORLD;
+			vec3 d = view_focus.xyz - eye;
+			float t = dot(p - eye, d) / max(dot(d, d), 0.001);
+			if (t > 0.0 && t < 0.9) {
+				keep = min(keep, smoothstep(1.3, 3.2, length(p - (eye + d * t))));
+			}
+		}
+		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715))));
+		if (n >= keep) {
 			discard;
 		}
 	}

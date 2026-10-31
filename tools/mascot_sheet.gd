@@ -1,5 +1,5 @@
 extends SceneTree
-## Every face of TIKI's (Mascot.MOODS), side by side: res://../mascot_sheet.png (or --out=<file>).
+## Every face of Budak Usta's (Mascot.MOODS), side by side: res://../mascot_sheet.png (or --out=<file>).
 ##   godot --path . --resolution 1600x400 -s res://tools/mascot_sheet.gd -- --out=<file>
 
 var _vp: SubViewport
@@ -36,9 +36,13 @@ func _initialize() -> void:
 	_c = Mascot.creature()
 	_vp.add_child(_c)
 	var cam := Camera3D.new()
-	cam.fov = 32.0
+	cam.fov = Mascot.PORTRAIT_FOV
 	_vp.add_child(cam)
-	cam.transform = Transform3D(Basis.looking_at(Vector3(0.0, -0.06, -1.25)), Vector3(0.0, 0.42, 1.25))
+	cam.transform = Transform3D(Basis.looking_at(Mascot.PORTRAIT_LOOK - Mascot.PORTRAIT_AT), Mascot.PORTRAIT_AT)
+	for a in OS.get_cmdline_user_args(): # (--whole: him all, from the front corner)
+		if a == "--whole":
+			cam.fov = 40.0
+			cam.transform = Transform3D(Basis.looking_at(Vector3(0.0, 0.18, 0.0) - Vector3(0.9, 0.55, 1.4)), Vector3(0.9, 0.55, 1.4))
 
 
 func _process(_d: float) -> bool:

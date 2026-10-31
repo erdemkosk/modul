@@ -17,6 +17,7 @@ var terrain: Node
 var yaw := PI
 var pitch := -0.3
 var dist := 11.0
+var _sized: Machine ## (the machine the view was last set back for)
 var free_mouse := false ## building: the mouse is a pointer, the right button drags the view
 var dragging := false
 var drag_moved := 0.0
@@ -100,6 +101,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(dt: float) -> void:
 	if target == null or not is_instance_valid(target):
 		return
+	if target != _sized: # (a new machine: the view as far back as its size wants, a cart close, a tank further)
+		_sized = target
+		dist = OrbitCamera.dist_for(target)
 	var k := 1.0 - exp(-14.0 * dt)
 	_yaw_shown = lerp_angle(_yaw_shown, yaw, 1.0 - exp(-10.0 * dt)) if iso or free_mouse else yaw
 	var p := ISO_PITCH if iso else pitch
@@ -138,6 +142,21 @@ func _process(dt: float) -> void:
 	var base := float(Settings.get_value("fov"))
 	_fov = lerpf(_fov, base * 0.43 if zoom else base, 1.0 - exp(-12.0 * dt))
 	fov = _fov + _punch
+
+
+## How far back the view stands for `m`: by its length or breadth (a 2 x 4 m cart 8 m, close enough that
+## the trees round it stand over it as trees do; a big machine further), 6 to 14 m.
+static func dist_for(m: Machine) -> float:
+	var lo := Vector2(INF, INF)
+	var hi := -lo
+	for p: Dictionary in m.design:
+		var at := Vector3(p.at)
+		lo = lo.min(Vector2(at.x, at.z))
+		hi = hi.max(Vector2(at.x, at.z) + Vector2.ONE)
+	if lo.x == INF:
+		return 11.0
+	var span := (hi - lo) * Parts.CELL
+	return clampf(maxf(span.x, span.y) * 1.6 + 1.6, 6.0, 14.0)
 
 
 ## The machine's centre of mass as it's drawn this frame (between physics steps).

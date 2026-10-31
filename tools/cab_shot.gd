@@ -1,5 +1,5 @@
 extends SceneTree
-## The starting cart (Designs.logger_cart) with TIKI at the wheel, from the front corner, the side and
+## The starting cart (Designs.logger_cart, or --design=<another>) with Budak Usta at the wheel, from the front corner, the side and
 ## behind, to see how much of the driver shows: user://cab_shot.png (or --out=<file>).
 ##   godot --path . --resolution 1920x400 -s res://tools/cab_shot.gd -- --out=<file>
 
@@ -14,12 +14,16 @@ var _k := 0
 var _wait := 6
 var _imgs: Array[Image] = []
 var _out := "user://cab_shot.png"
+var _design := "logger_cart" ## (--design=<a Designs function>)
+var _cab := Vector3.ZERO ## (the cab's middle; VIEWS look at it)
 
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		if a.begins_with("--design="):
+			_design = a.substr(9)
 	_vp = SubViewport.new()
 	_vp.size = SIZE
 	_vp.own_world_3d = true
@@ -46,7 +50,7 @@ func _initialize() -> void:
 	_vp.add_child(_cam)
 	var lo := Vector3(INF, INF, INF)
 	var hi := -lo
-	for e: Array in Designs.logger_cart():
+	for e: Array in Callable(Designs, _design).call():
 		var id := str(e[0])
 		var at := Vector3i(int(e[1]), int(e[2]), int(e[3]))
 		var n := (load(Parts.model(id)) as PackedScene).instantiate() as Node3D
@@ -54,6 +58,7 @@ func _initialize() -> void:
 		n.transform = Parts.xform_of(id, at, int(e[4]))
 		_vp.add_child(n)
 		if Parts.is_cab(id):
+			_cab = n.position
 			var drv := Mascot.creature()
 			drv.transform = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * Machine.DRIVER_SCALE), Machine.DRIVER_AT.get(id, Vector3(0, -0.25, 0.1)))
 			n.add_child(drv)
@@ -71,8 +76,9 @@ func _process(_d: float) -> bool:
 		print("saved ", _out)
 		return true
 	var v: Array = VIEWS[_k]
-	_cam.position = (v[2] as Vector3) + (v[0] as Vector3).normalized() * float(v[1])
-	_cam.look_at(v[2], Vector3.UP)
+	var at := (v[2] as Vector3) - Vector3(0.5, 1.0, -0.5) + _cab # (VIEWS are set about the cart's cab at 0.5, 1, -0.5)
+	_cam.position = at + (v[0] as Vector3).normalized() * float(v[1])
+	_cam.look_at(at, Vector3.UP)
 	_wait -= 1
 	if _wait > 0:
 		return false

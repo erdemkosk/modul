@@ -1,29 +1,25 @@
 class_name Mascot
 extends CanvasLayer
-## TIKI, who drives: a small fuzzy forest creature in a leather driving cap and goggles, big eyes, long
-## floppy ears. It sits in your machine's cab (`creature()`, put there by Machine for every cab: the
-## other side's are driven by its kind too) and its face is at the bottom left of the screen, live:
-## it blinks and looks about, looks where you aim, its head is thrown about by the machine's pull (as
-## it brakes, turns, lands) and its ears swing. And it feels what happens (`mood`, each held a while):
-##   hurt      a knock or a hit: it screws its eyes shut and grimaces, its head jolts
-##   scared    in the air, a part torn off, a giant near: eyes wide, mouth open
-##   dizzy     on its back: eyes rolling
-##   happy     going well (fast on good ground), wood brought home: a grin, ears up
-##   focus     sawing: brows down, the tip of its tongue out
+## Budak Usta, who drives: a stocky bearded woodsman in a green wool hood, his felling axe across his
+## back (a dwarf's build: four heads tall, 0.6 m seated, which is what a 1 m cab on half-metre cells
+## fits). He sits in your machine's cab (`creature()`, put there by Machine for every cab: the other
+## side's are driven by his kind too), his hands on the wheel, and his face is at the bottom left of the
+## screen, live: he blinks and looks about, looks where you aim, his head is thrown about by the
+## machine's pull (as it brakes, turns, lands). And he feels what happens (`mood`, each held a while):
+##   hurt      a knock or a hit: eyes screwed shut, a grimace, his head jolts
+##   scared    in the air, a part torn off, a giant near: eyes wide, brows up, mouth open
+##   dizzy     on his back: eyes rolling
+##   happy     going well (fast on good ground), wood brought home: a grin under the moustache
+##   focus     sawing: brows down, eyes narrowed, lips pressed
 ##   effort    a load on the crane: cheeks puffed, eyes squeezed half
 ##   wow       a tree coming down: eyes and mouth round
-##   worried   badly hurt: brows up, a wobbly mouth
-##   dead      its machine gone: crosses for eyes
-## The face is made of plain shapes (spheres, boxes) moved by a handful of numbers (`_face`) eased
-## toward the mood's every frame.
+##   worried   badly hurt: brows up and in, the moustache down
+##   dead      his machine gone: eyes shut, head fallen to one side
+## The model's moving parts (brows, lids, irises, cheeks, the moustache's halves, the mouth, the jaw
+## with the beard on it) are moved by a handful of numbers (`_face`) eased toward the mood's every frame.
 
 const PORTRAIT := Vector2i(210, 210)
-const NAME := "TIKI"
-const FUR := Color(0.72, 0.46, 0.24)
-const FUR_DARK := Color(0.5, 0.3, 0.15)
-const FACE := Color(0.93, 0.8, 0.62)
-const CAP := Color(0.3, 0.18, 0.1)
-const LENS := Color(0.55, 0.75, 0.8, 0.5)
+const NAME := "BUDAK USTA"
 
 ## The faces: lid (0 open, 1 shut), brow (up +), tilt (worried + / angry -), open (mouth), smile (+ up,
 ## - down), round (an "o"), puff (cheeks), tongue, x (dead eyes).
@@ -97,9 +93,9 @@ func _ready() -> void:
 	_head = creature()
 	_vp.add_child(_head)
 	_cam = Camera3D.new()
-	_cam.fov = 32.0
+	_cam.fov = PORTRAIT_FOV
 	_vp.add_child(_cam)
-	_cam.transform = Transform3D(Basis.looking_at(Vector3(0.0, -0.06, -1.25)), Vector3(0.0, 0.42, 1.25))
+	_cam.transform = Transform3D(Basis.looking_at(PORTRAIT_LOOK - PORTRAIT_AT), PORTRAIT_AT)
 	# the plate, bottom left: the face in a frame, its name under it
 	_frame = PanelContainer.new()
 	_frame.add_theme_stylebox_override("panel", Ui.glass(false, 6.0))
@@ -244,143 +240,76 @@ func _sense(m: Machine, dt: float) -> void:
 		feel("happy", 0.3)
 
 
-# --- The creature ------------------------------------------------------------------------------------
+# --- The man ----------------------------------------------------------------------------------------
 
-static func _mat(c: Color, rough := 0.8) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.roughness = rough
-	if c.a < 1.0:
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	return m
+const MODEL := "res://assets/mascot/budak.glb"
+## The portrait's camera: on his face, a little from his left, the beard and the hood's edge in.
+const PORTRAIT_FOV := 30.0
+const PORTRAIT_AT := Vector3(0.1, 0.5, 0.7)
+const PORTRAIT_LOOK := Vector3(0.0, 0.435, 0.0)
 
 
-static func _ball(parent: Node3D, n: String, r: float, at: Vector3, mat: Material, scale := Vector3.ONE) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.name = n
-	var s := SphereMesh.new()
-	s.radius = r
-	s.height = r * 2.0
-	s.radial_segments = 24
-	s.rings = 12
-	s.material = mat
-	mi.mesh = s
-	mi.position = at
-	mi.scale = scale
-	parent.add_child(mi)
-	return mi
-
-
-static func _box(parent: Node3D, n: String, size: Vector3, at: Vector3, mat: Material) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.name = n
-	var b := BoxMesh.new()
-	b.size = size
-	b.material = mat
-	mi.mesh = b
-	mi.position = at
-	parent.add_child(mi)
-	return mi
-
-
-## TIKI, about 0.75 m tall sitting (its origin at its seat): a round fuzzy body, a big head with a pale
-## face, eyes with lids and brows, a wide mouth (and a tongue), a nose, long ears, a cap and goggles.
+## Budak Usta, seated (his origin where he sits; he faces +Z): the model (tools/blender/build_mascot.py,
+## assets/mascot/budak.glb) in a node called Driver, his face's moving parts noted where they rest.
 static func creature() -> Node3D:
 	var root := Node3D.new()
 	root.name = "Driver"
-	var fur := _mat(FUR, 0.95)
-	var dark := _mat(FUR_DARK, 0.95)
-	var face := _mat(FACE, 0.9)
-	var white := _mat(Color(0.97, 0.96, 0.92), 0.4)
-	var black := _mat(Color(0.05, 0.04, 0.04), 0.3)
-	var mouth_m := _mat(Color(0.35, 0.08, 0.08), 0.7)
-	_ball(root, "Body", 0.17, Vector3(0, 0.15, 0), fur, Vector3(1.0, 1.0, 0.85))
-	_ball(root, "Belly", 0.12, Vector3(0, 0.13, 0.08), face, Vector3(1.0, 1.1, 0.6))
-	for s in [-1.0, 1.0]:
-		_ball(root, "Hand%d" % s, 0.045, Vector3(s * 0.13, 0.18, 0.15), dark)
-	var head := Node3D.new()
-	head.name = "Head"
-	head.position = Vector3(0, 0.38, 0)
-	root.add_child(head)
-	_ball(head, "Skull", 0.2, Vector3.ZERO, fur, Vector3(1.12, 0.95, 1.0))
-	_ball(head, "Face", 0.15, Vector3(0, -0.03, 0.08), face, Vector3(1.15, 0.9, 0.7))
-	_ball(head, "Nose", 0.03, Vector3(0, 0.0, 0.205), _mat(Color(0.75, 0.35, 0.2), 0.5), Vector3(1.3, 1.0, 1.0))
-	for s in [-1.0, 1.0]:
-		var eye := Node3D.new()
-		eye.name = "Eye%d" % s
-		eye.position = Vector3(s * 0.08, 0.045, 0.15)
-		head.add_child(eye)
-		_ball(eye, "White", 0.06, Vector3.ZERO, white, Vector3(1.0, 1.15, 0.7))
-		_ball(eye, "Pupil", 0.029, Vector3(0, 0, 0.038), black)
-		_ball(eye, "Glint", 0.009, Vector3(0.012, 0.015, 0.06), _mat(Color(1, 1, 1), 0.1))
-		var lid := _ball(eye, "Lid", 0.066, Vector3(0, 0.0, 0.004), fur, Vector3(1.05, 1.0, 0.75))
-		lid.set_meta("s", s)
-		var x1 := _box(eye, "X1", Vector3(0.07, 0.012, 0.01), Vector3(0, 0, 0.04), black)
-		x1.rotation.z = 0.785
-		var x2 := _box(eye, "X2", Vector3(0.07, 0.012, 0.01), Vector3(0, 0, 0.04), black)
-		x2.rotation.z = -0.785
-		_box(head, "Brow%d" % s, Vector3(0.075, 0.018, 0.02), Vector3(s * 0.08, 0.135, 0.19), dark)
-		_ball(head, "Cheek%d" % s, 0.045, Vector3(s * 0.1, -0.05, 0.13), _mat(Color(0.95, 0.68, 0.55), 0.9))
-		var ear := Node3D.new()
-		ear.name = "Ear%d" % s
-		ear.position = Vector3(s * 0.17, 0.08, -0.02)
-		head.add_child(ear)
-		_ball(ear, "Flap", 0.05, Vector3(s * 0.09, -0.05, 0), fur, Vector3(2.0, 0.6, 0.45))
-		_ball(ear, "Inner", 0.035, Vector3(s * 0.095, -0.05, 0.015), _mat(Color(0.9, 0.62, 0.52), 0.9), Vector3(2.0, 0.5, 0.3))
-	var mouth := _ball(head, "Mouth", 0.06, Vector3(0, -0.075, 0.17), mouth_m, Vector3(1.0, 0.25, 0.4))
-	mouth.set_meta("y0", -0.075)
-	_ball(head, "Tongue", 0.025, Vector3(0.02, -0.09, 0.19), _mat(Color(0.9, 0.4, 0.45), 0.6), Vector3(1.0, 0.6, 1.2))
-	_ball(head, "Teeth", 0.03, Vector3(0, -0.06, 0.195), white, Vector3(1.4, 0.35, 0.4))
-	# the driving cap, and goggles pushed up on it
-	_ball(head, "Cap", 0.2, Vector3(0, 0.12, -0.05), _mat(CAP, 0.7), Vector3(1.12, 0.62, 1.0))
-	_box(head, "Peak", Vector3(0.15, 0.012, 0.07), Vector3(0, 0.17, 0.15), _mat(CAP, 0.7))
-	_box(head, "Strap", Vector3(0.43, 0.028, 0.02), Vector3(0, 0.19, 0.08), _mat(Color(0.18, 0.12, 0.08), 0.8))
-	for s in [-1.0, 1.0]:
-		var g := _ball(head, "Goggle%d" % s, 0.04, Vector3(s * 0.06, 0.21, 0.1), _mat(Color(0.55, 0.45, 0.3), 0.4), Vector3(1.0, 1.0, 0.5))
-		_ball(g, "Glass", 0.032, Vector3(0, 0, 0.02), _mat(LENS, 0.05), Vector3(1.0, 1.0, 0.4))
+	var m := (load(MODEL) as PackedScene).instantiate() as Node3D
+	PaintedLook.apply(m)
+	root.add_child(m)
+	for n: String in ["Head", "Jaw", "Mouth", "TeethTop", "EyeL", "EyeR", "IrisL", "IrisR", "LidL", "LidR", "BrowL", "BrowR",
+			"CheekL", "CheekR", "StacheL", "StacheR"]:
+		var part := m.find_child(n, true, false) as Node3D
+		if part:
+			part.set_meta("rest", part.transform)
+			root.set_meta(n, part)
 	return root
 
 
-## The creature `c` set to the face `f` (MOODS' numbers), its eyes on `look`, blinking `blink` (s left of
-## it), its head thrown `jolt`, its ears `ears`.
-static func pose(c: Node3D, f: Dictionary, look: Vector2, blink: float, jolt: Vector3, ears: Vector2, t: float) -> void:
-	var head := c.get_node_or_null("Head") as Node3D
-	if head == null:
+## The man `c` set to the face `f` (MOODS' numbers), his eyes on `look`, blinking `blink` (s left of it),
+## his head thrown `jolt` (`ears`: unused, his are under the hood).
+static func pose(c: Node3D, f: Dictionary, look: Vector2, blink: float, jolt: Vector3, _ears: Vector2, t: float) -> void:
+	if not c.has_meta("Head"):
 		return
-	var breathe := sin(t * 2.2) * 0.006
-	head.position = Vector3(jolt.x, 0.38 + jolt.y * 0.5 + breathe, jolt.z)
-	head.rotation = Vector3(-jolt.y * 1.2 + look.y * 0.15, look.x * 0.25, -jolt.x * 1.5 + float(f.tilt) * 0.04)
-	var lid := clampf(maxf(float(f.lid), 1.0 if blink > 0.0 else 0.0), 0.0, 1.0)
-	for s in [-1.0, 1.0]:
-		var eye := head.get_node("Eye%d" % s) as Node3D
-		var wide := 1.0 + float(f.round) * 0.25
+	var head := c.get_meta("Head") as Node3D
+	var rest: Transform3D = head.get_meta("rest")
+	var breathe := sin(t * 2.0) * 0.003
+	var dead := float(f.x)
+	head.transform = Transform3D(Basis.from_euler(Vector3(-jolt.y * 1.0 + look.y * 0.12 + dead * 0.35, look.x * 0.3,
+		-jolt.x * 1.2 + float(f.tilt) * 0.03 + dead * 0.25)), rest.origin + Vector3(jolt.x, jolt.y * 0.4 + breathe, jolt.z) * 0.4)
+	var lid := clampf(maxf(maxf(float(f.lid), 1.0 if blink > 0.0 else 0.0), dead), 0.0, 1.0)
+	for k in 2:
+		var s := -1.0 if k == 0 else 1.0
+		var n := "L" if k == 0 else "R"
+		var eye := c.get_meta("Eye" + n) as Node3D
+		var wide := 1.0 + float(f.round) * 0.2
 		eye.scale = Vector3(wide, wide, 1.0)
-		var pupil := eye.get_node("Pupil") as Node3D
-		pupil.position = Vector3(look.x * 0.026, look.y * 0.026, 0.038)
-		pupil.scale = Vector3.ONE * (1.0 - float(f.round) * 0.3)
-		pupil.visible = float(f.x) < 0.5
-		(eye.get_node("Glint") as Node3D).visible = float(f.x) < 0.5
-		for xn: String in ["X1", "X2"]:
-			(eye.get_node(xn) as Node3D).visible = float(f.x) >= 0.5
-		var l := eye.get_node("Lid") as Node3D # (the lid comes down over the top: a fur cap shrinking out of sight up)
-		l.position = Vector3(0, lerpf(0.09, 0.0, lid), 0.006)
-		l.scale = Vector3(1.05, lerpf(0.15, 1.0, lid), 0.78)
-		var brow := head.get_node("Brow%d" % s) as Node3D
-		brow.position = Vector3(s * 0.08, 0.125 + float(f.brow) * 0.025 - lid * 0.01, 0.19)
-		brow.rotation = Vector3(0, 0, -s * float(f.tilt) * 0.45)
-		var cheek := head.get_node("Cheek%d" % s) as Node3D
-		cheek.scale = Vector3.ONE * (1.0 + float(f.puff) * 0.6 + maxf(float(f.smile), 0.0) * 0.15)
-		var ear := head.get_node("Ear%d" % s) as Node3D
-		ear.rotation = Vector3(0, 0, s * (ears.y * 0.8 + 0.1 * sin(t * 1.3 + s)) + ears.x * 0.6)
-	var mouth := head.get_node("Mouth") as Node3D
+		var iris := c.get_meta("Iris" + n) as Node3D
+		var ir: Transform3D = iris.get_meta("rest")
+		iris.position = ir.origin + Vector3(look.x * 0.006, look.y * 0.005, 0.0)
+		var l := c.get_meta("Lid" + n) as Node3D # (the upper lid: up under the brow, down over the eye)
+		var lr: Transform3D = l.get_meta("rest")
+		l.position = lr.origin + Vector3(0.0, lerpf(0.013, 0.0, lid), lerpf(-0.002, 0.0, lid))
+		l.scale = Vector3(1.0, lerpf(0.45, 1.0, lid), 1.0)
+		var brow := c.get_meta("Brow" + n) as Node3D
+		var br: Transform3D = brow.get_meta("rest")
+		brow.position = br.origin + Vector3(0.0, float(f.brow) * 0.009 - lid * 0.003, 0.0)
+		brow.rotation = br.basis.get_euler() + Vector3(0.0, 0.0, -s * float(f.tilt) * 0.4)
+		var cheek := c.get_meta("Cheek" + n) as Node3D
+		var cr: Transform3D = cheek.get_meta("rest")
+		cheek.scale = cr.basis.get_scale() * (1.0 + float(f.puff) * 0.5 + maxf(float(f.smile), 0.0) * 0.12)
+		cheek.position = cr.origin + Vector3(0.0, maxf(float(f.smile), 0.0) * 0.004, float(f.puff) * 0.006)
+		var st := c.get_meta("Stache" + n) as Node3D
+		var sr: Transform3D = st.get_meta("rest")
+		st.rotation = sr.basis.get_euler() + Vector3(0.0, 0.0, s * float(f.smile) * 0.4)
 	var open := float(f.open)
 	var smile := float(f.smile)
 	var rnd := float(f.round)
-	mouth.scale = Vector3(lerpf(1.0 + smile * 0.35, 0.55, rnd), 0.18 + open * 0.75 + rnd * 0.2, 0.4)
-	mouth.position = Vector3(0, -0.075 - open * 0.02 + smile * 0.008, 0.17)
-	mouth.rotation = Vector3(0, 0, 0)
-	var teeth := head.get_node("Teeth") as Node3D
-	teeth.visible = smile > 0.5 and open > 0.2
-	var tongue := head.get_node("Tongue") as Node3D
-	tongue.visible = float(f.tongue) > 0.3
-	tongue.position = Vector3(0.025, -0.085, 0.17 + float(f.tongue) * 0.03)
+	var mouth := c.get_meta("Mouth") as Node3D
+	var mr: Transform3D = mouth.get_meta("rest")
+	mouth.scale = mr.basis.get_scale() * Vector3(lerpf(1.0 + smile * 0.3, 0.6, rnd), 0.35 + open * 1.5 + rnd * 0.5, 1.0)
+	mouth.position = mr.origin + Vector3(0.0, -open * 0.006, 0.0)
+	var jaw := c.get_meta("Jaw") as Node3D
+	var jr: Transform3D = jaw.get_meta("rest")
+	jaw.transform = Transform3D(Basis(Vector3.RIGHT, open * 0.16 + rnd * 0.06), jr.origin)
+	(c.get_meta("TeethTop") as Node3D).visible = smile > 0.5 and open > 0.2
