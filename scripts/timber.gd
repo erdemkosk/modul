@@ -239,7 +239,7 @@ static func _lay_along(tree: SceneTree, from: Vector3, ax: Vector3, length: floa
 static func billet(tree: SceneTree, at: Vector3, lie: Vector3, radius: float) -> RigidBody3D:
 	var b := RigidBody3D.new()
 	b.name = "Billet"
-	b.collision_layer = 1 | 4 # (ground to wheels: driven over, it's a bump; on a bed, it rides)
+	b.collision_layer = 4 # (not ground to the wheels, whose springs threw the machine off a rolling billet: the body shoves it aside or rides over it; on a bed, it rides)
 	b.collision_mask = 1 | 2 | 4
 	b.mass = PI * radius * radius * BILLET * DENSITY
 	var pm := PhysicsMaterial.new()

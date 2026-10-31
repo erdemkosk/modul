@@ -128,9 +128,20 @@ func _physics_process(_d: float) -> bool:
 			_expect(Inventory.counts.size() == 1 and Inventory.count("wood_rail") == 2 and Inventory.wood == Inventory.START_WOOD, "little spare: two rails, a little wood")
 			_expect(Inventory.shown("wood_frame") and Inventory.shown("wood_crane") and not Inventory.shown("ballista") and not Inventory.shown("armor")
 				and not Inventory.shown("engine") and not Inventory.shown("crane"), "the builder offers only what can be had")
-			# a tree to fell, not far
+			# a tree to fell, not far, one standing on its own (the cart's way to it and where it falls clear)
 			var at := m.global_position
-			var i := props.prop_near(Vector2(at.x, at.z), 300.0, ["tree"])
+			var i := -1
+			for r in range(20, 300, 6):
+				var a := float(r) * 0.37
+				var q := Vector2(at.x, at.z) + Vector2(cos(a), sin(a)) * float(r)
+				var j := props.prop_near(q, 12.0, ["tree"])
+				if j < 0:
+					continue
+				var o: Vector3 = props.prop_info(j).origin
+				var dd := Vector2(o.x - at.x, o.z - at.z).normalized()
+				if props.crowd(Vector2(o.x, o.z), 7.0, j) == 0 and props.crowd(Vector2(o.x, o.z) - dd * 4.6, 4.0, j) == 0:
+					i = j
+					break
 			_expect(i >= 0, "a tree nearby")
 			if i < 0:
 				return _done()
@@ -197,7 +208,7 @@ func _physics_process(_d: float) -> bool:
 				_r.b = b
 				var at := b.global_position
 				var side := m.global_basis.x
-				_put(m, at - side * 1.5 + m.global_basis.z * 0.6, m.global_basis.get_euler().y) # (beside it, the seat by it)
+				_put(m, at - side * 2.3 + m.global_basis.z * 0.6, m.global_basis.get_euler().y) # (beside it, clear of the wheels, the seat by it)
 				return false
 			var b: RigidBody3D = _r.b
 			m.aim_point = b.global_position
@@ -229,6 +240,16 @@ func _physics_process(_d: float) -> bool:
 			print("left held %.1f s: hooked %s" % [since, MachineHoist.what_is(h.hooked()) if h.hooked() else "nothing"])
 			_expect(h.hooked() is RigidBody3D, "held down, the hook goes down and takes what it touches")
 			if h.hooked():
+				var q := PhysicsShapeQueryParameters3D.new()
+				var sph := SphereShape3D.new()
+				sph.radius = 0.06
+				q.shape = sph
+				q.transform = Transform3D(Basis.IDENTITY, MachineHoist.eye(h.hooked()))
+				q.collision_mask = 4
+				var on := false
+				for hit: Dictionary in _me().get_world_3d().direct_space_state.intersect_shape(q, 8):
+					on = on or hit.collider == h.hooked()
+				_expect(on, "the rope's made fast on the billet itself, not in the air over it")
 				_r.b = h.hooked()
 			h.raise_held = true
 			_next("mouse_raise")
@@ -240,7 +261,9 @@ func _physics_process(_d: float) -> bool:
 			h.raise_held = false
 			var b: RigidBody3D = _r.b
 			var up := b.global_position.y - float(_g.get("terrain").call("height_at", b.global_position.x, b.global_position.z))
-			print("right held 2.5 s: %.2f m off the ground" % up)
+			var gy := float(_g.get("terrain").call("height_at", h.tip().x, h.tip().z))
+			print("right held 2.5 s: %.2f m off the ground (tip %.2f up, rope %.2f, eye %.2f from the tip, luff %.2f, limited %s)" % [up, h.tip().y - gy,
+				float(m.design[h.index].get("rope_len", 0.0)), MachineHoist.eye(b).distance_to(h.tip()), h.luff, h.limited])
 			_expect(up > 0.8, "the right held winds it up")
 			_next("lift")
 		"lift":
@@ -347,12 +370,15 @@ func _physics_process(_d: float) -> bool:
 			var i := props.prop_near(Vector2(at.x, at.z), 400.0, ["log"])
 			if i < 0:
 				print("(no log lying near: skipped)")
-				_next("ages")
+				_next("over")
 				return false
 			var info := props.prop_info(i)
 			var o: Vector3 = info.origin
 			var ax: Vector3 = info.axis
 			var side := Vector3.UP.cross(ax).normalized()
+			var from := o - side * 3.2
+			if props.crowd(Vector2(from.x, from.z), 3.5) > props.crowd(Vector2(o.x + side.x * 3.2, o.z + side.z * 3.2), 3.5):
+				side = -side # (come at it from the side with fewer trees in the way)
 			# the blade 2.4 m ahead of the middle: the machine square on to the log, its blade just short
 			_put(m, o - side * 3.2, _yaw(side))
 			_r.log = i
@@ -368,6 +394,9 @@ func _physics_process(_d: float) -> bool:
 				m.tool_key(KEY_R)
 				m.brake = 0.0
 			m.throttle = 0.5
+			if not props.cut.has(int(_r.log)): # (the cross on the log: the saw's arm down to it)
+				m.keyed = true
+				m.aim_point = props.prop_info(int(_r.log)).origin
 			if _frame % 120 == 0 and not m.tools.is_empty():
 				var c := m.tools[0].blade()
 				print("  up %s, blade %.2f over the ground, speed %.2f" % [m.global_basis.y, c.y - float(_g.get("terrain").call("height_at", c.x, c.z)), m.speed])
@@ -379,15 +408,43 @@ func _physics_process(_d: float) -> bool:
 				if since > float(_r.log_t) + 0.5:
 					print("a log cut in %.1f s: billets %d -> %d" % [float(_r.log_t), int(_r.n0), Timber.lying()])
 					_expect(Timber.lying() > int(_r.n0), "a log lying is cut into billets")
-					_next("ages")
+					_next("over")
 			elif since > 20.0:
 				var info := props.prop_info(int(_r.log))
 				var c := m.tools[0].blade()
 				print("(the log wasn't reached: machine %s, blade %s; log %s r %.2f len %.1f ground %.2f)" % [m.global_position, c, info.origin,
 					float(info.radius), float(info.length), float(_g.get("terrain").call("height_at", c.x, c.z))])
 				_expect(false, "the saw cuts a log lying")
-				_next("ages")
+				_next("over")
 		# 6. the ages: metal wants its plan
+		# 5b. driven over billets lying across the way: a bump, not a leap or a roll
+		"over":
+			var m := _me()
+			if since < 0.1:
+				var sp: Transform3D = (_g.get("terrain") as WorldTerrain).spawn
+				var fwd := -sp.basis.z
+				_put(m, sp.origin + sp.basis.x * 30.0, _yaw(fwd))
+				for k in 4: # (across the way under the wheels, one side then the other)
+					var at := sp.origin + sp.basis.x * 30.0 + fwd * (4.5 + k * 3.0) + sp.basis.x * (1.0 if k % 2 == 0 else -0.5)
+					at.y = (_g.get("terrain") as WorldTerrain).height_at(at.x, at.z) + 0.22
+					Timber.billet(_g.get_tree(), at, sp.basis.x, 0.2)
+				_r.from = m.global_position
+				_r.low_up = 1.0
+				_r.leap = 0.0
+				return false
+			if since < 1.0:
+				return false
+			m.brake = 0.0
+			m.throttle = 0.7
+			m.steer = 0.0
+			_r.low_up = minf(float(_r.low_up), m.global_basis.y.y)
+			_r.leap = maxf(float(_r.leap), m.linear_velocity.y)
+			if since > 6.0:
+				m.throttle = 0.0
+				m.brake = 1.0
+				print("over four billets: lowest up %.2f, fastest up %.2f m/s, %.1f m on" % [float(_r.low_up), float(_r.leap), m.global_position.distance_to(_r.from)])
+				_expect(float(_r.low_up) > 0.8 and float(_r.leap) < 2.5, "driven over billets, the cart's bumped, not thrown or rolled")
+				_next("ages")
 		"ages":
 			var b: Builder = _g.get("builder")
 			_expect(Inventory.age() == 1, "the valley starts in the wood age")
@@ -405,12 +462,14 @@ func _physics_process(_d: float) -> bool:
 			_expect(Inventory.shown("ballista") and not Inventory.shown("catapult"), "parts open as wood comes home")
 			var m := _me()
 			# a wooden enemy to shoot at, out ahead on the open ground by the workshop
-			_r.range_at = shop.truck.global_position + Vector3(45, 0, 0)
+			var sp: Transform3D = (_g.get("terrain") as WorldTerrain).spawn
+			_r.range_dir = Vector3(-sp.basis.z.x, 0.0, -sp.basis.z.z).normalized() # (down the way out, left clear of the trees)
+			_r.range_at = sp.origin + Vector3(_r.range_dir) * 20.0
 			var d := Designs.valley_start()
 			d.append(["ballista", 0, 3, 0, 0])
 			m.from_data(d)
-			_put(m, Vector3(_r.range_at), _yaw(Vector3.RIGHT))
-			_r.target = _target(Vector3(_r.range_at) + Vector3.RIGHT * 30.0)
+			_put(m, Vector3(_r.range_at), _yaw(Vector3(_r.range_dir)))
+			_r.target = _target(Vector3(_r.range_at) + Vector3(_r.range_dir) * 30.0)
 			_r.h0 = (_r.target as Machine).health()
 			_next("ballista")
 		"ballista":
@@ -454,8 +513,8 @@ func _physics_process(_d: float) -> bool:
 			var d := Designs.valley_start()
 			d.append(["catapult", 0, 3, 0, 0])
 			m.from_data(d)
-			_put(m, Vector3(_r.range_at), _yaw(Vector3.RIGHT))
-			_r.target = _target(Vector3(_r.range_at) + Vector3.RIGHT * 55.0)
+			_put(m, Vector3(_r.range_at), _yaw(Vector3(_r.range_dir)))
+			_r.target = _target(Vector3(_r.range_at) + Vector3(_r.range_dir) * 55.0)
 			_r.h0 = (_r.target as Machine).health()
 			_next("catapult")
 		"catapult":
@@ -475,8 +534,8 @@ func _physics_process(_d: float) -> bool:
 			var d := Designs.valley_start()
 			d.append(["oilpot", 0, 3, 0, 0])
 			m.from_data(d)
-			_put(m, Vector3(_r.range_at), _yaw(Vector3.RIGHT))
-			_r.target = _target(Vector3(_r.range_at) + Vector3.RIGHT * 7.5)
+			_put(m, Vector3(_r.range_at), _yaw(Vector3(_r.range_dir)))
+			_r.target = _target(Vector3(_r.range_at) + Vector3(_r.range_dir) * 7.5)
 			_r.h0 = (_r.target as Machine).health()
 			_next("oil")
 		"oil":

@@ -62,9 +62,9 @@ func _init() -> void:
 ## there), out to START_R the heights eased back to the valley's own (drawn toward their average over
 ## START_BLUR m, less and less outward), and little mud (_build_soft), as a first cart's small engine
 ## needs.
-const START_R := 110.0
-const START_BLUR := 16
-const START_FLAT := 60.0
+const START_R := 190.0
+const START_BLUR := 24
+const START_FLAT := 110.0
 var _lift := PackedFloat32Array() ## (how far the start's easing moved the ground, over _lift_rect)
 var _lift_rect := Rect2i()
 

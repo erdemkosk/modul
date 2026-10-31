@@ -50,6 +50,7 @@ const REACH := Vector2(0.8, 2.5) ## m out from the post the trolley runs
 const TROLLEY := 1.2 ## m/s
 const FAIRLEAD := Vector3(0.0, -0.05, 0.55) ## the winch's, at its back
 const HOOK_R := 0.4 ## m round the hook it takes hold of what it touches
+const HAUL_TO := 0.45 ## m under the tip the right button winds a load up to
 const HOOK_LEN := 1.0 ## m of rope the empty hook hangs on at first
 const LUFF := Vector2(-0.3, 1.0) ## rad the jib tips down / up from where it's built
 const LUFF_RATE := 0.9 ## rad/s
@@ -269,7 +270,7 @@ func _touch(at: Vector3) -> bool:
 		var b := hit.collider as PhysicsBody3D
 		if b == null or b.has_meta("taken") or not b in can:
 			continue
-		b.set_meta("hook_at", b.to_local(at))
+		b.set_meta("hook_at", b.to_local(_on(b, at)))
 		var p: Dictionary = machine.design[index]
 		p.rope_to = b
 		p.drum = "hold"
@@ -284,6 +285,19 @@ func _touch(at: Vector3) -> bool:
 				Combat.current.sound("res://assets/audio/wood/knock_0%d.wav" % randi_range(1, 4), at, 0.0, randf_range(0.8, 0.95))
 		return true
 	return false
+
+
+## The point on `b`'s skin nearest the hook at `at` (world): straight down from it if it's under the
+## hook, else toward its middle; the rope is made fast there, not in the air where the hook was.
+func _on(b: PhysicsBody3D, at: Vector3) -> Vector3:
+	var space := machine.get_world_3d().direct_space_state
+	for to: Vector3 in [at + Vector3.DOWN * (HOOK_R + 0.6), b.global_position]:
+		var q := PhysicsRayQueryParameters3D.create(at + (at - to).normalized() * 0.05, to, 4, [machine.get_rid()])
+		q.hit_from_inside = true
+		var hit := space.intersect_ray(q)
+		if hit and hit.collider == b:
+			return hit.position
+	return b.global_position
 
 
 func _let_go() -> void:
@@ -365,8 +379,8 @@ func update(dt: float) -> void:
 				p.rope_len = minf(len + LOWER * dt * run, ROPE_MAX)
 				if l < len - 0.3: # (it's resting on something: the rope'd only go slack)
 					p.rope_len = l + 0.3
-			"haul":
-				p.rope_len = maxf(len - wind * dt * run, hang)
+			"haul": # (the right held: up to the block under the sheave, closer than it hangs of itself)
+				p.rope_len = maxf(len - wind * dt * run, minf(hang, HAUL_TO))
 			"hold":
 				pass
 			_:
@@ -479,7 +493,7 @@ func _line(a: Vector3, b: Vector3) -> void:
 	var side := up.cross(Vector3.FORWARD if absf(up.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
 	var basis := Basis(side, up * l, side.cross(up)) # (the cylinder stretched along the rope)
 	_rope.global_transform = Transform3D(basis, a + d * 0.5)
-	_hook.global_transform = Transform3D(Basis(side, up, side.cross(up)), b + up * -0.05)
+	_hook.global_transform = Transform3D(Basis(side, up, side.cross(up)), b - up * 0.11) # (its foot on the eye)
 
 
 func free_fx() -> void:

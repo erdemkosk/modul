@@ -37,7 +37,7 @@ func mark(b: RigidBody3D, id: String, cond := -1.0) -> void:
 	b.set_meta("cond", cond if cond >= 0.0 else randf_range(WORN.x, WORN.y))
 	b.set_meta("age", 0.0)
 	b.add_to_group("salvage")
-	b.collision_layer = 1 | 4 # (solid: it can be driven over, lifted, carried on a bed)
+	b.collision_layer = 4 # (solid to the machine's body, lifted, carried on a bed; not ground to the wheels)
 	b.collision_mask = 1 | 2 | 4
 	if Combat.current:
 		Combat.current._debris.erase(b)

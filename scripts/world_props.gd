@@ -258,6 +258,8 @@ func _load_props() -> void:
 		var model := _models[k]
 		if model.kind == "rock" or model.kind == "cliff":
 			y -= 0.25 * s # bed them in so slopes don't show their undersides
+			if terrain.start_ease(data[o], data[o + 2]) > 0.6:
+				y -= 1.4 * s # (the start's level ground: its stones sunk nearly flush with it)
 		if model.kind == "rock":
 			# On a steep face the ground falls away under one side: sit it on the low side, its
 			# uphill side buried in the slope, not hanging off the cliff.
@@ -273,8 +275,68 @@ func _load_props() -> void:
 		if not _grid.has(cell):
 			_grid[cell] = []
 		(_grid[cell] as Array).append(i)
+	_add_grove()
 	for m in _models:
 		_max_near = maxf(_max_near, m.near)
+
+
+## Woods round where you begin, for a first cart to cut close to home: GROVE trees in clumps between
+## GROVE_R.x and GROVE_R.y m of the spawn, off the roads and out of the water, the yard by the workshop
+## left clear. Seeded, after the baked props, so a felled one's index (in the save) stays its own.
+const GROVE := 260
+const GROVE_R := Vector2(26.0, 140.0)
+
+
+func _add_grove() -> void:
+	var trees: Array[int] = []
+	for k in _models.size():
+		if _models[k].kind == "tree":
+			trees.append(k)
+	var sp: Variant = terrain.get("spawn")
+	if trees.is_empty() or sp == null:
+		return
+	var at := (sp as Transform3D).origin
+	var yard := at + (sp as Transform3D).basis.x * 4.5 # (between your cart and the workshop)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90210
+	var clumps: Array[Vector2] = []
+	for k in 22:
+		var a := rng.randf() * TAU
+		var r := lerpf(GROVE_R.x + 8.0, GROVE_R.y - 10.0, pow(rng.randf(), 1.6)) # (more of them near)
+		clumps.append(Vector2(at.x, at.z) + Vector2(cos(a), sin(a)) * r)
+	var put := 0
+	for tries in GROVE * 8:
+		if put >= GROVE:
+			break
+		var c := clumps[tries % clumps.size()]
+		var q := c + Vector2(rng.randfn(0.0, 9.0), rng.randfn(0.0, 9.0))
+		var k := trees[rng.randi() % trees.size()]
+		var s := rng.randf_range(0.75, 1.15)
+		var yaw := rng.randf() * TAU
+		var d := q.distance_to(Vector2(at.x, at.z))
+		if d < GROVE_R.x or d > GROVE_R.y or q.distance_to(Vector2(yard.x, yard.z)) < 28.0: # (a felled one's billets not landing in the workshop's yard)
+			continue
+		if terrain.is_water(q.x, q.y) or float(terrain.ground_at(q.x, q.y).road) > 0.15:
+			continue
+		var ahead := Vector2(-(sp as Transform3D).basis.z.x, -(sp as Transform3D).basis.z.z).normalized()
+		var rel := q - Vector2(at.x, at.z)
+		if rel.dot(ahead) > 0.0 and absf(rel.cross(ahead)) < 12.0: # (the way out ahead of where you begin left open)
+			continue
+		var near := false
+		for j in range(_xf.size() - put, _xf.size()):
+			if Vector2(_xf[j].origin.x, _xf[j].origin.z).distance_to(q) < 5.0: # (room for a cart between them)
+				near = true
+				break
+		if near:
+			continue
+		_xf.append(Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), Vector3(q.x, terrain.height_at(q.x, q.y) - 0.1, q.y)))
+		_kind.append(k)
+		_tint.append(rng.randf())
+		var cell := Vector2i(floori(q.x / CELL), floori(q.y / CELL))
+		if not _grid.has(cell):
+			_grid[cell] = []
+		(_grid[cell] as Array).append(_xf.size() - 1)
+		put += 1
 
 
 func _build_far() -> void:
@@ -538,6 +600,19 @@ func prop_near(p: Vector2, reach: float, kinds: Array) -> int:
 					best_gap = gap
 					best = i
 	return best
+
+
+## How many standing trees have their trunk within `r` m of a ground point (`but` not counted).
+func crowd(p: Vector2, r: float, but := -1) -> int:
+	var n := 0
+	var k := int(ceil(r / CELL))
+	var c := Vector2i(floori(p.x / CELL), floori(p.y / CELL))
+	for dz in range(-k, k + 1):
+		for dx in range(-k, k + 1):
+			for i: int in _grid.get(c + Vector2i(dx, dz), []):
+				if i != but and not cut.has(i) and _models[_kind[i]].kind == "tree" and p.distance_to(Vector2(_xf[i].origin.x, _xf[i].origin.z)) < r:
+					n += 1
+	return n
 
 
 ## A prop's kind, base, radius (a trunk's, a log's), height, and a log's axis and length.

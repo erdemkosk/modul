@@ -243,22 +243,33 @@ func _hold_off(c: Vector3) -> void:
 	var props := Timber.props_of(machine)
 	if props == null:
 		return
-	var i := props.prop_near(Vector2(c.x, c.z), BLADE_R + 0.6, ["tree"])
+	var i := props.prop_near(Vector2(c.x, c.z), BLADE_R + 0.6, ["tree", "log"])
 	if i < 0:
 		return
 	var info := props.prop_info(i)
 	var base: Vector3 = info.origin
-	if c.y < base.y - 0.6 or c.y > base.y + 3.0:
+	var log := str(info.kind) == "log" # (a log lying: held off its length, not climbed onto)
+	if c.y < base.y - (1.0 if log else 0.6) or c.y > base.y + (float(info.radius) + 0.6 if log else 3.0):
 		return
 	var r := float(info.radius)
-	var need := CUT_BASE + CUT_PER_M * r
+	var need := CUT_BASE + CUT_PER_M * r * (0.7 if log else 1.0)
 	var depth := clampf(float(_progress.get(i, 0.0)) / need, 0.0, 1.0) * r * 2.0
-	var d := Vector3(c.x - base.x, 0.0, c.z - base.z)
+	var near := base
+	if log:
+		var ax: Vector3 = info.axis
+		var half := Vector3(ax.x, 0.0, ax.z) * float(info.length) * 0.5
+		var q := Geometry3D.get_closest_point_to_segment(Vector3(c.x, base.y, c.z), base - half, base + half)
+		near = Vector3(q.x, base.y, q.z)
+	var d := Vector3(c.x - near.x, 0.0, c.z - near.z)
 	var dist := d.length()
 	var keep := r + BLADE_R * 0.92 - depth # (the blade's rim at the kerf's bottom)
 	if dist >= keep or dist < 0.01:
 		return
-	var out := d / dist
+	# straight back along the machine, not out from the trunk: pushed out round a thin trunk the blade
+	# slid off its side and the machine ran into the tree
+	var back := machine.global_basis.z
+	back.y = 0.0
+	var out := back.normalized() if back.length() > 0.1 else d / dist
 	var into := -machine.linear_velocity.dot(out)
 	var f := out * ((keep - dist) * 60.0 + maxf(into, 0.0) * 8.0) * machine.total_mass # (the wood stops it)
 	machine.apply_force(f, c - machine.global_position)
