@@ -432,6 +432,13 @@ func rebuild() -> void:
 			_:
 				_add_shape(ext - Vector3.ONE * 0.01, xf.origin)
 	_cur = -1
+	# what the mouse works (picked on the bottom panel: kept on the part's row): a saw from the start,
+	# a crane only if there's nothing else to work
+	for t in tools:
+		t.armed = bool(design[t.index].get("sel", true))
+	for h in hoists:
+		if h.kind == "crane":
+			h.armed = bool(design[h.index].get("sel", tools.is_empty() and guns.is_empty()))
 	_sections()
 	if total_mass <= 0.0:
 		return
@@ -1769,6 +1776,19 @@ func _moving_blow(state: PhysicsDirectBodyState3D, c: int) -> void:
 
 ## The cranes and winches on `code` (Y a crane with no key of its own, N a winch): hooked on or let
 ## go. What they did, in words ("" if none answers to it).
+## What the number keys pick, in order: the guns, then the saws, then the cranes (Game, DriveHud).
+func controls() -> Array:
+	var out: Array = []
+	out.append_array(guns)
+	for t in tools:
+		if t.kind == "saw":
+			out.append(t)
+	for h in hoists:
+		if h.kind == "crane":
+			out.append(h)
+	return out
+
+
 ## The tools on `code` (R for a saw with no key of its own) toggled: what's said, "" if none answers.
 func tool_key(code: int) -> String:
 	var said := ""

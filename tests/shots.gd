@@ -463,12 +463,18 @@ func _wood_steps() -> Array:
 			_m.tool_key(KEY_R)
 			_m.brake = 0.0],
 		[2.6, func(_s: float) -> void:
+			_m.aim_point = Vector3(_st.base) + Vector3.UP * 0.9 # (the saw's arm up to the cross: cut a little up the trunk)
 			_m.throttle = 0.3
+			var to := Vector3(_st.base) - _m.global_position
+			_m.steer = clampf(-(_m.global_basis * Vector3.FORWARD).cross(Vector3(to.x, 0.0, to.z).normalized()).y * 2.0, -1.0, 1.0)
 			var d: Vector3 = _st.d
 			_look_at(Vector3(_st.base), -0.12, 9.0)
 			(_g.get("cam") as OrbitCamera).yaw += 1.0, func() -> void: _shoot("sawing")],
 		[8.0, func(_s: float) -> void:
+			_m.aim_point = Vector3(_st.base) + Vector3.UP * 0.9
 			_m.throttle = 0.3 if not Timber.props_of(_g).cut.has(int(_st.tree)) else 0.0
+			var to := Vector3(_st.base) - _m.global_position
+			_m.steer = clampf(-(_m.global_basis * Vector3.FORWARD).cross(Vector3(to.x, 0.0, to.z).normalized()).y * 2.0, -1.0, 1.0)
 			_look_at(Vector3(_st.base), -0.12, 9.0), _none],
 		[1.4, func(_s: float) -> void:
 			_m.throttle = 0.0
@@ -583,6 +589,8 @@ func _wood_steps() -> Array:
 
 ## The cart put beside a billet lying (not one on its bed), its seat by it: `_st.b`.
 func _next_billet(keep_place := false) -> void:
+	for h in _m.hoists: # (the crane picked: it follows the aim)
+		h.armed = true
 	for n: Node in get_nodes_in_group(Timber.GROUP):
 		if not Workshop._riding(n as Node3D, _m) and n != _st.get("b"):
 			_st.b = n

@@ -330,18 +330,44 @@ func _joint_chip(jt: MachineJoint) -> PanelContainer:
 	return plate
 
 
+## A saw's or a crane's plate (picked with its number, as a gun is): what it is, what it's doing.
+func _tool_chip(c: Variant, i: int) -> PanelContainer:
+	var plate := _flip_chip(null)
+	plate.set_meta("flipper", null)
+	plate.set_meta("ctl", c)
+	var row := plate.get_child(0)
+	((row.get_child(0) as PanelContainer).get_child(0) as Label).text = str(i + 1) if i < 9 else ""
+	var id := str(m_id(c))
+	if ResourceLoader.exists("res://assets/parts/icons/%s.png" % id):
+		(row.get_child(1) as TextureRect).texture = load("res://assets/parts/icons/%s.png" % id)
+	((row.get_child(2) as VBoxContainer).get_child(0) as Label).text = Ui.upper(str(Parts.def(id).name))
+	plate.set_meta("key", ((row.get_child(0) as PanelContainer).get_theme_stylebox("panel")))
+	return plate
+
+
+## The part id of a saw or a crane.
+static func m_id(c: Variant) -> String:
+	return str(c.machine.design[c.index].id) if c.index < c.machine.design.size() else ""
+
+
 func _weapons(m: Machine) -> void:
 	var shown := m.joints.slice(0, 4) # (four at most: more and they'd crowd the guns)
-	var stale := _chips.get_child_count() != m.guns.size() + m.flippers.size() + shown.size()
+	var ctl := m.controls().slice(m.guns.size()) # (the saws and cranes, numbered after the guns)
+	var n0 := m.guns.size() + ctl.size()
+	var stale := _chips.get_child_count() != n0 + m.flippers.size() + shown.size()
 	if not stale:
 		for i in m.guns.size():
 			if _chips.get_child(i).get_meta("gun") != m.guns[i]:
 				stale = true
+		for k in ctl.size():
+			var c := _chips.get_child(m.guns.size() + k)
+			if not c.has_meta("ctl") or c.get_meta("ctl") != ctl[k]:
+				stale = true
 		for k in m.flippers.size():
-			if _chips.get_child(m.guns.size() + k).get_meta("flipper") != m.flippers[k]:
+			if _chips.get_child(n0 + k).get_meta("flipper") != m.flippers[k]:
 				stale = true
 		for k in shown.size():
-			var c := _chips.get_child(m.guns.size() + m.flippers.size() + k)
+			var c := _chips.get_child(n0 + m.flippers.size() + k)
 			if not c.has_meta("joint") or c.get_meta("joint") != shown[k]:
 				stale = true
 	if stale:
@@ -350,13 +376,45 @@ func _weapons(m: Machine) -> void:
 			c.queue_free()
 		for i in m.guns.size():
 			_chips.add_child(_chip(m.guns[i], i))
+		for k in ctl.size():
+			_chips.add_child(_tool_chip(ctl[k], m.guns.size() + k))
 		for f in m.flippers:
 			_chips.add_child(_flip_chip(f))
 		for jt in shown:
 			_chips.add_child(_joint_chip(jt))
+	for k in ctl.size():
+		var c: Variant = ctl[k]
+		var plate := _chips.get_child(m.guns.size() + k) as PanelContainer
+		var st := plate.get_meta("state") as Label
+		var frac := 0.0
+		var lit := bool(c.armed)
+		if c is MachineTool:
+			var t := c as MachineTool
+			frac = t.spin
+			st.text = ("KESİYOR %%%d" % roundi(t.cut_frac() * 100.0)) if t.cutting >= 0 else ("DÖNÜYOR" if t.spin > 0.9 else ("YAVAŞLIYOR" if t.spin > 0.02 and not t.held else ("HIZLANIYOR" if t.spin > 0.02 else "SOL BASILI: ÇALIŞIR")))
+		else:
+			var h := c as MachineHoist
+			var b := h.hooked()
+			frac = 1.0 if b else 0.0
+			st.text = ("KANCADA: %s  ·  Q BIRAKIR" % Ui.upper(MachineHoist.what_is(b))) if b else "SOL: İNDİR  ·  SAĞ: KALDIR"
+		if not lit:
+			st.text = "%d İLE SEÇ" % (m.guns.size() + k + 1)
+		if not m.powered:
+			st.text = "AKÜ BİTTİ"
+		st.add_theme_color_override("font_color", (Ui.GOOD if frac > 0.5 else Ui.ACCENT) if lit and m.powered else Ui.DIM)
+		plate.set_meta("frac", frac)
+		(plate.get_meta("bar") as Control).queue_redraw()
+		var sb := plate.get_theme_stylebox("panel") as StyleBoxFlat
+		sb.border_color = Ui.ACCENT if lit else Ui.EDGE
+		sb.set_border_width_all(2 if lit else 1)
+		sb.bg_color = Color(0.11, 0.075, 0.04, 0.84) if lit else Ui.GLASS
+		var ks := plate.get_meta("key") as StyleBoxFlat
+		if ks:
+			ks.bg_color = Ui.ACCENT if lit else Color(0.45, 0.44, 0.42)
+		plate.modulate.a = 1.0 if lit else 0.6
 	for k in shown.size():
 		var jt: MachineJoint = shown[k]
-		var plate := _chips.get_child(m.guns.size() + m.flippers.size() + k) as PanelContainer
+		var plate := _chips.get_child(n0 + m.flippers.size() + k) as PanelContainer
 		var st := plate.get_meta("state") as Label
 		var frac := 0.0
 		match jt.kind:
@@ -379,7 +437,7 @@ func _weapons(m: Machine) -> void:
 		(plate.get_meta("bar") as Control).queue_redraw()
 	for k in m.flippers.size():
 		var f := m.flippers[k]
-		var plate := _chips.get_child(m.guns.size() + k) as PanelContainer
+		var plate := _chips.get_child(n0 + k) as PanelContainer
 		var st := plate.get_meta("state") as Label
 		var up := f._t >= 0.0
 		st.text = "FIRLATTI" if up else (("HAZIR  ·  %s" % (OS.get_keycode_string(f.key) if f.key != 0 else "F")) if f.ready() else ("HAVA DOLUYOR" if f.condition > 0.25 else "BOZUK"))

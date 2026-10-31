@@ -169,7 +169,8 @@ func _build_water() -> void:
 
 ## The paved roads (world.json road_info kind "asphalt"): a ribbon of worn tarmac laid on the
 ## ground (the ground under it is hard, never mud: the builder marks it rock), crumbling darker at
-## the edges, with a faded dashed centre line. Over a bridge the bridge's own deck takes over.
+## the edges, with a faded dashed centre line. Over a bridge the bridge's own deck takes over. In the
+## wood age (the valley's first: Inventory.age) it's a packed earth road instead, no line on it.
 func _build_asphalt() -> void:
 	var info: Dictionary = terrain.meta.get("road_info", {})
 	var bridges: Array = terrain.meta.get("bridges", [])
@@ -217,6 +218,8 @@ func _build_asphalt() -> void:
 	mi.material_override = _asphalt_material()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	if _earth_roads():
+		return
 	lines.generate_normals()
 	var li := MeshInstance3D.new()
 	li.name = "RoadLines"
@@ -276,10 +279,18 @@ func _ground_vert(p: Vector2, lift := 0.045) -> Vector3:
 	return Vector3(p.x, terrain.height_at(p.x, p.y) + lift, p.y)
 
 
+## The wood age's roads are earth, not tarmac.
+static func _earth_roads() -> bool:
+	if Mode.current != "valley":
+		return false
+	Inventory.count("") # (read in, if it isn't yet)
+	return Inventory.age() == 1
+
+
 func _asphalt_material() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
-	m.albedo_color = Color(0.25, 0.25, 0.26)
+	m.albedo_color = Color(0.25, 0.25, 0.26) if not _earth_roads() else Color(0.4, 0.32, 0.23)
 	m.roughness = 0.93
 	var noise := FastNoiseLite.new()
 	noise.frequency = 0.08

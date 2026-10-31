@@ -182,6 +182,38 @@ static func workshop() -> Array:
 	return out
 
 
+## The wood age's workshop (Workshop, while the valley's in the wood age): a long timber wagon on six
+## big iron-tyred wheels, the driver's seat up front, a plank shed on the bed (the engine and the
+## battery inside it, its roof planked over, the wooden crane on top), a railed flatbed behind, a
+## winch under its tail, two lamps. ~3.4 t; its wheels carry 7.2 t.
+static func workshop_wood() -> Array:
+	var out: Array = []
+	for x in range(-2, 4):
+		for z in range(-5, 5):
+			out.append(["wood_frame", x, 0, z, 0])
+	out.append_array([["wood_cab", 0, 1, -5, 0], ["light", 3, 1, -5, 0], ["light", -2, 1, -5, 0],
+		["engine_l", -1, 1, -2, 0], ["battery", 1, 1, -2, 0]])
+	for z: int in [-5, -1, 2]:
+		out.append(["wood_wheel_l", 4, -1, z, 0])
+		out.append(["wood_wheel_l", -4, -1, z, 2])
+	for y in range(1, 3): # (the shed: plank walls round the engine)
+		for x in range(-2, 4):
+			out.append(["wood_plate", x, y, -3, 0])
+			out.append(["wood_plate", x, y, 1, 2])
+		for z in range(-2, 1):
+			out.append(["wood_plate", -2, y, z, 1])
+			out.append(["wood_plate", 3, y, z, 3])
+	for x in range(-2, 4):
+		for z in range(-3, 2):
+			out.append(["wood_plate", x, 3, z, 12]) # (its roof, planks up)
+	out.append(["wood_crane", 0, 4, -1, 0])
+	for z in range(2, 5): # (the flatbed's rails)
+		out.append(["wood_rail", -2, 1, z, 1])
+		out.append(["wood_rail", 3, 1, z, 1])
+	out.append(["winch", 0, -1, 3, 0])
+	return out
+
+
 ## The valley's giants (Colossus): `kind` "digger" (KAZICI: a quarry's excavator gone wild, tracks
 ## and a spinning arm, a cannon and a minigun on turrets) or "crawler" (KARA PALET: lower and longer,
 ## rockets). Their cab lies deep in armour: they're taken apart, not shot down.

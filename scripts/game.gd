@@ -42,9 +42,8 @@ var place_name := "" ## (the HUD's top left)
 var kills := 0
 var player_input := true ## (tests, a demo) false: nothing here drives or aims your machine
 var disarmed: Array[int] = [] ## your guns (by their order) turned off: the rest fire together
-const CLICK := 0.25 ## s: a press shorter than this is a click
-var _lmb_t := -1.0 ## (how long the left button's been down; -1: up)
-var _lmb_on := false
+var aim_body: Object ## (what the cross is on: aim_point's)
+
 var _hud: Label
 var _drive_hud: DriveHud
 var pause: PauseMenu
@@ -344,6 +343,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key.keycode == KEY_C:
 			say("Kamera: " + cam.cycle_mode())
 			return
+		if key.physical_keycode == KEY_Q and player_input: # (the picked cranes let go)
+			for h in machine.hoists:
+				if h.kind == "crane" and h.armed:
+					var said := h.release()
+					if said != "":
+						say(said)
+			return
 		if workshop and key.physical_keycode == KEY_V:
 			workshop.swap()
 			return
@@ -384,9 +390,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-## Turns gun `i` on or off (the others stay as they are); -1 turns them all on.
+## Picks control `i` (Machine.controls(): the guns, the saws, the cranes) or puts it down; the others
+## stay as they are. -1: every gun on.
 func toggle_gun(i: int) -> void:
 	var n := machine.guns.size()
+	var ctl := machine.controls()
+	if i >= n and i < ctl.size(): # (a saw or a crane: picked, it follows the cross and the mouse works it)
+		var c: Variant = ctl[i]
+		var row: Dictionary = machine.design[c.index]
+		row.sel = not bool(c.armed)
+		c.armed = row.sel
+		var what := "Testere" if c is MachineTool else "Vinç"
+		say("%d · %s %s" % [i + 1, what, "seçili" if c.armed else "bırakıldı"])
+		return
 	if n == 0:
 		say("Silah yok")
 		return
@@ -480,55 +496,33 @@ func _physics_process(dt: float) -> void:
 			_respawn()
 	else:
 		_recover_t = 0.0
-	var lmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	var crane := crane_on_mouse()
-	cam.no_zoom = crane != null
-	if crane:
-		_crane_mouse(crane, lmb, Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, dt)
-		machine.firing = false
-	else:
-		_lmb_t = -1.0
-		machine.firing = lmb
+	# the mouse works what's picked: the guns fire, the saws run, the cranes' hooks go down (left) and
+	# come up (right)
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var lmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and captured
+	var rmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and captured
+	machine.firing = lmb
+	for t in machine.tools:
+		t.held = lmb
+	var crane := false
+	for h in machine.hoists:
+		h.lower_held = lmb and h.armed
+		h.raise_held = rmb and h.armed
+		crane = crane or (h.kind == "crane" and h.armed)
+	cam.no_zoom = crane # (the right button's the crane's)
 	machine.keyed = true
 	for g in machine.guns:
 		g.key_down = g.key != 0 and Input.is_physical_key_pressed(g.key)
 
 
-## Your crane, when the mouse works it: there's one and no gun's on (a gun on, the left button fires
-## and the crane's on Y).
-func crane_on_mouse() -> MachineHoist:
+## Your picked crane (the first), if one's picked: what the cross shows the hook for.
+func picked_crane() -> MachineHoist:
 	if not is_instance_valid(machine) or builder.active:
 		return null
-	for g in machine.guns:
-		if g.armed:
-			return null
 	for h in machine.hoists:
-		if h.kind == "crane":
+		if h.kind == "crane" and h.armed:
 			return h
 	return null
-
-
-## The left button on the crane: a click takes hold or sets down and lets go; held, the rope pays out.
-## The right held winds it in.
-func _crane_mouse(h: MachineHoist, lmb: bool, rmb: bool, dt: float) -> void:
-	if lmb:
-		_lmb_t = 0.0 if _lmb_t < 0.0 else _lmb_t + dt
-		if _lmb_t >= CLICK:
-			h.work_drum("pay")
-	elif _lmb_t >= 0.0:
-		if _lmb_t < CLICK:
-			var said := h.toggle()
-			if said != "":
-				say(said)
-		else:
-			h.work_drum("")
-		_lmb_t = -1.0
-	if rmb:
-		h.work_drum("haul")
-		_lmb_on = true
-	elif _lmb_on:
-		_lmb_on = false
-		h.work_drum("")
 
 
 ## Where the middle of the screen looks: the first thing along the camera's line (not your own machine).
@@ -539,6 +533,7 @@ func aim_point() -> Vector3:
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 600.0, 1 | 2 | 4)
 	q.exclude = [machine.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	aim_body = hit.collider if not hit.is_empty() else null
 	return hit.position if not hit.is_empty() else from + dir * 600.0
 
 

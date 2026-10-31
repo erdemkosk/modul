@@ -83,6 +83,9 @@ const DEFS := {
 	"wood_crane": {"name": "Ahşap vinç", "size": Vector3i(2, 1, 2), "mass": 85.0, "kind": "crane", "hp": 90.0, "lift": 450.0,
 		"wood": 6, "burns": true, "reach": Vector2(0.5, 1.7), "tip": Vector3(0.0, 1.45, -1.8), "root": Vector3(0.0, 1.25, -0.1), "hang": 1.1, "wind": 1.4,
 		"about": "Kısa kollu döner vinç (6 odun) (Y): baktığın yere döner. Kanca kütüğün üstündeyken Y: tutar, kaldırır; kasanın üstüne çevir, Y: bırakır. 450 kg kaldırır."},
+	"wood_wheel_l": {"name": "Araba tekerleği", "size": Vector3i(2, 3, 3), "mass": 140.0, "kind": "wheel", "hp": 120.0,
+		"radius": 0.62, "width": 0.2, "rated": 1200.0, "travel": 0.06, "lugs": 0.0, "iron": true, "wood": 8, "burns": true,
+		"about": "Büyük, on altı parmaklı, demir çemberli araba tekerleği (8 odun): 1200 kg taşır. Yaysız: sarsar; geniş olduğu için çamurda küçüğünden az batar."},
 	"wood_rail": {"name": "Parmaklık", "size": Vector3i(1, 2, 1), "mass": 9.0, "kind": "rail", "hp": 35.0, "wood": 1, "burns": true,
 		"about": "Bir metre boyunda tahta parmaklık (1 odun): kasanın kenarına diz, üstüne koyduğun kütükler düşmesin."},
 	"wood_frame": {"name": "Ahşap kafes", "size": Vector3i(1, 1, 1), "mass": 34.0, "kind": "block", "hp": 45.0, "wood": 2, "burns": true,
@@ -108,7 +111,7 @@ const DEFS := {
 	"rockets": {"name": "Roketatar", "size": Vector3i(2, 2, 2), "mass": 240.0, "kind": "weapon", "hp": 160.0,
 		"weapon": "rockets", "about": "Altı tüplü: bir salvoda altı roket, sonra tüp tüp dolar (9 sn). Güdümsüz; motoru yanarken hızlanır, sonra düşer."},
 }
-const ORDER := ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel", "wood_crane", "ballista", "catapult", "oilpot", "pitch", "frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
+const ORDER := ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel", "wood_wheel_l", "wood_crane", "ballista", "catapult", "oilpot", "pitch", "frame", "armor", "wedge", "plate", "spike", "wheel_s", "wheel_l", "track", "engine_s", "engine",
 	"engine_l", "battery", "light", "minigun", "cannon", "rockets", "flamer", "flipper", "hinge", "rotor", "piston", "steer", "turret", "ammo", "barrel", "crane", "winch", "saw", "cab", "wood_cab"]
 ## The cab's own small battery (kWh), there without a battery part.
 const CAB_KWH := 0.3
@@ -127,7 +130,7 @@ static func is_cab(id: String) -> bool:
 
 ## The valley's parts come to hand a few at a time: one's shown in the builder once this much wood
 ## has been brought home all told (Inventory.delivered); what isn't here is there from the start.
-const OPENS := {"wood_wedge": 10, "steer": 10, "pitch": 40, "ballista": 25, "oilpot": 40, "catapult": 70}
+const OPENS := {"wood_wheel_l": 20, "wood_wedge": 10, "steer": 10, "pitch": 40, "ballista": 25, "oilpot": 40, "catapult": 70}
 
 
 static func hp_of(id: String) -> float:

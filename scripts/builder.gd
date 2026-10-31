@@ -48,7 +48,7 @@ const KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KE
 const KEY_NAMES := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "E", "Z", "X", "C", "F", "H", "N", "U", "I", "O",
 	"J", "P", "G", "Y", "L"]
 ## The cards' groups.
-const GROUPS := [["AHŞAP", ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel"]],
+const GROUPS := [["AHŞAP", ["wood_frame", "wood_plate", "wood_rail", "wood_wedge", "wood_wheel", "wood_wheel_l"]],
 	["YÜK", ["wood_crane", "crane", "winch", "saw"]], ["ORTAÇAĞ", ["ballista", "pitch", "oilpot", "catapult"]],
 	["GÖVDE", ["frame", "armor", "wedge", "plate", "spike"]], ["YÜRÜYEN", ["wheel_s", "wheel_l", "track"]],
 	["GÜÇ", ["engine_s", "engine", "engine_l", "battery", "light"]], ["SİLAH", ["minigun", "cannon", "rockets", "flamer", "ammo", "barrel", "flipper"]],

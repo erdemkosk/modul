@@ -153,15 +153,23 @@ func _physics_process(_d: float) -> bool:
 			m.throttle = 0.25
 			var d: Vector3 = _r.d
 			m.steer = clampf(-(m.global_basis * Vector3.FORWARD).cross(d).y * 2.0, -1.0, 1.0)
+			if not props.cut.has(int(_r.tree)): # (the cross a little up the trunk: the saw's arm lifts the blade to it)
+				m.keyed = true
+				m.aim_point = props.prop_info(int(_r.tree)).origin + Vector3.UP * 0.9
 			if props.cut.has(int(_r.tree)):
-				print("felled in %.1f s" % since)
+				print("felled in %.1f s, the arm up %.2f rad" % [since, m.tools[0].lift])
+				_expect(m.tools[0].lift > 0.3, "the saw's arm lifts the blade to the cross")
 				m.throttle = 0.0
 				m.brake = 1.0
 				_expect(RutStore.cut.has(int(_r.tree)), "a felled tree's kept")
 				_next("fallen")
-			elif since > 20.0:
+			elif _frame % 120 == 0:
+				var c := m.tools[0].blade()
+				var o: Vector3 = props.prop_info(int(_r.tree)).origin
+				print("  blade %.2f m up, %.2f m from the trunk's middle, speed %.2f, cutting %d, spin %.2f" % [c.y - o.y, Vector2(c.x - o.x, c.z - o.z).length(), m.speed, m.tools[0].cutting, m.tools[0].spin])
+			if not props.cut.has(int(_r.tree)) and since > 20.0:
 				var info := props.prop_info(int(_r.tree))
-				var c := m.tools[0].node.global_transform * MachineTool.BLADE
+				var c := m.tools[0].blade()
 				print("(not cut: blade %s, tree base %s, ground there %.2f, machine %s)" % [c, info.origin, float(_g.get("terrain").call("height_at", c.x, c.z)), m.global_position])
 				_expect(false, "the saw cuts through the trunk")
 				return _done()
@@ -193,30 +201,53 @@ func _physics_process(_d: float) -> bool:
 				return false
 			var b: RigidBody3D = _r.b
 			m.aim_point = b.global_position
+			var h: MachineHoist = m.hoists[0]
+			if not _r.has("picked"): # (2: the crane picked on the bottom panel; the saw's 1, picked from the start)
+				_r.picked = true
+				_expect(m.tools[0].armed and not h.armed, "the saw's picked to start with, the crane isn't")
+				_g.call("toggle_gun", 1)
+				_expect(h.armed, "its number picks the crane")
 			if since < 2.5:
 				return false
-			var h: MachineHoist = _g.call("crane_on_mouse")
-			_expect(h != null and h.pick() != null, "the crane's on the mouse, and it shows what it'd take")
-			if h and not _r.has("clicked"):
-				_r.clicked = true # (the first by the mouse: a click)
-				_g.call("_crane_mouse", h, true, false, 0.0)
-				_g.call("_crane_mouse", h, false, false, 0.05)
-				print("click: hooked %s" % (h.hooked() != null))
-			else:
-				print("Y: '%s'" % m.hoist_key(KEY_Y))
+			if not _r.has("mouse"): # (the first by the mouse: the left held, the hook goes down and takes what it touches)
+				_r.mouse = true
+				h.lower_held = true
+				_next("mouse_lower")
+				return false
+			print("Y: '%s'" % m.hoist_key(KEY_Y))
 			_expect(m.hoists[0].hooked() is RigidBody3D, "the crane takes hold of a billet")
 			if m.hoists[0].hooked():
 				_r.b = m.hoists[0].hooked()
+			_next("lift")
+		"mouse_lower":
+			var m := _me()
+			var h: MachineHoist = m.hoists[0]
+			m.aim_point = (_r.b as RigidBody3D).global_position
+			if h.hooked() == null and since < 8.0:
+				return false
+			h.lower_held = false
+			print("left held %.1f s: hooked %s" % [since, MachineHoist.what_is(h.hooked()) if h.hooked() else "nothing"])
+			_expect(h.hooked() is RigidBody3D, "held down, the hook goes down and takes what it touches")
+			if h.hooked():
+				_r.b = h.hooked()
+			h.raise_held = true
+			_next("mouse_raise")
+		"mouse_raise":
+			var m := _me()
+			var h: MachineHoist = m.hoists[0]
+			if since < 2.5:
+				return false
+			h.raise_held = false
+			var b: RigidBody3D = _r.b
+			var up := b.global_position.y - float(_g.get("terrain").call("height_at", b.global_position.x, b.global_position.z))
+			print("right held 2.5 s: %.2f m off the ground" % up)
+			_expect(up > 0.8, "the right held winds it up")
 			_next("lift")
 		"lift":
 			var m := _me()
 			var b: RigidBody3D = _r.b
 			if since < 2.5:
 				m.aim_point = b.global_position + Vector3.UP * 0.5
-				if _frame % 30 == 0:
-					var h := m.hoists[0]
-					print("  rope %.2f / %.2f, tip %s, eye %s, limited %s, powered %s, charge %.2f" % [float(m.design[h.index].get("rope_len", -1.0)),
-						h.tip().distance_to(MachineHoist.eye(b)), h.tip() - m.global_position, MachineHoist.eye(b) - m.global_position, h.limited, m.powered, m.charge_frac()])
 				return false
 			if since < 3.0:
 				_r.lifted = b.global_position.y - float(_g.get("terrain").call("height_at", b.global_position.x, b.global_position.z))
@@ -227,10 +258,10 @@ func _physics_process(_d: float) -> bool:
 				_r.paid = true
 				var h: MachineHoist = m.hoists[0]
 				var l0 := float(m.design[h.index].rope_len)
+				h.lower_held = true
 				for k in 30:
-					_g.call("_crane_mouse", h, true, false, 1.0 / 60.0)
-				h.update(0.2)
-				_g.call("_crane_mouse", h, false, false, 0.0)
+					h.update(1.0 / 60.0)
+				h.lower_held = false
 				var l1 := float(m.design[h.index].rope_len)
 				h.update(0.5)
 				print("held down 0.5 s: rope %.2f -> %.2f, then holds at %.2f" % [l0, l1, float(m.design[h.index].rope_len)])
@@ -338,7 +369,7 @@ func _physics_process(_d: float) -> bool:
 				m.brake = 0.0
 			m.throttle = 0.5
 			if _frame % 120 == 0 and not m.tools.is_empty():
-				var c := m.tools[0].node.global_transform * MachineTool.BLADE
+				var c := m.tools[0].blade()
 				print("  up %s, blade %.2f over the ground, speed %.2f" % [m.global_basis.y, c.y - float(_g.get("terrain").call("height_at", c.x, c.z)), m.speed])
 			if props.cut.has(int(_r.log)):
 				m.throttle = 0.0
@@ -351,7 +382,7 @@ func _physics_process(_d: float) -> bool:
 					_next("ages")
 			elif since > 20.0:
 				var info := props.prop_info(int(_r.log))
-				var c := m.tools[0].node.global_transform * MachineTool.BLADE
+				var c := m.tools[0].blade()
 				print("(the log wasn't reached: machine %s, blade %s; log %s r %.2f len %.1f ground %.2f)" % [m.global_position, c, info.origin,
 					float(info.radius), float(info.length), float(_g.get("terrain").call("height_at", c.x, c.z))])
 				_expect(false, "the saw cuts a log lying")

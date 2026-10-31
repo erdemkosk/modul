@@ -11,6 +11,7 @@ extends Control
 ##                weakening — bigger and in red); and at the top right the machine you last hit, from
 ##                above, each part shaded by what's left of it, the one you just hit flashing
 
+const NAME_RANGE := 70.0 ## m: the other side's named (and pointed to off the screen) only this near
 var game: Node
 var _pain := 0.0
 var _marks: Array[Dictionary] = [] ## {from, t}
@@ -253,6 +254,8 @@ func _draw() -> void:
 	for e in them:
 		var top := e.global_transform * Vector3(e.com.x, e.top_y + 1.0, e.com.z)
 		var dist := me.distance_to(e.global_position)
+		if dist > NAME_RANGE and not (e == _target and _target_t > 0.0):
+			continue # (far off they're seen, not labelled: the valley's not a map of tags)
 		var on_screen := not cam.is_position_behind(top)
 		var s := cam.unproject_position(top) if on_screen else Vector2.ZERO
 		var inside := on_screen and Rect2(Vector2(40, 40), screen - Vector2(80, 80)).has_point(s)

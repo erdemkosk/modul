@@ -31,37 +31,28 @@ func _process(dt: float) -> void:
 	queue_redraw()
 
 
-## The crane on the mouse: what it holds or would take, marked where it is (a hook in a ring: green,
-## a click takes it; orange, held), and under the cross what the buttons do now.
-func _crane(h: MachineHoist, cam: Camera3D, c: Vector2) -> void:
+## The crane picked: the cross itself says what it's over: green brackets round it when what you look
+## at is something the hook can take, orange ones while it holds something; and under it, small, what
+## the buttons do now.
+func _crane(h: MachineHoist, c: Vector2) -> void:
 	var held := h.hooked()
-	var it := held if held else h.pick()
+	var over: Variant = game.get("aim_body")
+	var can := over != null and is_instance_valid(over) and (over as Node) in MachineHoist.liftable(get_tree())
+	var col := Color(1.0, 0.62, 0.25, 0.95) if held else (Color(0.45, 1.0, 0.55, 0.95) if can else Color(1, 1, 1, 0.0))
+	if held or can:
+		var r := 13.0
+		for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+			var corner := c + d * r
+			_line(corner, corner - Vector2(d.x * 6.0, 0.0), col, 2.2)
+			_line(corner, corner - Vector2(0.0, d.y * 6.0), col, 2.2)
 	var font := ThemeDB.fallback_font
-	var line := ""
-	if it and not cam.is_position_behind(MachineHoist.eye(it)):
-		var s := cam.unproject_position(MachineHoist.eye(it))
-		var ring := Color(1.0, 0.62, 0.25, 0.95) if held else Color(0.45, 1.0, 0.55, 0.95)
-		var pulse := 1.0 + 0.08 * sin(Time.get_ticks_msec() * 0.008) if not held else 1.0
-		_arc(s, 17.0 * pulse, 0.0, TAU, ring, 2.2)
-		# the hook: a shank and its curve
-		_line(s + Vector2(0, -9), s + Vector2(0, 2), ring, 2.2)
-		_arc(s + Vector2(-3.5, 2), 3.5, 0.0, PI, ring, 2.2)
-		if not held:
-			_line(c, c.lerp(s, 0.85), Color(ring, 0.35), 1.2) # (from the cross to it)
-		var name := MachineHoist.what_is(it)
-		if name != "":
-			draw_string(font, s + Vector2(22, 5), Ui.upper(name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, ring)
-	if held:
-		line = "sol tık: indir, bırak   ·   sol basılı: indir   ·   sağ basılı: kaldır"
-		if h.limited:
-			line = "AĞIR: aracı devirir, yaklaştır"
-	elif it:
-		line = "sol tık: tut"
-	if line != "":
-		var w := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-		draw_string(font, c + Vector2(-w * 0.5 + 1, 45), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0, 0, 0, 0.6))
-		draw_string(font, c + Vector2(-w * 0.5, 44), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
-			Color(1.0, 0.45, 0.35) if h.limited and held else Color(1, 1, 1, 0.85))
+	var line := "sol basılı: kanca iner, değdiğini tutar" if not held else "%s  ·  sol: indir  ·  sağ: kaldır  ·  Q: bırak" % Ui.upper(MachineHoist.what_is(held))
+	if held and h.limited:
+		line = "AĞIR: aracı devirir, yaklaştır"
+	var w := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	draw_string(font, c + Vector2(-w * 0.5 + 1, 41), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0, 0, 0, 0.55))
+	draw_string(font, c + Vector2(-w * 0.5, 40), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
+		Color(1.0, 0.45, 0.35) if held and h.limited else Color(1, 1, 1, 0.8))
 
 
 ## A line with a dark edge under it, so it reads over sky and mud alike.
@@ -96,9 +87,9 @@ func _draw() -> void:
 	var cam: Camera3D = game.get("cam")
 	if cam == null:
 		return
-	var h: MachineHoist = game.call("crane_on_mouse") if game.has_method("crane_on_mouse") else null
+	var h: MachineHoist = game.call("picked_crane") if game.has_method("picked_crane") else null
 	if h:
-		_crane(h, cam, c)
+		_crane(h, c)
 	for g in m.guns:
 		if g.muzzle == null or not is_instance_valid(g.muzzle):
 			continue

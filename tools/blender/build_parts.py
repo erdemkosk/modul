@@ -88,7 +88,7 @@ PARTS = {"cab": (2, 2, 2), "frame": (1, 1, 1), "armor": (1, 1, 1), "wedge": (1, 
          "plate": (1, 1, 1), "flipper": (2, 1, 3), "hinge": (1, 1, 1), "rotor": (2, 1, 2), "piston": (1, 1, 1),
          "turret": (2, 1, 2), "ammo": (1, 1, 1), "barrel": (1, 1, 1), "crane": (2, 1, 2), "winch": (1, 1, 2),
          "saw": (2, 1, 2), "wood_cab": (2, 2, 2), "wood_crane": (2, 1, 2), "wood_rail": (1, 2, 1), "wood_frame": (1, 1, 1), "wood_plate": (1, 1, 1), "wood_wedge": (1, 1, 1),
-         "steer": (1, 1, 1), "wood_wheel": (1, 2, 2),
+         "steer": (1, 1, 1), "wood_wheel": (1, 2, 2), "wood_wheel_l": (2, 3, 3),
          "ballista": (2, 1, 2), "catapult": (2, 2, 3), "oilpot": (2, 1, 2), "pitch": (1, 1, 1)}
 
 
@@ -1288,16 +1288,16 @@ def build_wood_crane():
     box("PostCap", (0.2, 0.2, 0.05), (0, -0.05, hz + 1.13), "Iron", bev=0.006, grp="Top")
     tip = Vector((0, 1.8, 1.45))
     root = Vector((0, -0.05, 1.28))
-    cyl_between("Jib", tuple(root), tuple(tip + Vector((0, 0.05, 0.02))), 0.06, mat="Wood", segs=10, grp="Top")
-    cyl_between("Brace", (0, 0.04, hz + 0.32), tuple(root.lerp(tip, 0.55) + Vector((0, 0, -0.04))), 0.04, mat="WoodDark",
-                segs=8, grp="Top")
+    cyl_between("JibPole", tuple(root), tuple(tip + Vector((0, 0.05, 0.02))), 0.06, mat="Wood", segs=10, grp="Jib")
+    cyl_between("Brace", tuple(root.lerp(tip, 0.12) + Vector((0, 0, -0.03))), tuple(root.lerp(tip, 0.5) + Vector((0, 0, -0.04))),
+                0.035, mat="WoodDark", segs=8, grp="Jib")
     cyl_between("Stay", (0, -0.05, hz + 1.14), (0, -0.42, hz + 0.32), 0.022, mat="Rope", segs=6, grp="Top")
     for f in (0.2, 0.55, 0.9):
         q = root.lerp(tip, f)
-        cyl(f"Band{f}", 0.068, 0.04, tuple(q), axis=tuple((tip - root).normalized()), segs=10, mat="Iron", grp="Top")
-    cyl("Sheave", 0.06, 0.04, tuple(tip), axis="X", segs=16, mat="Iron", grp="Top")
+        cyl(f"Band{f}", 0.068, 0.04, tuple(q), axis=tuple((tip - root).normalized()), segs=10, mat="Iron", grp="Jib")
+    cyl("Sheave", 0.06, 0.04, tuple(tip), axis="X", segs=16, mat="Iron", grp="Jib")
     for x in (-0.04, 0.04):
-        box(f"Cheek{x}", (0.012, 0.16, 0.14), (x, tip.y, tip.z), "WoodDark", bev=0.003, grp="Top")
+        box(f"Cheek{x}", (0.012, 0.16, 0.14), (x, tip.y, tip.z), "WoodDark", bev=0.003, grp="Jib")
     # the windlass: a drum across the post, a crank each side
     cyl("Drum", 0.07, 0.34, (0, 0.1, hz + 0.42), axis="X", segs=14, mat="WoodPale", grp="Top")
     cyl("Wound", 0.08, 0.24, (0, 0.1, hz + 0.42), axis="X", segs=14, mat="Rope", grp="Top")
@@ -1306,8 +1306,9 @@ def build_wood_crane():
         cyl_between(f"Crank{x}", (x * 0.2, 0.1, hz + 0.42), (x * 0.24, 0.1, hz + 0.42), 0.015, mat="Iron", segs=6, grp="Top")
         cyl_between(f"Arm{x}", (x * 0.24, 0.1, hz + 0.42), (x * 0.24, 0.1, hz + 0.55), 0.014, mat="Iron", segs=6, grp="Top")
         cyl_between(f"Grip{x}", (x * 0.24, 0.1, hz + 0.55), (x * 0.3, 0.1, hz + 0.55), 0.02, mat="WoodPale", segs=6, grp="Top")
-    tube("Rope", [(0, 0.17, hz + 0.45), (0, 0.4, 1.2), (0, tip.y - 0.1, tip.z + 0.04)], 0.009, mat="Rope", nring=6, sub=2,
-         grp="Top")
+    tube("Rope", [tuple(root + Vector((0, 0.05, 0.07))), tuple(root.lerp(tip, 0.5) + Vector((0, 0, 0.07))),
+                  (0, tip.y - 0.1, tip.z + 0.04)], 0.009, mat="Rope", nring=6, sub=2, grp="Jib")
+    cyl_between("RopeDown", (0, 0.17, hz + 0.45), tuple(root + Vector((0, 0.05, 0.07))), 0.009, mat="Rope", segs=6, grp="Top")
     # the weight: a plank box of stones behind the post
     for y in (-0.5, -0.24):
         _rough_beam(f"BoxEnd{y}", (0.5, 0.04, 0.22), (0, y, hz + 0.08), rng, mat="WoodDark", grp="Top")
@@ -1318,6 +1319,7 @@ def build_wood_crane():
         cyl(f"Stone{k}", r, r * 1.4, (rng.uniform(-0.16, 0.16), rng.uniform(-0.45, -0.29), hz + 0.12 + rng.uniform(0, 0.08)),
             axis=(rng.uniform(-1, 1), rng.uniform(-1, 1), 1), segs=7, mat="Stone", grp="Top")
     PIVOTS["Top"] = (0, 0, 0)
+    PIVOTS["Jib"] = tuple(root)  # (Godot 0, 1.28, 0.05: it luffs about X there)
 
 
 def build_wood_rail():
@@ -1412,13 +1414,13 @@ def build_saw():
         _rough_beam(f"Mount{x}", (0.24, 0.3, sz - 0.08), (x, -hy + 0.15, 0), rng, mat="WoodDark")
     bolts("MountBolt", (0, -hy, 0), (0, -1, 0), sx * 0.7, sz * 0.6, grp="Part")
     for x in (-0.16, 0.16):
-        cyl_between(f"Arm{x}", (x, -hy + 0.25, 0.05), (x * 0.4, c.y - 0.05, c.z + 0.11), 0.05, mat="WoodDark", grp="Part")
-    box("Yoke", (0.24, 0.2, 0.06), (0, c.y - 0.05, c.z + 0.11), "Iron", bev=0.01, grp="Part")
-    cyl("Motor", 0.08, 0.16, (0, c.y, c.z + 0.2), segs=20, mat="SteelDark", bev=0.01, grp="Part")
-    cyl("MotorCap", 0.05, 0.03, (0, c.y, c.z + 0.29), segs=16, mat="Steel", grp="Part")
+        cyl_between(f"Arm{x}", (x, -hy + 0.25, 0.05), (x * 0.4, c.y - 0.05, c.z + 0.11), 0.05, mat="WoodDark", grp="Arm")
+    box("Yoke", (0.24, 0.2, 0.06), (0, c.y - 0.05, c.z + 0.11), "Iron", bev=0.01, grp="Arm")
+    cyl("Motor", 0.08, 0.16, (0, c.y, c.z + 0.2), segs=20, mat="SteelDark", bev=0.01, grp="Arm")
+    cyl("MotorCap", 0.05, 0.03, (0, c.y, c.z + 0.29), segs=16, mat="Steel", grp="Arm")
     for x in (-0.05, 0.05):
         tube(f"Hose{x}", [(x, -hy + 0.3, 0.12), (x * 2, 0.3, 0.2), (x, c.y - 0.08, c.z + 0.25)], 0.014, mat="Rubber",
-             nring=6, sub=2, grp="Part")
+             nring=6, sub=2, grp="Arm")
     # the guard: a flat hood over the blade's back half, its rim turned down
     for k in range(12):
         a0 = PI + k * PI / 12
@@ -1426,9 +1428,9 @@ def build_saw():
         am = (a0 + a1) / 2
         r = 0.6
         p = c + Vector((math.cos(am) * r * 0.5, math.sin(am) * r * 0.5, 0.06))
-        box(f"Hood{k}", (r, r * math.sin(PI / 12) * 1.05, 0.012), tuple(p), "Iron", rot=(0, 0, am), grp="Part")
+        box(f"Hood{k}", (r, r * math.sin(PI / 12) * 1.05, 0.012), tuple(p), "Iron", rot=(0, 0, am), grp="Arm")
         q = c + Vector((math.cos(am) * r, math.sin(am) * r, 0.02))
-        box(f"Rim{k}", (0.012, 2 * r * math.sin(PI / 24) * 1.05, 0.08), tuple(q), "Iron", rot=(0, 0, am), grp="Part")
+        box(f"Rim{k}", (0.012, 2 * r * math.sin(PI / 24) * 1.05, 0.08), tuple(q), "Iron", rot=(0, 0, am), grp="Arm")
     # the blade
     cyl("Disc", 0.53, 0.012, tuple(c), segs=48, mat="Blade", grp="Blade")
     cyl("Hub", 0.09, 0.04, tuple(c + Vector((0, 0, 0.015))), segs=20, mat="SteelDark", grp="Blade")
@@ -1441,6 +1443,7 @@ def build_saw():
         p = c + Vector((math.cos(a), math.sin(a), 0)) * 0.545
         box(f"Tooth{k}", (0.05, 0.03, 0.026), tuple(p), "SteelDark", rot=(0, 0, a + 0.5), grp="Blade")
     PIVOTS["Blade"] = tuple(c)
+    PIVOTS["Arm"] = (0, -hy + 0.25, 0.05)  # (Godot 0, 0.05, 0.25: it swings up about X there, the blade kept level)
 
 
 def build_steer():
@@ -1470,30 +1473,35 @@ def build_steer():
     PIVOTS["Top"] = (0, 0, 0)
 
 
-def build_wood_wheel():
+def build_wood_wheel(pid="wood_wheel"):
     """A cart wheel on a timber block: the iron tyre round a rim of felloes, twelve spokes into a turned
-    hub with its iron bands; the block it turns on bolted on at the inner face, an iron strap round it."""
+    hub with its iron bands; the block it turns on bolted on at the inner face, an iron strap round it.
+    wood_wheel_l is the wagon's: bigger, broader, sixteen spokes."""
     import random
     rng = random.Random(3)
-    fx, fy, fz = ext(PARTS["wood_wheel"])
-    r, w = 0.42, 0.12
+    fx, fy, fz = ext(PARTS[pid])
+    big = pid == "wood_wheel_l"
+    r, w = (0.62, 0.2) if big else (0.42, 0.12)
     hub = Vector((fx / 2 - w / 2 - 0.02, 0, 0))
     revolve("Tyre", [(-w / 2, r - 0.025), (-w / 2, r), (w / 2, r), (w / 2, r - 0.025)], 40, ("SteelDark",), axis="X",
             grp="Wheel", smooth=40)
     revolve("Felloe", [(-w * 0.42, r - 0.09), (-w * 0.42, r - 0.025), (w * 0.42, r - 0.025), (w * 0.42, r - 0.09)], 36,
             ("Wood",), axis="X", grp="Wheel", smooth=40)
-    for k in range(12):
-        a = k * 2 * PI / 12 + rng.uniform(-0.02, 0.02)
-        p0 = Vector((0, math.cos(a) * 0.07, math.sin(a) * 0.07))
+    n_sp = 16 if big else 12
+    hr = 0.12 if big else 0.08
+    for k in range(n_sp):
+        a = k * 2 * PI / n_sp + rng.uniform(-0.02, 0.02)
+        p0 = Vector((0, math.cos(a) * (hr - 0.01), math.sin(a) * (hr - 0.01)))
         p1 = Vector((0, math.cos(a) * (r - 0.08), math.sin(a) * (r - 0.08)))
-        cyl_between(f"Spoke{k}", tuple(p0), tuple(p1), 0.018, mat=rng.choice(["Wood", "WoodPale"]), segs=6, grp="Wheel")
-    cyl("Hub", 0.08, w * 1.5, (0, 0, 0), axis="X", segs=16, mat="WoodDark", grp="Wheel")
+        cyl_between(f"Spoke{k}", tuple(p0), tuple(p1), 0.026 if big else 0.018, mat=rng.choice(["Wood", "WoodPale"]), segs=6,
+                    grp="Wheel")
+    cyl("Hub", hr, w * 1.5, (0, 0, 0), axis="X", segs=16, mat="WoodDark", grp="Wheel")
     for x in (-w * 0.6, w * 0.6):
-        cyl(f"Band{x}", 0.085, 0.02, (x, 0, 0), axis="X", segs=16, mat="SteelDark", grp="Wheel")
+        cyl(f"Band{x}", hr + 0.005, 0.02, (x, 0, 0), axis="X", segs=16, mat="SteelDark", grp="Wheel")
     cyl("Cap", 0.04, 0.03, (w * 0.8, 0, 0), axis="X", segs=10, mat="SteelDark", grp="Wheel")
     # the block it turns on
     mx = -fx / 2 + 0.02
-    _rough_beam("Block", (0.16, CELL * 0.8, CELL * 0.6), (mx + 0.08, 0, 0), rng, mat="WoodDark")
+    _rough_beam("Block", (0.16, CELL * (1.6 if big else 0.8), CELL * (1.2 if big else 0.6)), (mx + 0.08, 0, 0), rng, mat="WoodDark")
     box("Strap", (0.17, 0.03, CELL * 0.62), (mx + 0.08, 0.12, 0), "SteelDark", bev=0.003, grp="Part")
     bolts("MountBolt", (mx - 0.005, 0, 0), (-1, 0, 0), CELL * 0.5, CELL * 0.4, grp="Part")
     cyl_between("Axle", (mx + 0.16, 0, 0), (hub.x - w * 0.5, 0, 0), 0.03, mat="SteelDark", segs=10, grp="Part")
@@ -1641,7 +1649,7 @@ BUILDERS = {"cab": build_cab, "frame": build_frame, "armor": build_armor, "wedge
             "turret": build_turret, "ammo": build_ammo, "barrel": build_barrel, "crane": build_crane, "winch": build_winch,
             "saw": build_saw, "wood_cab": build_wood_cab, "wood_crane": build_wood_crane, "wood_rail": build_wood_rail, "wood_frame": build_wood_frame, "wood_plate": build_wood_plate,
             "wood_wedge": build_wood_wedge, "steer": build_steer,
-            "wood_wheel": build_wood_wheel, "ballista": build_ballista,
+            "wood_wheel": build_wood_wheel, "wood_wheel_l": lambda: build_wood_wheel("wood_wheel_l"), "ballista": build_ballista,
             "catapult": build_catapult, "oilpot": build_oilpot, "pitch": build_pitch}
 
 
@@ -1696,7 +1704,7 @@ def main():
             nodes.append(bt.bake_group("Wheel", "Wheel", tuple(hub)))
         if any(o.get("grp") == "Glow" for o in bpy.data.objects):
             nodes.append(bt.bake_group("Glow", "Glow"))
-        for g in ["Road%d" % k for k in range(5)] + ["Sprocket", "Idler", "Belt", "Blade"]:
+        for g in ["Road%d" % k for k in range(5)] + ["Sprocket", "Idler", "Belt", "Blade", "Jib", "Arm"]:
             if any(o.get("grp") == g for o in bpy.data.objects):
                 nodes.append(bt.bake_group(g, g, PIVOTS[g]))
         if any(o.get("grp") == "Turret" for o in bpy.data.objects):

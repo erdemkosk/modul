@@ -19,6 +19,8 @@ const REMAKE := {
 	"WaterPack": [Color(0.7, 0.8, 0.88), 0.3], "Wrap": [Color(0.8, 0.86, 0.9), 0.25],
 	"CamoGreen": [Color(0.34, 0.37, 0.24), 0.95], "CamoDark": [Color(0.34, 0.37, 0.24), 0.95],
 	"CamoBrown": [Color(0.46, 0.41, 0.3), 0.95], "CamoSand": [Color(0.46, 0.41, 0.3), 0.95],
+	# İnşa's timber parts in the valley's own wood tones (WorldProps.BARK, CUT_WOOD): sawn from its trees
+	"Wood": [Color(0.66, 0.5, 0.32), 0.9], "WoodPale": [Color(0.78, 0.63, 0.42), 0.88], "WoodDark": [Color(0.4, 0.27, 0.17), 0.92],
 }
 
 static var _cache := {} ## source material -> painted one (shared between instances)

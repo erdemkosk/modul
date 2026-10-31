@@ -13,12 +13,22 @@ extends RefCounted
 ##              and then, the machine shuddering and the view with it, needles shaken down out of
 ##              the crown, and nearly through, the tree cracks.
 ## What it cuts lies as billets (Timber): a crane (MachineHoist) lifts them onto a bed.
+## On the mouse (picked, `armed`: its number on the bottom panel): it runs while the left button's held
+## (`held`; R latches it on), winding up over a second and running down slowly when let go (sooner in
+## the wood: it drags); its arm lifts the blade (kept level) to the cross's height, from low over the
+## ground up to LIFT, so a trunk's cut where you like. The blade doesn't go into a trunk: the wood
+## stops it, and it goes in only as deep as it's cut.
 
 const BLADE := Vector3(0.0, -0.4, -0.95) ## the blade's middle, in the part's space (low: under the bed, as a feller's is)
 const BLADE_R := 0.55 ## m
 const SAW_KW := 3.0
 const CUT_BASE := 0.6 ## s to cut through the thinnest trunk
 const CUT_PER_M := 7.0 ## s more for each m of trunk radius
+const ARM_PIVOT := Vector3(0.0, 0.05, 0.25) ## where the arm's hinged, in the part's space (the model's node Arm)
+const LIFT := Vector2(-0.05, 1.0) ## rad the arm swings up from where it's built
+const LIFT_RATE := 0.8 ## rad/s
+const SPIN_UP := 0.9 ## of full speed a second, running
+const SPIN_DOWN := 0.22 ## a second, let go (free); the wood drags it down faster
 
 var machine: Machine
 var node: Node3D
@@ -26,7 +36,12 @@ var index := -1
 var kind := "saw"
 var key := 0
 var condition := 1.0
-var on := false
+var on := false ## (R: latched on)
+var held := false ## (the left button, this step)
+var armed := true ## (picked on the bottom panel)
+var lift := 0.0 ## rad the arm's swung up
+var _arm: Node3D
+var _turn := 0.0 ## rad the blade's turned
 var spin := 0.0 ## 0..1 of the blade's speed
 var cutting := -1 ## (the prop the blade's in, or -1)
 var _progress := {} ## prop index -> s cut so far
@@ -48,9 +63,21 @@ static func make(m: Machine, part: Node3D, i: int, id: String) -> MachineTool:
 	t.index = i
 	t.kind = str(Parts.def(id).kind)
 	t._blade = part.find_child("Blade", true, false) as Node3D
+	t._arm = part.find_child("Arm", true, false) as Node3D
 	var p: Dictionary = m.design[i]
 	t.on = bool(p.get("tool_on", false))
+	t.lift = float(p.get("lift", 0.0))
 	return t
+
+
+## The blade's middle in the part's space, the arm swung up `lift` (it stays level).
+func blade_local() -> Vector3:
+	return ARM_PIVOT + Basis(Vector3.RIGHT, lift) * (BLADE - ARM_PIVOT)
+
+
+## The blade's middle (world).
+func blade() -> Vector3:
+	return node.global_transform * blade_local()
 
 
 ## Of what's to cut, how far through (0..1; 0 when it's not cutting).
@@ -77,21 +104,38 @@ func toggle() -> String:
 
 
 func draw_kw() -> float:
-	return SAW_KW * spin if kind == "saw" and on else 0.0
+	return SAW_KW * spin if kind == "saw" and (on or held) else 0.0
 
 
 func update(dt: float) -> void:
 	if not is_instance_valid(node):
 		return
-	var run := on and machine.powered
-	spin = move_toward(spin, 1.0 if run else 0.0, dt * (1.0 if run else 0.5))
+	var run := (on or (held and armed)) and machine.powered
+	var was_cutting := cutting >= 0
+	if run:
+		spin = minf(spin + SPIN_UP * dt * (0.6 if was_cutting else 1.0), 1.0)
+	else:
+		spin = maxf(spin - (SPIN_DOWN + (1.2 if was_cutting else 0.0)) * dt, 0.0) # (it runs down; the wood brakes it)
+	# the arm to the cross's height (picked, yours)
+	if armed and machine.keyed:
+		var l := node.global_transform.affine_inverse() * machine.aim_point
+		var v := BLADE - ARM_PIVOT
+		var a := Vector2(-v.z, v.y) # (along, up)
+		var r := a.length()
+		var want := asin(clampf((l.y - ARM_PIVOT.y) / r, -1.0, 1.0)) - atan2(a.y, a.x)
+		lift = move_toward(lift, clampf(want, LIFT.x, LIFT.y), LIFT_RATE * dt * (1.0 if machine.powered else 0.0))
+		machine.design[index].lift = lift
+	if _arm:
+		_arm.transform = Transform3D(Basis(Vector3.RIGHT, lift), ARM_PIVOT)
+	_turn = wrapf(_turn + spin * 45.0 * dt, 0.0, TAU)
 	if _blade:
-		_blade.rotate_object_local(Vector3.UP, spin * 45.0 * dt)
+		_blade.transform = Transform3D(Basis(Vector3.UP, _turn), blade_local())
 	_sound()
 	cutting = -1
+	var c := blade()
+	_hold_off(c)
 	if spin < 0.5:
 		return
-	var c := node.global_transform * BLADE
 	var bite := spin * maxf(condition, 0.3) # (a worn one cuts slower)
 	_dust_t -= dt
 	var props := Timber.props_of(machine)
@@ -191,6 +235,33 @@ static func _saw_loop(path: String) -> AudioStreamPlayer3D:
 	p.stream = s
 	p.unit_size = 7.0
 	return p
+
+
+## The blade doesn't go into a trunk: a tree within its reach at its height holds the machine off,
+## as far as it's been cut into (the kerf's depth) and no further.
+func _hold_off(c: Vector3) -> void:
+	var props := Timber.props_of(machine)
+	if props == null:
+		return
+	var i := props.prop_near(Vector2(c.x, c.z), BLADE_R + 0.6, ["tree"])
+	if i < 0:
+		return
+	var info := props.prop_info(i)
+	var base: Vector3 = info.origin
+	if c.y < base.y - 0.6 or c.y > base.y + 3.0:
+		return
+	var r := float(info.radius)
+	var need := CUT_BASE + CUT_PER_M * r
+	var depth := clampf(float(_progress.get(i, 0.0)) / need, 0.0, 1.0) * r * 2.0
+	var d := Vector3(c.x - base.x, 0.0, c.z - base.z)
+	var dist := d.length()
+	var keep := r + BLADE_R * 0.92 - depth # (the blade's rim at the kerf's bottom)
+	if dist >= keep or dist < 0.01:
+		return
+	var out := d / dist
+	var into := -machine.linear_velocity.dot(out)
+	var f := out * ((keep - dist) * 60.0 + maxf(into, 0.0) * 8.0) * machine.total_mass # (the wood stops it)
+	machine.apply_force(f, c - machine.global_position)
 
 
 ## What biting into wood at `c` feels like: chips out of the kerf, now and then a spark off the teeth,

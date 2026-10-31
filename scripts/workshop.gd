@@ -66,7 +66,7 @@ func _ready() -> void:
 	name = "Workshop"
 	var at := saved_at(terrain)
 	at.origin.y = float(terrain.call("height_at", at.origin.x, at.origin.z)) + 2.2
-	truck = game.call("_spawn", Designs.workshop(), at, 0)
+	truck = game.call("_spawn", Designs.workshop_wood() if Inventory.age() == 1 else Designs.workshop(), at, 0) # (the age's own)
 	truck.label = "ATÖLYE"
 	truck.invulnerable = true # (the shop itself: knocked about, never broken)
 	truck.ammo_limited = false
