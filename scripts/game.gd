@@ -641,6 +641,9 @@ func _make_hud() -> void:
 	_drive_hud = DriveHud.new()
 	_drive_hud.game = self
 	add_child(_drive_hud)
+	var tiki := Mascot.new() # (TIKI, who drives: its face at the bottom left)
+	tiki.game = self
+	add_child(tiki)
 	var hints := Hints.new() # (the first time at each thing: how it's done)
 	hints.game = self
 	add_child(hints)

@@ -38,7 +38,15 @@ are this project's own.
   now: more parts open as wood comes home (Parts.OPENS), metal ones once their plan's found; its ready
   designs are haulers (KÜTÜKÇÜ, YÜK ARABASI, ÇİFT VİNÇLİ) and the rest once their parts can be had.
   A steering joint turns what's bolted on it with A/D (a wheel on a block on it steers), or with a key
-  of its own while it's held. The screen keeps quiet: the wood in the store, the saw's cut, the way
+  of its own while it's held. The bottom panel numbers your guns, saws and cranes: a number picks one
+  (or puts it down), and what's picked follows the cross and is worked by the mouse, several at once.
+  The saw runs while the left button's held and runs down slowly when let go; its arm lifts the blade
+  to the cross's height (cut a trunk where you like), and the wood holds the blade off as deep as it's
+  cut. The crane slews and luffs its jib to the cross: the left held lets the hook down and it takes
+  hold of what it touches, the right winds it up, Q lets go anywhere (a hook to drag things with too).
+  TIKI drives: a small fuzzy creature in a driving cap sitting in every cab, its face live at the
+  bottom left (blinking, looking where you aim, thrown about by the machine's pull, and hurt, scared,
+  dizzy, focused, straining, amazed, worried or happy by what happens: `mascot.gd`). The screen keeps quiet: the wood in the store, the saw's cut, the way
   to the workshop when it's far; the machine's plate only once it's hurt; short cards, one step at a
   time (drive, fell, load, bring home).
   The valley goes through ages. In the wood age the weapons are the wood age's, made of wood and
@@ -180,5 +188,6 @@ godot --headless --path . -s res://tests/joints_test.gd
 godot --headless --path . -s res://tests/valley_test.gd
 godot --headless --path . -s res://tests/wood_test.gd
 godot --headless --path . -s res://tests/sound_check.gd
+godot --path . --resolution 800x400 -s res://tools/mascot_sheet.gd -- --out=<file>
 godot --path . --resolution 1600x900 -s res://tests/shots.gd -- --out=<folder> [--valley | --tracks | --arena | --polish | --forge | --flip | --sites | --spin | --robots | --worksite | --expedition | --wood]
 ```

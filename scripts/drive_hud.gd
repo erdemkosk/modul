@@ -91,7 +91,7 @@ func _build_machine() -> void:
 	var row := HBoxContainer.new()
 	row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	row.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	row.offset_left = 30
+	row.offset_left = 196 # (right of TIKI's face: Mascot)
 	row.offset_bottom = -26
 	row.add_theme_constant_override("separation", 14)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
