@@ -2,9 +2,11 @@ class_name Building
 extends Node3D
 ## A building, put together out of pieces (BuildingDefs.recipe) that stand on one another.
 ##
-## As a ghost it shows where it would go. As a site its pieces go up bottom first, as fast as the
-## builders work and no faster than the stuff for them has come (`delivered`); a scaffold stands
-## round it till it's done. Done, it does its job (Village reads `def.role`).
+## As a ghost it shows where it would go. As a site it's staked out with string between the stakes,
+## a scaffold goes up round it in decks, and what's brought for it is stacked at its corner (logs,
+## stone). It's built in stages (the footing, the walls, the roof, the fittings), piece by piece:
+## a builder takes a piece's share of the stack (`claim`), carries it to its place (up onto the
+## scaffold for the high ones) and sets it there (`place`). Nothing goes up that nobody carried. Done, it does its job (Village reads `def.role`).
 ##
 ## Every piece knows what it rests on (`supports`, worked out from the pieces under it) and what
 ## it touches (`near`). One gone (burnt through, knocked down), the rest is worked out again from
@@ -48,8 +50,13 @@ class Piece:
 	var center := Vector3.ZERO ## its box's middle, in the piece (a model's mesh may sit off it)
 	var tag := ""
 	var painted := false ## a model's: its own colours, in its vertices
+	var stage := 0 ## 0 the footing, 1 the walls, 2 the roof, 3 the fittings
+	var res := "odun" ## what it's built of, out of the site's stack
+	var unit := 0.0 ## how much of it
 
 const MAX_FLAMES := 6
+const STAGES := ["Temel atılıyor", "Duvarlar örülüyor", "Çatı kaplanıyor", "Son işler"]
+const DECK := 1.8 ## m between the scaffold's decks
 const BUILD_SOUNDS := ["clank_01", "clank_02", "clank_03", "bolt_on_01", "bolt_on_02"]
 
 var kind := ""
@@ -90,9 +97,15 @@ var _pile_shown := -1
 var _scorch_t := 0.0
 
 var _shown := 0 ## pieces put up so far
+var used := {} ## a site's stack: res -> how much of what's come has been taken for pieces
+var claims := {} ## piece index -> the builder carrying it
+var _stack: Node3D
+var _stakes: Node3D
+var _decks: Array[float] = []
 var _scaffold: Node3D
 var _flames: Array[GPUParticles3D] = []
 var _smoke: GPUParticles3D
+var _embers: GPUParticles3D
 var _light: OmniLight3D
 var _sound: AudioStreamPlayer3D
 var _sound_t := 0.0
@@ -120,7 +133,10 @@ func setup(k: String) -> void:
 	add_child(body)
 	for spec in BuildingDefs.recipe(k):
 		_add_piece(spec)
-	pieces.sort_custom(func(a: Piece, b: Piece) -> bool: return a.aabb.position.y < b.aabb.position.y)
+	for p in pieces:
+		p.stage = _stage_of(p)
+	pieces.sort_custom(func(a: Piece, b: Piece) -> bool: return a.stage * 1000.0 + a.aabb.position.y < b.stage * 1000.0 + b.aabb.position.y)
+	_share_cost()
 	for p in pieces:
 		body.add_child(p.shape)
 		add_child(p.mesh)
@@ -207,6 +223,28 @@ func _add_piece(spec: Dictionary) -> void:
 	pieces.append(p)
 
 
+## Which stage of the building a piece goes up in.
+static func _stage_of(p: Piece) -> int:
+	if p.tag in ["plinth", "found", "path"] or (p.stuff == "plank" and p.tag == "" and p.aabb.end.y < 0.6 and p.aabb.size.x > 2.0):
+		return 0
+	if p.tag in ["chimney", "chimneytop"] or p.stuff == "log" or (p.stuff == "dark" and p.tag == "") or p.stuff == "stone":
+		return 1
+	if p.stuff in ["shingle", "thatch"] or p.tag in ["barge", "finial"]:
+		return 2
+	return 3
+
+
+## Each piece's share of what the building costs, by what it's made of: stone of the stone if the
+## building takes any, the rest of the wood.
+func _share_cost() -> void:
+	var counts := {}
+	for p in pieces:
+		p.res = "tas" if p.stuff == "stone" and cost.has("tas") else ("odun" if cost.has("odun") else str(cost.keys()[0]) if not cost.is_empty() else "odun")
+		counts[p.res] = int(counts.get(p.res, 0)) + 1
+	for p in pieces:
+		p.unit = float(cost.get(p.res, 0)) / maxf(float(counts[p.res]), 1.0)
+
+
 ## What rests on what, and what touches what.
 func _link() -> void:
 	for j in pieces.size():
@@ -251,6 +289,11 @@ static func material(stuff: String) -> Material:
 				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 				m.no_depth_test = false
+			"plan":
+				m.albedo_color = Color(0.8, 0.88, 1.0, 0.055)
+				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				m.cull_mode = BaseMaterial3D.CULL_DISABLED
 			"char":
 				m.albedo_color = Color(0.07, 0.06, 0.05)
 				m.roughness = 1.0
@@ -312,8 +355,13 @@ func begin() -> void:
 	for p in pieces:
 		p.mesh.visible = false
 		p.mesh.material_override = _look(p)
-		p.mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		p.mesh.cast_shadow = _shadow()
+	used = {}
+	for r: String in cost:
+		used[r] = 0.0
+	_make_stakes()
 	_make_scaffold()
+	_update_stack()
 	_sound = AudioStreamPlayer3D.new()
 	_sound.unit_size = 14.0
 	_sound.volume_db = -6.0
@@ -327,49 +375,250 @@ func complete_now() -> void:
 		begin()
 	for r: String in cost:
 		delivered[r] = cost[r]
-	work = float(def.time)
-	_raise()
+		used[r] = float(cost[r])
+	for p in pieces:
+		if not p.built:
+			_put_up(p, false)
+	_shown = pieces.size()
 	_finish()
+
+
+## A site as it was saved: the stuff that had come, the pieces that were up.
+func restore_site(got: Dictionary, built: PackedByteArray) -> void:
+	for r: String in got:
+		if delivered.has(r):
+			delivered[r] = int(got[r])
+	for k in mini(pieces.size(), built.size()):
+		if built[k] == 1:
+			_put_up(pieces[k], false)
+			used[pieces[k].res] = float(used.get(pieces[k].res, 0.0)) + pieces[k].unit
+			_shown += 1
+	_update_stack()
+	if _shown >= pieces.size():
+		_finish()
+
+
+## Stakes at its corners and a string between them, where its walls will go.
+func _make_stakes() -> void:
+	_stakes = Node3D.new()
+	add_child(_stakes)
+	var sz: Vector2 = def.size
+	var wood := material("wood")
+	var corners := [Vector3(-sz.x, 0, -sz.y) * 0.5, Vector3(sz.x, 0, -sz.y) * 0.5, Vector3(sz.x, 0, sz.y) * 0.5, Vector3(-sz.x, 0, sz.y) * 0.5]
+	for k in 4:
+		var a: Vector3 = corners[k]
+		var b: Vector3 = corners[(k + 1) % 4]
+		var stake := MeshInstance3D.new()
+		var sm := BoxMesh.new()
+		sm.size = Vector3(0.05, 0.7, 0.05)
+		stake.mesh = sm
+		stake.material_override = wood
+		stake.position = a + Vector3(0, 0.15, 0)
+		_stakes.add_child(stake)
+		var line := MeshInstance3D.new()
+		var lm := BoxMesh.new()
+		lm.size = Vector3(0.012, 0.012, a.distance_to(b))
+		line.mesh = lm
+		line.material_override = material("cloth")
+		_stakes.add_child(line)
+		line.transform = Transform3D(Basis.looking_at((b - a).normalized(), Vector3.UP), (a + b) * 0.5 + Vector3(0, 0.38, 0))
+
+
+## The site's stack, at its front left corner: what's come and not yet built in.
+func _stack_spot() -> Vector3:
+	var sz: Vector2 = def.size
+	return Vector3(-sz.x * 0.5 - 1.4, 0, sz.y * 0.5 + 0.2)
+
+
+func stack_at() -> Vector3:
+	return global_transform * (_stack_spot() + Vector3(0.9, 0, 0.9))
+
+
+func _update_stack() -> void:
+	if _stack:
+		_stack.queue_free()
+		_stack = null
+	if state != "site":
+		return
+	_stack = Node3D.new()
+	_stack.position = _stack_spot()
+	add_child(_stack)
+	var logs := ceili((float(delivered.get("odun", 0)) - float(used.get("odun", 0.0))) / 1.5)
+	var stones := ceili((float(delivered.get("tas", 0)) - float(used.get("tas", 0.0))) / 1.5)
+	for k in mini(logs, 16):
+		var mi := MeshInstance3D.new()
+		var c := CylinderMesh.new()
+		c.top_radius = 0.13
+		c.bottom_radius = 0.14
+		c.height = 2.2
+		c.radial_segments = 8
+		mi.mesh = c
+		mi.material_override = material("log")
+		var row := k / 5
+		mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3((k % 5) * 0.28 - 0.56 + row * 0.14, 0.14 + row * 0.25, 0))
+		_stack.add_child(mi)
+	for k in mini(stones, 12):
+		var mi := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(0.4, 0.3, 0.35)
+		mi.mesh = b
+		mi.material_override = material("stone")
+		mi.position = Vector3(1.0 + (k % 3) * 0.42, 0.15 + (k / 6) * 0.31, -0.6 + ((k / 3) % 2) * 0.4)
+		mi.rotation.y = randf_range(-0.2, 0.2)
+		_stack.add_child(mi)
+
+
+## What's carried here for the site: onto the stack.
+func deliver(r: String, n: int) -> void:
+	delivered[r] = int(delivered.get(r, 0)) + n
+	_update_stack()
+
+
+## The next piece to go up that the stack can pay for and nobody's carrying yet (-1: none; the
+## pieces go in their order, so a piece short of stuff holds up the ones after it).
+func next_piece() -> int:
+	for i in pieces.size():
+		var p := pieces[i]
+		if p.built or claims.has(i):
+			continue
+		if float(delivered.get(p.res, 0)) - float(used.get(p.res, 0.0)) < p.unit - 0.0001:
+			return -1
+		return i
+	return -1
+
+
+## A builder takes the next piece's share off the stack. Its index, or -1.
+func claim(v: Node) -> int:
+	var i := next_piece()
+	if i < 0:
+		return -1
+	claims[i] = v
+	used[pieces[i].res] = float(used.get(pieces[i].res, 0.0)) + pieces[i].unit
+	_update_stack()
+	return i
+
+
+## One piece put back unclaimed (taken, then not carried after all).
+func unclaim_one(i: int) -> void:
+	if claims.has(i):
+		claims.erase(i)
+		used[pieces[i].res] = maxf(float(used.get(pieces[i].res, 0.0)) - pieces[i].unit, 0.0)
+		_update_stack()
+
+
+## A builder called off: what it was carrying goes back on the stack.
+func unclaim(v: Node) -> void:
+	for i: int in claims.keys():
+		if claims[i] == v:
+			claims.erase(i)
+			used[pieces[i].res] = maxf(float(used.get(pieces[i].res, 0.0)) - pieces[i].unit, 0.0)
+	_update_stack()
+
+
+## The stage the site's at.
+func stage_name() -> String:
+	for p in pieces:
+		if not p.built:
+			return STAGES[p.stage]
+	return STAGES[3]
+
+
+## Where a builder stands to set piece `i`: outside the walls by its side (on a scaffold deck if
+## it's up high), what it faces, and the deck's height (0 on the ground), all in the world.
+func work_spot(i: int) -> Dictionary:
+	var p := pieces[i]
+	var sz: Vector2 = def.size
+	var hx := sz.x * 0.5
+	var hz := sz.y * 0.5
+	var c := p.aabb.get_center()
+	var spot: Vector3
+	if absf(c.x) > hx + 0.3 or absf(c.z) > hz + 0.3:
+		var out := Vector3(c.x, 0, c.z).normalized()
+		spot = Vector3(c.x, 0, c.z) + out * 0.8
+	elif absf(c.x) / hx > absf(c.z) / hz:
+		spot = Vector3(signf(c.x) * (hx + 0.85), 0, clampf(c.z, -hz, hz))
+	else:
+		spot = Vector3(clampf(c.x, -hx, hx), 0, signf(c.z) * (hz + 0.85))
+	var level := 0.0
+	for d in _decks:
+		if d <= p.aabb.position.y - 0.25:
+			level = d
+	return {"at": global_transform * spot, "face": global_transform * c, "level": level}
+
+
+## Piece `i` set in its place by a builder at `from` (in the world): it comes from the builder's
+## hands into its place.
+func place(i: int, from: Vector3) -> void:
+	claims.erase(i)
+	var p := pieces[i]
+	if p.built or state != "site":
+		return
+	_put_up(p, true, global_transform.affine_inverse() * from)
+	_shown += 1
+	if _stakes and p.stage >= 1:
+		_stakes.queue_free()
+		_stakes = null
+	if _shown >= pieces.size():
+		_finish()
 
 
 func _make_scaffold() -> void:
 	_scaffold = Node3D.new()
 	add_child(_scaffold)
+	_decks.clear()
 	var sz: Vector2 = def.size
 	var top := 0.0
 	for p in pieces:
-		top = maxf(top, p.aabb.end.y)
+		if p.aabb.get_center().x * p.aabb.get_center().x < sz.x * sz.x and p.tag != "finial":
+			top = maxf(top, p.aabb.end.y)
+	if top < 2.5:
+		return # (nothing so tall it wants one)
+	var wood := material("wood")
+	var plank := material("plank")
+	var ox := sz.x * 0.5 + 0.85
+	var oz := sz.y * 0.5 + 0.85
+	var h := top - 0.6
+	# poles round it, every two metres or so
 	var pole := CylinderMesh.new()
-	pole.top_radius = 0.06
-	pole.bottom_radius = 0.07
-	pole.height = top + 0.6
+	pole.top_radius = 0.05
+	pole.bottom_radius = 0.06
+	pole.height = h + 0.6
 	pole.radial_segments = 6
-	var mat := material("wood")
-	for sx in [-1.0, 1.0]:
-		for sz2 in [-1.0, 1.0]:
-			var mi := MeshInstance3D.new()
-			mi.mesh = pole
-			mi.material_override = mat
-			mi.position = Vector3(sx * (sz.x * 0.5 + 0.5), (top + 0.6) * 0.5 - 0.3, sz2 * (sz.y * 0.5 + 0.5))
-			_scaffold.add_child(mi)
-	var rail := BoxMesh.new()
-	rail.size = Vector3(sz.x + 1.2, 0.08, 0.08)
-	var rail2 := BoxMesh.new()
-	rail2.size = Vector3(0.08, 0.08, sz.y + 1.2)
-	var y := 1.6
-	while y < top:
-		for s in [-1.0, 1.0]:
-			var a := MeshInstance3D.new()
-			a.mesh = rail
-			a.material_override = mat
-			a.position = Vector3(0, y, s * (sz.y * 0.5 + 0.5))
-			_scaffold.add_child(a)
-			var b := MeshInstance3D.new()
-			b.mesh = rail2
-			b.material_override = mat
-			b.position = Vector3(s * (sz.x * 0.5 + 0.5), y, 0)
-			_scaffold.add_child(b)
-		y += 2.2
+	for side in 4:
+		var along := ox * 2.0 if side < 2 else oz * 2.0
+		var n := maxi(1, int(along / 2.0))
+		for k in n + 1:
+			var t := -along * 0.5 + along * float(k) / n
+			var at := Vector3(t, 0, (-oz if side == 0 else oz)) if side < 2 else Vector3((-ox if side == 2 else ox), 0, t)
+			for off in [-0.35, 0.35]:
+				var mi := MeshInstance3D.new()
+				mi.mesh = pole
+				mi.material_override = wood
+				var o: Vector3 = at + (Vector3(0, 0, off) if side < 2 else Vector3(off, 0, 0))
+				mi.position = o + Vector3(0, (h + 0.6) * 0.5 - 0.3, 0)
+				_scaffold.add_child(mi)
+	# the decks: ledgers and planks all round at each level
+	var y := DECK
+	while y < h:
+		_decks.append(y)
+		for side in 4:
+			var long := (ox * 2.0 + 0.8) if side < 2 else (oz * 2.0 + 0.8)
+			var deck := MeshInstance3D.new()
+			var dm := BoxMesh.new()
+			dm.size = Vector3(long, 0.05, 0.7) if side < 2 else Vector3(0.7, 0.05, long)
+			deck.mesh = dm
+			deck.material_override = plank
+			deck.position = (Vector3(0, y, -oz if side == 0 else oz)) if side < 2 else Vector3(-ox if side == 2 else ox, y, 0)
+			_scaffold.add_child(deck)
+			var rail := MeshInstance3D.new()
+			var rm := BoxMesh.new()
+			rm.size = Vector3(long, 0.05, 0.05) if side < 2 else Vector3(0.05, 0.05, long)
+			rail.mesh = rm
+			rail.material_override = wood
+			var out := 0.35
+			rail.position = (Vector3(0, y + 0.9, (-oz - out) if side == 0 else (oz + out))) if side < 2 else Vector3((-ox - out) if side == 2 else (ox + out), y + 0.9, 0)
+			_scaffold.add_child(rail)
+		y += DECK
 
 
 # --- Building it ------------------------------------------------------------------------------------
@@ -409,12 +658,14 @@ func _time() -> float:
 
 ## Whether a builder has anything to do here: stuff's come that isn't built into it yet.
 func can_work() -> bool:
-	return under_work() and work < _time() * materials_share() - 0.01
+	if state == "site":
+		return next_piece() >= 0
+	return state == "repair" and work < _time() * materials_share() - 0.01
 
 
 ## A builder's `dt` of work. False once there's nothing more to do for now.
 func add_work(dt: float) -> bool:
-	if not under_work():
+	if state != "repair":
 		return false
 	var cap := _time() * materials_share()
 	if work >= cap:
@@ -428,10 +679,12 @@ func add_work(dt: float) -> bool:
 
 
 func progress() -> float:
+	if state == "site":
+		return float(_shown) / float(maxi(pieces.size(), 1))
 	return work / _time()
 
 
-func _raise() -> void:
+func _raise(instant := false) -> void:
 	if state == "repair":
 		var due := int(floor(progress() * _repair_list.size() + 0.0001))
 		if progress() >= 1.0:
@@ -440,21 +693,82 @@ func _raise() -> void:
 			_put_back(pieces[_repair_list[_repair_done]])
 			_repair_done += 1
 		return
-	var want := int(floor(progress() * pieces.size() + 0.0001))
-	if progress() >= 1.0:
-		want = pieces.size()
-	while _shown < want:
-		var p := pieces[_shown]
-		p.built = true
-		p.mesh.visible = true
-		p.shape.disabled = false
-		_shown += 1
-		if _sound and _sound_t <= 0.0 and is_inside_tree():
-			_sound.stream = _stream(BUILD_SOUNDS[randi() % BUILD_SOUNDS.size()])
-			_sound.pitch_scale = randf_range(0.8, 1.05)
-			_sound.position = p.aabb.get_center()
-			_sound.play()
-			_sound_t = 0.25
+	if instant:
+		pass
+
+
+## A lamp's own post and lantern throw no shadow: its light is in among them, and they'd black out
+## the ground round it.
+func _shadow() -> GeometryInstance3D.ShadowCastingSetting:
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if def.role == "light" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+
+## A piece into its place: from the builder's hands (`from`, in the building) or lowered from above,
+## turning true as it settles, the dust thrown up where it lands, the knock of it.
+func _put_up(p: Piece, animate: bool, from := Vector3.INF) -> void:
+	p.built = true
+	p.mesh.visible = true
+	p.mesh.material_override = _look(p)
+	p.mesh.cast_shadow = _shadow()
+	p.shape.disabled = false
+	var final := p.xf * p.mesh_local
+	if animate:
+		var lift := Transform3D(Basis(Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized(), randf_range(0.08, 0.2)), Vector3.UP * randf_range(1.0, 1.6))
+		var start := final.origin + lift.origin
+		if from != Vector3.INF:
+			start = from + Vector3.UP * 1.3 # (from its hands)
+		p.mesh.transform = Transform3D(lift.basis * final.basis, start)
+		var tw := p.mesh.create_tween()
+		tw.tween_property(p.mesh, "transform", final, 0.4 if from != Vector3.INF else 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT if from != Vector3.INF else Tween.EASE_IN)
+		tw.tween_callback(func() -> void: _dust(p.aabb.get_center() - Vector3(0, p.aabb.size.y * 0.5, 0)))
+	else:
+		p.mesh.transform = final
+	if animate and _sound and _sound_t <= 0.0:
+		_sound.stream = _stream(BUILD_SOUNDS[randi() % BUILD_SOUNDS.size()])
+		_sound.pitch_scale = randf_range(0.8, 1.05)
+		_sound.position = p.aabb.get_center()
+		_sound.play()
+		_sound_t = 0.25
+
+
+static var _dust_mesh: QuadMesh
+
+
+func _dust(at: Vector3) -> void:
+	if not is_inside_tree():
+		return
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.3
+	pm.direction = Vector3.UP
+	pm.spread = 70.0
+	pm.initial_velocity_min = 0.4
+	pm.initial_velocity_max = 1.2
+	pm.gravity = Vector3(0, -0.5, 0)
+	pm.scale_min = 0.4
+	pm.scale_max = 0.9
+	pm.color = Color(0.55, 0.47, 0.36, 0.5)
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.6))
+	g.set_color(1, Color(1, 1, 1, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_ramp = gt
+	var p := GPUParticles3D.new()
+	p.amount = 8
+	p.lifetime = 1.2
+	p.one_shot = true
+	p.explosiveness = 0.9
+	p.process_material = pm
+	if _dust_mesh == null:
+		_dust_mesh = FireFx._quad(0.8, false)
+	p.draw_pass_1 = _dust_mesh
+	p.position = at
+	add_child(p)
+	p.emitting = true
+	var tw := p.create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_callback(p.queue_free)
 
 
 func _finish() -> void:
@@ -469,6 +783,13 @@ func _finish() -> void:
 			if p.alive:
 				p.hp = p.max_hp
 	state = "done"
+	if _stack:
+		_stack.queue_free()
+		_stack = null
+	if _stakes:
+		_stakes.queue_free()
+		_stakes = null
+	claims.clear()
 	if def.role == "farm" and crop == null and nav:
 		crop = Crop.new()
 		crop.field = self
@@ -539,6 +860,7 @@ func _put_back(p: Piece) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = res
 	mi.material_override = _look(p)
+	mi.cast_shadow = _shadow()
 	mi.transform = p.xf * p.mesh_local
 	add_child(mi)
 	p.mesh = mi
@@ -610,6 +932,7 @@ func set_lit(on: bool) -> void:
 			_glow.omni_range = float(def.light) + 4.0
 			_glow.light_energy = 5.0
 			_glow.omni_attenuation = 0.9
+			_glow.light_volumetric_fog_energy = 5.0
 			_glow.shadow_enabled = true
 			_glow.distance_fade_enabled = true
 			_glow.distance_fade_begin = 220.0
@@ -618,6 +941,7 @@ func set_lit(on: bool) -> void:
 			_glow.position = Vector3(0, 1.6, (def.size as Vector2).y * 0.5 + 0.8)
 			_glow.omni_range = 8.0
 			_glow.light_energy = 0.9
+			_glow.light_volumetric_fog_energy = 2.5
 		_glow.light_color = Color(1.0, 0.68, 0.36)
 		if def.role != "light":
 			_glow.shadow_enabled = false
@@ -839,6 +1163,7 @@ func _process(dt: float) -> void:
 		return
 	if not _doors.is_empty():
 		_swing_doors(dt)
+
 	_fire_t += dt
 	if _fire_t < 0.25:
 		_flicker()
@@ -1004,6 +1329,8 @@ func _fire_fx() -> void:
 	if _smoke == null:
 		_smoke = FireFx.smoke()
 		add_child(_smoke)
+		_embers = FireFx.embers()
+		add_child(_embers)
 		_light = OmniLight3D.new()
 		_light.light_color = Color(1.0, 0.55, 0.22)
 		_light.omni_range = 18.0
@@ -1020,6 +1347,10 @@ func _fire_fx() -> void:
 	(_smoke.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(sz.x * 0.4, 0.5, sz.y * 0.4)
 	_smoke.amount_ratio = clampf(0.3 + lit.size() * 0.12, 0.3, 1.0)
 	_smoke.emitting = true
+	_embers.position = Vector3(0, top * 0.8, 0)
+	(_embers.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(sz.x * 0.35, 0.5, sz.y * 0.35)
+	_embers.amount_ratio = clampf(0.2 + lit.size() * 0.1, 0.2, 1.0)
+	_embers.emitting = true
 	_light.position = mid + Vector3.UP * 0.8
 	_light.set_meta("energy", clampf(1.5 + lit.size() * 0.5, 1.5, 6.0))
 	for k in MAX_FLAMES:
@@ -1049,6 +1380,8 @@ func _stop_fx() -> void:
 		f.emitting = false
 	if _smoke:
 		_smoke.emitting = false
+	if _embers:
+		_embers.emitting = false
 	if _light:
 		_light.light_energy = 0.0
 		_light.remove_meta("energy")

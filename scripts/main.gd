@@ -19,6 +19,9 @@ var hud: Hud
 var raids: Raids
 var slides: Landslides
 var seasons: Seasons
+var atmosphere: Atmosphere
+var ambience: Ambience
+var critters: Critters
 var selected: Building
 var selected_villager: Villager
 
@@ -88,6 +91,24 @@ func _ready() -> void:
 	cam.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(cam)
 	cam.make_current()
+	atmosphere = Atmosphere.new()
+	atmosphere.weather = weather
+	atmosphere.cam = cam
+	atmosphere.seasons = seasons
+	atmosphere.village = village
+	add_child(atmosphere)
+	ambience = Ambience.new()
+	ambience.weather = weather
+	ambience.cam = cam
+	ambience.seasons = seasons
+	ambience.terrain = terrain
+	add_child(ambience)
+	critters = Critters.new()
+	critters.village = village
+	critters.nav = nav
+	critters.weather = weather
+	add_child(critters)
+	critters.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.92
@@ -147,6 +168,10 @@ func _unhandled_input(e: InputEvent) -> void:
 					set_menu(not _menu)
 			KEY_F1:
 				hud.toggle_help()
+			KEY_P:
+				atmosphere.photo = not atmosphere.photo
+				hud.visible = not atmosphere.photo
+				_ring.visible = false
 			KEY_R:
 				_ghost_yaw += deg_to_rad(-15.0 if k.shift_pressed else 15.0)
 				_ghost_reason = "x"

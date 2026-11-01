@@ -27,13 +27,15 @@ static func save(game: Node) -> bool:
 		index[b] = bl.size()
 		var alive := PackedByteArray()
 		var charred := PackedByteArray()
+		var built := PackedByteArray()
 		for p in b.pieces:
 			alive.append(1 if p.alive or not p.built else 0)
 			charred.append(1 if p.charred else 0)
+			built.append(1 if p.built else 0)
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "alive": alive, "charred": charred,
+			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built,
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -50,7 +52,7 @@ static func save(game: Node) -> bool:
 		var p := vl.position
 		if vl.sleeping and is_instance_valid(vl.inside):
 			p = vl.inside.door()
-		people.append({"x": p.x, "z": p.z, "hp": vl.hp,
+		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
 			"home": index.get(vl.home, -1) if vl.home else -1})
 	var stumps: Array = []
@@ -124,11 +126,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 		made.append(b)
 		var st := str(bd.state)
 		if st == "site":
-			for r: String in bd.delivered:
-				b.delivered[r] = int(bd.delivered[r])
-			b.work = float(bd.work)
-			b.add_work(0.0)
-			b._raise()
+			b.restore_site(bd.delivered, bd.get("built", PackedByteArray()))
 		else:
 			b.complete_now()
 			b.apply_damage(bd.alive, bd.charred)
@@ -154,7 +152,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.crop.reaped = int(cr[3])
 			b.crop._draw()
 	for pd: Dictionary in d.people:
-		var vl := v.spawn_villager(Vector3(float(pd.x), 0, float(pd.z)))
+		var vl := v.spawn_villager(Vector3(float(pd.x), 0, float(pd.z)), bool(pd.get("child", false)))
+		vl.born_day = int(pd.get("born", v.day))
 		vl.hp = float(pd.hp)
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":

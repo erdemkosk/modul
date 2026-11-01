@@ -32,7 +32,7 @@ const EAT_EVERY := 75.0 ## s a villager goes on one food
 const ARRIVE_EVERY := 24.0 ## s between newcomers, when there's room and food
 const HAUL := {"odun": 6, "tas": 4, "yiyecek": 6}
 const PILE_FROM := 20.0 ## m from a store past which, with carters about, a workplace piles its goods
-const BUILDERS_PER_SITE := 4
+const BUILDERS_PER_SITE := 6
 
 var terrain: WorldTerrain
 var props: WorldProps
@@ -119,8 +119,10 @@ const NAMES := ["Anton", "Pyotr", "Mikhail", "Ivan", "Fyodor", "Nikolai", "Grigo
 	"Marya", "Anna", "Olga", "Vera", "Darya", "Sofia", "Nadia", "Irina", "Agafya", "Polina", "Lidia", "Yelena"]
 
 
-func spawn_villager(p: Vector3) -> Villager:
+func spawn_villager(p: Vector3, child := false) -> Villager:
 	var v := Villager.new()
+	v.is_child = child
+	v.born_day = day
 	v.display_name = NAMES[randi() % NAMES.size()]
 	v.village = self
 	v.nav = nav
@@ -401,7 +403,7 @@ func beds() -> int:
 func free_count() -> int:
 	var n := 0
 	for v in villagers:
-		if v.workplace == null:
+		if v.workplace == null and not v.is_child:
 			n += 1
 	return n
 
@@ -448,6 +450,8 @@ func release(v: Villager) -> void:
 	for b in buildings:
 		if b.pile_claim == v:
 			b.pile_claim = null
+		if not b.claims.is_empty():
+			b.unclaim(v)
 
 
 # --- The clock ------------------------------------------------------------------------------------
@@ -512,7 +516,7 @@ func _arrive(dt: float) -> void:
 		var a := randf() * TAU
 		var p := home.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(60.0, 90.0)
 		if nav.is_open(p):
-			var v := spawn_villager(p)
+			var v := spawn_villager(p, villagers.size() >= 4 and randf() < 0.3)
 			var d := home.door()
 			v.give([{"t": "go", "to": d + Vector3(randf_range(-3, 3), 0, randf_range(1, 4))}], "Köye geliyor")
 			_house_people()
@@ -572,6 +576,10 @@ func _hearths(t: float) -> void:
 
 
 func _morning() -> void:
+	for v in villagers:
+		if v.is_child and day - v.born_day >= 4:
+			v.grow_up()
+			message.emit("%s büyüdü, artık çalışabilir" % v.display_name, "good")
 	var cold := 0
 	for b in buildings:
 		if b.def.role == "house" and b.cold_night:
@@ -715,7 +723,7 @@ func _staff() -> void:
 			var pick: Villager = null
 			var bd := INF
 			for v in villagers:
-				if v.workplace == null and (v.plan.is_empty() or v.idle) and not v.sleeping:
+				if v.workplace == null and (v.plan.is_empty() or v.idle) and not v.sleeping and not v.is_child:
 					var d := v.position.distance_squared_to(b.global_position)
 					if d < bd:
 						bd = d
@@ -750,6 +758,8 @@ func employ(v: Villager, b: Building) -> void:
 
 ## `v` put to work at `b` by hand (the player's choice). Why not, if it can't be ("" if done).
 func assign(v: Villager, b: Building) -> String:
+	if v.is_child:
+		return "%s daha çocuk" % v.display_name
 	if not b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower"]:
 		return "%s bir işyeri değil" % b.display_name()
 	if b.state != "done":
@@ -825,6 +835,10 @@ func _assign() -> void:
 		if v.workplace:
 			if v.workplace.state == "done":
 				_plan_work(v)
+			continue
+		if v.is_child:
+			if v.plan.is_empty():
+				_plan_play(v)
 			continue
 		if _plan_haul(v) or _plan_build(v) or _plan_firewood(v):
 			continue
@@ -944,6 +958,18 @@ func _plan_idle(v: Villager) -> void:
 	v.give(what, "Boşta", null, true)
 
 
+## A child at play: running about near home, after the other children if there are any.
+func _plan_play(v: Villager) -> void:
+	var near: Building = v.home if is_instance_valid(v.home) else _nearest(stores(), v.position)
+	var at := near.door() if near else v.position
+	var other: Villager = null
+	for o in villagers:
+		if o != v and o.is_child and not o.sleeping and o.position.distance_to(v.position) < 25.0:
+			other = o
+	var to := (other.position + Vector3(randf_range(-2, 2), 0, randf_range(-2, 2))) if other and randf() < 0.6 else at + Vector3(randf_range(-7, 7), 0, randf_range(1, 8))
+	v.give([{"t": "go", "to": to}, {"t": "work", "time": randf_range(1.0, 3.0), "anim": "chat" if other else "look"}], "Oynuyor", null, true)
+
+
 ## Lunch about noon, supper before dark: once each, at home if it's near (in through the door, a
 ## while inside), or else sat down where it is with a bowl.
 func _meal_key() -> String:
@@ -1003,12 +1029,17 @@ func _plan_haul(v: Villager) -> bool:
 		{"t": "do", "f": func() -> bool:
 			v.set_carry(r, n)
 			return site.under_work()}] + _go_out(store, v) + [
-		{"t": "go", "to": _spot_by(site, v.position)},
+		{"t": "go", "to": site.stack_at() if site.state == "site" else _spot_by(site, v.position)},
 		{"t": "do", "f": func() -> bool:
 			if not site.under_work():
 				return false
 			site.incoming[r] = int(site.incoming[r]) - n
-			site.delivered[r] = int(site.delivered[r]) + n
+			if site.state == "site":
+				site.deliver(r, n) # (onto the stack at its corner)
+				if r == "odun":
+					Ambience.log_drop(v.position)
+			else:
+				site.delivered[r] = int(site.delivered[r]) + n
 			v.owed = {}
 			v.set_carry("", 0)
 			return true},
@@ -1038,10 +1069,60 @@ func _plan_build(v: Villager) -> bool:
 	if v.idle:
 		v.abort()
 	var site := best
-	v.give([
-		{"t": "go", "to": _spot_by(site, v.position)},
-		{"t": "work", "anim": "build", "face": site.global_position, "tick": func(dt: float) -> bool: return site.add_work(dt)},
-	], "İnşa: %s" % site.display_name(), site)
+	if site.state == "repair":
+		v.give([
+			{"t": "go", "to": _spot_by(site, v.position)},
+			{"t": "work", "anim": "build", "face": site.global_position, "tick": func(dt: float) -> bool: return site.add_work(dt)},
+		], "Onarıyor: %s" % site.display_name(), site)
+		return true
+	# A piece off the stack, carried to its place (up the scaffold if it's high), set there.
+	var i := site.claim(v)
+	if i < 0:
+		return false
+	var piece = site.pieces[i]
+	var spot := site.work_spot(i)
+	var at: Vector3 = spot.at
+	var level: float = spot.level
+	# An armful: up to three more pieces going up beside it, at the same height, in the same trip.
+	var batch: Array[int] = [i]
+	while batch.size() < 4:
+		var j := site.claim(v)
+		if j < 0:
+			break
+		var sj := site.work_spot(j)
+		if (sj.at as Vector3).distance_to(at) > 2.5 or float(sj.level) != level:
+			site.unclaim_one(j)
+			break
+		batch.append(j)
+	var looks := "tas" if piece.res == "tas" else "odun"
+	var steps: Array = [
+		{"t": "go", "to": site.stack_at()},
+		{"t": "work", "time": 0.9, "anim": "gather", "face": site.global_transform * (site._stack_spot())},
+		{"t": "do", "f": func() -> bool:
+			v.set_carry(looks, 1)
+			return site.state == "site"},
+		{"t": "go", "to": at},
+	]
+	if level > 0.0:
+		steps.append({"t": "do", "f": func() -> bool:
+			v.climb(site.global_position.y + level)
+			return true})
+		steps.append({"t": "work", "time": 0.9, "anim": "climb"})
+	for k in batch.size():
+		var j: int = batch[k]
+		steps.append({"t": "work", "time": randf_range(0.5, 0.85), "anim": "build", "face": site.work_spot(j).face})
+		steps.append({"t": "do", "f": func() -> bool:
+			if k == batch.size() - 1:
+				v.set_carry("", 0)
+			if is_instance_valid(site):
+				site.place(j, v.global_position)
+			return true})
+	if level > 0.0:
+		steps.append({"t": "do", "f": func() -> bool:
+			v.climb(ground_at(v.position))
+			return true})
+		steps.append({"t": "work", "time": 0.8, "anim": "climb"})
+	v.give(steps, "İnşa: %s (%s)" % [site.display_name(), site.stage_name().to_lower()], site)
 	return true
 
 
@@ -1159,6 +1240,7 @@ func _plan_work(v: Villager) -> void:
 						(bl.node as Node).queue_free()
 					billets.erase(bl)
 					v.set_carry("odun", BILLET_WOOD)
+					Ambience.log_drop(v.position)
 					return true}] + _work_at(b, v, res), "%s: tomruk taşıyor" % b.display_name(), b)
 			return
 	var kind: String = {"odun": "tree", "tas": "rock", "yiyecek": "bush"}[res]
@@ -1238,6 +1320,8 @@ func _work_at(b: Building, v: Villager, res: String) -> Array:
 		{"t": "work", "time": {"saw": 5.0, "chisel": 5.0}.get(how, 2.5), "anim": how, "face": b.station_face()},
 		{"t": "do", "f": func() -> bool:
 			if v.carry_n > 0:
+				if res == "odun":
+					Ambience.log_drop(v.position)
 				if is_instance_valid(b) and b.state == "done":
 					b.add_goods(res, v.carry_n)
 				else:
@@ -1435,6 +1519,9 @@ func fell_tree(i: int, away: Vector3) -> void:
 	var mesh := props.felled_mesh(i)
 	props.cut_tree(i)
 	var o: Vector3 = info.origin
+	Ambience.play("tree_crack", o + Vector3.UP * 2.0, 2.0)
+	var land := o + Vector3(away.x, 0, away.z).normalized() * float(info.height) * 0.5
+	get_tree().create_timer(2.5).timeout.connect(func() -> void: Ambience.play("tree_fall", land, 4.0))
 	var pivot := Node3D.new()
 	pivot.set_meta("felled", i)
 	add_child(pivot)
@@ -1477,23 +1564,15 @@ func add_stump(at: Vector3, r: float, prop := -1) -> void:
 func plant(i: int, left := SAPLING_TIME) -> void:
 	if saplings.has(i) or not props.cut.has(i):
 		return
-	var o: Vector3 = props._xf[i].origin
+	# The very tree that stood there, small: the same kind, turned the same way, grown up into it.
+	var info := props.tree_info(i)
 	var n := Node3D.new()
 	add_child(n)
-	n.position = o
-	var cone := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.0
-	cm.bottom_radius = 0.35
-	cm.height = 1.0
-	cm.radial_segments = 7
-	cone.mesh = cm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.16, 0.32, 0.12)
-	m.roughness = 0.9
-	cone.material_override = m
-	cone.position = Vector3(0, 0.5, 0)
-	n.add_child(cone)
+	n.position = info.origin
+	var young := MeshInstance3D.new()
+	young.mesh = props.felled_mesh(i)
+	young.basis = info.basis
+	n.add_child(young)
 	saplings[i] = {"node": n, "left": left}
 	_grow_one(i, 0.0)
 
@@ -1502,7 +1581,7 @@ func _grow_one(i: int, dt: float) -> void:
 	var s: Dictionary = saplings[i]
 	s.left = float(s.left) - dt
 	var k := 1.0 - clampf(float(s.left) / SAPLING_TIME, 0.0, 1.0)
-	(s.node as Node3D).scale = Vector3.ONE * lerpf(0.5, 3.0, k)
+	(s.node as Node3D).scale = Vector3.ONE * lerpf(0.06, 1.0, k * k * (3.0 - 2.0 * k)) # (slow at first, then shooting up)
 	if float(s.left) <= 0.0:
 		(s.node as Node3D).queue_free()
 		saplings.erase(i)

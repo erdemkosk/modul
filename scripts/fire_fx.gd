@@ -76,6 +76,32 @@ static func flames() -> GPUParticles3D:
 	return p
 
 
+## Sparks and embers thrown up from a fire and carried off on the wind, glowing out as they go.
+static func embers() -> GPUParticles3D:
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(2, 0.5, 2)
+	pm.direction = Vector3.UP
+	pm.spread = 25.0
+	pm.initial_velocity_min = 3.0
+	pm.initial_velocity_max = 7.0
+	pm.gravity = Vector3(Weather.wind_now.x * 0.6, 0.5, Weather.wind_now.z * 0.6)
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 3.0
+	pm.turbulence_noise_scale = 4.0
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	pm.color_ramp = _ramp([Color(1.0, 0.9, 0.5, 1.0), Color(1.0, 0.45, 0.1, 0.9), Color(0.6, 0.1, 0.02, 0.0)], [0.0, 0.5, 1.0])
+	var p := GPUParticles3D.new()
+	p.amount = 50
+	p.lifetime = 3.5
+	p.process_material = pm
+	p.draw_pass_1 = _quad(0.14, true)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_aabb = AABB(Vector3(-30, -5, -30), Vector3(60, 60, 60))
+	return p
+
+
 static func smoke() -> GPUParticles3D:
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX

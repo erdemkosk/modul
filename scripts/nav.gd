@@ -18,6 +18,12 @@ const WEAR_STEP := 0.06 ## wear a second of walking gives the cell underfoot
 const WEAR_FADE := 0.0009 ## wear lost a second by a cell nobody walks
 const PATH_AT := 0.05 ## wear from which a cell starts to show (the grass trodden first, then earth)
 const SCORCH_FADE := 0.0004 ## scorch lost a second (some forty minutes from black to green)
+## Every cell's cost is scaled by this for the pathfinder. Its guess at what's left is the straight
+## distance at 1 a cell, while a cell really costs some 1.3-3.5: so far under that it went out in a
+## wide flood on a long walk (a band from the woods' edge, ~0.2 s). Scaled, the guess is near the
+## open ground's cost and the search goes for the goal; the choice of way is the same but by worn
+## paths, now a little under the guess.
+const COST_SCALE := 0.6
 
 var terrain: WorldTerrain
 var astar := AStarGrid2D.new()
@@ -30,6 +36,7 @@ var _claim := PackedByteArray() ## 1 under a field: walked over, not built on
 var _worn := {} ## cell index -> true while it carries any wear
 var _scorched := {} ## cell index -> how scorched, 0..1
 var _shown := PackedByteArray() ## the mask's red as last written, per cell
+var _runs: Array[PackedInt32Array] = [] ## per row of cells: its open runs as (start, end, region)
 var _dirty := false
 var _upload_t := 0.0
 var _fade_t := 0.0
@@ -50,6 +57,7 @@ func _ready() -> void:
 	astar.update()
 	_read_ground()
 	_shut_water()
+	_find_regions()
 
 
 func _read_ground() -> void:
@@ -74,7 +82,7 @@ func _read_ground() -> void:
 			var road := sp[i * 4 + 2] / 255.0
 			var cost := 1.3 + forest * 0.9 + steep * 2.5 - road * 0.55
 			_base[c] = cost
-			astar.set_point_weight_scale(Vector2i(cx, cz), cost)
+			astar.set_point_weight_scale(Vector2i(cx, cz), cost * COST_SCALE)
 
 
 func _shut_water() -> void:
@@ -218,12 +226,84 @@ func _open_near(c: Vector2i, reach := 8) -> Vector2i:
 	return c
 
 
+## The ground's own regions (water and cliffs part them; a building doesn't): a walk to another
+## one, or into the lake, sent the pathfinder through every cell it could reach before it gave up
+## (~0.5 s). Found once, as the open runs along each row joined to the runs they touch in the
+## next.
+func _find_regions() -> void:
+	var parent := PackedInt32Array()
+	var above := PackedInt32Array()
+	_runs.clear()
+	for z in N:
+		var row := PackedInt32Array()
+		var start := z * N
+		var stop := start + N
+		var x := _shut.find(0, start)
+		var k := 0 # (the run above being looked at)
+		while x >= 0 and x < stop:
+			var e := _shut.find(1, x)
+			if e < 0 or e > stop:
+				e = stop
+			var id := parent.size()
+			parent.append(id)
+			var s0 := x - start
+			var e0 := e - start
+			while k < above.size() and above[k + 1] <= s0:
+				k += 3
+			var j := k
+			while j < above.size() and above[j] < e0:
+				var ra := _root(parent, above[j + 2])
+				var rb := _root(parent, id)
+				if ra != rb:
+					parent[rb] = ra
+				j += 3
+			row.append_array([s0, e0, id])
+			x = _shut.find(0, e)
+		_runs.append(row)
+		above = row
+	for row in _runs:
+		for k in range(2, row.size(), 3):
+			row[k] = _root(parent, row[k])
+
+
+static func _root(parent: PackedInt32Array, i: int) -> int:
+	while parent[i] != i:
+		parent[i] = parent[parent[i]]
+		i = parent[i]
+	return i
+
+
+## The region a cell is in, -1 shut by the ground.
+func _region(c: Vector2i) -> int:
+	var row := _runs[c.y]
+	var lo := 0
+	var hi := row.size() / 3 - 1
+	while lo <= hi:
+		var m := (lo + hi) / 2
+		if c.x < row[m * 3]:
+			hi = m - 1
+		elif c.x >= row[m * 3 + 1]:
+			lo = m + 1
+		else:
+			return row[m * 3 + 2]
+	return -1
+
+
 ## A walk from `a` to `b`: the points to pass through (on the ground), the last `b` itself. Straight
-## runs are thinned to their ends. With no way through it goes as near as it can, then straight on.
+## runs are thinned to their ends. With no way through it goes as near as it can (the last cell of
+## its own region on the line back from `b`), then straight on.
 func find_path(a: Vector3, b: Vector3) -> PackedVector3Array:
 	var out := PackedVector3Array()
 	var ca := _open_near(cell_of(a))
 	var cb := _open_near(cell_of(b))
+	var home := _region(ca)
+	if home >= 0 and _region(cb) != home:
+		var n := maxi(absi(ca.x - cb.x), absi(ca.y - cb.y))
+		for k in range(1, n + 1):
+			var q := Vector2i((Vector2(cb).lerp(Vector2(ca), float(k) / n)).round())
+			if _region(q) == home:
+				cb = q
+				break
 	var ids := astar.get_id_path(ca, cb, true)
 	var last_dir := Vector2i.ZERO
 	for k in range(1, ids.size()):
@@ -310,7 +390,7 @@ func _show(c: Vector2i, i: int) -> void:
 	px.r = v / 255.0
 	terrain.village_img.set_pixel(c.x, c.y, px)
 	if _shut[i] == 0:
-		astar.set_point_weight_scale(c, _base[i] * lerpf(1.0, 0.42, v / 255.0))
+		astar.set_point_weight_scale(c, _base[i] * COST_SCALE * lerpf(1.0, 0.42, v / 255.0))
 	_dirty = true
 
 

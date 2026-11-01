@@ -11,8 +11,13 @@ this project's own.
 You start with a store (Depo), a log cabin and six settlers on the flat by the river. Put buildings
 down where you like, turned how you like: a ghost follows the mouse (red where it can't go: too
 steep, water, too close to another building) and the trees and rocks on its ground are cleared.
-A site goes up piece by piece as the free villagers carry its wood and stone from the store and
-build; a scaffold stands round it till it's done.
+A site is staked out first, string run between the stakes, and a scaffold goes up round it with
+plank decks every 1.8 m. What the free settlers carry from the store for it is stacked at its
+corner, logs and stone, the stack going down as it's built in. It goes up in stages (the footing,
+the walls course by course, the roof, then the windows, doors, porch and the rest), and nothing goes
+up that nobody carried: a builder takes an armful off the stack (a few pieces going up side by side),
+carries it round to where it goes, climbs onto the scaffold for the high ones, and sets each in its
+place from its hands. The card says which stage it's at.
 
 - **Kütük ev**: a log cabin, its walls log on log (each burns and falls on its own), a stone
   chimney; four beds. With a bed free and food in store, someone new comes now and then.
@@ -25,7 +30,8 @@ build; a scaffold stands round it till it's done.
   away), shoulder a log back to the yard and saw it up on the trestles. The sawn wood is piled in
   the yard; carters fetch the pile, or, with none about, the workers take it to the store once it's
   grown.
-- **Ormancı**: plants a sapling on the stump of a felled tree; a few minutes on it's the tree again.
+- **Ormancı**: plants a sapling on the stump of a felled tree: the same tree, small, growing slowly
+  at first and then shooting up; a few minutes on it's the tree again.
 - **Taş ocağı**: a stone yard with a dressing bench and a derrick: blocks broken off the rocks
   round it are carried in and dressed with mallet and chisel, then piled.
 - **Toplayıcı**: picks the bushes for berries (none in winter), sorts them on the table, piles them;
@@ -74,6 +80,16 @@ on the ground with a bowl), and with nothing to do they talk with whoever else i
 sit on the ground, stretch, look round, stroll. Click one to see who it is and what it's doing;
 with it chosen, right-click a workplace, a field or the watch house to put it to work there.
 
+The valley is alive (`atmosphere.gd`, `ambience.gd`, `critters.gd`): mist settles in it at dawn
+and dusk with the low sun's shafts through it and the lamps haloed in it; the golden hours run warm
+and winter pale; close in, the distance goes soft. Birds wheel over the woods by day, butterflies
+over the summer grass, breath smokes in the cold, sawdust and chips fly from the work, embers blow
+off a fire. Hens scratch about every lived-in house and scatter from anyone walking through them; a
+dog follows one of every few households. Some newcomers are children, who play and grow up to work
+after four days. You hear the woods and their birds by day, crickets on warm nights, the cold wind
+in winter and the stream by the river, every blow of an axe or a pick, a tree cracking and crashing
+down, a log thrown down. P hides the screen for a picture.
+
 Settlers work with the tool for the work: an axe swung in flat at the trunk, a pick, a hammer on a
 site, a sickle bent to the crop, a hoe, a spade for a sapling.
 
@@ -121,6 +137,7 @@ a storm can start one.
 | F | set the chosen building alight (to try fire out) |
 | H | back to the store |
 | Space · + / - · Esc · F1 | pause · game speed 1x/2x/4x (or the buttons) · menu · the keys |
+| P | picture mode (the screen hidden, the distance soft) |
 | F5 · F9 | save · load (it also saves itself every morning, and starts from the save) |
 
 ## How it works

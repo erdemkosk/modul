@@ -1,6 +1,8 @@
-"""Builds the townsfolk: 1880s settlers in the taiga, as five rigid parts the game swings by hand
-(scripts/villager.gd): Torso (body, head, hat; origin at the feet), ArmL and ArmR (each origin at
-its shoulder, hanging down), LegL and LegR (each origin at its hip).
+"""Builds the townsfolk: 1880s settlers in the taiga, as nine rigid parts the game swings by hand
+(scripts/villager.gd): Torso (body, head, hat; origin at the feet), ArmL and ArmR (the upper arms,
+origins at the shoulders) with ArmL2 and ArmR2 (the forearms and hands, origins at the elbows), LegL
+and LegR (the thighs, origins at the hips) with LegL2 and LegR2 (the shins and boots, origins at the
+knees).
 
     blender --background --factory-startup --python tools/blender/build_villagers.py [-- --render]
 
@@ -214,32 +216,47 @@ def hat(p, kind, color, hair):
         p.ball((0, 0.1, HEAD + 0.06), (0.06, 0.05, 0.055), hair)
 
 
+ELBOW = SHOULDER - 0.31
+KNEE = 0.43
+
+
 def arm(name, side, sleeve, skin, cuff=None, length=0.62, coat=None):
-    p = Part(name)
+    """An arm in two: the upper arm (origin at the shoulder) and the forearm with the hand (origin at
+    the elbow, `name` + "2"), so the elbow bends."""
     sx = side * SHOULDER_X
     top = SHOULDER
     c = coat or sleeve
-    p.tube([(top - length + 0.08, 0.045, 0.05, (sx, 0)), (top - 0.32, 0.052, 0.056, (sx, 0)), (top - 0.02, 0.06, 0.066, (sx, 0))], c, segs=8)
+    p = Part(name)
+    p.tube([(ELBOW - 0.03, 0.05, 0.055, (sx, 0)), (top - 0.15, 0.055, 0.06, (sx, 0)), (top - 0.02, 0.06, 0.066, (sx, 0))], c, segs=8)
     p.ball((sx, 0, top - 0.01), (0.07, 0.075, 0.07), c, segs=8, rings=6)
+    p.ball((sx, 0, ELBOW), (0.052, 0.056, 0.05), c, segs=8, rings=5) # (the elbow, round so the bend's clean)
+    p.to_object((sx, 0, top))
+    q = Part(name + "2")
+    wrist = top - length + 0.08
+    q.tube([(wrist, 0.043, 0.048, (sx, 0)), (ELBOW - 0.12, 0.048, 0.053, (sx, 0)), (ELBOW + 0.02, 0.05, 0.054, (sx, 0))], c, segs=8)
     if cuff:
-        p.tube([(top - length + 0.08, 0.05, 0.055, (sx, 0)), (top - length + 0.13, 0.05, 0.055, (sx, 0))], cuff, segs=8)
-    p.ball((sx, -0.01, top - length + 0.03), (0.04, 0.045, 0.06), skin, segs=8, rings=6) # the hand
-    p.box((sx + side * -0.03, -0.035, top - length + 0.05), (0.025, 0.03, 0.05), skin) # the thumb
-    return p.to_object((sx, 0, top))
+        q.tube([(wrist, 0.05, 0.055, (sx, 0)), (wrist + 0.05, 0.05, 0.055, (sx, 0))], cuff, segs=8)
+    q.ball((sx, -0.01, top - length + 0.03), (0.04, 0.045, 0.06), skin, segs=8, rings=6) # the hand
+    q.box((sx + side * -0.03, -0.035, top - length + 0.05), (0.025, 0.03, 0.05), skin) # the thumb
+    return q.to_object((sx, 0, ELBOW))
 
 
 def leg(name, side, trouser, boot, skirt_long=False):
-    p = Part(name)
+    """A leg in two: the thigh (origin at the hip) and the shin with the boot (origin at the knee,
+    `name` + "2"), so the knee bends."""
     sx = side * HIP_X
-    if not skirt_long:
-        p.tube([(0.14, 0.055, 0.06, (sx, 0)), (0.45, 0.06, 0.065, (sx, 0)), (HIP, 0.075, 0.08, (sx, 0))], trouser, segs=8)
-    else:
-        p.tube([(0.14, 0.05, 0.055, (sx, 0)), (0.5, 0.055, 0.06, (sx, 0))], (0.25, 0.2, 0.17), segs=8) # stockings under the skirt
+    p = Part(name)
+    cloth = (0.25, 0.2, 0.17) if skirt_long else trouser
+    p.tube([(KNEE - 0.03, 0.058, 0.062, (sx, 0)), (0.62, 0.068, 0.072, (sx, 0)), (HIP, 0.075, 0.08, (sx, 0))], cloth, segs=8)
+    p.ball((sx, 0, KNEE), (0.06, 0.064, 0.055), cloth, segs=8, rings=5)
+    p.to_object((sx, 0, HIP))
+    q = Part(name + "2")
+    q.tube([(0.2, 0.052, 0.057, (sx, 0)), (KNEE + 0.02, 0.058, 0.062, (sx, 0))], cloth, segs=8)
     # the boot: a shaft and a foot pointing forward
-    p.tube([(0.02, 0.058, 0.065, (sx, -0.01)), (0.24, 0.058, 0.064, (sx, 0))], boot, segs=8)
-    p.box((sx, -0.07, 0.04), (0.1, 0.2, 0.08), boot)
-    p.box((sx, -0.07, 0.005), (0.105, 0.21, 0.015), _shade(boot, 0.6))
-    return p.to_object((sx, 0, HIP))
+    q.tube([(0.02, 0.058, 0.065, (sx, -0.01)), (0.24, 0.058, 0.064, (sx, 0))], boot, segs=8)
+    q.box((sx, -0.07, 0.04), (0.1, 0.2, 0.08), boot)
+    q.box((sx, -0.07, 0.005), (0.105, 0.21, 0.015), _shade(boot, 0.6))
+    return q.to_object((sx, 0, KNEE))
 
 
 # --- the folk --------------------------------------------------------------------------------------

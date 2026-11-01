@@ -51,6 +51,9 @@ var perched: Building ## the tower it's up on
 var tunic_color := Color(0, 0, 0, 0) ## (unset: one of TUNICS)
 var display_name := "Kasabalı"
 var meal_key := "" ## the last meal it had ("<day>-<o|a>")
+var is_child := false
+var born_day := 0
+var _hit_t := 0.0 ## s to the next blow's sound
 var _sit := 0.0 ## 0 standing .. 1 sat on the ground
 var _hip_y := 0.78
 var ranged := 0.0 ## a rifle's reach (0: hand to hand)
@@ -65,6 +68,8 @@ var _anim := ""
 var _phase := 0.0
 var _legs: Array[Node3D] = []
 var _arms: Array[Node3D] = []
+var _elbows: Array[Node3D] = [] ## the forearms' pivots (on a model built in two at the elbow)
+var _knees: Array[Node3D] = [] ## the shins' pivots
 var _torso: Node3D
 var _load: Node3D
 var _yaw := 0.0
@@ -90,6 +95,14 @@ const TOOLS := {"eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "bu
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_build_look()
+	if is_child:
+		scale = Vector3.ONE * 0.62
+
+
+## Grown up: full size, and fit to work.
+func grow_up() -> void:
+	is_child = false
+	scale = Vector3.ONE
 
 
 ## The townsfolk as built in Blender (tools/blender/build_villagers.py): a body and four limbs.
@@ -114,7 +127,7 @@ static func _parts(variant: String) -> Dictionary:
 
 func _build_look() -> void:
 	var parts := _parts("outlaw" if team == 1 else FOLK[randi() % FOLK.size()])
-	if parts.size() == 5:
+	if parts.has("Torso") and parts.has("ArmL"):
 		_build_model(parts)
 		return
 	var tunic := StandardMaterial3D.new()
@@ -206,6 +219,7 @@ func _build_model(parts: Dictionary) -> void:
 	var look := StandardMaterial3D.new()
 	look.vertex_color_use_as_albedo = true
 	look.roughness = 0.9
+	look.albedo_color = Color(randf_range(0.86, 1.08), randf_range(0.86, 1.08), randf_range(0.86, 1.08)) # (no two dyed quite alike)
 	_tunic = look
 	var turn := Basis(Vector3.UP, PI)
 	_torso = Node3D.new()
@@ -218,12 +232,35 @@ func _build_model(parts: Dictionary) -> void:
 		hip.add_child(_part_mesh(parts[name][0], look, turn))
 		_legs.append(hip)
 		_hip_y = hip.position.y
+		if parts.has(name + "2"):
+			_knees.append(_joint(hip, parts, name, look, turn))
 	for name: String in ["ArmR", "ArmL"]: # (turned round, the model's left arm is on +x: the right hand, the one that holds things, goes second)
 		var sh := Node3D.new()
 		sh.position = turn * (parts[name][1] as Vector3)
 		_torso.add_child(sh)
 		sh.add_child(_part_mesh(parts[name][0], look, turn))
 		_arms.append(sh)
+		if parts.has(name + "2"):
+			_elbows.append(_joint(sh, parts, name, look, turn))
+
+
+## The lower half of a limb on its own pivot (the elbow, the knee), hung from the upper half's.
+static func _joint(upper: Node3D, parts: Dictionary, name: String, look: Material, turn: Basis) -> Node3D:
+	var j := Node3D.new()
+	j.position = turn * ((parts[name + "2"][1] as Vector3) - (parts[name][1] as Vector3))
+	upper.add_child(j)
+	j.add_child(_part_mesh(parts[name + "2"][0], look, turn))
+	return j
+
+
+## What a hand holds hangs from: the forearm, or the whole arm on a model with no elbow.
+func _hand(i: int) -> Node3D:
+	return _elbows[i] if i < _elbows.size() else _arms[i]
+
+
+## How far down that is to the palm.
+func _palm() -> float:
+	return -0.27 if not _elbows.is_empty() else -0.6
 
 
 static func _part_mesh(mesh: Mesh, mat: Material, turn: Basis) -> MeshInstance3D:
@@ -553,6 +590,12 @@ func wake() -> void:
 			return true}, {"t": "step", "to": b.door()}], "Dışarı çıkıyor")
 
 
+## Up (or down) the scaffold to `y`, hand over hand.
+func climb(y: float) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "position:y", y, 0.8).set_trans(Tween.TRANS_SINE)
+
+
 ## Up onto a tower's platform (an archer).
 func perch_on(t: Building) -> void:
 	perched = t
@@ -571,8 +614,8 @@ func arm_with(kind: String) -> void:
 	if _weapon:
 		_weapon.queue_free()
 	_weapon = Node3D.new()
-	_weapon.position = Vector3(0, -0.58, -0.04)
-	_arms[1].add_child(_weapon)
+	_weapon.position = Vector3(0, _palm() + 0.02, -0.04)
+	_hand(1).add_child(_weapon)
 	var wood := StandardMaterial3D.new()
 	wood.albedo_color = Color(0.32, 0.22, 0.13)
 	var iron := StandardMaterial3D.new()
@@ -702,6 +745,14 @@ func _process(dt: float) -> void:
 		"work":
 			_anim = str(step.get("anim", "build"))
 			_hold(TOOLS.get(_anim, ""))
+			# The blows heard: an axe on wood, a pick and a chisel on stone, the hammer on a site.
+			var period: float = {"chop": 1.37, "limb": 1.2, "mine": 1.57, "chisel": 0.45, "build": 0.9}.get(_anim, 0.0)
+			if period > 0.0:
+				_hit_t -= delta_safe(dt)
+				if _hit_t <= 0.0:
+					_hit_t = period
+					var pitch: float = {"chop": 1.0, "limb": 1.2, "mine": 1.7, "chisel": 2.0, "build": 1.4}[_anim]
+					Ambience.knock(global_position + Vector3.UP * 1.0 - global_basis.z * 0.6, pitch)
 			if step.has("face"):
 				_face(step.face, dt)
 			_elapsed += dt
@@ -829,8 +880,8 @@ func _lantern_check() -> void:
 	var want: bool = village.weather.is_night() and not perched
 	if want and _lantern == null:
 		_lantern = Node3D.new()
-		_lantern.position = Vector3(0, -0.62, -0.05)
-		_arms[0].add_child(_lantern)
+		_lantern.position = Vector3(0, _palm() - 0.02, -0.05)
+		_hand(0).add_child(_lantern)
 		var box := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.14, 0.2, 0.14)
@@ -865,8 +916,8 @@ func _hold(kind: String) -> void:
 	if kind == "" or _arms.size() < 2:
 		return
 	_tool = Node3D.new()
-	_tool.position = Vector3(0, -0.6, -0.04)
-	(_arms[0] if kind == "bowl" else _arms[1]).add_child(_tool)
+	_tool.position = Vector3(0, _palm(), -0.04)
+	_hand(0 if kind == "bowl" else 1).add_child(_tool)
 	var wood := Building.material("wood")
 	var iron := StandardMaterial3D.new()
 	iron.albedo_color = Color(0.32, 0.33, 0.35)
@@ -920,6 +971,10 @@ func _tool_part(size: Vector3, at: Vector3, mat: Material, rot := Vector3.ZERO) 
 	mi.position = at
 	mi.rotation = rot
 	_tool.add_child(mi)
+
+
+static func delta_safe(dt: float) -> float:
+	return minf(dt, 0.1)
 
 
 func _rate() -> float:
@@ -984,12 +1039,17 @@ func _animate(dt: float, walking: bool) -> void:
 	var bob := 0.0
 	var lean := 0.0
 	var twist := 0.0
+	var el := 0.15 ## elbows bent (forearm forward and up as it grows)
+	var er := 0.15
+	var kn := 0.05 ## knees bent
 	match _anim:
 		"walk":
 			leg = sin(_phase) * 0.55
 			arm_l = -leg * 0.6
 			arm_r = leg * 0.6
 			bob = absf(sin(_phase)) * 0.05
+			el = 0.35 + maxf(-arm_l, 0.0) * 0.4
+			er = 0.35 + maxf(-arm_r, 0.0) * 0.4
 		"chop":
 			# Both hands on the haft, swung in flat at the trunk from over the right shoulder.
 			var s := sin(t * 4.6)
@@ -997,12 +1057,18 @@ func _animate(dt: float, walking: bool) -> void:
 			arm_r = -1.3
 			twist = s * 0.75
 			lean = 0.1
+			el = 0.5 - s * 0.25
+			er = 0.35 + s * 0.25
+			kn = 0.2
 		"mine":
 			# Overhead and down.
 			var s := sin(t * 4.0)
 			arm_l = -1.6 - s * 1.0
 			arm_r = arm_l
 			lean = -s * 0.2 + 0.1
+			el = 0.3 + maxf(s, 0.0) * 0.6
+			er = el
+			kn = 0.25
 		"reap":
 			# Bent to the stalks, the sickle drawn round low.
 			var s := sin(t * 5.0)
@@ -1010,16 +1076,25 @@ func _animate(dt: float, walking: bool) -> void:
 			arm_l = -0.9
 			twist = s * 0.5
 			lean = 0.55
+			el = 0.9
+			er = 0.4
+			kn = 0.5
 		"hoe":
 			var s := sin(t * 3.4)
 			arm_l = -1.4 - s * 0.7
 			arm_r = arm_l
 			lean = 0.25 - s * 0.15
+			el = 0.45
+			er = 0.45
+			kn = 0.25
 		"dig":
 			var s := sin(t * 3.0)
 			arm_l = -0.8 + s * 0.4
 			arm_r = arm_l
 			lean = 0.35 + s * 0.2
+			el = 0.6
+			er = 0.6
+			kn = 0.4
 		"limb":
 			# Down at the trunk, lopping the branches off it.
 			var s := sin(t * 5.2)
@@ -1027,32 +1102,47 @@ func _animate(dt: float, walking: bool) -> void:
 			arm_r = arm_l
 			lean = 0.5
 			twist = s * 0.3
+			el = 0.5 + maxf(s, 0.0) * 0.5
+			er = el
+			kn = 0.45
 		"saw":
-			# Both hands on the saw, drawn back and forth across the log.
+			# Both hands on the saw, drawn back and forth across the log: the arms pumping at the elbow.
 			var s := sin(t * 5.0)
-			arm_l = -1.15 + s * 0.3
-			arm_r = -1.25 + s * 0.35
+			arm_l = -0.75 + s * 0.3
+			arm_r = -0.85 + s * 0.35
 			lean = 0.3 - s * 0.06
+			el = 1.1 - s * 0.5
+			er = 1.2 - s * 0.6
+			kn = 0.25
 		"chisel":
 			# The chisel held to the block, the mallet coming down on it.
-			arm_l = -1.0
-			arm_r = -1.55 - absf(sin(t * 7.0)) * 0.7
+			var s := absf(sin(t * 7.0))
+			arm_l = -0.7
+			arm_r = -1.2 - s * 0.5
 			lean = 0.35
+			el = 0.8
+			er = 0.5 + s * 1.0
 		"sit":
 			arm_l = -0.5
 			arm_r = -0.45
 			lean = 0.15
+			el = 0.9 # (hands on the knees)
+			er = 0.9
 		"eat":
 			# Sat, the bowl in the left hand, the spoon going up to the mouth.
 			var s := sin(t * 2.2)
-			arm_l = -1.0
-			arm_r = -1.0 - maxf(s, 0.0) * 1.5
+			arm_l = -0.6
+			arm_r = -0.6 - maxf(s, 0.0) * 0.5
 			lean = 0.2
+			el = 1.3 # (the bowl held up)
+			er = 1.2 + maxf(s, 0.0) * 1.2 # (the spoon to the mouth)
 		"stretch":
 			var s := sin(t * 1.6)
 			arm_l = -2.6 - s * 0.3
 			arm_r = arm_l
 			lean = -0.15
+			el = 0.05
+			er = 0.05
 		"look":
 			twist = sin(t * 0.7 + get_instance_id() % 5) * 0.7
 			arm_l = 0.1
@@ -1062,12 +1152,16 @@ func _animate(dt: float, walking: bool) -> void:
 			arm_r = -0.5 + s * 0.45
 			arm_l = -0.15
 			twist = sin(t * 0.9) * 0.2
+			er = 1.1 + s * 0.4 # (a hand going as it talks)
+			el = 0.25
 		"sow":
 			# Seed cast from the left hand in a fan.
 			var s := sin(t * 3.2)
 			arm_l = -0.6
 			arm_r = -1.0 - s * 0.5
 			twist = s * 0.4
+			el = 1.3 # (the seed bag held up)
+			er = 0.5 - s * 0.3
 		"gather", "draw":
 			arm_l = -0.9 + sin(t * 3.0) * 0.3
 			arm_r = -0.9 - sin(t * 3.0) * 0.3
@@ -1090,8 +1184,22 @@ func _animate(dt: float, walking: bool) -> void:
 			arm_r = -1.3 - s * 0.4
 			arm_l = -0.3
 			lean = 0.2
+		"climb":
+			var s := sin(t * 6.0)
+			arm_l = -2.4 - s * 0.4
+			arm_r = -2.4 + s * 0.4
+			el = 0.6 + s * 0.4
+			er = 0.6 - s * 0.4
+			kn = 0.5 + s * 0.4
+		"aim":
+			arm_l = -1.3
+			arm_r = -1.2
+			el = 0.5
+			er = 1.7 # (the butt to the shoulder)
 		"build":
 			var s := sin(t * 7.0)
+			el = 0.8
+			er = 0.5 + maxf(s, 0.0) * 0.9
 			arm_r = -1.3 - s * 0.6
 			arm_l = -0.6
 			lean = 0.1
@@ -1102,25 +1210,44 @@ func _animate(dt: float, walking: bool) -> void:
 		arm_l = -0.7 + sin(t * 5.0) * 0.15
 		arm_r = arm_l
 		lean = 0.45
+	if _anim == "push":
+		el = 0.5
+		er = 0.5
+		kn = 0.4
 	if vehicle == "hand" and _anim == "walk":
 		arm_l = -0.7
 		arm_r = -0.7
 		lean = 0.15
+		el = 0.45
+		er = 0.45
 	elif vehicle == "ox" and _anim == "walk":
 		arm_r = -0.9 # (a hand on the halter)
 	elif carry_n > 0 and carry_res in ["tas", "yiyecek", "su"] and _anim == "walk":
-		arm_l = -0.9
-		arm_r = -0.9
+		arm_l = -0.5
+		arm_r = -0.5
+		el = 1.0 # (the load held in both arms)
+		er = 1.0
 	elif carry_n > 0 and carry_res == "odun" and _anim == "walk":
 		arm_r = -2.6
+		er = 1.8 # (the hand over on the log)
 	var k := 1.0 - exp(-14.0 * dt)
-	# Sitting: down on the ground, the legs out in front.
+	# Sitting: down on the ground, the knees up a little.
 	_sit = move_toward(_sit, 1.0 if _anim in ["sit", "eat"] else 0.0, dt * 2.5)
-	var drop := 0.52 * _sit
+	var drop := (0.4 if not _knees.is_empty() else 0.52) * _sit
 	for hip in _legs:
 		hip.position.y = _hip_y - drop
-	_legs[0].rotation.x = lerpf(_legs[0].rotation.x, (leg if walking else 0.0) + 1.45 * _sit, k)
-	_legs[1].rotation.x = lerpf(_legs[1].rotation.x, (-leg if walking else 0.0) + 1.45 * _sit, k)
+	var thigh := 1.25 if not _knees.is_empty() else 1.45
+	_legs[0].rotation.x = lerpf(_legs[0].rotation.x, (leg if walking else 0.0) + thigh * _sit, k)
+	_legs[1].rotation.x = lerpf(_legs[1].rotation.x, (-leg if walking else 0.0) + thigh * _sit, k)
+	if _knees.size() == 2:
+		# A knee bends as its leg swings through, and when sitting, bending over, working low.
+		var swing_l := maxf(sin(_phase + 1.3), 0.0) * 0.95 if walking else 0.0
+		var swing_r := maxf(sin(_phase + 1.3 + PI), 0.0) * 0.95 if walking else 0.0
+		_knees[0].rotation.x = lerpf(_knees[0].rotation.x, -(kn + swing_l + 0.5 * _sit), k)
+		_knees[1].rotation.x = lerpf(_knees[1].rotation.x, -(kn + swing_r + 0.5 * _sit), k)
+	if _elbows.size() == 2:
+		_elbows[0].rotation.x = lerpf(_elbows[0].rotation.x, el, k)
+		_elbows[1].rotation.x = lerpf(_elbows[1].rotation.x, er, k)
 	# (the numbers above raise an arm forward and lean forward as they grow; the model faces -z)
 	_arms[0].rotation.x = lerpf(_arms[0].rotation.x, -arm_l, k)
 	_arms[1].rotation.x = lerpf(_arms[1].rotation.x, -arm_r, k)

@@ -22,6 +22,7 @@ const KEYS := [
 	["Bina", "Tab: bina grubu · 1-5: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç"],
 	["Seçim", "Sol tık: bina ya da kasabalı seç · kasabalı seçiliyken sağ tık bir işyerine: oraya ata · O: onar · Del: yık"],
 	["Zaman", "Boşluk: duraklat · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
+	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
 	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını"],
 ]
 
@@ -422,7 +423,7 @@ func _update_card() -> void:
 	var lines: Array[String] = []
 	match b.state:
 		"site", "repair":
-			lines.append(("Onarılıyor: %%%d" if b.state == "repair" else "İnşa ediliyor: %%%d") % int(b.progress() * 100.0))
+			lines.append(("Onarılıyor: %%%d" if b.state == "repair" else "İnşa ediliyor: %%%d · " + b.stage_name()) % int(b.progress() * 100.0))
 			var need: Array[String] = []
 			for r: String in b.cost:
 				need.append("%s %d/%d" % [BuildingDefs.RES_NAMES[r], int(b.delivered[r]), int(b.cost[r])])

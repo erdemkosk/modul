@@ -59,7 +59,13 @@ STONE = (0.55, 0.54, 0.5)
 SHINGLE = (0.47, 0.38, 0.29)
 IRON = (0.22, 0.22, 0.23)
 GLASS = (0.35, 0.42, 0.45)
+SAWDUST_C = (0.86, 0.74, 0.52)
 CHINK = (0.72, 0.68, 0.58)
+MOSS = (0.3, 0.38, 0.16)
+BONE = (0.82, 0.78, 0.68)
+# painted trim and shutters, one pair to a building
+PAINTS = [((0.88, 0.86, 0.8), (0.22, 0.38, 0.55)), ((0.85, 0.82, 0.72), (0.25, 0.42, 0.3)), ((0.3, 0.45, 0.6), (0.8, 0.65, 0.3)),
+          ((0.9, 0.88, 0.82), (0.55, 0.2, 0.15)), ((0.55, 0.7, 0.75), (0.86, 0.84, 0.78))]
 
 
 # --- one piece at a time -------------------------------------------------------------------------
@@ -104,9 +110,15 @@ class Piece:
         b = Vector((-math.sin(rot_z), math.cos(rot_z), 0))
         return self.obox(center, a, b, (0, 0, 1), size, color)
 
-    def log(self, a, b, r, color=BARK, end=END_GRAIN, segs=10, jitter=0.05, rng=random, taper=0.06):
-        """A round log from `a` to `b`, its bark a little uneven, its ends showing the grain."""
+    def _face_color(self, f, c):
+        for loop in f.loops:
+            loop[self.col] = (min(c[0], 1.0), min(c[1], 1.0), min(c[2], 1.0), 1.0)
+
+    def log(self, a, b, r, color=BARK, end=END_GRAIN, segs=12, jitter=0.05, rng=random, taper=0.06, moss=0.0, bow=0.012):
+        """A round log from `a` to `b`: its bark furrowed and knotted, a little bowed, grimed low down
+        and mossed on top near the ground (`moss`), its sawn ends showing sapwood and heartwood."""
         a, b = Vector(a), Vector(b)
+        length = (b - a).length
         axis = (b - a).normalized()
         u = axis.cross(Vector((0, 0, 1)))
         if u.length < 0.1:
@@ -114,10 +126,11 @@ class Piece:
         u.normalize()
         v = axis.cross(u).normalized()
         rings = []
-        n_rings = 3
+        n_rings = max(3, min(8, int(length / 0.7) + 2))
+        bend = u * rng.uniform(-1, 1) * bow * length
         for k in range(n_rings):
             t = k / (n_rings - 1)
-            p = a.lerp(b, t)
+            p = a.lerp(b, t) + bend * math.sin(math.pi * t)
             rr = r * (1.0 + taper * (0.5 - t))
             ring = []
             for s in range(segs):
@@ -125,19 +138,48 @@ class Piece:
                 j = 1.0 + rng.uniform(-jitter, jitter)
                 ring.append(self.bm.verts.new(p + (u * math.cos(ang) + v * math.sin(ang)) * rr * j))
             rings.append(ring)
+        base = jit(color, 0.1, rng)
         faces = []
         for k in range(n_rings - 1):
             for s in range(segs):
                 q = [rings[k][s], rings[k][(s + 1) % segs], rings[k + 1][(s + 1) % segs], rings[k + 1][s]]
                 f = self.bm.faces.new(q)
                 f.smooth = True
+                f.normal_update()
                 faces.append(f)
-        cap0 = self.bm.faces.new(list(reversed(rings[0])))
-        cap1 = self.bm.faces.new(rings[-1])
-        for f in faces + [cap0, cap1]:
-            f.normal_update()
-        self._paint(faces, jit(color, 0.1, rng))
-        self._paint([cap0, cap1], jit(end, 0.06, rng))
+                c = base
+                if s % 3 == 0:
+                    c = (c[0] * 0.8, c[1] * 0.79, c[2] * 0.78) # (a furrow in the bark)
+                if rng.random() < 0.025:
+                    c = (c[0] * 0.5, c[1] * 0.45, c[2] * 0.42) # (a knot)
+                z = f.calc_center_median().z
+                grime = 0.72 + 0.28 * max(0.0, min(z / 1.6, 1.0))
+                c = (c[0] * grime, c[1] * grime, c[2] * grime)
+                if moss > 0.0 and f.normal.z > 0.35 and rng.random() < moss * (1.2 - min(z / 2.0, 1.0)):
+                    m = jit(MOSS, 0.15, rng)
+                    c = (c[0] * 0.35 + m[0] * 0.65, c[1] * 0.35 + m[1] * 0.65, c[2] * 0.35 + m[2] * 0.65)
+                self._face_color(f, c)
+        sap = jit(end, 0.05, rng)
+        heart = (sap[0] * 0.82, sap[1] * 0.68, sap[2] * 0.58)
+        for ring, flip in ((rings[0], True), (rings[-1], False)):
+            ctr = Vector((0, 0, 0))
+            for vv in ring:
+                ctr += vv.co
+            ctr /= len(ring)
+            mid = [self.bm.verts.new(ctr + (vv.co - ctr) * 0.88) for vv in ring]
+            inner = [self.bm.verts.new(ctr + (vv.co - ctr) * 0.5) for vv in ring]
+            cv = self.bm.verts.new(ctr)
+            for s in range(segs):
+                s1 = (s + 1) % segs
+                for quad, c in (([ring[s], ring[s1], mid[s1], mid[s]], (base[0] * 0.7, base[1] * 0.68, base[2] * 0.66)),
+                                ([mid[s], mid[s1], inner[s1], inner[s]], sap)):
+                    f = self.bm.faces.new(list(reversed(quad)) if not flip else quad)
+                    f.normal_update()
+                    self._face_color(f, c)
+                tri = [inner[s], inner[s1], cv]
+                f = self.bm.faces.new(list(reversed(tri)) if not flip else tri)
+                f.normal_update()
+                self._face_color(f, heart)
         return faces
 
     def stone(self, center, size, color=STONE, rng=random):
@@ -198,6 +240,7 @@ class Kit:
             bpy.data.meshes.remove(me)
         self.coll = bpy.context.scene.collection
         self.objects = []
+        self.paint = PAINTS[0]
 
     def piece(self, stuff, tag=""):
         return Piece(stuff, tag)
@@ -292,7 +335,7 @@ def log_walls(k, w, d, courses, openings, dia=0.3):
                     y = (-1 if wall == "front" else 1) * hy
                     a, b = (s0, y, z), (s1, y, z)
                 p = k.piece("log")
-                p.log(a, b, dia * 0.5, rng=k.rng)
+                p.log(a, b, dia * 0.5, rng=k.rng, moss=0.5 if c < 2 else 0.05)
                 # (the chinking between it and the log below, a pale line of moss and clay)
                 if c > 0:
                     ax = Vector(b) - Vector(a)
@@ -355,7 +398,13 @@ def shingle_roof(k, w, ridge, half, slope, over=0.55, eave_over=0.6, strips=3, c
                     c = top + down * vv + normal * (0.045 + 0.012) + across * (x + sw * 0.5)
                     sh = Vector(c) + normal * 0.0
                     tilt = Matrix.Rotation(-0.08 * side, 3, across)
-                    p.obox(sh, across, (tilt @ down), (tilt @ normal), (sw - 0.015, course * 1.6, 0.025), jit(color, 0.12, k.rng))
+                    sc = jit(color, 0.12, k.rng)
+                    if k.rng.random() < 0.12:
+                        sc = (sc[0] * 0.7, sc[1] * 0.68, sc[2] * 0.66) # (an old one, weathered dark)
+                    if vv > length * 0.6 and k.rng.random() < 0.18 + 0.3 * (vv / length - 0.6):
+                        m = jit(MOSS, 0.15, k.rng)
+                        sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+                    p.obox(sh, across, (tilt @ down), (tilt @ normal), (sw - 0.015, course * 1.6, 0.025), sc)
                     x += sw
             k.add(p)
         # the fascia along the eave
@@ -369,6 +418,36 @@ def shingle_roof(k, w, ridge, half, slope, over=0.55, eave_over=0.6, strips=3, c
         dn = Vector((0, side * math.cos(slope), -math.sin(slope)))
         p.obox(Vector((0, 0, ridge + 0.5)) + dn * 0.1 + n * 0.03, (1, 0, 0), dn, n, (w + over * 2 + 0.1, 0.24, 0.04), jit(DARK, 0.05, k.rng))
     k.add(p)
+
+
+def gable_trim(k, w, ridge, half, slope, over=0.55, eave_over=0.6):
+    """The gable ends dressed: a carved bargeboard down each edge of the roof with a fringe of teeth
+    under it, a carved board hanging from the apex, a turned finial on the ridge."""
+    trim = k.paint[0]
+    run = half + eave_over
+    length = run / math.cos(slope)
+    top = Vector((0, 0, ridge + 0.47))
+    for sx in (-1, 1):
+        p = k.piece("plank", "barge")
+        x = sx * (w * 0.5 + over + 0.03)
+        for side in (-1, 1):
+            down = Vector((0, side * math.cos(slope), -math.sin(slope)))
+            nrm = Vector((0, side * math.sin(slope), math.cos(slope)))
+            p.obox(Vector((x, 0, 0)) + top + down * (length * 0.5) - nrm * 0.04, (1, 0, 0), down, nrm.cross(Vector((1, 0, 0))).cross(down).normalized() * -1 if False else down.cross(Vector((1, 0, 0))), (0.05, length, 0.24), jit(trim, 0.03, k.rng))
+            n = int(length / 0.14)
+            for i in range(1, n):
+                c = Vector((x, 0, 0)) + top + down * (i * length / n) - nrm * 0.2
+                p.obox(c, (1, 0, 0), (Matrix.Rotation(0.785, 3, Vector((1, 0, 0))) @ down), (Matrix.Rotation(0.785, 3, Vector((1, 0, 0))) @ nrm), (0.04, 0.07, 0.07), jit(trim, 0.03, k.rng))
+        # the hanging board at the apex, notched, and the finial above
+        hb = Vector((x, 0, ridge + 0.05))
+        p.box(hb, (0.05, 0.22, 0.75), jit(trim, 0.03, k.rng))
+        for i in range(3):
+            p.box(hb + Vector((sx * 0.03, 0, -0.25 + i * 0.22)), (0.02, 0.1, 0.1), (trim[0] * 0.7, trim[1] * 0.7, trim[2] * 0.7))
+        k.add(p)
+        p = k.piece("wood", "finial")
+        p.log((x - sx * 0.2, 0, ridge + 0.5), (x - sx * 0.2, 0, ridge + 1.0), 0.05, color=trim, end=trim, taper=0.3)
+        p.stone((x - sx * 0.2, 0, ridge + 1.05), (0.13, 0.13, 0.13), color=trim, rng=k.rng)
+        k.add(p)
 
 
 def door(k, x, y, width, height, facing=-1):
@@ -408,26 +487,57 @@ def window(k, wall, at, w, d, width=0.75, bottom=0.95, height=0.75, shutters=Tru
     up = Vector((0, 0, 1))
     zc = FLOOR + bottom + height * 0.5
     c = o + up * zc
-    p = k.piece("dark")
+    trim, paint = k.paint
+    f = c + out * 0.19 # (the face of the trim, out past the logs)
+    p = k.piece("plank", "trim")
+    # the frame and the cross of glazing bars, in the trim's paint
     for sgn in (-1, 1):
-        p.obox(c + along * sgn * (width * 0.5 + 0.04), along, out, up, (0.09, 0.3, height + 0.16), jit(DARK, 0.04, k.rng))
-        p.obox(c + up * sgn * (height * 0.5 + 0.04), along, out, up, (width + 0.18, 0.3, 0.09), jit(DARK, 0.04, k.rng))
-    p.obox(c + out * 0.02, along, out, up, (0.035, 0.05, height), DARK)
-    p.obox(c + out * 0.02, along, out, up, (width, 0.05, 0.035), DARK)
+        p.obox(c + along * sgn * (width * 0.5 + 0.04), along, out, up, (0.08, 0.3, height + 0.14), jit(trim, 0.03, k.rng))
+        p.obox(c + up * sgn * (height * 0.5 + 0.04), along, out, up, (width + 0.16, 0.3, 0.08), jit(trim, 0.03, k.rng))
+    p.obox(c + out * 0.03, along, out, up, (0.03, 0.04, height), trim)
+    p.obox(c + out * 0.03 + up * height * 0.12, along, out, up, (width, 0.04, 0.03), trim)
+    # the carved surround: broad side boards with notches cut in them, a crown with a pediment and
+    # a fringe of teeth under it, a sill on brackets with a carved apron
+    for sgn in (-1, 1):
+        sb = f + along * sgn * (width * 0.5 + 0.17)
+        p.obox(sb, along, out, up, (0.17, 0.04, height + 0.32), jit(trim, 0.03, k.rng))
+        for n in range(4):
+            p.obox(sb + up * (-height * 0.36 + n * height * 0.24) + out * 0.025, along, out, up, (0.07, 0.02, 0.07), (trim[0] * 0.75, trim[1] * 0.75, trim[2] * 0.75))
+    crown = f + up * (height * 0.5 + 0.2)
+    for n, (wd, hh) in enumerate([(width + 0.62, 0.07), (width + 0.5, 0.06), (width + 0.4, 0.05)]):
+        p.obox(crown + up * (n * 0.065), along, out, up, (wd, 0.06, hh), jit(trim, 0.03, k.rng))
+    peak = crown + up * 0.2
+    for sgn in (-1, 1):
+        a = 0.42 * sgn
+        p.obox(peak + along * sgn * (width * 0.27), (Matrix.Rotation(a, 3, out) @ along), out, (Matrix.Rotation(a, 3, out) @ up), (width * 0.62, 0.05, 0.06), jit(trim, 0.03, k.rng))
+    n_teeth = int((width + 0.4) / 0.09)
+    for n in range(n_teeth):
+        x = -(width + 0.4) * 0.5 + (n + 0.5) * (width + 0.4) / n_teeth
+        p.obox(crown + along * x - up * 0.07, (Matrix.Rotation(0.785, 3, out) @ along), out, (Matrix.Rotation(0.785, 3, out) @ up), (0.05, 0.03, 0.05), jit(trim, 0.03, k.rng))
+    sill = f - up * (height * 0.5 + 0.12) + out * 0.05
+    p.obox(sill, along, out, up, (width + 0.55, 0.14, 0.05), jit(trim, 0.03, k.rng))
+    p.obox(sill - up * 0.12 - out * 0.04, along, out, up, (width + 0.3, 0.03, 0.16), jit(trim, 0.03, k.rng))
+    for n in range(n_teeth - 2):
+        x = -(width + 0.2) * 0.5 + (n + 0.5) * (width + 0.2) / (n_teeth - 2)
+        p.obox(sill - up * 0.22 - out * 0.04 + along * x, (Matrix.Rotation(0.785, 3, out) @ along), out, (Matrix.Rotation(0.785, 3, out) @ up), (0.045, 0.025, 0.045), jit(trim, 0.03, k.rng))
     k.add(p)
     g = k.piece("window")
     g.obox(c, along, out, up, (width, 0.03, height), GLASS)
     k.add(g)
     if shutters:
         for sgn in (-1, 1):
-            p = k.piece("plank")
-            hinge = c + along * sgn * (width * 0.5 + 0.08) + out * 0.17
-            ang = sgn * 1.15
+            p = k.piece("plank", "shutter")
+            hinge = c + along * sgn * (width * 0.5 + 0.28) + out * 0.24
+            ang = sgn * 1.2
             dirv = (Matrix.Rotation(ang, 3, up) @ along) * sgn
             ctr = hinge + dirv * (width * 0.25)
-            nrm = dirv.cross(up).normalized()
+            nrm = dirv.cross(up).normalized() * sgn
             for i in range(3):
-                p.obox(ctr + up * ((i - 1) * height / 3.0), dirv, nrm, up, (width * 0.5, 0.035, height / 3.0 - 0.01), jit(PLANK, 0.1, k.rng))
+                p.obox(ctr + up * ((i - 1) * height / 3.0), dirv, nrm, up, (width * 0.5, 0.03, height / 3.0 - 0.008), jit(paint, 0.05, k.rng))
+            # a border and a diamond in the trim's colour
+            for z in (-height * 0.46, height * 0.46):
+                p.obox(ctr + up * z + nrm * 0.02, dirv, nrm, up, (width * 0.5, 0.012, 0.035), trim)
+            p.obox(ctr + nrm * 0.02, (Matrix.Rotation(0.785, 3, nrm) @ dirv), nrm, (Matrix.Rotation(0.785, 3, nrm) @ up), (0.12, 0.012, 0.12), trim)
             k.add(p)
 
 
@@ -478,6 +588,53 @@ def porch(k, w, front_y, depth=1.4, height=2.3, width=None, roof_top=None):
         k.add(p)
     p = k.piece("log")
     p.log((-width * 0.55, front_y - depth + 0.15, FLOOR + height + 0.05), (width * 0.55, front_y - depth + 0.15, FLOOR + height + 0.05), 0.1, rng=k.rng)
+    k.add(p)
+    trim = k.paint[0]
+    edge = front_y - depth + 0.1
+    # two steps down the front, between the posts
+    p = k.piece("plank", "steps")
+    for i, (dy, z) in enumerate(((0.2, 0.24), (0.45, 0.1))):
+        p.box((0, edge - dy, z), (1.3, 0.26, 0.05), jit(PLANK, 0.08, k.rng))
+        for sx in (-1, 1):
+            p.box((sx * 0.62, edge - dy, z * 0.5), (0.05, 0.26, z), DARK)
+    k.add(p)
+    # railings: a rail on balusters along the sides and either side of the steps
+    for sx in (-1, 1):
+        p = k.piece("plank", "rail")
+        x = sx * width * 0.45
+        for t in range(int((depth - 0.2) / 0.18)):
+            p.box((x, front_y - 0.15 - t * 0.18, 0.67), (0.035, 0.035, 0.52), jit(trim, 0.04, k.rng))
+        p.box((x, front_y - depth * 0.5, 0.95), (0.07, depth - 0.1, 0.06), jit(trim, 0.03, k.rng))
+        run_x = width * 0.45 - 0.75
+        for t in range(int(run_x / 0.18) + 1):
+            p.box((sx * (0.75 + t * 0.18), edge, 0.67), (0.035, 0.035, 0.52), jit(trim, 0.04, k.rng))
+        p.box((sx * (0.75 + run_x * 0.5), edge, 0.95), (run_x + 0.05, 0.07, 0.06), jit(trim, 0.03, k.rng))
+        k.add(p)
+    # a bench against the wall, a lantern on an iron arm by the door, antlers over the door
+    p = k.piece("plank", "bench")
+    bx = width * 0.3
+    p.box((bx, front_y - 0.3, 0.86), (1.1, 0.32, 0.05), jit(PLANK, 0.06, k.rng))
+    for sx in (-1, 1):
+        p.box((bx + sx * 0.45, front_y - 0.3, 0.63), (0.06, 0.28, 0.42), DARK)
+    k.add(p)
+    p = k.piece("dark", "lamparm")
+    p.box((-0.85, front_y - 0.2, FLOOR + 1.9), (0.04, 0.3, 0.04), IRON)
+    p.box((-0.85, front_y - 0.33, FLOOR + 1.8), (0.16, 0.16, 0.04), IRON)
+    p.box((-0.85, front_y - 0.33, FLOOR + 1.6), (0.18, 0.18, 0.03), IRON)
+    k.add(p)
+    g = k.piece("window", "lamp")
+    g.box((-0.85, front_y - 0.33, FLOOR + 1.7), (0.12, 0.12, 0.17), (1.0, 0.85, 0.6))
+    k.add(g)
+    p = k.piece("wood", "antlers")
+    base = Vector((0, front_y - 0.12, FLOOR + 2.55))
+    p.box(base, (0.2, 0.04, 0.16), jit(PLANK, 0.05, k.rng))
+    for sx in (-1, 1):
+        a0 = base + Vector((sx * 0.06, -0.04, 0.04))
+        a1 = a0 + Vector((sx * 0.35, -0.05, 0.25))
+        p.log(a0, a1, 0.025, color=BONE, end=BONE, segs=6, taper=0.4)
+        for t in (0.4, 0.75):
+            q = a0.lerp(a1, t)
+            p.log(q, q + Vector((sx * 0.02, -0.04, 0.18)), 0.015, color=BONE, end=BONE, segs=5, taper=0.5)
     k.add(p)
     p = k.piece("shingle")
     down = Vector((0, -math.cos(slope), -math.sin(slope)))
@@ -548,6 +705,7 @@ def chopping_block(k, x, y):
 
 def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chimney_at=None, extra=None, double_door=False):
     k = Kit(kind)
+    k.paint = k.rng.choice(PAINTS)
     plinth(k, w, d)
     floor(k, w, d)
     door_h = 2.0
@@ -557,6 +715,7 @@ def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chim
     wall_top = log_walls(k, w, d, courses, openings)
     ridge, half, slope = log_gables(k, w, d, wall_top, rise)
     shingle_roof(k, w, ridge, half, slope)
+    gable_trim(k, w, ridge, half, slope)
     if double_door:
         door(k, -door_w * 0.25, -d * 0.5 + 0.15, door_w * 0.5, door_h)
         door(k, door_w * 0.25, -d * 0.5 + 0.15, door_w * 0.5, door_h)
@@ -576,8 +735,32 @@ def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chim
 
 def _house_extra(k, w, d):
     woodpile(k, -w * 0.5 - 0.6, 0.6, length=2.4, height=1.1)
+    # a lean-to roof over the woodpile, against the wall
+    p = k.piece("plank")
+    p.obox((-w * 0.5 - 0.6, 0.6, 1.55), (0.95, 0, -0.3), (0, 1, 0), (0.3, 0, 0.95), (0.9, 2.7, 0.04), jit(PLANK, 0.06, k.rng))
+    for yy in (-0.6, 1.8):
+        p.box((-w * 0.5 - 1.0, yy, 0.7), (0.06, 0.06, 1.4), DARK)
+    k.add(p)
     chopping_block(k, -w * 0.5 - 1.2, -d * 0.5 - 0.7)
+    p = k.piece("wood", "chips")
+    for i in range(14):
+        p.box((-w * 0.5 - 1.2 + k.rng.uniform(-0.6, 0.6), -d * 0.5 - 0.7 + k.rng.uniform(-0.6, 0.6), 0.01), (0.08, 0.05, 0.015), SAWDUST_C, rot_z=k.rng.uniform(0, 3))
+    k.add(p)
     barrel(k, w * 0.5 - 0.6, -d * 0.5 - 0.45)
+    # a path of flat stones out from the steps
+    p = k.piece("stone", "path")
+    for i in range(5):
+        p.stone((k.rng.uniform(-0.15, 0.15), -d * 0.5 - 2.2 - i * 0.55, 0.02), (0.5, 0.42, 0.08), rng=k.rng)
+    k.add(p)
+    # a washing line between two poles at the side, things hung on it
+    p = k.piece("wood", "line")
+    x0, x1 = w * 0.5 + 0.9, w * 0.5 + 0.9
+    p.log((x0, -1.6, -0.3), (x0, -1.6, 2.0), 0.04, rng=k.rng)
+    p.log((x1, 1.8, -0.3), (x1, 1.8, 2.0), 0.04, rng=k.rng)
+    p.box((x0, 0.1, 1.9), (0.01, 3.4, 0.01), (0.7, 0.65, 0.55))
+    for i, col in enumerate([(0.8, 0.78, 0.72), (0.55, 0.2, 0.15), (0.3, 0.4, 0.55)]):
+        p.box((x0, -0.9 + i * 0.95, 1.6), (0.01, 0.6, 0.55), col)
+    k.add(p)
 
 
 def _store_extra(k, w, d):
@@ -591,6 +774,20 @@ def _store_extra(k, w, d):
     crate(k, -w * 0.5 + 1.3, -d * 0.5 - 0.88, 1.16, 0.55)
     barrel(k, w * 0.5 - 1.9, -d * 0.5 - 0.95, 0.46)
     barrel(k, w * 0.5 + 0.6, 0.0)
+    p = k.piece("wood", "sacks")
+    for i in range(5):
+        p.stone((-0.4 + i * 0.4 + (0.2 if i > 2 else 0), -d * 0.5 - 1.0 - (0.3 if i > 2 else 0), 0.66 + (0.3 if i == 4 else 0)), (0.42, 0.32, 0.36), color=(0.68, 0.6, 0.45), rng=k.rng)
+    k.add(p)
+    p = k.piece("dark", "sign")
+    p.box((0, -d * 0.5 - 0.02, 3.0), (2.0, 0.06, 0.45), jit(DARK, 0.04, k.rng))
+    for i in range(5):
+        p.box((-0.7 + i * 0.35, -d * 0.5 - 0.06, 3.0), (0.2, 0.02, 0.22), k.paint[0])
+    k.add(p)
+    p = k.piece("log", "hoist")
+    p.log((w * 0.5 + 1.4, 0.0, 4.2), (w * 0.5 - 0.6, 0.0, 4.2), 0.12, rng=k.rng)
+    p.log((w * 0.5 + 1.3, 0.0, 4.15), (w * 0.5 + 1.3, 0.0, 3.0), 0.012, color=(0.6, 0.5, 0.35), end=(0.6, 0.5, 0.35), segs=5)
+    p.log((w * 0.5 + 1.25, 0.0, 4.05), (w * 0.5 + 1.35, 0.0, 4.05), 0.09, color=DARK, end=DARK, taper=0.0)
+    k.add(p)
     woodpile(k, w * 0.5 + 0.7, d * 0.5 - 1.2, length=2.0, height=1.2)
 
 
