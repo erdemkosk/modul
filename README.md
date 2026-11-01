@@ -54,6 +54,18 @@ place from its hands. The card says which stage it's at.
 - **Gözcü kulesi**: a timber tower with a rifleman up it, who shoots what he can see within 70 m;
   with one standing, a band or a pack is heard coming.
 - **Bekçi karakolu**: the settlers given to it (up to six) are watchmen with rifles.
+- **Meydan**: the town square, paved round a fire pit with log benches. Of an evening (18:30 to
+  23:00) its fire burns the wood brought for it, and the townsfolk gather round it to sit and talk.
+- **Çan kulesi**: the bell rings for work at six and for the end of it at seven in the evening;
+  when a raid comes it rings the alarm, and everyone in the town hides, not just those nearby.
+- **Tahta yol** (TAŞIMA): drag from one point to another to lay a plank road, a log for every 2 m.
+  On planks the townsfolk walk half as fast again, never in mud, and paths prefer them.
+
+A house when finished gets its yard: a fence with a gate before the door, a garden of cabbages,
+an outhouse, a hen house, a woodshed, and the odds and ends of a farm (a cart, hay, a trough, a
+bench, a sledge). Where another yard or building is in the way the fence is left open. A new
+building turns its door to the nearest square, store, well or bell tower and lines up with its
+neighbours; R turns it by hand.
 
 The night is dark, and what's in it comes out (`raids.gd`). From the third night, every other night
 after midnight a band of outlaws comes out of the woods and makes for the town from its darkest
@@ -165,6 +177,7 @@ a storm can start one.
   its look and its moves. `scripts/village.gd`: the store, the buildings, who does what (fires,
   workplaces, hauling, building, sleeping), eating, newcomers, fire leaping between buildings,
   lightning, felling.
+- `scripts/yard.gd`: a house's yard: fence, garden, outbuildings, clutter; its fence shut on the grid.
 - `scripts/crop.gd`: a field's crop: sowing, growing, ripe, reaped, burning; its tufts.
   `scripts/village_save.gd`: the save (user://village_save.dat): buildings with their fallen and
   charred pieces and goods, people and their work and homes, felled trees and stumps, worn paths,

@@ -14,8 +14,8 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["BARINMA", ["ev", "ambar", "kuyu", "fener"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "toplayici", "ormanci"]],
-	["TAŞIMA", ["arabaci", "ahir"]], ["SAVUNMA", ["kule", "kisla"]]]
+const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "toplayici", "ormanci"]],
+	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["kule", "kisla"]]]
 const SPEEDS := [1.0, 2.0, 4.0]
 const KEYS := [
 	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön"],

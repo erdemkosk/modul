@@ -59,6 +59,9 @@ var work_rate := 1.0 ## less when hungry
 var loading := false ## (a saved game being put back: nothing to announce)
 var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
+var yards: Array = [] ## Yard, one to a house
+var roads: Array = [] ## the plank roads laid: [ax, az, bx, bz] each
+var _rung := {} ## "<day>-<hour>" -> true: the bell's rung for it
 const BILLET_WOOD := 3 ## wood a log gives sawn up
 const SAPLING_TIME := 240.0
 const LOG_EVERY := 55.0 ## s a lit hearth goes on one firewood
@@ -282,6 +285,10 @@ func remove_building(b: Building) -> void:
 	b.goods.clear()
 	_let_go(b)
 	buildings.erase(b)
+	var y := _yard_of(b)
+	if y:
+		yards.erase(y)
+		y.queue_free()
 	if b.def.role == "farm":
 		nav.set_field(b.cells, false)
 	else:
@@ -312,6 +319,13 @@ func _on_finished(b: Building) -> void:
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
 	if b.def.role == "house":
 		_house_people()
+		if not _yard_of(b):
+			var y := Yard.new()
+			y.house = b
+			y.village = self
+			y.nav = nav
+			yards.append(y)
+			add_child(y)
 	if b.def.role == "light" and not b.repaired:
 		b.add_goods("odun", 2) # (it's put up with its first kindling)
 
@@ -321,6 +335,117 @@ func _on_ruined(b: Building) -> void:
 	if b.def.role == "store" and b.goods_total() > 0:
 		message.emit("Ambardakiler enkazın altında kaldı; onarılınca geri gelir.", "bad")
 	_let_go(b)
+
+
+func _yard_of(b: Building) -> Yard:
+	for y in yards:
+		if is_instance_valid(y) and y.house == b:
+			return y
+	return null
+
+
+## A plank road laid from `a` to `b` (each 2 m of it a log from the nearest store, unless `free`):
+## as far as the wood goes. The metres laid.
+func lay_road(a: Vector3, b: Vector3, free := false) -> float:
+	var flat := Vector3(b.x - a.x, 0, b.z - a.z)
+	var length := flat.length()
+	if length < 0.5:
+		return 0.0
+	var n := ceili(length / 2.0)
+	var laid := 0
+	if not free:
+		for k in n:
+			var s := store_with("odun", a)
+			if s == null or s.take_goods("odun", 1) == 0:
+				break
+			laid += 1
+	else:
+		laid = n
+	if laid == 0:
+		return 0.0
+	var end := a + flat / length * minf(laid * 2.0, length)
+	roads.append([a.x, a.z, end.x, end.z])
+	_road_mesh(a, end)
+	var cells: Array[Vector2i] = []
+	var steps := ceili(a.distance_to(end) / 0.8)
+	for k in steps + 1:
+		var c := Nav.cell_of(a.lerp(end, float(k) / steps))
+		if not c in cells:
+			cells.append(c)
+	nav.set_road(cells)
+	return minf(laid * 2.0, length)
+
+
+## The planks themselves: laid across the way every 30 cm on two stringers, each lying on the ground
+## where it is, one multimesh to a stretch.
+func _road_mesh(a: Vector3, b: Vector3) -> void:
+	var flat := Vector3(b.x - a.x, 0, b.z - a.z)
+	var length := flat.length()
+	var dir := flat / length
+	var side := dir.cross(Vector3.UP)
+	var count := int(length / 0.3) + 1
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var board := BoxMesh.new()
+	board.size = Vector3(1.8, 0.06, 0.27)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.9
+	board.material = m
+	mm.mesh = board
+	mm.instance_count = count
+	for k in count:
+		var c := a + dir * (k * 0.3)
+		c.y = nav.height(c.x, c.z) + 0.08
+		var hl := nav.height(c.x - side.x * 0.8, c.z - side.z * 0.8)
+		var hr := nav.height(c.x + side.x * 0.8, c.z + side.z * 0.8)
+		var tilt := atan2(hr - hl, 1.6)
+		var basis := Basis.looking_at(dir, Vector3.UP) * Basis(Vector3.BACK, -tilt) * Basis(Vector3.UP, randf_range(-0.04, 0.04))
+		mm.set_instance_transform(k, Transform3D(basis, c))
+		var shade := randf_range(0.42, 0.6)
+		mm.set_instance_color(k, Color(shade, shade * 0.76, shade * 0.5))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	add_child(mi)
+
+
+func squares() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "square":
+			out.append(b)
+	return out
+
+
+func bells() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "bell":
+			out.append(b)
+	return out
+
+
+## Rings every bell tower (`times` strokes).
+func ring_bells(times := 3, gap := 1.6) -> void:
+	for b in bells():
+		b.ring(times, gap)
+
+
+## The evening: the square's fire lit (it burns the wood brought for it), the bell for the end of work.
+func _evenings() -> void:
+	var h := weather.hour
+	var evening := h >= 18.3 and h < 23.0
+	for b in squares():
+		var want := evening and int(b.goods.get("odun", 0)) > 0
+		if want and not b.lit:
+			b.take_goods("odun", 1)
+		b.set_fire(evening and (b.lit or want))
+	for hour in [6, 19]:
+		var key := "%d-%d" % [day, hour]
+		if h >= float(hour) and h < float(hour) + 0.5 and not _rung.has(key):
+			_rung[key] = true
+			ring_bells(3 if hour == 6 else 5)
 
 
 ## Sets a damaged building or a ruin to be mended. Why not, if it can't be ("" if it can).
@@ -469,6 +594,7 @@ func _process(dt: float) -> void:
 	_heat_t += dt
 	if _heat_t >= 2.0:
 		_hearths(_heat_t)
+		_evenings()
 		_heat_t = 0.0
 	if day != _last_day:
 		_last_day = day
@@ -624,6 +750,9 @@ func _plan_firewood(v: Villager) -> bool:
 				continue
 		elif b.def.role == "light":
 			if int(b.goods.get("odun", 0)) >= 2:
+				continue
+		elif b.def.role == "square":
+			if int(b.goods.get("odun", 0)) >= 3:
 				continue
 		else:
 			continue
@@ -863,7 +992,7 @@ func _plan_raid(v: Villager) -> bool:
 		return v.perched != null or not v.plan.is_empty()
 	if v.job == "Saklanıyor" and not v.plan.is_empty():
 		return true
-	var near := raids.nearest_raider(v.position, 35.0)
+	var near := raids.nearest_raider(v.position, 600.0 if not bells().is_empty() else 35.0)
 	if near == null:
 		return false
 	var shelters: Array[Building] = []
@@ -929,6 +1058,16 @@ func _plan_home(v: Villager) -> void:
 ## Nothing to do: a while spent as people spend it. A word with someone else standing about, a sit
 ## on the ground, a stretch, a look round, a stroll.
 func _plan_idle(v: Villager) -> void:
+	# Of an evening, round the fire on the square.
+	var sq := _nearest(squares(), v.position)
+	if sq and sq.lit and sq.global_position.distance_to(v.position) < 200.0 and randf() < 0.8:
+		var a := randf() * TAU
+		var seat := sq.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(2.2, 3.2)
+		seat.y = ground_at(seat)
+		v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": seat},
+			{"t": "work", "time": randf_range(15.0, 30.0), "anim": "sit" if randf() < 0.6 else "chat", "face": sq.global_position + Vector3.UP},
+			{"t": "step", "to": sq.door()}], "Meydanda, ateş başında", sq, true)
+		return
 	var near: Building = v.workplace if v.workplace else _nearest(stores(), v.position)
 	var at := near.door() if near else v.position
 	var p := at + Vector3(randf_range(-6, 6), 0, randf_range(1.5, 7))

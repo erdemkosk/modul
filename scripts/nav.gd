@@ -32,11 +32,20 @@ var bridge := {} ## {center: Vector3, along: Vector3, half_len, half_w, y}
 
 var _base := PackedFloat32Array() ## each cell's own cost
 var _shut := PackedByteArray() ## 1 the ground's own (water, cliff), 2 a building's
+var _road := PackedByteArray() ## 1 under a plank road: quick, never mud, the cheapest way
 var _claim := PackedByteArray() ## 1 under a field: walked over, not built on
 var _worn := {} ## cell index -> true while it carries any wear
 var _scorched := {} ## cell index -> how scorched, 0..1
 var _shown := PackedByteArray() ## the mask's red as last written, per cell
 var _runs: Array[PackedInt32Array] = [] ## per row of cells: its open runs as (start, end, region)
+# Walks are found off the main thread (`path_for`): a long one round to a ford took ~0.2 s, a frame
+# stopped dead. The asks wait in `_asks` and go out together; while they're out the grid isn't
+# touched, its changes held in `_held` (cell, solid?, weight) till they're back.
+var _asks := {} ## asker's id -> {a, b} waiting to go out
+var _out: Array = [] ## the asks out now: {who, a, b, ca, cb, ids}
+var _task := -1
+var _held: Array = []
+var _found := {} ## asker's id -> {b, path, at}
 var _dirty := false
 var _upload_t := 0.0
 var _fade_t := 0.0
@@ -47,6 +56,7 @@ func _ready() -> void:
 	wear.resize(N * N)
 	_base.resize(N * N)
 	_shut.resize(N * N)
+	_road.resize(N * N)
 	_shown.resize(N * N)
 	_claim.resize(N * N)
 	astar.region = Rect2i(0, 0, N, N)
@@ -76,13 +86,13 @@ func _read_ground() -> void:
 			var c := cz * N + cx
 			if steep > STEEP:
 				_shut[c] = 1
-				astar.set_point_solid(Vector2i(cx, cz), true)
+				_grid(Vector2i(cx, cz), true, 0.0)
 				continue
 			var forest := sp2[i * 4] / 255.0
 			var road := sp[i * 4 + 2] / 255.0
 			var cost := 1.3 + forest * 0.9 + steep * 2.5 - road * 0.55
 			_base[c] = cost
-			astar.set_point_weight_scale(Vector2i(cx, cz), cost * COST_SCALE)
+			_grid(Vector2i(cx, cz), false, cost * COST_SCALE)
 
 
 func _shut_water() -> void:
@@ -135,7 +145,7 @@ func _shut_water() -> void:
 
 func _shut_cell(c: Vector2i) -> void:
 	_shut[c.y * N + c.x] = 1
-	astar.set_point_solid(c, true)
+	_grid(c, true, 0.0)
 
 
 static func cell_of(p: Vector3) -> Vector2i:
@@ -199,7 +209,7 @@ func set_building(cells: Array[Vector2i], on: bool) -> void:
 		if _shut[i] == 1:
 			continue
 		_shut[i] = 2 if on else 0
-		astar.set_point_solid(c, on)
+		_grid(c, on, -1.0)
 		var px := terrain.village_img.get_pixel(c.x, c.y)
 		px.g = 1.0 if on else 0.0
 		if not on:
@@ -289,11 +299,84 @@ func _region(c: Vector2i) -> int:
 	return -1
 
 
+## A change to the pathfinder's grid: a cell shut (or opened, `weight` < 0 leaving its cost be),
+## or its cost. Held while a search is out.
+func _grid(c: Vector2i, solid: bool, weight: float) -> void:
+	if _task >= 0:
+		_held.append([c, solid, weight])
+		return
+	if solid or weight < 0.0:
+		astar.set_point_solid(c, solid)
+	if weight > 0.0:
+		astar.set_point_weight_scale(c, weight)
+
+
+## The walk from `a` to `b` for `who` (see find_path), once it's been found: empty till then (a
+## frame or so; it asks again each frame, and a newer ask, to somewhere else, takes its place).
+## One found for near the same `b` will do: a foe chased has moved on a little meanwhile.
+func path_for(who: Object, a: Vector3, b: Vector3) -> PackedVector3Array:
+	var id := who.get_instance_id()
+	var got: Dictionary = _found.get(id, {})
+	if not got.is_empty() and (got.b as Vector3).distance_to(b) < 4.0:
+		_found.erase(id)
+		return got.path
+	var asked: Dictionary = _asks.get(id, {})
+	if asked.is_empty() or (asked.b as Vector3).distance_to(b) >= 4.0:
+		_asks[id] = {"a": a, "b": b}
+	return PackedVector3Array()
+
+
+func _send_asks() -> void:
+	if _task >= 0:
+		if not WorkerThreadPool.is_task_completed(_task):
+			return
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+		for h: Array in _held:
+			_grid(h[0], h[1], h[2])
+		_held.clear()
+		var now := Time.get_ticks_msec()
+		for o: Dictionary in _out:
+			_found[o.who] = {"b": o.b, "path": _path_from(o.ids, o.b), "at": now}
+		_out.clear()
+		for id: int in _found.keys(): # (no one came for it: its asker's gone, or asks elsewhere)
+			if now - int(_found[id].at) > 5000:
+				_found.erase(id)
+	if _asks.is_empty():
+		return
+	for id: int in _asks:
+		var ask: Dictionary = _asks[id]
+		var ends := _ends(ask.a, ask.b)
+		_out.append({"who": id, "a": ask.a, "b": ask.b, "ca": ends[0], "cb": ends[1]})
+	_asks.clear()
+	_task = WorkerThreadPool.add_task(_search)
+
+
+func _search() -> void: # (on a worker thread: only the grid, which nothing touches meanwhile)
+	for o: Dictionary in _out:
+		o.ids = astar.get_id_path(o.ca, o.cb, true)
+
+
 ## A walk from `a` to `b`: the points to pass through (on the ground), the last `b` itself. Straight
 ## runs are thinned to their ends. With no way through it goes as near as it can (the last cell of
-## its own region on the line back from `b`), then straight on.
+## its own region on the line back from `b`), then straight on. Found here and now, waiting for
+## any search out: the villagers ask with path_for.
 func find_path(a: Vector3, b: Vector3) -> PackedVector3Array:
-	var out := PackedVector3Array()
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+		for h: Array in _held:
+			_grid(h[0], h[1], h[2])
+		_held.clear()
+		for o: Dictionary in _out: # (their askers ask again)
+			_asks[o.who] = {"a": o.a, "b": o.b}
+		_out.clear()
+	var ends := _ends(a, b)
+	return _path_from(astar.get_id_path(ends[0], ends[1], true), b)
+
+
+## The cells a walk from `a` to `b` is searched between.
+func _ends(a: Vector3, b: Vector3) -> Array[Vector2i]:
 	var ca := _open_near(cell_of(a))
 	var cb := _open_near(cell_of(b))
 	var home := _region(ca)
@@ -304,7 +387,11 @@ func find_path(a: Vector3, b: Vector3) -> PackedVector3Array:
 			if _region(q) == home:
 				cb = q
 				break
-	var ids := astar.get_id_path(ca, cb, true)
+	return [ca, cb]
+
+
+func _path_from(ids: Array[Vector2i], b: Vector3) -> PackedVector3Array:
+	var out := PackedVector3Array()
 	var last_dir := Vector2i.ZERO
 	for k in range(1, ids.size()):
 		var dir := ids[k] - ids[k - 1]
@@ -375,10 +462,27 @@ func tread(p: Vector3, dt: float, weight := 1.0) -> void:
 	_show(c, i)
 
 
-## How trodden the ground at a point is, 0..1.
+## How trodden the ground at a point is, 0..1 (a plank road counts as worn smooth).
 func worn(p: Vector3) -> float:
 	var c := cell_of(p)
+	if _road[c.y * N + c.x] == 1:
+		return 1.0
 	return clampf(wear[c.y * N + c.x], 0.0, 1.0)
+
+
+## Planks laid over these cells: the cheapest way through, quick and never mud.
+func set_road(cells: Array[Vector2i]) -> void:
+	for c in cells:
+		var i := c.y * N + c.x
+		if _shut[i] != 0:
+			continue
+		_road[i] = 1
+		_grid(c, false, _base[i] * COST_SCALE * 0.3)
+
+
+func on_road(p: Vector3) -> bool:
+	var c := cell_of(p)
+	return _road[c.y * N + c.x] == 1
 
 
 func _show(c: Vector2i, i: int) -> void:
@@ -389,12 +493,20 @@ func _show(c: Vector2i, i: int) -> void:
 	var px := terrain.village_img.get_pixel(c.x, c.y)
 	px.r = v / 255.0
 	terrain.village_img.set_pixel(c.x, c.y, px)
-	if _shut[i] == 0:
-		astar.set_point_weight_scale(c, _base[i] * COST_SCALE * lerpf(1.0, 0.42, v / 255.0))
+	if _shut[i] == 0 and _road[i] == 0:
+		_grid(c, false, _base[i] * COST_SCALE * lerpf(1.0, 0.42, v / 255.0))
 	_dirty = true
 
 
+func _exit_tree() -> void:
+	# (a search still out when the game's left or reloaded: the grid would go from under it)
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+
+
 func _process(dt: float) -> void:
+	_send_asks()
 	_fade_t += dt
 	if _fade_t >= 4.0:
 		var gone: Array = []

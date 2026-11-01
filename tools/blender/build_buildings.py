@@ -1250,8 +1250,146 @@ def ormanci():
     k.finish()
 
 
+
+def meydan():
+    """The town square: paved, a fire pit in the middle ringed with stones and logs laid ready, log
+    benches round it, a notice board, a lamp on a post."""
+    w = d = 10.0
+    k = Kit("meydan")
+    k.paint = k.rng.choice(PAINTS)
+    yard_pad(k, w, d, top=(0.42, 0.4, 0.37))
+    for ring in range(4):
+        p = k.piece("stone", "found")
+        r = 1.8 + ring * 0.95
+        n = int(r * 6.5)
+        for i in range(n):
+            a = i / n * math.tau + ring * 0.2
+            p.box((math.cos(a) * r, math.sin(a) * r, PLINTH_TOP + 0.04), (0.62, 0.48, 0.06), jit((0.5, 0.49, 0.46), 0.08, k.rng), rot_z=a)
+        k.add(p)
+    p = k.piece("stone", "pit")
+    for i in range(12):
+        a = i / 12 * math.tau
+        p.stone((math.cos(a) * 0.75, math.sin(a) * 0.75, PLINTH_TOP + 0.12), (0.32, 0.28, 0.24), rng=k.rng)
+    k.add(p)
+    p = k.piece("wood", "fire")
+    for i in range(6):
+        a = i / 6 * math.tau
+        p.log((math.cos(a) * 0.45, math.sin(a) * 0.45, PLINTH_TOP + 0.05), (0, 0, PLINTH_TOP + 0.75), 0.06, rng=k.rng)
+    k.add(p)
+    for i in range(4):
+        a = i / 4 * math.tau + math.pi / 4
+        c = Vector((math.cos(a) * 2.9, math.sin(a) * 2.9, 0))
+        along = Vector((-math.sin(a), math.cos(a), 0))
+        p = k.piece("log", "bench")
+        for t in (-0.7, 0.7):
+            q = c + along * t
+            p.log((q.x, q.y, PLINTH_TOP - 0.05), (q.x, q.y, PLINTH_TOP + 0.35), 0.15, rng=k.rng, taper=0.0)
+        p.log(c - along * 1.0 + Vector((0, 0, PLINTH_TOP + 0.45)), c + along * 1.0 + Vector((0, 0, PLINTH_TOP + 0.45)), 0.14, rng=k.rng)
+        k.add(p)
+    p = k.piece("plank", "board")
+    bx, by = 3.6, 3.6
+    for s in (-1, 1):
+        p.box((bx + s * 0.6, by, 1.2), (0.12, 0.12, 2.4), DARK)
+    p.box((bx, by, 1.7), (1.4, 0.08, 0.9), jit(PLANK, 0.05, k.rng))
+    p.obox((bx, by - 0.25, 2.3), (1, 0, 0), (0, math.cos(0.5), -math.sin(0.5)), (0, math.sin(0.5), math.cos(0.5)), (1.7, 0.6, 0.05), jit(SHINGLE, 0.05, k.rng))
+    for i in range(5):
+        p.box((bx - 0.45 + (i % 3) * 0.42, by - 0.05, 1.5 + (i // 3) * 0.35), (0.3, 0.01, 0.24), (0.88, 0.85, 0.76))
+    k.add(p)
+    k.finish()
+
+
+def cankulesi():
+    """The bell tower: a stone footing, four leaning posts braced across, a railed bell deck, the
+    bell hanging from its beam, a steep shingled roof with a ball on top, a ladder up."""
+    k = Kit("cankulesi")
+    k.paint = k.rng.choice(PAINTS)
+    plinth(k, 4.0, 4.0)
+    p = k.piece("stone")
+    for c in range(3):
+        for side in range(4):
+            for i in range(5):
+                t = (i + 0.5) / 5 - 0.5 + (0.1 if c % 2 else 0)
+                ctr = (t * 3.6, (-1 if side == 0 else 1) * 1.8, 0.5 + c * 0.4) if side < 2 else ((-1 if side == 2 else 1) * 1.8, t * 3.6, 0.5 + c * 0.4)
+                p.stone(ctr, (0.62, 0.45, 0.4), rng=k.rng)
+    p.box((0, 0, 0.95), (3.4, 3.4, 1.2), jit((0.4, 0.39, 0.36), 0.03, k.rng))
+    k.add(p)
+    base, deck = 1.55, 7.2
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p = k.piece("log")
+            p.log((sx * 1.5, sy * 1.5, base), (sx * 1.05, sy * 1.05, deck + 2.6), 0.15, rng=k.rng)
+            k.add(p)
+    for lvl in (base + 2.6, base + 5.0):
+        for side in range(4):
+            p = k.piece("log")
+            a = [(-1.4, -1.4), (1.4, -1.4), (1.4, 1.4), (-1.4, 1.4)][side]
+            b = [(1.4, -1.4), (1.4, 1.4), (-1.4, 1.4), (-1.4, -1.4)][side]
+            f = 1.0 - (lvl - base) / (deck + 2.6 - base) * 0.3
+            p.log((a[0] * f, a[1] * f, lvl), (b[0] * f, b[1] * f, lvl), 0.08, rng=k.rng)
+            p.log((a[0] * f, a[1] * f, lvl - 2.3), (b[0] * f, b[1] * f, lvl), 0.06, rng=k.rng)
+            k.add(p)
+    p = k.piece("plank")
+    for i in range(12):
+        p.box((-1.5 + (i + 0.5) * 3.0 / 12, 0, deck), (3.0 / 12 - 0.01, 3.2, 0.08), jit(PLANK, 0.08, k.rng))
+    k.add(p)
+    trim = k.paint[0]
+    for side in range(4):
+        p = k.piece("plank", "rail")
+        for i in range(9):
+            t = -1.4 + i * 0.35
+            q = (t, (-1 if side == 0 else 1) * 1.55, deck + 0.45) if side < 2 else ((-1 if side == 2 else 1) * 1.55, t, deck + 0.45)
+            p.box(q, (0.04, 0.04, 0.8), jit(trim, 0.04, k.rng))
+        q = (0, (-1 if side == 0 else 1) * 1.55, deck + 0.85) if side < 2 else ((-1 if side == 2 else 1) * 1.55, 0, deck + 0.85)
+        p.box(q, (3.1, 0.07, 0.06) if side < 2 else (0.07, 3.1, 0.06), jit(trim, 0.03, k.rng))
+        k.add(p)
+    p = k.piece("log")
+    p.log((-1.2, 0, deck + 2.2), (1.2, 0, deck + 2.2), 0.1, rng=k.rng)
+    k.add(p)
+    p = k.piece("stone", "bell")
+    bronze = (0.5, 0.38, 0.18)
+    p.log((0, 0, deck + 1.25), (0, 0, deck + 2.05), 0.36, color=bronze, end=bronze, taper=0.9, segs=16, jitter=0.0, bow=0.0)
+    p.log((0, 0, deck + 1.18), (0, 0, deck + 1.3), 0.4, color=bronze, end=bronze, taper=0.0, segs=16, jitter=0.0, bow=0.0)
+    p.box((0, 0, deck + 1.1), (0.06, 0.06, 0.25), IRON)
+    k.add(p)
+    roof_base = deck + 2.6
+    for side in range(4):
+        p = k.piece("shingle")
+        ang = side * math.pi * 0.5
+        out = Vector((math.sin(ang), -math.cos(ang), 0))
+        across = Vector((math.cos(ang), math.sin(ang), 0))
+        slope = math.atan2(2.4, 1.8)
+        down = (out * math.cos(slope) + Vector((0, 0, -math.sin(slope)))).normalized()
+        nrm = (out * math.sin(slope) + Vector((0, 0, math.cos(slope)))).normalized()
+        apex = Vector((0, 0, roof_base + 2.4))
+        L = 1.8 / math.cos(slope) + 0.4
+        rows = 10
+        for r in range(rows):
+            v = (r + 0.5) * L / rows
+            width = 2 * (v * math.cos(slope)) + 0.3
+            x = -width * 0.5
+            while x < width * 0.5:
+                sw = min(k.rng.uniform(0.2, 0.3), width * 0.5 - x + 0.01)
+                p.obox(apex + down * v + nrm * 0.03 + across * (x + sw * 0.5), across, down, nrm, (sw - 0.012, L / rows * 1.5, 0.03), jit(SHINGLE, 0.12, k.rng))
+                x += sw
+        k.add(p)
+    p = k.piece("wood", "finial")
+    p.log((0, 0, roof_base + 2.3), (0, 0, roof_base + 2.8), 0.05, color=trim, end=trim, taper=0.3)
+    p.stone((0, 0, roof_base + 2.9), (0.2, 0.2, 0.2), color=trim, rng=k.rng)
+    k.add(p)
+    p = k.piece("wood")
+    for sx in (-0.25, 0.25):
+        p.log((sx, -2.3, 0.3), (sx, -1.6, deck + 0.4), 0.04, rng=k.rng)
+    n = int(deck / 0.35)
+    for i in range(n):
+        t = (i + 0.5) / n
+        p.log((-0.27, -2.3 + 0.7 * t, 0.3 + deck * t), (0.27, -2.3 + 0.7 * t, 0.3 + deck * t), 0.03, segs=6, rng=k.rng)
+    k.add(p)
+    k.finish()
+
+
 BUILDERS = {
     "ev": ev, "ambar": ambar, "kisla": kisla, "fener": fener, "kuyu": kuyu, "kule": kule, "ahir": ahir,
+    "meydan": meydan, "cankulesi": cankulesi,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
 }

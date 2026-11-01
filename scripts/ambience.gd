@@ -151,8 +151,47 @@ static func play(name: String, at: Vector3, db := 0.0, pitch := 1.0) -> void:
 	_me._next = (_me._next + 1) % POOL
 	a.stream = _stream_of(name)
 	a.global_position = at
+	a.max_distance = 110.0
+	a.unit_size = 10.0
 	a.volume_db = db
 	a.pitch_scale = pitch * randf_range(0.93, 1.07)
+	a.play()
+
+
+## The bell, struck: made once here (a bronze bell's partials, the hum, the prime, the tierce, the
+## quint, the nominal, each dying away at its own pace).
+static var _bell: AudioStreamWAV
+
+
+static func bell(at: Vector3) -> void:
+	if _me == null or not is_instance_valid(_me):
+		return
+	if _bell == null:
+		var rate := 22050
+		var secs := 4.5
+		var data := PackedByteArray()
+		data.resize(int(rate * secs) * 2)
+		var base := 330.0
+		var partials := [[0.5, 0.35, 0.6], [1.0, 0.5, 1.0], [1.19, 0.3, 1.3], [1.5, 0.25, 1.6], [2.0, 0.35, 2.2], [2.5, 0.15, 3.0], [3.0, 0.1, 3.6]]
+		for i in int(rate * secs):
+			var t := float(i) / rate
+			var s := 0.0
+			for pt: Array in partials:
+				s += sin(TAU * base * float(pt[0]) * t) * float(pt[1]) * exp(-t * float(pt[2]))
+			s *= minf(t / 0.004, 1.0) * 0.55
+			data.encode_s16(i * 2, clampi(int(s * 32767.0), -32768, 32767))
+		_bell = AudioStreamWAV.new()
+		_bell.format = AudioStreamWAV.FORMAT_16_BITS
+		_bell.mix_rate = rate
+		_bell.data = data
+	var a := _me._pool[_me._next]
+	_me._next = (_me._next + 1) % POOL
+	a.stream = _bell
+	a.global_position = at
+	a.volume_db = 6.0
+	a.max_distance = 600.0
+	a.unit_size = 60.0
+	a.pitch_scale = 1.0
 	a.play()
 
 

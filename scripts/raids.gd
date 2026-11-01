@@ -110,6 +110,9 @@ func start(n: int) -> void:
 		raiders.append(r)
 	if not _towers().is_empty():
 		message.emit("Gözcü ormanda ses duydu: %s yönünden %d kişi geliyor!" % [_compass(_origin - store.global_position), n], "bad")
+	if not village.bells().is_empty():
+		village.ring_bells(8, 0.8)
+		message.emit("Tehlike çanı çalıyor: herkes saklanıyor!", "bad")
 
 
 ## Somewhere out in the woods a few hundred metres from the town, as dark as can be found.

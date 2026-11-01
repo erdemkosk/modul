@@ -67,6 +67,7 @@ static func save(game: Node) -> bool:
 	var cam: RtsCamera = game.cam
 	var d := {
 		"saplings": young,
+		"roads": v.roads.duplicate(true),
 		"version": VERSION, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
@@ -117,6 +118,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.bush_rest[i] = v.clock + float(d.bush[i])
 	for s: Array in d.stumps:
 		v.add_stump(Vector3(s[0], s[1], s[2]), float(s[3]), int(s[4]) if s.size() > 4 else -1)
+	for rd: Array in d.get("roads", []):
+		v.lay_road(Vector3(float(rd[0]), 0, float(rd[1])), Vector3(float(rd[2]), 0, float(rd[3])), true)
 	var young: Dictionary = d.get("saplings", {})
 	for i: int in young:
 		v.plant(i, float(young[i]))

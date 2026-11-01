@@ -30,6 +30,9 @@ var _ghost: Building
 var _ghost_yaw := 0.0
 var _ghost_pos := Vector3.ZERO
 var _ghost_reason := "x"
+var _yaw_manual := false ## R pressed: the player's turning it, not the town
+var _road_from: Variant = null ## where a road being dragged began
+var _road_line: MeshInstance3D
 var _ring: MeshInstance3D
 var _menu := false
 var _saved_day := -1
@@ -140,10 +143,22 @@ func _ready() -> void:
 # --- Input ------------------------------------------------------------------------------------------
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _placing == "yol" and _road_from != null:
+		var to: Variant = cam.ground_under((e as InputEventMouseButton).position)
+		if to != null:
+			var got := village.lay_road(_road_from, to)
+			if got <= 0.0:
+				hud.toast("Depoda odun yok", "bad")
+			else:
+				hud.toast("Tahta yol döşendi: %d m" % roundi(got), "good")
+		_road_from = null
+		return
 	if e is InputEventMouseButton and e.pressed:
 		var mb := e as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if _placing != "":
+			if _placing == "yol":
+				_road_from = cam.ground_under(mb.position)
+			elif _placing != "":
 				_place_here(mb.shift_pressed)
 			else:
 				_pick(mb.position)
@@ -174,6 +189,7 @@ func _unhandled_input(e: InputEvent) -> void:
 				_ring.visible = false
 			KEY_R:
 				_ghost_yaw += deg_to_rad(-15.0 if k.shift_pressed else 15.0)
+				_yaw_manual = true
 				_ghost_reason = "x"
 			KEY_SPACE:
 				if not _menu:
@@ -253,6 +269,10 @@ func start_placing(kind: String) -> void:
 	stop_placing()
 	select(null)
 	_placing = kind
+	_yaw_manual = false
+	if kind == "yol":
+		hud.set_hint("Tahta yol: basılı tutup sürükle, bırakınca döşenir (her 2 m bir odun) · Sağ tık bitir")
+		return
 	_ghost = Building.new()
 	_ghost.setup(kind)
 	add_child(_ghost)
@@ -262,6 +282,9 @@ func start_placing(kind: String) -> void:
 
 func stop_placing() -> void:
 	_placing = ""
+	_road_from = null
+	if _road_line:
+		_road_line.visible = false
 	if _ghost:
 		_ghost.queue_free()
 		_ghost = null
@@ -293,6 +316,11 @@ func _update_ghost() -> void:
 	var p: Vector3 = hit
 	p.x = snappedf(p.x, 0.5)
 	p.z = snappedf(p.z, 0.5)
+	if not _yaw_manual:
+		var turned := _auto_yaw(_placing, p)
+		if not is_equal_approx(turned, _ghost_yaw):
+			_ghost_yaw = turned
+			_ghost_reason = "x"
 	if p.distance_to(_ghost_pos) < 0.01 and _ghost_reason != "x":
 		return
 	_ghost_pos = p
@@ -302,10 +330,81 @@ func _update_ghost() -> void:
 		_ghost.set_ghost(true, reason == "")
 		var def: Dictionary = BuildingDefs.DEFS[_placing]
 		if reason == "":
-			hud.set_hint("%s: %s · R çevir · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing)])
+			hud.set_hint("%s: %s · %s · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing), "R çevir" if _yaw_manual else "kapısı kasabaya dönük (R: elle çevir)"])
 		else:
 			hud.set_hint(reason, true)
 	_ghost_reason = reason
+
+
+## Which way a building at `p` would face by itself: its door toward the middle of the town (the
+## square, else a store, a well), and lined up square with its nearest neighbour when that's near
+## enough the same.
+func _auto_yaw(kind: String, p: Vector3) -> float:
+	var target: Building = null
+	var best := 90.0
+	for b in village.buildings:
+		if b.state == "gone" or b.state == "ghost" or not b.def.role in ["square", "store", "well", "bell"]:
+			continue
+		var d := b.global_position.distance_to(p) * (0.6 if b.def.role == "square" else 1.0)
+		if d < best and d > 1.0:
+			best = d
+			target = b
+	var face := _ghost_yaw
+	if target:
+		var to := target.global_position - p
+		face = atan2(to.x, to.z)
+	# lined up with the nearest neighbour
+	var nb: Building = null
+	var nd := 24.0
+	for b in village.buildings:
+		if b.state == "gone" or b.def.role in ["farm", "light", "square"]:
+			continue
+		var d := b.global_position.distance_to(p)
+		if d < nd:
+			nd = d
+			nb = b
+	if nb:
+		var base := nb.global_rotation.y
+		var bestk := face
+		var bd := INF
+		for k in 4:
+			var cand := base + k * PI * 0.5
+			var diff := absf(angle_difference(cand, face))
+			if diff < bd:
+				bd = diff
+				bestk = cand
+		if bd < 0.75:
+			return bestk
+	return snappedf(face, deg_to_rad(15.0))
+
+
+func _update_road_line() -> void:
+	if _placing != "yol" or _road_from == null:
+		if _road_line:
+			_road_line.visible = false
+		return
+	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
+	if to == null:
+		return
+	if _road_line == null:
+		_road_line = MeshInstance3D.new()
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(1.0, 0.8, 0.45, 0.55)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_road_line.material_override = m
+		add_child(_road_line)
+	var a: Vector3 = _road_from
+	var b: Vector3 = to
+	var flat := Vector3(b.x - a.x, 0, b.z - a.z)
+	if flat.length() < 0.2:
+		return
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.8, 0.1, flat.length())
+	_road_line.mesh = bm
+	_road_line.visible = true
+	_road_line.global_transform = Transform3D(Basis.looking_at(flat.normalized(), Vector3.UP), (a + b) * 0.5 + Vector3.UP * 0.2)
+	hud.set_hint("Tahta yol: %d m · %d odun" % [roundi(flat.length()), ceili(flat.length() / 2.0)])
 
 
 # --- Picking ----------------------------------------------------------------------------------------
@@ -408,7 +507,9 @@ func _process(_dt: float) -> void:
 	if village.day != _saved_day and weather.hour > 6.0 and not raids.active:
 		_saved_day = village.day
 		VillageSave.save(self) # (every morning)
-	if _placing != "":
+	if _placing == "yol":
+		_update_road_line()
+	elif _placing != "":
 		_update_ghost()
 	if selected_villager and is_instance_valid(selected_villager) and not selected_villager.dead and selected_villager.visible:
 		_ring.visible = true

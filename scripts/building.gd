@@ -950,10 +950,68 @@ func set_lit(on: bool) -> void:
 		_glow.visible = on
 
 
+## The square's evening fire: flames in the pit, its light, a little smoke.
+var _fire: Array[Node3D] = []
+
+
+func set_fire(on: bool) -> void:
+	if on and _fire.is_empty():
+		var at := Vector3(0, 0.6, 0)
+		for p in pieces:
+			if p.tag == "fire":
+				at = p.aabb.get_center()
+		var f := FireFx.flames()
+		f.amount = 24
+		f.position = at
+		(f.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.3, 0.2, 0.3)
+		add_child(f)
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.6, 0.28)
+		l.light_energy = 3.5
+		l.omni_range = 14.0
+		l.light_volumetric_fog_energy = 4.0
+		l.position = at + Vector3.UP * 0.6
+		add_child(l)
+		var s := FireFx.smoke()
+		s.amount = 12
+		s.position = at + Vector3.UP * 0.8
+		(s.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.3, 0.2, 0.3)
+		add_child(s)
+		_fire = [f, l, s]
+	for n in _fire:
+		if n is GPUParticles3D:
+			(n as GPUParticles3D).emitting = on
+		else:
+			n.visible = on
+	lit = on
+
+
+## The bell swung and sounded (`times` strokes, `gap` s apart).
+func ring(times := 3, gap := 1.6) -> void:
+	for p in pieces:
+		if p.tag != "bell" or not p.alive:
+			continue
+		var base := p.xf * p.mesh_local
+		var pivot := p.aabb.end + Vector3(0, 0.05, 0)
+		pivot.x = p.aabb.get_center().x
+		pivot.z = p.aabb.get_center().z
+		var tw := p.mesh.create_tween()
+		for k in times:
+			for ang in [0.45, -0.45]:
+				tw.tween_method(func(a: float) -> void:
+					p.mesh.transform = Transform3D(Basis(Vector3.RIGHT, a), pivot) * Transform3D(Basis.IDENTITY, -pivot) * base, 0.0, ang, gap * 0.25)
+				tw.tween_method(func(a: float) -> void:
+					p.mesh.transform = Transform3D(Basis(Vector3.RIGHT, a), pivot) * Transform3D(Basis.IDENTITY, -pivot) * base, ang, 0.0, gap * 0.25)
+			tw.tween_callback(Ambience.bell.bind(p.aabb.get_center() + global_position))
+		tw.tween_callback(func() -> void: p.mesh.transform = base)
+
+
 ## How far its light reaches when lit (0: none).
 func light_reach() -> float:
 	if not lit:
 		return 0.0
+	if def.role == "square":
+		return 14.0
 	return float(def.light) if def.role == "light" else 8.0
 
 

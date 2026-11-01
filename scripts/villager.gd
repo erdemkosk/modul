@@ -737,9 +737,12 @@ func _process(dt: float) -> void:
 	match str(step.t):
 		"go":
 			if _path.is_empty():
-				_path = nav.find_path(position, step.to)
+				_path = nav.path_for(self, position, step.to)
 				_path_i = 0
-			if _walk(dt):
+			if _path.is_empty(): # (the way's still being found)
+				_anim = "idle"
+				_animate(dt, false)
+			elif _walk(dt):
 				plan.pop_front()
 				_path = PackedVector3Array()
 		"work":
@@ -803,13 +806,17 @@ func _walk(dt: float) -> bool:
 	var worn := nav.worn(position)
 	var speed := 2.9 * (1.0 + 0.5 * worn * (1.0 - 0.75 * Weather.wet_now))
 	speed *= 0.82 if carry_n > 0 else 1.0
-	# A trodden way in the wet is mud underfoot; deep snow is slow going everywhere.
-	speed *= 1.0 - 0.35 * smoothstep(0.3, 0.9, Weather.wet_now) * worn - 0.3 * Weather.snow_cover_now
+	# A trodden way in the wet is mud underfoot; deep snow is slow going everywhere; planks are neither.
+	var planks := nav.on_road(position)
+	if planks:
+		speed = 2.9 * 1.5 * (0.82 if carry_n > 0 else 1.0)
+	else:
+		speed *= 1.0 - 0.35 * smoothstep(0.3, 0.9, Weather.wet_now) * worn - 0.3 * Weather.snow_cover_now
 	var mud := 0.0
 	if has_cart:
 		# Quick on a hard path, slow off it; in the wet the path is mud, and soft ground is worse.
 		speed = 2.4 * (1.0 + 0.9 * worn * (1.0 - 0.8 * Weather.wet_now))
-		mud = clampf(Weather.wet_now * (0.4 + worn * 0.6) + nav.terrain.soft_at(position.x, position.z).x * 1.5 + Weather.snow_cover_now * 0.5, 0.0, 1.0)
+		mud = 0.0 if planks else clampf(Weather.wet_now * (0.4 + worn * 0.6) + nav.terrain.soft_at(position.x, position.z).x * 1.5 + Weather.snow_cover_now * 0.5, 0.0, 1.0)
 		speed *= 1.0 - 0.6 * mud
 		if _stuck > 0.0:
 			_stuck -= dt
@@ -1006,9 +1013,11 @@ func _fight(step: Dictionary, dt: float) -> void:
 		return
 	if d > 1.4:
 		if _path.is_empty() or f.position.distance_to(_chase_at) > 2.5 or _path_i >= _path.size():
-			_path = nav.find_path(position, f.position)
-			_path_i = 0
-			_chase_at = f.position
+			var way := nav.path_for(self, position, f.position)
+			if not way.is_empty():
+				_path = way
+				_path_i = 0
+				_chase_at = f.position
 		_walk(dt)
 		return
 	_path = PackedVector3Array()
