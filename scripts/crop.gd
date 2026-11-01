@@ -1,7 +1,9 @@
 class_name Crop
 extends MultiMeshInstance3D
 ## A field's crop (a Building with role "farm"): rows of tufts over the field, lying on the ground
-## wherever it is. Fallow it's bare earth. Sown (`sown` goes 0..1 as its farmers walk the rows), it
+## wherever it is. A new field is wild ground first: its farmers mow the grass off it and turn the
+## sod strip by strip (`cleared` 0..1), and only then is it bare earth to sow. Fallow it's bare
+## earth. Sown (`sown` goes 0..1 as its farmers walk the rows), it
 ## comes up green and grows (`growth`, faster in the rain, not at all in snow), turns gold when
 ## ripe, and is reaped row by row (`reaped`), each sheaf carried off as food. A ripe or nearly ripe
 ## crop burns: a fire in it runs across the field and leaves it black and fallow.
@@ -13,7 +15,8 @@ const STEP_Z := 0.75
 
 var field: Building
 var nav: Nav
-var stage := "fallow" ## fallow, sowing, growing, ripe
+var stage := "wild" ## wild, fallow, sowing, growing, ripe
+var cleared := 0.0 ## (wild) how much of it is mown and turned
 var sown := 0.0
 var growth := 0.0
 var reaped := 0 ## food taken off it so far
@@ -21,6 +24,8 @@ var burning := 0.0 ## > 0 while the crop's alight: seconds it has burnt
 
 var _spots: Array[Vector3] = [] ## each tuft, in the field's space (on the ground)
 var _t := 0.0
+var _cells: Array[Vector2i] = [] ## the field's ground cells, in the order they're mown
+var _cut := 0 ## how many of them are
 var _flames: Array[GPUParticles3D] = []
 
 
@@ -98,9 +103,13 @@ static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector
 		st.add_vertex(v[0])
 
 
-## A place in the field to work at, on the ground, in the world.
+## A place in the field to work at, on the ground, in the world (wild: on the next strip to mow).
 func spot() -> Vector3:
-	var p := field.global_transform * _spots[randi() % _spots.size()]
+	var i := randi() % _spots.size()
+	if stage == "wild":
+		var n := _spots.size()
+		i = mini(int(cleared * n) + randi() % maxi(int(n * 0.12), 1), n - 1)
+	var p := field.global_transform * _spots[i]
 	p.y = nav.height(p.x, p.z)
 	return p
 
@@ -111,6 +120,17 @@ func ripe() -> bool:
 
 func left() -> int:
 	return YIELD - reaped if stage == "ripe" else 0
+
+
+## A farmer's stint mowing and turning the sod. True once it's all cleared.
+func clear(amount: float) -> bool:
+	if stage != "wild":
+		return true
+	cleared = minf(cleared + amount, 1.0)
+	if cleared >= 1.0:
+		stage = "fallow"
+	_draw()
+	return stage != "wild"
 
 
 ## A farmer's stint sowing. True once it's all sown.
@@ -200,7 +220,21 @@ func _burn_fx() -> void:
 		f.emitting = true
 
 
+## The grass off the cells mown so far (the strips in the same order as the rows).
+func _mow() -> void:
+	if _cells.is_empty() and not field.cells.is_empty():
+		var inv := field.global_transform.affine_inverse()
+		_cells = field.cells.duplicate()
+		_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return (inv * Nav.center_of(a)).x < (inv * Nav.center_of(b)).x)
+	var due := _cells.size() if stage != "wild" else int(cleared * _cells.size())
+	if due > _cut:
+		nav.cut_grass(_cells.slice(_cut, due))
+		_cut = due
+
+
 func _draw() -> void:
+	_mow()
 	var n := _spots.size()
 	var green := Color(0.34, 0.52, 0.16)
 	var gold := Color(0.86, 0.68, 0.3)

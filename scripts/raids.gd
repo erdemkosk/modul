@@ -13,10 +13,17 @@ extends Node3D
 ## They shy from the light: in a lamp's or a window's glow they turn back into the dark. They go at
 ## first light.
 ##
-## The town's answer is light. The watchmen (Bekçi karakolu) and the lookout up a tower shoot what
-## they can see: anything in the light, or close by; what stays in the dark they can't. Everyone
-## else runs for a house or the store and hides till it's over (if that catches fire, they come
-## out). With a tower standing, the band's heard coming before it's there.
+## The band has its parts: shooters with rifles lie up in the dark at the edge of the light and
+## shoot whoever they can see in it (a lantern makes a mark of whoever carries it; they shoot out
+## the lamps too); torchmen make for the unlit, unguarded buildings and fire them; looters go for
+## the store and carry off what they can. Hurt badly, one runs; a shooter who falls drops his
+## rifle, and what a looter carried is got back.
+##
+## The town's answer is light, and its few rifles. The watchmen (Bekçi karakolu) and the lookout up a
+## tower shoot what they can see: anything in the light, or close by, or that's just fired (its
+## flash shows it); what stays in the dark they can't. The militia take the armoury's rifles to
+## their posts. Everyone else runs for a house or the store and hides till it's over (if that
+## catches fire, they come out). With a tower standing, the band's heard coming before it's there.
 
 signal message(text: String, kind: String)
 
@@ -43,6 +50,8 @@ var _size := 0
 var _think_t := 0.0
 var _shoot_t := {} ## tower -> seconds to its next shot
 var _wolf_night := -1 ## the day whose night the wolves have had
+var loot: Array[Dictionary] = [] ## rifles the outlaws dropped: {at, node, ammo, claimed}
+var _lamp_said := false
 
 
 func _ready() -> void:
@@ -102,12 +111,21 @@ func start(n: int) -> void:
 		r.max_hp = 70.0
 		r.attack = 13.0
 		r.fighter = true
+		# Their parts: about two in five shoot, as many carry the fire, the rest go for the store.
+		r.role = "shooter" if k % 5 in [0, 3] else ("looter" if k % 5 == 4 else "torch")
 		add_child(r)
 		var p := _origin + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
 		p.y = nav.height(p.x, p.z)
 		r.position = p
-		r.arm_with("axe")
+		if r.role == "shooter":
+			r.ranged = 40.0
+			r.attack = 22.0
+			r.arm_with("rifle")
+		else:
+			r.arm_with("axe")
+		r.died.connect(_on_raider_down)
 		raiders.append(r)
+	_lamp_said = false
 	if not _towers().is_empty():
 		message.emit("Gözcü ormanda ses duydu: %s yönünden %d kişi geliyor!" % [_compass(_origin - store.global_position), n], "bad")
 	if not village.bells().is_empty():
@@ -162,12 +180,53 @@ func nearest_raider(p: Vector3, reach: float, seen := false) -> Villager:
 	return best
 
 
-## Whether someone at `from` can see `who`: in the light, or close.
+## Whether someone at `from` can see `who`: in the light, close, or just shown by its own shot.
 func can_see(from: Vector3, who: Villager) -> bool:
-	return who.position.distance_to(from) < SEE_CLOSE or village.is_lit(who.position)
+	return who.position.distance_to(from) < SEE_CLOSE or who.revealed > 0.0 or village.is_lit(who.position)
+
+
+## Where the band came from.
+func origin() -> Vector3:
+	return _origin
+
+
+## A raider down: a shooter's rifle left lying, a looter's haul got back.
+func _on_raider_down(r: Villager) -> void:
+	if r.role == "shooter":
+		var node := Node3D.new()
+		add_child(node)
+		node.global_position = r.position + Vector3.UP * 0.06
+		node.rotation.y = randf() * TAU
+		var wood := StandardMaterial3D.new()
+		wood.albedo_color = Color(0.3, 0.2, 0.12)
+		var iron := StandardMaterial3D.new()
+		iron.albedo_color = Color(0.2, 0.2, 0.21)
+		iron.metallic = 0.6
+		for part: Array in [[Vector3(0.06, 0.06, 0.75), Vector3(0, 0, 0.1), wood], [Vector3(0.03, 0.03, 0.7), Vector3(0, 0.02, -0.55), iron]]:
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = part[0]
+			mi.mesh = bm
+			mi.position = part[1]
+			mi.material_override = part[2]
+			node.add_child(mi)
+		loot.append({"at": r.position, "node": node, "ammo": randi_range(3, 12), "claimed": false})
+		message.emit("Bir haydut nişancı düştü: tüfeği yerde kaldı.", "good")
+	if r.has_meta("haul"):
+		var store := _main_store()
+		var haul: Dictionary = r.get_meta("haul")
+		if store:
+			for res: String in haul:
+				store.add_goods(res, int(haul[res]))
+		message.emit("Yağmacı düştü: taşıdığı mal geri alındı.", "good")
 
 
 func _think() -> void:
+	var kept: Array[Villager] = []
+	for r in raiders:
+		if is_instance_valid(r):
+			kept.append(r)
+	raiders = kept
 	var live := 0
 	for r in raiders:
 		if not r.dead:
@@ -182,18 +241,48 @@ func _think() -> void:
 			continue
 		if leaving and r.job != "Kaçıyor":
 			r.abort()
-			r.arm_with("axe")
+			if r.role != "shooter":
+				r.arm_with("axe")
 			r.give([{"t": "go", "to": _origin}, {"t": "do", "f": func() -> bool:
 				r.queue_free()
 				raiders.erase(r)
 				return true}], "Kaçıyor")
 			continue
+		if r.hp < r.max_hp * 0.35 and r.job != "Kaçıyor":
+			# Hurt badly: back into the woods.
+			r.abort()
+			r.give([{"t": "go", "to": _origin}, {"t": "do", "f": func() -> bool:
+				raiders.erase(r)
+				r.queue_free()
+				return true}], "Kaçıyor")
+			continue
 		if not r.plan.is_empty():
+			continue
+		if r.role == "shooter":
+			_think_shooter(r)
 			continue
 		var foe := _victim_near(r.position, 12.0)
 		if foe:
 			r.give([{"t": "fight", "foe": foe, "give_up": 20.0}], "Saldırıyor")
 			continue
+		if r.role == "looter" and not r.has_meta("haul"):
+			var store := _main_store()
+			if store:
+				r.give([{"t": "go", "to": store.door() + Vector3(randf_range(-1.5, 1.5), 0, randf_range(0.0, 1.0))},
+					{"t": "work", "time": 3.0, "anim": "gather", "face": store.global_position},
+					{"t": "do", "f": func() -> bool:
+						if not is_instance_valid(store):
+							return false
+						var haul := _plunder(store)
+						r.set_meta("haul", haul)
+						r.set_carry("yiyecek", 1)
+						return true},
+					{"t": "go", "to": _origin},
+					{"t": "do", "f": func() -> bool:
+						raiders.erase(r)
+						r.queue_free()
+						return true}], "Yağmalıyor", store)
+				continue
 		var b := _next_target(r.position)
 		if b == null:
 			continue
@@ -220,18 +309,98 @@ func _think() -> void:
 		_finish_quietly()
 
 
+## A shooter: whoever it can see within its reach gets shot at; with nobody in sight it creeps up
+## to a dark spot at the edge of the light and lies there watching, shooting out a lamp if one's near.
+func _think_shooter(r: Villager) -> void:
+	var foe: Villager = null
+	var bd := r.ranged
+	for v in village.villagers:
+		if v.dead or v.down or v.sleeping or v.perched:
+			continue
+		var d := v.position.distance_to(r.position)
+		if d < bd and can_see(r.position, v):
+			bd = d
+			foe = v
+	if foe:
+		r.give([{"t": "fight", "foe": foe, "give_up": r.ranged + 8.0}], "Ateş ediyor")
+		return
+	var mark := _lit_mark(r.position)
+	if mark == Vector3.INF:
+		var store := _main_store()
+		if store:
+			r.give([{"t": "go", "to": store.global_position + (r.position - store.global_position).normalized() * 50.0}], "Sokuluyor")
+		return
+	var away := _origin - mark
+	away.y = 0.0
+	away = away.normalized().rotated(Vector3.UP, randf_range(-0.6, 0.6)) if away.length() > 0.1 else Vector3.RIGHT
+	var spot := mark + away * 26.0
+	for k in 3:
+		if village.is_lit(spot):
+			spot += away * 6.0
+	spot.y = nav.height(spot.x, spot.z)
+	r.give([{"t": "go", "to": spot}, {"t": "work", "time": randf_range(3.0, 6.0), "anim": "aim", "face": mark},
+		{"t": "do", "f": func() -> bool:
+			_shoot_lamp(r)
+			return true}], "Pusuda")
+
+
+## The nearest thing lit up (a lantern carried, a lamp, a lit house) within 160 m of `p`.
+func _lit_mark(p: Vector3) -> Vector3:
+	var best := Vector3.INF
+	var bd := 160.0
+	for v in village.villagers:
+		if v.lantern_on() and not v.sleeping:
+			var d := v.position.distance_to(p)
+			if d < bd:
+				bd = d
+				best = v.position
+	for b in village.buildings:
+		if b.lit and b.state == "done":
+			var d := b.global_position.distance_to(p)
+			if d < bd:
+				bd = d
+				best = b.door()
+	return best
+
+
+## A lamp within a shot of `r`, put out with a bullet (its kindling spilt): the dark's their friend.
+func _shoot_lamp(r: Villager) -> void:
+	if r.dead:
+		return
+	for b in village.buildings:
+		if b.def.role == "light" and b.lit and b.state == "done" and b.global_position.distance_to(r.position) < 42.0 and randf() < 0.5:
+			r.revealed = 2.5
+			_flash(r.position + Vector3.UP * 1.45)
+			b.take_goods("odun", int(b.goods.get("odun", 0)))
+			b.set_lit(false)
+			if not _lamp_said:
+				_lamp_said = true
+				message.emit("Haydutlar %s vurup söndürdü!" % b.display_name().to_lower(), "bad")
+			return
+
+
 ## Someone of the town out in the open near `p` (not hidden, not up a tower).
 func _victim_near(p: Vector3, reach: float) -> Villager:
 	var best: Villager = null
 	var bd := reach
 	for v in village.villagers:
-		if v.dead or v.sleeping or v.perched:
+		if v.dead or v.sleeping or v.perched or v.down:
 			continue
 		var d := v.position.distance_to(p)
 		if d < bd:
 			bd = d
 			best = v
 	return best
+
+
+## Someone of the town with a rifle who'd see a torchman at `p`.
+func _guarded(p: Vector3) -> bool:
+	if not village.is_lit(p):
+		return false
+	for v in village.villagers:
+		if not v.dead and not v.down and not v.sleeping and v.ranged > 0.0 and v.position.distance_to(p) < 30.0:
+			return true
+	return false
 
 
 ## The nearest building there's still something to burn in: an unlit one counts as half as far.
@@ -248,6 +417,8 @@ func _next_target(p: Vector3) -> Building:
 				break
 		if not can:
 			continue
+		if _guarded(b.door()):
+			continue # (a rifle watching it in the light: not that one)
 		var d := b.global_position.distance_to(p) * (2.0 if village.is_lit(b.door()) else 1.0)
 		if d < bd:
 			bd = d
@@ -255,14 +426,17 @@ func _next_target(p: Vector3) -> Building:
 	return best
 
 
-func _plunder(store: Building) -> void:
+func _plunder(store: Building) -> Dictionary:
 	var took: Array[String] = []
+	var haul := {}
 	for r: String in store.goods:
 		var n := store.take_goods(r, int(store.goods[r]) / 3)
 		if n > 0:
+			haul[r] = n
 			took.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 	if not took.is_empty():
 		message.emit("Haydutlar depoyu yağmaladı: " + ", ".join(took), "bad")
+	return haul
 
 
 func _end(text: String, kind: String) -> void:
@@ -375,18 +549,15 @@ func _tower_shots(dt: float) -> void:
 		shoot(man.position + Vector3.UP * 1.4, foe, randf_range(28.0, 40.0), 0.6)
 
 
-## A rifle shot from `from` at `foe`: a flash, a streak, and `dmg` if it hits (`chance`).
-func shoot(from: Vector3, foe: Villager, dmg: float, chance: float) -> void:
+## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,
+## halved if the foe's behind cover). The flash shows the shooter for a moment to anyone looking.
+func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null) -> void:
 	var to := foe.position + Vector3.UP * 1.0 + Vector3(randf_range(-0.4, 0.4), randf_range(-0.3, 0.3), randf_range(-0.4, 0.4))
-	var flash := OmniLight3D.new()
-	flash.light_color = Color(1.0, 0.8, 0.5)
-	flash.light_energy = 6.0
-	flash.omni_range = 9.0
-	add_child(flash)
-	flash.global_position = from
-	var ft := flash.create_tween()
-	ft.tween_property(flash, "light_energy", 0.0, 0.12)
-	ft.tween_callback(flash.queue_free)
+	if by:
+		by.revealed = 2.5
+	if foe.in_cover:
+		chance *= 0.5
+	_flash(from)
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	var length := from.distance_to(to)
@@ -403,4 +574,18 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float) -> void:
 	st.tween_property(mat, "albedo_color:a", 0.0, 0.15)
 	st.tween_callback(streak.queue_free)
 	if randf() < chance:
-		foe.hurt(dmg, null)
+		foe.hurt(dmg, by)
+
+
+func _flash(at: Vector3) -> void:
+	var flash := OmniLight3D.new()
+	flash.light_color = Color(1.0, 0.8, 0.5)
+	flash.light_energy = 6.0
+	flash.omni_range = 9.0
+	flash.light_volumetric_fog_energy = 0.2
+	add_child(flash)
+	flash.global_position = at
+	var ft := flash.create_tween()
+	ft.tween_property(flash, "light_energy", 0.0, 0.12)
+	ft.tween_callback(flash.queue_free)
+	Ambience.knock(at, 0.45) # (the crack of it)

@@ -61,6 +61,20 @@ place from its hands. The card says which stage it's at.
 - **Tahta yol** (TAŞIMA): drag from one point to another to lay a plank road, a log for every 2 m.
   On planks the townsfolk walk half as fast again, never in mud, and paths prefer them.
 
+The defence is light and a few rifles. The band has its parts: shooters lie up in the dark at the
+edge of the light and shoot whoever they can see in it (a lantern marks whoever carries it; they
+shoot the lamps out too), torchmen go for the unlit, unguarded buildings, looters for the store.
+Hurt badly, one runs. A rifle's flash shows the one who fired it for a moment, to both sides.
+Rifles can't be made in the town: the **Silahlık** (armoury) starts with the town's two old ones
+and 40 cartridges; a shooter who falls drops his, and someone carries it to the rack after the
+raid. Mark townsfolk as militia (M): at the alarm they run to the armoury for a rifle and ten
+cartridges and hold a post behind cover between the store and where the band came from (cover
+halves the chance of being hit); after the raid they put the rifle back. Draft them (G) to give
+orders yourself, paused or not: right-click the ground for a post (they look for cover there),
+a raider to make him their mark; L puts their lanterns out (unseen in the dark, but they see less);
+Shift+click chooses several. One of the town who's shot mostly goes down wounded rather than dead:
+it bleeds out in two minutes unless someone carries it in to a bed, where it mends.
+
 The night has its watch. The guards of a post split it: half have the evening till two, half from
 two till morning; the one on watch walks a round from light to light with a lantern, the other
 sleeps in the guardhouse's bunks, and a lantern burns by its door all night. A lookout tower takes

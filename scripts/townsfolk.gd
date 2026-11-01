@@ -60,6 +60,7 @@ var _hands: Array[Node3D] = [] ## left, right: what's held hangs here, axes as t
 var _weapon_mount: Node3D
 var _clip := ""
 var _dead := false
+var _lying := false
 
 
 static func available() -> bool:
@@ -139,10 +140,14 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var mask := outlaw and rng.randf() < 0.5
 	var coat: String = COATS[rng.randi() % COATS.size()]
 	var hat: String = HATS[rng.randi() % HATS.size()]
+	if outlaw:
+		coat = "Survivor_JacketSmock" if rng.randf() < 0.6 else coat
+		mask = rng.randf() < 0.35
+		hat = "" if mask else ("Survivor_Boonie" if rng.randf() < 0.8 else "Survivor_Ushanka")
 	if mask:
 		hat = ""
 		beard = false
-	var scarf := rng.randf() < 0.3
+	var scarf := outlaw or rng.randf() < 0.3
 	var gloves := not child and rng.randf() < 0.2
 	var wool: Color = WOOL[rng.randi() % WOOL.size()]
 	if outlaw:
@@ -154,6 +159,10 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var trousers: Color = CANVAS[rng.randi() % CANVAS.size()]
 	var boots: Color = BOOTS[rng.randi() % BOOTS.size()]
 	var scarf_c: Color = SCARF[rng.randi() % SCARF.size()]
+	if outlaw:
+		scarf_c = [Color("#6e1c16"), Color("#1c1a18"), Color("#3a2e24")][rng.randi() % 3]
+		trousers = trousers.darkened(0.35)
+		hat_c = Color("#1e1a17").lerp(Color("#3a2c20"), rng.randf())
 	var colours := {
 		"Jacket": wool, "JacketDark": wool.darkened(0.2), "Patch": wool.darkened(0.06),
 		"Trousers": trousers, "TrouserPatch": trousers.darkened(0.17),
@@ -271,12 +280,14 @@ func play(clip: String, speed := 1.0, blend := 0.25) -> void:
 ## Villager._animate worked out. `speed` is how fast it's going over the ground, `rate` the game's.
 func drive(anim: String, walking: bool, speed: float, rate: float, carrying: String, vehicle: String,
 		armed: bool, v: Dictionary) -> void:
+	if _lying:
+		return
 	var clip := "Idle"
 	var pace := rate
 	var procedural := false
 	if walking:
 		var real := speed / maxf(rate, 0.01)
-		if carrying in ["tas", "yiyecek", "su"] or vehicle == "hand":
+		if carrying in ["tas", "yiyecek", "su", "yarali", "tufek"] or vehicle == "hand":
 			clip = "CarryBoxWalk"
 			pace = speed / CARRY_SPEED
 		elif armed:
@@ -317,6 +328,21 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 				procedural = true
 	play(clip, pace)
 	pose.want(v if procedural else {}, rate)
+
+
+## Down, wounded: the fall, then lying there.
+func lie() -> void:
+	_lying = true
+	_clip = "Death"
+	player.play("Death", 0.15)
+	player.speed_scale = 1.0
+	pose.want({}, 1.0)
+
+
+func stand() -> void:
+	_lying = false
+	_clip = ""
+	play("Idle")
 
 
 func die() -> void:

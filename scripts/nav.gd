@@ -192,13 +192,48 @@ func can_build(p: Vector3) -> bool:
 
 
 ## A field's cells claimed (or let go): no grass on them, nothing built on them, but walked over.
+## Its grass stands till its farmers cut it (cut_grass); let go, the grass comes back.
 func set_field(cells: Array[Vector2i], on: bool) -> void:
 	for c in cells:
 		var i := c.y * N + c.x
 		_claim[i] = 1 if on else 0
+		if not on:
+			var px := terrain.village_img.get_pixel(c.x, c.y)
+			px.g = 0.0
+			terrain.village_img.set_pixel(c.x, c.y, px)
+	_dirty = true
+
+
+## A field's cells mown and turned: no grass on them.
+func cut_grass(cells: Array[Vector2i]) -> void:
+	for c in cells:
 		var px := terrain.village_img.get_pixel(c.x, c.y)
-		px.g = 0.85 if on else 0.0
+		px.g = 0.85
 		terrain.village_img.set_pixel(c.x, c.y, px)
+	_dirty = true
+
+
+## A workyard's ground (or let go, the grass back over it): trodden earth over the rounded
+## `size` (m) round `xf`, its edge giving out into the grass over `margin` m (the mask's alpha:
+## world_terrain and grass shaders). Fenced or not, there's no line round it.
+func set_yard(xf: Transform3D, size: Vector2, on: bool, margin := 2.5) -> void:
+	var half := size * 0.5
+	var reach := half.length() + margin
+	var c0 := cell_of(xf.origin - Vector3(reach, 0, reach))
+	var c1 := cell_of(xf.origin + Vector3(reach, 0, reach))
+	var inv := xf.affine_inverse()
+	var corner := minf(minf(half.x, half.y), 3.0)
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var l := inv * center_of(Vector2i(cx, cz))
+			var q := Vector2(absf(l.x), absf(l.z)) - (half - Vector2(corner, corner))
+			var d := Vector2(maxf(q.x, 0.0), maxf(q.y, 0.0)).length() + minf(maxf(q.x, q.y), 0.0) - corner
+			var v := clampf(1.0 - d / margin, 0.0, 1.0)
+			if v <= 0.0:
+				continue
+			var px := terrain.village_img.get_pixel(cx, cz)
+			px.a = maxf(px.a, v) if on else 0.0
+			terrain.village_img.set_pixel(cx, cz, px)
 	_dirty = true
 
 

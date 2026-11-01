@@ -125,22 +125,29 @@ void fragment() {
 			discard;
 		}
 	}
+	// Between the camera and what it's on (view_focus: your machine, the town under the view from
+	// above): a tree in the line of sight dissolved round it, trunk and all, wider the further off
+	// the view stands (from above a whole crown fills the middle of the screen); the trees either
+	// side of the line, and every shadow, as they are.
+	if (view_focus.w > 0.5 && !shadow_pass) {
+		vec3 p = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec3 eye = CAMERA_POSITION_WORLD;
+		vec3 d = view_focus.xyz - eye;
+		float t = dot(p - eye, d) / max(dot(d, d), 0.001);
+		if (t > 0.0 && t < 0.92) {
+			float r = max(1.3, length(d) * 0.16);
+			float clear = smoothstep(r, r * 2.4, length(p - (eye + d * t)));
+			float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(5.0, 11.0), vec2(0.06711056, 0.00583715))));
+			if (n >= clear) {
+				discard;
+			}
+		}
+	}
 	if ((leaf > 0.5 || sway > 0.5) && !shadow_pass) {
 		// A crown the camera's come into (leaves and branches have nothing to stop it; the trunk does):
 		// dissolved round the lens, gone within 1.5 m, whole again by 4.5, not a wall of leaf and
 		// branch across the view.
 		float keep = smoothstep(1.5, 4.5, length(VERTEX));
-		// and between the camera and your machine: a crown in the line of sight dissolved round it,
-		// the trees either side of the line as they are
-		if (view_focus.w > 0.5) {
-			vec3 p = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-			vec3 eye = CAMERA_POSITION_WORLD;
-			vec3 d = view_focus.xyz - eye;
-			float t = dot(p - eye, d) / max(dot(d, d), 0.001);
-			if (t > 0.0 && t < 0.9) {
-				keep = min(keep, smoothstep(1.3, 3.2, length(p - (eye + d * t))));
-			}
-		}
 		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715))));
 		if (n >= keep) {
 			discard;

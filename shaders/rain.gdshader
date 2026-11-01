@@ -24,10 +24,12 @@ void vertex() {
 	float dist = max(length(to_cam), 0.001);
 	vec3 side = cross(axis, to_cam / dist);
 	side /= max(length(side), 0.001);
-	float w = max(streak_width, dist * 0.0011);
-	vec3 world = center + side * VERTEX.x * w + axis * VERTEX.y * streak_length * sc;
+	// (from a view tens of metres up, a streak a pixel wide and a little longer, not a sub-pixel
+	// thread faded to nothing)
+	float w = max(streak_width, dist * 0.002);
+	vec3 world = center + side * VERTEX.x * w + axis * VERTEX.y * streak_length * sc * (1.0 + dist * 0.015);
 	POSITION = PROJECTION_MATRIX * (VIEW_MATRIX * vec4(world, 1.0));
-	v_fade = (streak_width / w) * smoothstep(0.5, 2.0, dist) * (1.0 - smoothstep(far_fade * 0.7, far_fade, dist));
+	v_fade = sqrt(streak_width / w) * smoothstep(0.5, 2.0, dist) * (1.0 - smoothstep(far_fade * 0.7, far_fade, dist));
 }
 
 void fragment() {

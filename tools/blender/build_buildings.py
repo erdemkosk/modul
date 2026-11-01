@@ -820,6 +820,32 @@ def _watch_extra(k, w, d):
     woodpile(k, -w * 0.5 - 0.6, 0.3, length=2.0)
 
 
+def _arms_extra(k, w, d):
+    # the armoury: a stout iron-banded door's look, a rack of rifles under the eave, ammunition boxes,
+    # a target board out at the side for practice
+    p = k.piece("dark")
+    p.box((-w * 0.5 + 1.1, -d * 0.5 - 0.25, 1.55), (1.3, 0.1, 0.08), DARK)
+    for i in range(4):
+        p.obox((-w * 0.5 + 0.65 + i * 0.3, -d * 0.5 - 0.3, 1.2), (0, 0, 1), (1, 0, 0), (0, 1, 0), (1.15, 0.04, 0.05), (0.18, 0.18, 0.19))
+    for z in (0.9, 1.9):
+        p.box((0, -d * 0.5 - 0.05, z), (1.05, 0.04, 0.07), (0.2, 0.2, 0.21))
+    k.add(p)
+    for i, (x, y, z) in enumerate([(w * 0.5 - 0.7, -d * 0.5 - 0.8, 0.0), (w * 0.5 - 1.25, -d * 0.5 - 0.75, 0.0), (w * 0.5 - 0.95, -d * 0.5 - 0.78, 0.46)]):
+        crate(k, x, y, z, 0.46)
+    p = k.piece("plank", "target")
+    tx = w * 0.5 + 2.6
+    for sx in (-0.45, 0.45):
+        p.box((tx + sx, 0.0, 0.6), (0.08, 0.08, 1.4), DARK)
+    p.box((tx, -0.05, 1.05), (1.1, 0.06, 1.0), jit(PLANK, 0.06, k.rng))
+    for r, c in ((0.42, (0.85, 0.82, 0.74)), (0.3, (0.12, 0.11, 0.1)), (0.18, (0.85, 0.82, 0.74)), (0.07, (0.62, 0.15, 0.1))):
+        p.obox((tx, -0.09 - (0.42 - r) * 0.02, 1.05), (1, 0, 0), (0, 0, 1), (0, -1, 0), (r * 2, r * 2, 0.01), c)
+    k.add(p)
+
+
+def silahlik():
+    cabin("silahlik", 5.0, 4.0, 8, 1.6, 1.0, windows=[("left", 0.0)], porch_on=False, extra=_arms_extra)
+
+
 def ev():
     cabin("ev", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.8), ("left", 0.0), ("back", 1.0)], chimney_at=(3.0 + 0.85, 0.8), extra=_house_extra)
 
@@ -1062,9 +1088,7 @@ def yard_pad(k, w, d, top=EARTH, floor="earth"):
     "sawdust" (the felling camp: sawdust and chips trodden in) or "chips" (the stone yard: stone
     chips and grit)."""
     rng = k.rng
-    p = k.piece("stone", "plinth")
-    p.box((0, 0, PLINTH_TOP - 1.78), (w + 0.1, d + 0.1, 3.5), jit(MUD, 0.04, rng))
-    k.add(p)
+    # (no buried block: the game lays this ground on the land as it lies, every vertex on it)
     p = k.piece("stone", "ground")
     bm = p.bm
     hw, hd = w * 0.5 + 0.1, d * 0.5 + 0.1
@@ -1482,7 +1506,7 @@ def cankulesi():
 
 BUILDERS = {
     "ev": ev, "ambar": ambar, "kisla": kisla, "fener": fener, "kuyu": kuyu, "kule": kule, "ahir": ahir,
-    "meydan": meydan, "cankulesi": cankulesi,
+    "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
 }

@@ -35,8 +35,8 @@ static func save(game: Node) -> bool:
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built,
-			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped] if b.crop else []})
+			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo],
+			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
 		if vl.owed.is_empty():
@@ -54,7 +54,7 @@ static func save(game: Node) -> bool:
 			p = vl.inside.door()
 		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
-			"home": index.get(vl.home, -1) if vl.home else -1})
+			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
@@ -146,18 +146,24 @@ static func restore(game: Node, d: Dictionary) -> void:
 		for r: String in bd.goods:
 			if int(bd.goods[r]) > 0:
 				b.add_goods(r, int(bd.goods[r]))
+		var arms: Array = bd.get("arms", [0, 0])
+		b.arms = int(arms[0])
+		b.ammo = int(arms[1])
+		b.set_meta("stocked", true)
 		b.wanted = int(bd.wanted)
 		var cr: Array = bd.get("crop", [])
-		if b.crop and cr.size() == 4:
+		if b.crop and cr.size() >= 4:
 			b.crop.stage = str(cr[0])
 			b.crop.sown = float(cr[1])
 			b.crop.growth = float(cr[2])
 			b.crop.reaped = int(cr[3])
+			b.crop.cleared = float(cr[4]) if cr.size() >= 5 else (0.0 if str(cr[0]) == "wild" else 1.0)
 			b.crop._draw()
 	for pd: Dictionary in d.people:
 		var vl := v.spawn_villager(Vector3(float(pd.x), 0, float(pd.z)), bool(pd.get("child", false)))
 		vl.born_day = int(pd.get("born", v.day))
 		vl.hp = float(pd.hp)
+		vl.militia = bool(pd.get("militia", false))
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":
 			v.employ(vl, made[w])

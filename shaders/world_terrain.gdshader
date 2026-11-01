@@ -15,7 +15,7 @@ uniform sampler2D soft_map : filter_linear, repeat_disable; // RG: mud, deep sno
 uniform sampler2D patch_flags : filter_nearest, repeat_disable; // 1 where a rut patch draws the ground
 uniform sampler2D burn_mask : hint_default_black, filter_linear, repeat_disable; // 1 m cells burnt black (GrassFire)
 uniform float tile_size = 32.0;
-uniform sampler2D village_mask : hint_default_black, filter_linear, repeat_disable; // R worn paths, G cleared under buildings, B scorched (Nav)
+uniform sampler2D village_mask : hint_default_black, filter_linear, repeat_disable; // R worn paths, G cleared under buildings, B scorched, A yards (Nav)
 uniform float map_half = 1024.0;
 uniform float map_size = 2049.0;
 
@@ -156,11 +156,17 @@ void fragment() {
 	road = smoothstep(0.25, 0.75, road + (fine - 0.5) * 0.35);
 	meadow = smoothstep(0.2, 0.8, meadow + edge_n);
 	// The village's paths: trodden earth where feet and carts keep passing, frayed at the edges.
-	vec3 vm = texture(village_mask, (xz + map_half) / (map_size - 1.0)).rgb;
+	vec4 vm4 = texture(village_mask, (xz + map_half) / (map_size - 1.0));
+	vec3 vm = vm4.rgb;
 	// Trodden: first the grass goes thin and pale, then bare packed earth, its edge frayed.
 	float trodden = clamp(vm.r + (fine - 0.5) * 0.3 + (mid - 0.5) * 0.15, 0.0, 1.0);
-	float trail = smoothstep(0.35, 0.8, trodden);
-	float worn_grass = smoothstep(0.05, 0.4, trodden) * (1.0 - trail);
+	// A workyard (Nav.set_yard): the same packed earth, all over it, the grass round its edge
+	// trodden thin and giving out in ragged tongues, not a line.
+	float yard_n = vm4.a + (fine - 0.5) * 0.4 + (mid - 0.5) * 0.25;
+	float yard = smoothstep(0.3, 0.7, yard_n);
+	trodden = max(trodden, vm4.a * 0.7);
+	float trail = max(smoothstep(0.35, 0.8, trodden), yard);
+	float worn_grass = max(smoothstep(0.05, 0.4, trodden), smoothstep(0.05, 0.35, yard_n)) * (1.0 - trail);
 	road = max(road, trail * 0.45); // (it takes the wet and the puddles like a road)
 	meadow *= 1.0 - smoothstep(0.1, 0.6, vm.g + (fine - 0.5) * 0.3) * 0.8;
 

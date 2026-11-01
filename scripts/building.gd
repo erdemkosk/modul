@@ -69,6 +69,8 @@ var delivered := {}
 var incoming := {}
 var work := 0.0 ## seconds of building done
 var workers: Array = []
+var arms := 0 ## (an armoury) rifles on the rack
+var ammo := 0 ## (an armoury) cartridges
 var wanted := 0
 var residents: Array = []
 var cells: Array[Vector2i] = []
@@ -225,7 +227,7 @@ func _add_piece(spec: Dictionary) -> void:
 
 ## Which stage of the building a piece goes up in.
 static func _stage_of(p: Piece) -> int:
-	if p.tag in ["plinth", "found", "path"] or (p.stuff == "plank" and p.tag == "" and p.aabb.end.y < 0.6 and p.aabb.size.x > 2.0):
+	if p.tag in ["plinth", "found", "path", "ground"] or (p.stuff == "plank" and p.tag == "" and p.aabb.end.y < 0.6 and p.aabb.size.x > 2.0):
 		return 0
 	if p.tag in ["chimney", "chimneytop"] or p.stuff == "log" or (p.stuff == "dark" and p.tag == "") or p.stuff == "stone":
 		return 1
@@ -407,6 +409,7 @@ func begin() -> void:
 		p.mesh.visible = false
 		p.mesh.material_override = _look(p)
 		p.mesh.cast_shadow = _shadow()
+	_lay_ground()
 	used = {}
 	for r: String in cost:
 		used[r] = 0.0
@@ -421,6 +424,22 @@ func begin() -> void:
 
 
 ## Straight up, done (the village's first buildings).
+## A yard's ground: painted on the land itself (Nav.set_yard: packed earth that frays into the
+## grass), so the model's own floor piece isn't drawn.
+func _lay_ground() -> void:
+	if nav == null or not kind in BuildingDefs.YARDS:
+		return
+	for p in pieces:
+		if p.tag == "ground" and p.mesh:
+			p.mesh.mesh = null
+	nav.set_yard(global_transform, def.size, true)
+
+
+func _exit_tree() -> void:
+	if nav and kind in BuildingDefs.YARDS:
+		nav.set_yard(global_transform, def.size, false)
+
+
 func complete_now() -> void:
 	if state != "site":
 		begin()
@@ -993,7 +1012,7 @@ func set_lit(on: bool) -> void:
 			_glow.omni_range = float(def.light) + 4.0
 			_glow.light_energy = 5.0
 			_glow.omni_attenuation = 0.9
-			_glow.light_volumetric_fog_energy = 5.0
+			_glow.light_volumetric_fog_energy = 0.6
 			_glow.shadow_enabled = true
 			_glow.distance_fade_enabled = true
 			_glow.distance_fade_begin = 220.0
@@ -1002,7 +1021,7 @@ func set_lit(on: bool) -> void:
 			_glow.position = Vector3(0, 1.6, (def.size as Vector2).y * 0.5 + 0.8)
 			_glow.omni_range = 8.0
 			_glow.light_energy = 0.9
-			_glow.light_volumetric_fog_energy = 2.5
+			_glow.light_volumetric_fog_energy = 0.4
 		_glow.light_color = Color(1.0, 0.68, 0.36)
 		if def.role != "light":
 			_glow.shadow_enabled = false
@@ -1036,7 +1055,7 @@ func set_watch_light(on: bool) -> void:
 		l.light_color = Color(1.0, 0.66, 0.32)
 		l.omni_range = 20.0 if tower else 12.0
 		l.light_energy = 2.6 if tower else 1.8
-		l.light_volumetric_fog_energy = 3.0
+		l.light_volumetric_fog_energy = 0.4
 		l.position = Vector3.DOWN * 0.25
 		l.shadow_enabled = false
 		_watch.add_child(l)
@@ -1066,7 +1085,7 @@ func set_fire(on: bool) -> void:
 		l.light_color = Color(1.0, 0.6, 0.28)
 		l.light_energy = 3.5
 		l.omni_range = 14.0
-		l.light_volumetric_fog_energy = 4.0
+		l.light_volumetric_fog_energy = 0.2
 		l.position = at + Vector3.UP * 0.6
 		add_child(l)
 		var s := FireFx.smoke()
@@ -1492,6 +1511,7 @@ func _fire_fx() -> void:
 		_light.light_color = Color(1.0, 0.55, 0.22)
 		_light.omni_range = 18.0
 		_light.shadow_enabled = false
+		_light.light_volumetric_fog_energy = 0.15 # (more and the fog round it lights up in hard squares)
 		add_child(_light)
 	var sz: Vector2 = def.size
 	var top := 0.0

@@ -15,7 +15,7 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "toplayici", "ormanci"]],
-	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["kule", "kisla"]]]
+	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["kule", "kisla", "silahlik"]]]
 const SPEEDS := [1.0, 2.0, 4.0]
 const KEYS := [
 	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön"],
@@ -23,6 +23,7 @@ const KEYS := [
 	["Seçim", "Sol tık: bina ya da kasabalı seç · kasabalı seçiliyken sağ tık bir işyerine: oraya ata · O: onar · Del: yık"],
 	["Zaman", "Boşluk: duraklat · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
+	["Savunma", "M: seçili kasabalıyı milis yap · G: milisi topla / bırak · Shift+tık: birkaç kişi seç · toplanmışken sağ tık: oraya git (siper arar), bir hayduda sağ tık: ona ateş et · L: fener (oto / sönük / yanık) · Boşluk ile durdurup emir ver"],
 	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını"],
 ]
 
@@ -271,6 +272,8 @@ func _make_card() -> void:
 	_card_folk.add_theme_constant_override("separation", 8)
 	col.add_child(_card_folk)
 	_card_folk.add_child(_small_button("SERBEST BIRAK", func() -> void: game.release_selected()))
+	_card_folk.add_child(_small_button("MİLİS", func() -> void: game.toggle_militia()))
+	_card_folk.add_child(_small_button("TOPLA", func() -> void: game.toggle_draft()))
 	_card_folk.add_child(_small_button("ODAKLAN", func() -> void: game.focus_selected()))
 
 
@@ -463,6 +466,12 @@ func _update_card() -> void:
 			for r: String in rc:
 				need.append("%d %s" % [rc[r], BuildingDefs.RES_NAMES[r].to_lower()])
 			lines.append("Onarım: %d parça · %s" % [b.fallen_count(), " · ".join(need)])
+	if b.state == "done" and b.def.role == "armory":
+		var m := 0
+		for x in game.village.villagers:
+			if x.militia and not x.dead:
+				m += 1
+		lines.append("Rafta: %d tüfek · %d fişek · Milis: %d kişi" % [b.arms, b.ammo, m])
 	if b.goods_total() > 0 and b.def.role != "house":
 		var g: Array[String] = []
 		for r: String in b.goods:
@@ -493,6 +502,12 @@ func _folk_card(v: Villager) -> void:
 	lines.append("İşyeri: " + (v.workplace.display_name() if is_instance_valid(v.workplace) else "yok (taşır, inşa eder)"))
 	lines.append("Evi: " + (v.home.display_name() if is_instance_valid(v.home) else "yok"))
 	lines.append("Can: %d / %d" % [int(v.hp), int(v.max_hp)])
+	if v.down:
+		lines.append("YARALI, YERDE: %d sn içinde eve taşınmazsa ölecek" % int(v.bleed))
+	if v.militia:
+		lines.append("Milis%s · Fişek: %d · Fener: %s" % [" (TOPLANDI)" if v.drafted else "", v.ammo, {"": "oto", "off": "sönük", "on": "yanık"}[v.lantern_mode]])
+		if v.in_cover:
+			lines.append("Siperde")
 	if v.carry_n > 0:
 		lines.append("Taşıdığı: %d %s" % [v.carry_n, str(BuildingDefs.RES_NAMES.get(v.carry_res, v.carry_res)).to_lower()])
 	lines.append("")

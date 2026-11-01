@@ -204,6 +204,8 @@ func base_height(kind: String, pos: Vector3, yaw: float) -> float:
 		sum += terrain.height_at(p.x, p.z)
 	if BuildingDefs.DEFS[kind].role == "farm":
 		return sum / 5.0 # (a fence follows the ground; its posts are sunk deep)
+	if kind in BuildingDefs.YARDS:
+		return sum / 5.0 - 0.35 + 0.03 # (the yard's floor, at 0.35 in the model, down on the ground)
 	return hi + 0.02
 
 
@@ -317,6 +319,11 @@ func _on_finished(b: Building) -> void:
 	if loading:
 		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
+	if b.def.role == "armory" and not b.has_meta("stocked"):
+		b.set_meta("stocked", true)
+		b.arms = 2
+		b.ammo = 40
+		message.emit("Silahlık hazır: kasabanın eski iki tüfeği ve 40 fişek rafta. Kasabalıları milis yap (M).", "good")
 	if b.def.role == "house":
 		_house_people()
 		if not _yard_of(b):
@@ -954,16 +961,27 @@ func _assign() -> void:
 		if b.is_burning() and b.state != "gone":
 			fires.append(b)
 	var raid := raids != null and raids.threat()
+	_rescues()
 	for v in villagers:
-		if v.dead:
+		if v.dead or v.down or v.drafted:
 			continue
 		if v.sleeping:
 			var cover := v.inside
 			var unsafe := not is_instance_valid(cover) or cover.state != "done" or cover.is_burning()
+			if v.recovering and v.hp < v.max_hp * 0.6 and not unsafe:
+				continue # (abed with its wound)
+			if raid and v.militia and not v.is_child and (v.armed or armory_with_rifle(v.position) != null):
+				v.wake() # (the alarm: up and to the armoury)
+				continue
 			if unsafe or (v.hiding and not raid) or (not v.hiding and not night and not raid) or (not v.hiding and night and on_watch(v)):
 				v.wake()
 			continue
 		if raid and _plan_raid(v):
+			continue
+		if not raid and v.armed and (v.plan.is_empty() or v.idle or str(v.plan[0].t) == "hold"):
+			_plan_return_arms(v)
+			continue
+		if not raid and (v.plan.is_empty() or v.idle) and not v.is_child and _plan_loot(v):
 			continue
 		if not fires.is_empty() and (v.plan.is_empty() or v.idle) and _plan_fire(v, fires):
 			continue
@@ -997,6 +1015,19 @@ func _assign() -> void:
 ## In a raid: a guard goes for the nearest bandit, the archer climbs its tower, anyone else near one
 ## runs and hides. False if the raid asks nothing of it just now.
 func _plan_raid(v: Villager) -> bool:
+	# The militia: to the armoury for a rifle, then to a post to hold.
+	if v.militia and not v.is_child:
+		if v.armed:
+			if v.plan.is_empty() or v.idle:
+				v.abort()
+				hold_at(v, default_post(v))
+			return true
+		var a := armory_with_rifle(v.position)
+		if a:
+			if v.job != "Silahlığa koşuyor":
+				v.abort()
+				arm(v, a)
+			return true
 	var role := str(v.workplace.def.role) if v.workplace else ""
 	if role == "barracks":
 		if not v.plan.is_empty() and str(v.plan[0].t) == "fight":
@@ -1029,6 +1060,199 @@ func _plan_raid(v: Villager) -> bool:
 			v.sleep_in(to, true)
 		return true}], "Saklanıyor", to)
 	return true
+
+
+# --- The defence -----------------------------------------------------------------------------------
+
+func armories() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "armory":
+			out.append(b)
+	return out
+
+
+func armory_with_rifle(p: Vector3) -> Building:
+	var with: Array[Building] = []
+	for a in armories():
+		if a.arms > 0:
+			with.append(a)
+	return _nearest(with, p)
+
+
+## To the armoury for a rifle and its cartridges, then (`then`) to hold a post.
+func arm(v: Villager, a: Building, then := true) -> void:
+	v.give([{"t": "go", "to": a.door()},
+		{"t": "work", "time": 1.2, "anim": "gather", "face": a.global_position},
+		{"t": "do", "f": func() -> bool:
+			if not is_instance_valid(a) or a.arms <= 0:
+				return false
+			a.arms -= 1
+			var n := mini(10, a.ammo)
+			a.ammo -= n
+			v.ammo = n
+			v.armed = true
+			v.fighter = true
+			v.ranged = 42.0
+			v.attack = 26.0
+			v.arm_with("rifle")
+			if v.drafted:
+				hold_at(v, cover_near(v.position))
+			elif then:
+				hold_at(v, default_post(v))
+			return true}], "Silahlığa koşuyor", a)
+
+
+## Off to `post` and holding it: shooting what it can see from there.
+func hold_at(v: Villager, post: Vector3) -> void:
+	var raids_from: Vector3 = raids.origin() if raids else post + Vector3.FORWARD
+	v.give([{"t": "go", "to": post}, {"t": "do", "f": func() -> bool:
+		v.in_cover = is_cover(v.position)
+		return true}, {"t": "hold", "face": raids_from}], "Mevzide", null)
+
+
+## Where the militia go when nobody says: behind cover between the store and where the band came from.
+func default_post(v: Villager) -> Vector3:
+	var store := _nearest(stores(), v.position)
+	var home := store.global_position if store else v.position
+	var from: Vector3 = raids.origin() if raids and raids.active else home + Vector3(30, 0, 0)
+	var dir := (from - home)
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.1 else Vector3.RIGHT
+	var side := dir.cross(Vector3.UP)
+	var p := home + dir * 14.0 + side * randf_range(-10.0, 10.0)
+	return cover_near(p)
+
+
+## A spot near `p` with a wall or a fence close at hand (or `p`).
+func cover_near(p: Vector3, reach := 5.0) -> Vector3:
+	for rr in [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]:
+		if rr > reach:
+			break
+		for k in 10:
+			var a := k * TAU / 10.0
+			var q: Vector3 = p + Vector3(cos(a), 0, sin(a)) * rr
+			if nav.is_open(q) and is_cover(q):
+				q.y = ground_at(q)
+				return q
+			if rr == 0.0:
+				break
+	p.y = ground_at(p)
+	return p
+
+
+func is_cover(p: Vector3) -> bool:
+	for k in 8:
+		var a := k * TAU / 8.0
+		if not nav.is_open(p + Vector3(cos(a), 0, sin(a)) * 1.4):
+			return true
+	return false
+
+
+## The raid over: the rifle and what's left of its cartridges back on the rack.
+func _plan_return_arms(v: Villager) -> void:
+	var a := _nearest(armories(), v.position)
+	v.abort()
+	if a == null:
+		_disarm(v)
+		return
+	v.give([{"t": "go", "to": a.door()}, {"t": "do", "f": func() -> bool:
+		if is_instance_valid(a):
+			a.arms += 1
+			a.ammo += v.ammo
+		v.ammo = 0
+		_disarm(v)
+		return true}], "Tüfeği silahlığa koyuyor", a)
+
+
+func _disarm(v: Villager) -> void:
+	v.armed = false
+	v.in_cover = false
+	v.focus = null
+	if v.workplace and v.workplace.def.role in ["barracks", "tower"]:
+		return
+	v.fighter = false
+	v.ranged = 0.0
+	v.attack = 9.0
+	v.arm_with("")
+
+
+## The wounded lying out: the nearest one free to come picks it up and carries it in to a bed.
+func _rescues() -> void:
+	for d in villagers:
+		if not d.down or d.dead or is_instance_valid(d.carried_by):
+			continue
+		var r: Variant = d.get_meta("rescuer") if d.has_meta("rescuer") else null
+		if r != null and is_instance_valid(r) and not (r as Villager).dead and not (r as Villager).down and (r as Villager).job == "Yaralıyı taşıyor":
+			continue
+		var best: Villager = null
+		var bd := 140.0
+		for v in villagers:
+			if v == d or v.dead or v.down or v.drafted or v.sleeping or v.is_child or v.has_cart or v.job == "Yaralıyı taşıyor":
+				continue
+			if v.armed and raids and raids.active:
+				continue # (it holds its post)
+			var dist := v.position.distance_to(d.position)
+			if dist < bd:
+				bd = dist
+				best = v
+		if best == null:
+			continue
+		var v := best
+		d.set_meta("rescuer", v)
+		var shelters: Array[Building] = []
+		for b in buildings:
+			if b.state == "done" and b.def.role in ["house", "barracks", "store"] and not b.is_burning():
+				shelters.append(b)
+		var to := _nearest(shelters, d.position)
+		if to == null:
+			continue
+		v.abort()
+		v.give([{"t": "go", "to": d.position},
+			{"t": "work", "time": 1.6, "anim": "gather", "face": d.position},
+			{"t": "do", "f": func() -> bool:
+				if not is_instance_valid(d) or d.dead or not d.down:
+					return false
+				d.carried_by = v
+				v.set_carry("yarali", 1)
+				return true}] + _go_in(to) + [{"t": "do", "f": func() -> bool:
+				v.set_carry("", 0)
+				if is_instance_valid(d) and not d.dead and d.down and is_instance_valid(to) and to.state == "done":
+					d.sleep_in(to)
+					message.emit("%s yaralıyı %s içine taşıdı." % [v.display_name, to.display_name()], "info")
+				return true}] + _go_out(to), "Yaralıyı taşıyor", d)
+
+
+## After a raid: a rifle the outlaws dropped, carried to the armoury.
+func _plan_loot(v: Villager) -> bool:
+	if raids == null or raids.loot.is_empty():
+		return false
+	var a := _nearest(armories(), v.position)
+	if a == null:
+		return false
+	for l: Dictionary in raids.loot:
+		if l.get("claimed", false):
+			continue
+		l["claimed"] = true
+		var at: Vector3 = l.at
+		v.give([{"t": "go", "to": at},
+			{"t": "work", "time": 1.2, "anim": "gather", "face": at},
+			{"t": "do", "f": func() -> bool:
+				if is_instance_valid(l.node):
+					(l.node as Node).queue_free()
+				v.set_carry("tufek", 1)
+				return true},
+			{"t": "go", "to": a.door()},
+			{"t": "do", "f": func() -> bool:
+				v.set_carry("", 0)
+				raids.loot.erase(l)
+				if is_instance_valid(a):
+					a.arms += 1
+					a.ammo += int(l.ammo)
+					message.emit("Haydudun tüfeği silahlığa kondu (+%d fişek). Rafta %d tüfek." % [int(l.ammo), a.arms], "good")
+				return true}], "Düşen tüfeği topluyor", a)
+		return true
+	return false
 
 
 func _site_needs_hands() -> bool:
@@ -1177,7 +1401,7 @@ func _camp_fires() -> void:
 			l.light_color = Color(1.0, 0.58, 0.26)
 			l.light_energy = 2.4
 			l.omni_range = 10.0
-			l.light_volumetric_fog_energy = 3.0
+			l.light_volumetric_fog_energy = 0.2
 			l.position = Vector3.UP * 0.9
 			root.add_child(l)
 			var ring := Building.material("stone")
@@ -1738,6 +1962,12 @@ func _plan_farm(v: Villager, b: Building) -> void:
 		_plan_idle(v)
 		return
 	match c.stage:
+		"wild":
+			# The field opened first: the grass mown with the scythe and the ground turned, strip by strip.
+			b.idle_note = "Tarla açılıyor: %%%d" % int(c.cleared * 100.0)
+			v.give([{"t": "go", "to": c.spot()}, {"t": "work", "time": 5.0, "anim": "mow", "done": func() -> void:
+				if is_instance_valid(c):
+					c.clear(0.08)}], "Tarla: çimen biçiyor", b)
 		"fallow", "sowing":
 			b.idle_note = ""
 			v.give([{"t": "go", "to": c.spot()}, {"t": "work", "time": 4.0, "anim": "sow", "done": func() -> void:

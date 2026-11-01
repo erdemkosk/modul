@@ -99,6 +99,8 @@ func _process(dt: float) -> void:
 		pos.y = maxf(pos.y, terrain.height_at(pos.x, pos.z) + 3.0)
 	global_position = pos
 	look_at(focus + Vector3.UP * 0.5, Vector3.UP)
+	# (the trees between the view and the town dissolve round the line of sight: nature.gdshader)
+	RenderingServer.global_shader_parameter_set(&"view_focus", Vector4(focus.x, focus.y + 1.0, focus.z, 1.0))
 
 
 ## Where a ray from the camera through a point on the screen meets the ground (marched along the

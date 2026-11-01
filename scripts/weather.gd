@@ -581,12 +581,16 @@ func _update_lights_and_env() -> void:
 	var block := (1.0 - 0.9 * overcast * overcast) * (1.0 - 0.55 * fog_amount) * (1.0 - 0.3 * rain_intensity)
 	var horizon_fade := smoothstep(-0.015, 0.04, _sun_dir.y)
 	var sun_energy := 3.3 * tmax * block * horizon_fade
-	sun.light_color = Color(t.x / tmax, t.y / tmax, t.z / tmax)
+	# (the low sun keeps its warmth, but not all of the air's red: a dawn lit in one orange flattens
+	# the valley to a single colour, the grass no longer green)
+	var sun_col := Vector3(t.x, t.y, t.z) / tmax
+	sun_col = sun_col.lerp(Vector3.ONE, 0.3 * golden)
+	sun.light_color = Color(sun_col.x, sun_col.y, sun_col.z)
 	sun.light_energy = sun_energy
 	sun.shadow_opacity = lerpf(1.0, 0.45, overcast)
 	# (low sun and forward-scattering air: shafts, not a wall of glare that washes the whole view
 	# out when you look toward it)
-	sun.light_volumetric_fog_energy = 1.0 + golden * 0.6
+	sun.light_volumetric_fog_energy = 1.0 + golden * 0.25
 	sun.visible = sun_energy > 0.002
 	if sun.visible and _sun_dir.angle_to(_sun_light_dir) > 0.0015:
 		_sun_light_dir = _sun_dir
@@ -608,22 +612,27 @@ func _update_lights_and_env() -> void:
 	# Ambient: sky radiance by day; at night a moonlit blue whose strength is the moon's: a
 	# full moon on a clear night you can drive by, a new moon under cloud you can't without
 	# lights (or night-vision goggles). That is what makes the lights a choice.
-	env.ambient_light_sky_contribution = lerpf(1.0, 0.35, night)
 	var twilight := smoothstep(0.3, 0.0, _sun_dir.y) * (1.0 - night)
+	# Round dawn and dusk the shade takes the blue of the high sky, not the glowing horizon's
+	# orange: warm where the sun falls, cool where it doesn't.
+	env.ambient_light_sky_contribution = lerpf(1.0, 0.35, night) * (1.0 - 0.45 * twilight)
 	var moonlit := night_light()
 	# Night is dark: under a full moon you make out shapes, the road, the skyline, not colours or
 	# what stands in the trees; without one you see nothing past your own lights. (The eye's
 	# adaptation, the exposure, lifts it far less than it did.)
 	env.ambient_light_energy = lerpf(0.62, lerpf(0.015, 0.12, moonlit), night) + 0.35 * twilight + lightning_flash * 1.5
-	env.tonemap_exposure = lerpf(0.9, lerpf(0.9, 1.15, moonlit), night) * (1.0 + 0.35 * twilight)
+	env.tonemap_exposure = lerpf(0.9, lerpf(0.9, 1.15, moonlit), night) * (1.0 + 0.2 * twilight)
 
 	# Distance fog: aerial-perspective haze over the 2 km map, thick valley fog for "fog".
 	var hz := _horizon_col
-	var fog_col := hz.lerp(Vector3.ONE * _luma(hz) * 0.95, clampf(fog_amount, 0.0, 1.0))
+	# (the haze over the valley half-greyed at golden hour: the horizon's own colour is far richer
+	# than the air between you and the next field)
+	var fog_col := hz.lerp(Vector3.ONE * _luma(hz) * 0.95, clampf(fog_amount + 0.5 * golden, 0.0, 1.0))
 	# Under a cloud deck the haze takes the deck's (darker, greyer) colour.
 	var ca := _cloud_ambient()
 	var deck := ca.lerp(Vector3.ONE * _luma(ca), 0.5) * 0.62 * (1.0 - 0.6 * _cloud_dark) + _sun_t_ground * (0.12 * (1.0 - _cloud_dark))
 	fog_col = fog_col.lerp(deck, smoothstep(0.5, 1.0, cloud_cover))
+	fog_col = fog_col.lerp(Vector3.ONE * _luma(fog_col), 0.35 * golden)
 	var night_fog := Vector3(0.018, 0.024, 0.04) * (0.5 + moon_up * 0.5)
 	fog_col = fog_col.lerp(night_fog, night * 0.85)
 	var fcm := maxf(maxf(fog_col.x, fog_col.y), maxf(fog_col.z, 1e-4))
@@ -635,7 +644,7 @@ func _update_lights_and_env() -> void:
 	env.fog_aerial_perspective = lerpf(0.4, 0.2, clampf(fog_amount + overcast * 0.5, 0.0, 1.0))
 
 	# Volumetric fog: a little air for sun shafts (more at golden hour), thick in fog/rain.
-	env.volumetric_fog_density = 0.0008 + golden * 0.0008 * (1.0 - overcast) + fog_amount * fog_amount * 0.004 + rain_intensity * 0.0012 + snow_intensity * 0.006
+	env.volumetric_fog_density = 0.0008 + golden * 0.0003 * (1.0 - overcast) + fog_amount * fog_amount * 0.004 + rain_intensity * 0.0012 + snow_intensity * 0.006
 	env.volumetric_fog_anisotropy = lerpf(0.65 - 0.15 * golden, 0.25, clampf(fog_amount + overcast, 0.0, 1.0))
 	env.volumetric_fog_albedo = Color(0.9, 0.92, 0.95)
 	env.volumetric_fog_emission = Color(night_fog.x, night_fog.y, night_fog.z) * night * 0.3
@@ -866,7 +875,7 @@ func _build_precipitation() -> void:
 	rain_mesh.material = _rain_mat
 	_rain = GPUParticles3D.new()
 	_rain.name = "Rain"
-	_rain.amount = 20000
+	_rain.amount = 36000 # (its box grows to a view's width: RTS)
 	_rain.lifetime = 2.6
 	_rain.randomness = 0.5
 	_rain.fixed_fps = 60
@@ -926,7 +935,7 @@ func _build_precipitation() -> void:
 
 	_collider = GPUParticlesCollisionHeightField3D.new()
 	_collider.name = "PrecipitationCollision"
-	_collider.size = Vector3(56.0, 90.0, 56.0)
+	_collider.size = Vector3(130.0, 90.0, 130.0) # (as wide as the rain's box at its widest)
 	_collider.resolution = GPUParticlesCollisionHeightField3D.RESOLUTION_256
 	_collider.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_WHEN_MOVED
 	_collider.position = Vector3(0.0, -100000.0, 0.0) # so the first snap to the camera counts as a move
@@ -955,12 +964,26 @@ func _update_precipitation(delta: float) -> void:
 	_rain_mat.set_shader_parameter(&"brightness", light)
 	_snow_mat.set_shader_parameter(&"brightness", minf(light * 1.6 + 0.15, 1.6))
 
-	# Rain: the box rides ahead of the camera by where it will be mid-way through a drop's life.
+	# Where it falls that you see: round what the view is on (an RTS view's `focus`, tens of metres
+	# below and ahead of the lens), a box as wide as the view takes in; a camera with no focus has
+	# it round itself. (Round the lens of a view from above, the drops fell away from it and died
+	# out in the air long before the ground, a shower coming out of the camera.)
+	var anchor := pos
+	var view_d := 0.0
+	var f: Variant = cam.get("focus")
+	if f is Vector3:
+		anchor = f
+		view_d = pos.distance_to(f)
+	var half := clampf(view_d * 0.55, 18.0, 60.0)
+
+	# Rain: the box rides ahead of the view by where it will be mid-way through a drop's life.
 	var raining := rain_intensity > 0.01
 	_rain.emitting = raining
 	if raining:
 		_rain.amount_ratio = clampf(rain_intensity, 0.0, 1.0)
-		_rain.global_position = pos + _cam_vel * 1.0 + Vector3(0.0, 9.0, 0.0)
+		_rain_pm.emission_box_extents = Vector3(half, 12.0, half)
+		_rain.global_position = anchor + _cam_vel * 1.0 + Vector3(0.0, 12.0, 0.0)
+		_rain_mat.set_shader_parameter(&"far_fade", view_d + half)
 		var fall := Vector3(wind.x, -10.0, wind.z)
 		var speed := fall.length()
 		_rain_pm.direction = fall / speed
@@ -972,7 +995,9 @@ func _update_precipitation(delta: float) -> void:
 	_snow.emitting = snowing
 	if snowing:
 		_snow.amount_ratio = clampf(snow_intensity, 0.0, 1.0)
-		_snow.global_position = pos + _cam_vel * 3.0 + Vector3(0.0, 4.0, 0.0)
+		_snow_pm.emission_box_extents = Vector3(half, 8.0, half)
+		_snow.global_position = anchor + _cam_vel * 3.0 + Vector3(0.0, 8.0, 0.0)
+		_snow_mat.set_shader_parameter(&"far_fade", view_d + half + 6.0)
 		var drift := Vector3(wind.x * 0.8, -1.1, wind.z * 0.8)
 		_snow_pm.direction = drift.normalized()
 		_snow_pm.initial_velocity_min = drift.length() * 0.8
@@ -983,7 +1008,7 @@ func _update_precipitation(delta: float) -> void:
 		var active := raining or snowing
 		_collider.visible = active
 		if active:
-			var snapped_pos := Vector3(snappedf(pos.x, 2.0), snappedf(pos.y, 8.0), snappedf(pos.z, 2.0))
+			var snapped_pos := Vector3(snappedf(anchor.x, 2.0), snappedf(anchor.y, 8.0), snappedf(anchor.z, 2.0))
 			if not _collider.global_position.is_equal_approx(snapped_pos):
 				_collider.global_position = snapped_pos
 

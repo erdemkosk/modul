@@ -88,11 +88,25 @@ var _lantern: Node3D
 var _tool: Node3D
 var _tool_kind := ""
 var _body: Townsfolk ## the rigged townsman (null: the old jointed figure)
+# --- the defence
+var militia := false ## takes a rifle from the armoury when the alarm goes
+var drafted := false ## under the player's orders (skipped by Village._assign)
+var armed := false ## has an armoury rifle in hand
+var ammo := 0 ## cartridges on it
+var lantern_mode := "" ## "": lit at night, "off": kept dark
+var revealed := 0.0 ## s it can be seen anywhere (the flash of its own shot)
+var in_cover := false ## behind a wall or a fence: half as easy to hit
+var focus: Villager ## (drafted) the one it's told to shoot
+var down := false ## shot and lying wounded: bleeding out unless carried in
+var bleed := 0.0 ## s left
+var carried_by: Villager
+var recovering := false ## abed till it's mended
+var role := "" ## an outlaw's: "shooter", "torch", "looter"
 var _speed_now := 0.0 ## m/s over the ground this frame
 var _rifle := false
 
 ## The tool in the right hand for each kind of work.
-const TOOLS := {"eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet"}
+const TOOLS := {"mow": "scythe", "eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet"}
 
 
 func _ready() -> void:
@@ -582,6 +596,13 @@ func abort() -> void:
 
 
 func sleep_in(h: Building, hide := false) -> void:
+	if down:
+		down = false
+		recovering = true
+		carried_by = null
+		hp = maxf(hp, 5.0)
+		if _body:
+			_body.stand()
 	sleeping = true
 	hiding = hide
 	inside = h
@@ -623,6 +644,7 @@ func sleep_rough(cover: Building, at: Vector3, fire: Vector3) -> void:
 
 
 func wake() -> void:
+	recovering = false
 	sleeping = false
 	hiding = false
 	visible = true
@@ -755,9 +777,40 @@ func _rod(at: Vector3, r: float, length: float, mat: Material) -> MeshInstance3D
 	return mi
 
 
+## Lying wounded: bleeding out where it fell, or carried on someone's shoulders.
+func _downed(dt: float) -> void:
+	if is_instance_valid(carried_by) and not carried_by.dead and not carried_by.down and carried_by.carry_res == "yarali":
+		position = carried_by.position + carried_by.global_basis * Vector3(0.0, 1.05, 0.25)
+		rotation.y = carried_by.rotation.y + PI * 0.5
+		return
+	if carried_by != null:
+		carried_by = null # (put down, or the one carrying it fell)
+		position.y = village.ground_at(position)
+	bleed -= dt
+	if bleed <= 0.0:
+		die()
+
+
+func _go_down() -> void:
+	abort()
+	down = true
+	hp = 1.0
+	bleed = 120.0
+	job = "Yaralı, yerde"
+	drafted = false
+	if _lantern:
+		_lantern.visible = false
+	_hold("")
+	if _body:
+		_body.lie()
+
+
 ## A blow (an arrow) of `dmg` from `by`.
 func hurt(dmg: float, by: Villager = null) -> void:
 	if dead:
+		return
+	if down:
+		die() # (struck again where it lies)
 		return
 	hp -= dmg
 	if _tunic:
@@ -767,6 +820,10 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		tw.tween_interval(0.12)
 		tw.tween_callback(func() -> void: _tunic.albedo_color = c)
 	if hp <= 0.0:
+		# One of the town shot or cut down mostly lies wounded, not dead: it can still be saved.
+		if team == 0 and _body and randf() < 0.75:
+			_go_down()
+			return
 		die()
 		return
 	if fighter and by and is_instance_valid(by) and not by.dead and (plan.is_empty() or str(plan[0].t) != "fight"):
@@ -797,6 +854,11 @@ func die() -> void:
 
 func _process(dt: float) -> void:
 	if dead:
+		return
+	if revealed > 0.0:
+		revealed -= dt
+	if down:
+		_downed(dt)
 		return
 	if hp < max_hp:
 		hp = minf(hp + dt * (0.35 if sleeping else 0.12), max_hp) # (mending, quicker asleep)
@@ -851,6 +913,8 @@ func _process(dt: float) -> void:
 				abort()
 		"fight":
 			_fight(step, dt)
+		"hold":
+			_hold_post(step, dt)
 		"step":
 			var to: Vector3 = step.to
 			var d := Vector2(to.x - position.x, to.z - position.z)
@@ -876,6 +940,7 @@ func _process(dt: float) -> void:
 
 ## A stretch of its walk; true once it's there.
 func _walk(dt: float) -> bool:
+	in_cover = false
 	if _path_i >= _path.size():
 		return true
 	var worn := nav.worn(position)
@@ -960,7 +1025,7 @@ func lantern_on() -> bool:
 func _lantern_check() -> void:
 	if team != 0 or Engine.get_process_frames() % 20 != get_instance_id() % 20:
 		return
-	var want: bool = village.weather.is_night() and not perched
+	var want: bool = village.weather.is_night() and not perched and not down and lantern_mode != "off"
 	if want and _lantern == null:
 		_lantern = Node3D.new()
 		_lantern.position = Vector3(0, _palm() - 0.02, -0.05)
@@ -1020,6 +1085,12 @@ func _hold(kind: String) -> void:
 		bw.position = Vector3(0, -0.06, -0.06)
 		_tool.add_child(bw)
 		return
+	if kind == "scythe":
+		# the snath, long and bent, held by its two grips; the blade out at its foot
+		_tool_part(Vector3(0.035, 1.6, 0.035), Vector3(0, -0.55, -0.1), wood, Vector3(-0.15, 0, 0))
+		_tool_part(Vector3(0.03, 0.03, 0.2), Vector3(0, -0.15, -0.12), wood)
+		_tool_part(Vector3(0.012, 0.08, 0.75), Vector3(0.0, -1.32, -0.42), iron, Vector3(0, 0.25, 0))
+		return
 	var haft: float = {"axe": 0.85, "pick": 0.85, "hammer": 0.38, "sickle": 0.18, "hoe": 1.3, "spade": 1.1, "saw": 0.16, "mallet": 0.3}[kind]
 	_tool_part(Vector3(0.035, haft, 0.035), Vector3(0, -haft * 0.35, 0), wood)
 	var tip := Vector3(0, -haft * 0.85, 0)
@@ -1064,9 +1135,38 @@ func _rate() -> float:
 	return village.work_rate if team == 0 else 1.0
 
 
+## At its post: the foe it's told to shoot, or else the nearest it can see in reach; out of cartridges
+## it only watches.
+func _hold_post(step: Dictionary, dt: float) -> void:
+	_path = PackedVector3Array()
+	var raids: Raids = village.raids
+	var foe: Villager = null
+	if is_instance_valid(focus) and not focus.dead and focus.position.distance_to(position) <= ranged * 1.25 and raids.can_see(position, focus):
+		foe = focus
+	elif raids and ranged > 0.0:
+		foe = raids.nearest_raider(position, ranged, true)
+	if foe and (ammo > 0 or not armed):
+		_face(foe.position, dt * 3.0)
+		_anim = "aim"
+		_attack_t -= dt
+		if _attack_t <= 0.0:
+			_attack_t = randf_range(2.2, 3.0)
+			if armed:
+				ammo -= 1
+			var d := foe.position.distance_to(position)
+			raids.shoot(position + Vector3.UP * 1.45, foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
+	else:
+		_anim = "idle"
+		if step.has("face"):
+			_face(step.face, dt)
+	if armed and ammo <= 0:
+		job = "Fişeği bitti"
+	_animate(dt, false)
+
+
 func _fight(step: Dictionary, dt: float) -> void:
 	var foe: Variant = step.foe
-	if not is_instance_valid(foe) or (foe as Villager).dead or (foe as Villager).sleeping or (foe as Villager).perched:
+	if not is_instance_valid(foe) or (foe as Villager).dead or (foe as Villager).down or (foe as Villager).sleeping or (foe as Villager).perched:
 		plan.pop_front()
 		_path = PackedVector3Array()
 		return
@@ -1084,8 +1184,12 @@ func _fight(step: Dictionary, dt: float) -> void:
 		_attack_t -= dt
 		if _attack_t <= 0.0:
 			_attack_t = randf_range(2.0, 2.8)
-			village.raids.shoot(position + Vector3.UP * 1.45, f, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85))
+			village.raids.shoot(position + Vector3.UP * 1.45, f, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
 		_animate(dt, false)
+		return
+	if role == "shooter" or (armed and ranged > 0.0):
+		plan.pop_front() # (a rifleman doesn't run in: out of sight or reach, it lets it go)
+		_path = PackedVector3Array()
 		return
 	if d > 1.4:
 		if _path.is_empty() or f.position.distance_to(_chase_at) > 2.5 or _path_i >= _path.size():
@@ -1154,6 +1258,19 @@ func _animate(dt: float, walking: bool) -> void:
 			el = 0.3 + maxf(s, 0.0) * 0.6
 			er = el
 			kn = 0.25
+		"mow":
+			# The scythe: a long flat sweep from right to left, the body turning from the hips into it,
+			# the knees soft; then lifted round to the right again.
+			var u := fmod(t + (get_instance_id() % 5) * 0.25, 1.7) / 1.7
+			var sweep := smoothstep(0.0, 0.55, u)
+			var back := smoothstep(0.6, 1.0, u)
+			twist = 0.85 - sweep * 1.6 + back * 1.6
+			arm_l = -0.75 + (1.0 - absf(sweep - back)) * 0.1
+			arm_r = -0.55
+			lean = 0.32
+			el = 0.75
+			er = 0.45
+			kn = 0.35
 		"reap":
 			# Bent to the stalks, the sickle drawn round low.
 			var s := sin(t * 5.0)
@@ -1165,13 +1282,17 @@ func _animate(dt: float, walking: bool) -> void:
 			er = 0.4
 			kn = 0.5
 		"hoe":
-			var s := sin(t * 3.4)
-			arm_l = -1.4 - s * 0.7
-			arm_r = arm_l
-			lean = 0.25 - s * 0.15
-			el = 0.45
-			er = 0.45
-			kn = 0.25
+			# Raised high, brought down hard into the ground (body behind it), drawn back toward the feet.
+			var u := fmod(t + (get_instance_id() % 7) * 0.2, 1.5) / 1.5
+			var up := smoothstep(0.0, 0.55, u) * (1.0 - smoothstep(0.55, 0.68, u))
+			var pull := smoothstep(0.7, 1.0, u)
+			arm_l = -0.55 - up * 1.7 + pull * 0.25
+			arm_r = arm_l - 0.1
+			lean = 0.42 - up * 0.3 + pull * 0.08
+			el = 0.35 + up * 0.4 + pull * 0.5
+			er = el
+			kn = 0.3 + (1.0 - up) * 0.15
+			twist = -0.15
 		"dig":
 			var s := sin(t * 3.0)
 			arm_l = -0.8 + s * 0.4
@@ -1240,13 +1361,16 @@ func _animate(dt: float, walking: bool) -> void:
 			er = 1.1 + s * 0.4 # (a hand going as it talks)
 			el = 0.25
 		"sow":
-			# Seed cast from the left hand in a fan.
-			var s := sin(t * 3.2)
-			arm_l = -0.6
-			arm_r = -1.0 - s * 0.5
-			twist = s * 0.4
-			el = 1.3 # (the seed bag held up)
-			er = 0.5 - s * 0.3
+			# The seed taken from the bag on the left arm, then flung out in a wide fan as the body turns.
+			var u := fmod(t + (get_instance_id() % 5) * 0.3, 1.3) / 1.3
+			var cast := smoothstep(0.35, 0.6, u) * (1.0 - smoothstep(0.75, 1.0, u))
+			arm_l = -0.65
+			arm_r = -0.5 - cast * 0.9
+			twist = 0.35 - cast * 0.8
+			lean = 0.12
+			el = 1.35 # (the seed bag held up against the chest)
+			er = 1.3 - cast * 1.1
+			kn = 0.1
 		"gather", "draw":
 			arm_l = -0.9 + sin(t * 3.0) * 0.3
 			arm_r = -0.9 - sin(t * 3.0) * 0.3

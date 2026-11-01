@@ -24,6 +24,8 @@ var ambience: Ambience
 var critters: Critters
 var selected: Building
 var selected_villager: Villager
+var group: Array[Villager] = [] ## the townsfolk chosen together (Shift+click), the first is selected_villager
+var _rings: Array[MeshInstance3D] = []
 
 var _placing := ""
 var _ghost: Building
@@ -161,10 +163,12 @@ func _unhandled_input(e: InputEvent) -> void:
 			elif _placing != "":
 				_place_here(mb.shift_pressed)
 			else:
-				_pick(mb.position)
+				_pick(mb.position, mb.shift_pressed)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if _placing != "":
 				stop_placing()
+			elif _chosen().any(func(v: Villager) -> bool: return v.drafted):
+				_order(mb.position)
 			elif selected_villager and is_instance_valid(selected_villager):
 				_assign_to(_building_under(mb.position))
 			else:
@@ -212,6 +216,12 @@ func _unhandled_input(e: InputEvent) -> void:
 				repair_selected()
 			KEY_B:
 				test_raid()
+			KEY_M:
+				toggle_militia()
+			KEY_G:
+				toggle_draft()
+			KEY_L:
+				toggle_lantern()
 			KEY_H:
 				var s := village.stores()
 				if not s.is_empty():
@@ -409,11 +419,18 @@ func _update_road_line() -> void:
 
 # --- Picking ----------------------------------------------------------------------------------------
 
-func _pick(at: Vector2) -> void:
+func _pick(at: Vector2, add := false) -> void:
 	var folk := _villager_under(at)
 	if folk:
+		if add and selected_villager and is_instance_valid(selected_villager):
+			if folk in group:
+				group.erase(folk)
+			else:
+				group.append(folk)
+			return
 		select(null)
 		selected_villager = folk
+		group = [folk]
 		return
 	select(_building_under(at))
 
@@ -447,6 +464,125 @@ func _villager_under(at: Vector2) -> Villager:
 func select(b: Building) -> void:
 	selected = b
 	selected_villager = null
+	group.clear()
+
+
+## The townsfolk the keys and orders are for: the group, or the one selected.
+func _chosen() -> Array[Villager]:
+	var out: Array[Villager] = []
+	for v in group:
+		if is_instance_valid(v) and not v.dead:
+			out.append(v)
+	if out.is_empty() and selected_villager and is_instance_valid(selected_villager) and not selected_villager.dead:
+		out.append(selected_villager)
+	return out
+
+
+func toggle_militia() -> void:
+	var list := _chosen()
+	if list.is_empty():
+		return
+	var on := not list[0].militia
+	var n := 0
+	for v in list:
+		if v.is_child:
+			continue
+		if v.workplace and v.workplace.def.role in ["barracks", "tower"]:
+			hud.toast("%s bekçi: zaten tüfekli" % v.display_name, "info")
+			continue
+		v.militia = on
+		if not on and v.drafted:
+			v.drafted = false
+		n += 1
+	if n > 0:
+		hud.toast(("%d kişi milis: tehlike çanında silahlıktan tüfek alır" if on else "%d kişi artık milis değil") % n, "good" if on else "info")
+	if on and village.armories().is_empty():
+		hud.toast("Silahlık yok: önce SAVUNMA'dan silahlık kur", "bad")
+
+
+## Draft the chosen militia under your orders, or let them go back to their own judgement.
+func toggle_draft() -> void:
+	var list := _chosen()
+	if list.is_empty():
+		return
+	var on := not list[0].drafted
+	for v in list:
+		if not v.militia or v.down:
+			hud.toast("%s milis değil (önce M)" % v.display_name, "info")
+			continue
+		if not on:
+			v.drafted = false
+			v.focus = null
+			v.abort()
+			continue
+		v.drafted = true
+		if v.sleeping:
+			v.wake()
+		v.abort()
+		if v.armed:
+			village.hold_at(v, village.cover_near(v.position))
+		else:
+			var a := village.armory_with_rifle(v.position)
+			if a:
+				village.arm(v, a)
+			else:
+				hud.toast("Silahlıkta tüfek yok", "bad")
+				v.drafted = false
+	hud.toast("Toplandı: sağ tık ile mevzi ya da hedef göster" if on else "Bırakıldı", "info")
+
+
+func toggle_lantern() -> void:
+	var list := _chosen()
+	if list.is_empty():
+		return
+	var dark := list[0].lantern_mode != "off"
+	for v in list:
+		v.lantern_mode = "off" if dark else ""
+	hud.toast("Fenerler söndürüldü: karanlıkta görünmezler, ama onlar da az görür" if dark else "Fenerler yanıyor", "info")
+
+
+## An order to the drafted: a raider clicked is the one to shoot; ground, a post there (behind
+## whatever cover's close), spread out a little.
+func _order(at: Vector2) -> void:
+	var drafted: Array[Villager] = []
+	for v in _chosen():
+		if v.drafted and not v.down:
+			drafted.append(v)
+	var foe := _raider_under(at)
+	if foe:
+		for v in drafted:
+			v.focus = foe
+		hud.toast("Hedef: %d kişi ona ateş edecek" % drafted.size(), "info")
+		return
+	var to: Variant = cam.ground_under(at)
+	if to == null:
+		return
+	var p: Vector3 = to
+	for i in drafted.size():
+		var v := drafted[i]
+		var off := Vector3.ZERO if i == 0 else Vector3(cos(i * 2.4), 0, sin(i * 2.4)) * (1.6 + i * 0.4)
+		v.focus = null
+		v.abort()
+		if v.armed:
+			village.hold_at(v, village.cover_near(p + off, 3.0))
+		else:
+			v.give([{"t": "go", "to": p + off}], "Emirle gidiyor")
+
+
+func _raider_under(at: Vector2) -> Villager:
+	var best: Villager = null
+	var bd := 30.0
+	for r in raids.raiders:
+		if not is_instance_valid(r) or r.dead:
+			continue
+		var p := r.global_position + Vector3.UP * 1.0
+		if cam.is_position_behind(p):
+			continue
+		var d := cam.unproject_position(p).distance_to(at)
+		if d < bd:
+			bd = d
+			best = r
+	return best
 
 
 func _assign_to(b: Building) -> void:
@@ -522,3 +658,16 @@ func _process(_dt: float) -> void:
 		_ring.visible = false
 		if selected and (not is_instance_valid(selected) or selected.state == "gone"):
 			selected = null
+	# the others chosen with it, each ringed (red if drafted)
+	var others: Array[Villager] = []
+	for v in _chosen():
+		if v != selected_villager and v.visible:
+			others.append(v)
+	while _rings.size() < others.size():
+		var rr := _ring.duplicate() as MeshInstance3D
+		add_child(rr)
+		_rings.append(rr)
+	for i in _rings.size():
+		_rings[i].visible = i < others.size()
+		if i < others.size():
+			_rings[i].global_transform = Transform3D(Basis().scaled(Vector3(0.7, 0.4, 0.7)), others[i].global_position + Vector3.UP * 0.08)

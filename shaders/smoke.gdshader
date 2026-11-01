@@ -24,7 +24,7 @@ void fragment() {
 	vec2 uv = UV * 2.0 - 1.0;
 	float r = length(uv);
 	float n = p_fbm(uv * 1.7 + vec2(v_seed * 17.0, v_seed * 5.0 - TIME * 0.12));
-	float body = 1.0 - smoothstep(0.25, 1.0, r + (n - 0.5) * 0.7);
+	float body = (1.0 - smoothstep(0.25, 1.0, r + (n - 0.5) * 0.7)) * (1.0 - smoothstep(0.7, 0.98, r)); // (never out to the quad's edge)
 	float a = clamp((body * (0.6 + 0.7 * n) - v_life * 0.35) * 1.8, 0.0, 1.0);
 	ALPHA = a * COLOR.a * p_soft(SCREEN_UV, VERTEX, INV_PROJECTION_MATRIX, soft);
 	ALBEDO = COLOR.rgb * mix(0.8, 1.1, n);

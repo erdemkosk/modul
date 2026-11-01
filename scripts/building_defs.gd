@@ -13,7 +13,9 @@ extends RefCounted
 
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek"}
 
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla"]
+## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
+const YARDS := ["oduncu", "tasci", "toplayici", "ormanci", "meydan"]
+const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -51,6 +53,8 @@ const DEFS := {
 		"desc": "Tüfekli bir gözcü çıkar, 70 m içinde aydınlıkta gördüğü haydudu ve kurdu vurur. Yaklaşanları duyar, kasabayı uyarır."},
 	"kisla": {"name": "Bekçi karakolu", "size": Vector2(8, 6), "cost": {"odun": 24, "tas": 8}, "time": 34.0, "role": "barracks", "slots": 6,
 		"desc": "Buraya verilen kasabalılar tüfekli bekçi olur; gördükleri haydutla ve kurtla çarpışır. Karanlıktakini göremezler."},
+	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "armory",
+		"desc": "Kasabanın tüfekleri ve fişekleri burada durur. Milis işaretli kasabalılar tehlike çanında buradan tüfek alıp mevziye geçer. Tüfek kasabada yapılamaz: haydutlardan düşeni toplanır, ya da satın alınır."},
 }
 
 ## What each stuff is: its colour, hit points, whether it burns and how long it takes to burn through
