@@ -680,6 +680,22 @@ func _remove(i: int) -> void:
 	_since_update = UPDATE_PERIOD # the near set drops it next frame
 
 
+## A felled prop stands again (a tree grown back from a sapling): drawn, solid, and forgotten
+## as felled. (It's no winch anchor again: nothing here winches.)
+func regrow(i: int) -> void:
+	if not cut.has(i):
+		return
+	cut.erase(i)
+	RutStore.cut.erase(i)
+	RutStore.save_marks()
+	if _shape_of.has(i):
+		PhysicsServer3D.body_set_shape_disabled(_shape_of[i][0], _shape_of[i][1], false)
+	var mm: MultiMesh = _far_mm[i]
+	if mm:
+		mm.set_instance_transform(_far_idx[i], _xf[i])
+	_since_update = UPDATE_PERIOD
+
+
 func _cylinder(radius: float, height: float) -> Shape3D:
 	var key := "cyl_%.2f_%.2f" % [radius, height]
 	if not _shapes.has(key):

@@ -13,8 +13,9 @@ uniform sampler2D splat : filter_linear_mipmap, repeat_disable;
 uniform sampler2D splat2 : filter_linear_mipmap, repeat_disable;
 uniform sampler2D soft_map : filter_linear, repeat_disable; // RG: mud, deep snow (WorldTerrain._build_soft)
 uniform sampler2D patch_flags : filter_nearest, repeat_disable; // 1 where a rut patch draws the ground
-uniform sampler2D burn_mask : filter_linear, repeat_disable; // 1 m cells burnt black (GrassFire)
+uniform sampler2D burn_mask : hint_default_black, filter_linear, repeat_disable; // 1 m cells burnt black (GrassFire)
 uniform float tile_size = 32.0;
+uniform sampler2D village_mask : hint_default_black, filter_linear, repeat_disable; // R worn paths, G cleared under buildings, B scorched (Nav)
 uniform float map_half = 1024.0;
 uniform float map_size = 2049.0;
 
@@ -154,6 +155,14 @@ void fragment() {
 	snow *= 1.0 - steep * 0.85;
 	road = smoothstep(0.25, 0.75, road + (fine - 0.5) * 0.35);
 	meadow = smoothstep(0.2, 0.8, meadow + edge_n);
+	// The village's paths: trodden earth where feet and carts keep passing, frayed at the edges.
+	vec3 vm = texture(village_mask, (xz + map_half) / (map_size - 1.0)).rgb;
+	// Trodden: first the grass goes thin and pale, then bare packed earth, its edge frayed.
+	float trodden = clamp(vm.r + (fine - 0.5) * 0.3 + (mid - 0.5) * 0.15, 0.0, 1.0);
+	float trail = smoothstep(0.35, 0.8, trodden);
+	float worn_grass = smoothstep(0.05, 0.4, trodden) * (1.0 - trail);
+	road = max(road, trail * 0.45); // (it takes the wet and the puddles like a road)
+	meadow *= 1.0 - smoothstep(0.1, 0.6, vm.g + (fine - 0.5) * 0.3) * 0.8;
 
 	// --- Layers ---
 	vec3 grass_a = vec3(0.12, 0.23, 0.05);
@@ -230,6 +239,9 @@ void fragment() {
 	base = mix(base, wet_c, wet * 0.85);
 	base = mix(base, shore_c, shore);
 	base = mix(base, road_c, road);
+	vec3 trail_c = mix(vec3(0.19, 0.145, 0.1), vec3(0.27, 0.21, 0.15), mid) * (0.92 + 0.14 * fine); // packed earth
+	base = mix(base, base * vec3(0.95, 0.9, 0.72) + vec3(0.03, 0.025, 0.0), worn_grass * 0.7); // grass trodden pale
+	base = mix(base, trail_c, trail * 0.95);
 	base = mix(base, rock_c, rock);
 	float rough = mix(0.92, 0.85, rock);
 
@@ -269,7 +281,11 @@ void fragment() {
 	// (grass blades shed it, so the meadow keeps more of its roughness).
 	float wet_amt = clamp(weather_wetness * (1.0 - rock * 0.4) + wet * 0.35, 0.0, 1.0) * (1.0 - weather_ice); // frozen, it is ice, not wet
 	base *= mix(1.0, mix(0.55, 0.7, meadow), wet_amt);
+	// Mud: the trodden ground and the yards churn to dark, glistening mud in the wet.
+	float muddy = clamp(smoothstep(0.08, 0.6, trodden) + vm.g * 0.7, 0.0, 1.0) * smoothstep(0.25, 0.8, weather_wetness) * (1.0 - weather_ice);
+	base = mix(base, vec3(0.075, 0.055, 0.04) * (0.85 + 0.3 * fine), muddy * 0.85);
 	rough = mix(rough, mix(0.22, 0.5, meadow * (1.0 - road)), wet_amt * 0.85);
+	rough = mix(rough, 0.18, muddy * 0.8);
 	// Puddles: standing water in the dips of roads and flat ground (and in marshy ground even
 	// in dry weather), spreading as the rain goes on and shrinking back as it dries
 	// (WorldTerrain.puddle_at: the tyres meet the same water). A soaked dark margin round each.
@@ -390,7 +406,7 @@ void fragment() {
 	float glint = step(0.985, hash12(floor(xz * 55.0))) * max(snow_total, snow_in) * (1.0 - smoothstep(6.0, 25.0, dist));
 	rough = mix(rough, 0.05, glint);
 	// Burnt ground (GrassFire): black char, grey-white ash in drifts, soft-edged.
-	float burnt = texture(burn_mask, (xz + map_half) / (map_size - 1.0)).r;
+	float burnt = max(texture(burn_mask, (xz + map_half) / (map_size - 1.0)).r, smoothstep(0.05, 0.9, vm.b + (mid - 0.5) * 0.3) * 0.85);
 	if (burnt > 0.01) {
 		float drift = fbm(xz * 1.4 + 7.0, 2);
 		vec3 coal = mix(vec3(0.03, 0.027, 0.024), vec3(0.36, 0.34, 0.31), smoothstep(0.58, 0.82, drift));

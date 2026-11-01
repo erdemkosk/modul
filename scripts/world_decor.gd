@@ -1,9 +1,7 @@
 class_name WorldDecor
 extends Node3D
 ## Everything on top of the open world's ground (scripts/world_terrain.gd): trees and rocks
-## (WorldProps), grass round the camera, the lake and the river, the asphalt on the paved roads,
-## the places to find
-## (WorldPois), distant mountains beyond the map so the valley never ends at a cliff of sky, and
+## (WorldProps), grass round the camera, the lake and the river, distant mountains beyond the map so the valley never ends at a cliff of sky, and
 ## invisible walls at the map edge.
 
 const GRASS_GRID := 250
@@ -21,7 +19,6 @@ func _ready() -> void:
 	add_child(props)
 	_build_grass()
 	_build_water()
-	_build_asphalt()
 	_build_horizon()
 	_build_bounds()
 
@@ -59,6 +56,7 @@ func _grass_field(grid: int, spacing: float, inner: float, clump: float, node_na
 	mat.set_shader_parameter("soft_map", terrain.soft_map)
 	mat.set_shader_parameter("map_half", float(terrain.half))
 	mat.set_shader_parameter("map_size", float(terrain.size))
+	mat.set_shader_parameter("village_mask", terrain.village_mask)
 	mat.set_shader_parameter("lake_level", terrain.lake_level)
 	mat.set_shader_parameter("grid", grid)
 	mat.set_shader_parameter("spacing", spacing)
@@ -163,150 +161,6 @@ func _build_water() -> void:
 			var a := (i - 1) * 2
 			indices.append_array([a, a + 1, a + 2, a + 1, a + 3, a + 2])
 	add_child(_water_mesh(verts, uvs, indices, 0.8, "River"))
-
-
-# --- Asphalt ----------------------------------------------------------------------------------------
-
-## The paved roads (world.json road_info kind "asphalt"): a ribbon of worn tarmac laid on the
-## ground (the ground under it is hard, never mud: the builder marks it rock), crumbling darker at
-## the edges, with a faded dashed centre line. Over a bridge the bridge's own deck takes over. In the
-## wood age (the valley's first: Inventory.age) it's a packed earth road instead, no line on it.
-func _build_asphalt() -> void:
-	var info: Dictionary = terrain.meta.get("road_info", {})
-	var bridges: Array = terrain.meta.get("bridges", [])
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var lines := SurfaceTool.new()
-	lines.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var any := false
-	for road: String in info:
-		if str(info[road].get("kind", "")) != "asphalt" or not terrain.meta.roads.has(road):
-			continue
-		var raw: Array = terrain.meta.roads[road]
-		var pts := PackedVector2Array()
-		for i in raw.size() - 1:
-			var a := Vector2(float(raw[i][0]), float(raw[i][1]))
-			var b := Vector2(float(raw[i + 1][0]), float(raw[i + 1][1]))
-			var n := maxi(int(a.distance_to(b) / 2.0), 1)
-			for k in n:
-				pts.append(a.lerp(b, float(k) / n))
-		pts.append(Vector2(float(raw[-1][0]), float(raw[-1][1])))
-		var along := 0.0
-		var prev_ok := false
-		for i in pts.size():
-			var p := pts[i]
-			var dir := (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]).normalized()
-			var side := Vector2(-dir.y, dir.x)
-			if i > 0:
-				along += p.distance_to(pts[i - 1])
-			var ok := not _on_bridge(p, bridges)
-			if ok and prev_ok:
-				var q := pts[i - 1]
-				var qdir := (pts[i] - pts[maxi(i - 2, 0)]).normalized()
-				var qside := Vector2(-qdir.y, qdir.x)
-				_ribbon_quad(st, q, qside, p, side, along - p.distance_to(q), along)
-				if fmod(along, 9.0) < 3.5:
-					_line_quad(lines, q, qside, p, side)
-				any = true
-			prev_ok = ok
-	if not any:
-		return
-	st.generate_normals()
-	var mi := MeshInstance3D.new()
-	mi.name = "Asphalt"
-	mi.mesh = st.commit()
-	mi.material_override = _asphalt_material()
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-	if _earth_roads():
-		return
-	lines.generate_normals()
-	var li := MeshInstance3D.new()
-	li.name = "RoadLines"
-	li.mesh = lines.commit()
-	var lm := StandardMaterial3D.new()
-	lm.albedo_color = Color(0.78, 0.74, 0.6)
-	lm.roughness = 0.9
-	li.material_override = lm
-	li.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	li.visibility_range_end = 250.0
-	add_child(li)
-
-
-const ASPHALT_HALF := 3.5 ## m either side of the road's line
-
-
-func _on_bridge(p: Vector2, bridges: Array) -> bool:
-	for b: Dictionary in bridges:
-		var c := Vector2(float(b.x), float(b.z))
-		var yaw := deg_to_rad(float(b.yaw))
-		var along := Vector2(sin(yaw), cos(yaw))
-		var d := p - c
-		if absf(d.dot(along)) < float(b.len) * 0.5 + 3.0 and absf(d.dot(Vector2(-along.y, along.x))) < 6.0:
-			return true
-	return false
-
-
-## One stretch of the ribbon, five vertices across: the edges darker (vertex colour), the UV in
-## metres (x across, y along).
-func _ribbon_quad(st: SurfaceTool, a: Vector2, a_side: Vector2, b: Vector2, b_side: Vector2, va: float, vb: float) -> void:
-	var across := [-1.0, -0.6, 0.0, 0.6, 1.0]
-	var ra := []
-	var rb := []
-	for k in across:
-		ra.append(_ground_vert(a + a_side * ASPHALT_HALF * k))
-		rb.append(_ground_vert(b + b_side * ASPHALT_HALF * k))
-	for j in across.size() - 1:
-		var c0 := Color(0.72, 0.72, 0.72) if absf(across[j]) > 0.9 else Color.WHITE
-		var c1 := Color(0.72, 0.72, 0.72) if absf(across[j + 1]) > 0.9 else Color.WHITE
-		var u0: float = across[j] * ASPHALT_HALF
-		var u1: float = across[j + 1] * ASPHALT_HALF
-		for v in [[ra[j], c0, Vector2(u0, va)], [rb[j], c0, Vector2(u0, vb)], [rb[j + 1], c1, Vector2(u1, vb)],
-				[ra[j], c0, Vector2(u0, va)], [rb[j + 1], c1, Vector2(u1, vb)], [ra[j + 1], c1, Vector2(u1, va)]]:
-			st.set_color(v[1])
-			st.set_uv(v[2])
-			st.add_vertex(v[0])
-
-
-func _line_quad(st: SurfaceTool, a: Vector2, a_side: Vector2, b: Vector2, b_side: Vector2) -> void:
-	var w := 0.09
-	var p := [_ground_vert(a - a_side * w, 0.055), _ground_vert(b - b_side * w, 0.055), _ground_vert(b + b_side * w, 0.055), _ground_vert(a + a_side * w, 0.055)]
-	for i in [0, 1, 2, 0, 2, 3]:
-		st.add_vertex(p[i])
-
-
-func _ground_vert(p: Vector2, lift := 0.045) -> Vector3:
-	return Vector3(p.x, terrain.height_at(p.x, p.y) + lift, p.y)
-
-
-## The wood age's roads are earth, not tarmac.
-static func _earth_roads() -> bool:
-	if Mode.current != "valley":
-		return false
-	Inventory.count("") # (read in, if it isn't yet)
-	return Inventory.age() == 1
-
-
-func _asphalt_material() -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.albedo_color = Color(0.25, 0.25, 0.26) if not _earth_roads() else Color(0.4, 0.32, 0.23)
-	m.roughness = 0.93
-	var noise := FastNoiseLite.new()
-	noise.frequency = 0.08
-	noise.fractal_octaves = 4
-	var tex := NoiseTexture2D.new()
-	tex.noise = noise
-	tex.seamless = true
-	tex.width = 256
-	tex.height = 256
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0.72, 0.71, 0.7))
-	ramp.set_color(1, Color(1.08, 1.06, 1.02))
-	tex.color_ramp = ramp
-	m.albedo_texture = tex
-	m.uv1_scale = Vector3(0.12, 0.12, 1.0)
-	return m
 
 
 func _water_mesh(verts: PackedVector3Array, uvs: PackedVector2Array, indices: PackedInt32Array, flow: float, node_name: String) -> MeshInstance3D:

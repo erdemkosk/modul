@@ -27,6 +27,12 @@ var splat_texture: ImageTexture
 var splat2_texture: ImageTexture
 var soft_texture: ImageTexture
 var material: ShaderMaterial
+## The village's marks on the ground, one texel per 2 m (Nav): R worn into a path by feet and
+## carts, G cleared ground under a building (no grass), B scorched by a fire. The terrain and the
+## grass both read it.
+const MASK_RES := 1024
+var village_img: Image
+var village_mask: ImageTexture
 
 var _heights := PackedFloat32Array()
 var _splat := PackedByteArray()
@@ -350,6 +356,9 @@ func _build_textures() -> void:
 	material.set_shader_parameter("tile_size", float(TILE))
 	material.set_shader_parameter("map_half", float(half))
 	material.set_shader_parameter("map_size", float(size))
+	village_img = Image.create_empty(MASK_RES, MASK_RES, false, Image.FORMAT_RGBA8)
+	village_mask = ImageTexture.create_from_image(village_img)
+	material.set_shader_parameter("village_mask", village_mask)
 
 
 func _build_chunks() -> void:

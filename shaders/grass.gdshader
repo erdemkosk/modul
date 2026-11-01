@@ -16,6 +16,7 @@ uniform sampler2D splat : filter_linear, repeat_disable;
 uniform sampler2D splat2 : filter_linear, repeat_disable;
 uniform sampler2D soft_mask : filter_nearest, repeat_disable;
 uniform sampler2D soft_map : filter_linear, repeat_disable; // RG mud, deep snow: the same outline the ground draws
+uniform sampler2D village_mask : hint_default_black, filter_linear, repeat_disable; // R worn paths, G under buildings, B scorched
 uniform float map_half = 1024.0;
 uniform float map_size = 2049.0;
 uniform float lake_level = 18.0;
@@ -93,6 +94,8 @@ void vertex() {
 	vec4 s2 = texture(splat2, uv);
 	float density = s1.a * (1.0 - s1.r) * (1.0 - s1.g) * (1.0 - s1.b * 1.5) * (1.0 - s2.b) * (1.0 - s2.r * 0.6);
 	density = max(density * (1.0 - s2.a * 0.8), s2.a * 0.22); // steppe: sparse tussocks
+	vec3 vm = texture(village_mask, (xz + map_half) / (map_size - 1.0)).rgb;
+	density *= (1.0 - smoothstep(0.05, 0.5, vm.r)) * (1.0 - vm.g) * (1.0 - smoothstep(0.1, 0.6, vm.b));
 	// Patches: some of the meadow grows tall and thick, some is grazed short and thin.
 	float patchy = vnoise(xz * 0.11) * 0.7 + vnoise(xz * 0.5) * 0.3;
 	density *= mix(0.55, 1.35, patchy);
