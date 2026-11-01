@@ -36,12 +36,10 @@ func _ready() -> void:
 			_spots.append(inv * w)
 			z += STEP_Z
 		x += STEP_X
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.22, 1.0, 0.22)
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.95
-	mesh.material = m
+	var mesh := _tuft_mesh()
+	var m := ShaderMaterial.new()
+	m.shader = TUFT_SHADER
+	mesh.surface_set_material(0, m)
 	multimesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.use_colors = true
@@ -49,6 +47,55 @@ func _ready() -> void:
 	multimesh.instance_count = _spots.size()
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_draw()
+
+
+const TUFT_SHADER := preload("res://shaders/crop.gdshader")
+
+
+## One tuft, a metre tall from its foot: a sheaf of tapering blades bent out from the middle, the
+## middle ones carrying an ear. Darker at the foot (vertex colour; the crop's own colour over it).
+static func _tuft_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for k in 9:
+		var a := TAU * k / 9.0 + rng.randf_range(-0.3, 0.3)
+		var out := Vector3(cos(a), 0, sin(a))
+		var side := Vector3(-out.z, 0, out.x)
+		var lean := rng.randf_range(0.12, 0.38) if k > 2 else rng.randf_range(0.02, 0.1)
+		var tall := rng.randf_range(0.75, 1.0) if k > 2 else 1.0
+		var w := 0.035
+		var prev_l := Vector3.ZERO
+		var prev_r := Vector3.ZERO
+		for j in 5: # (a blade in four bends, curving out as it goes up)
+			var f := j / 4.0
+			var c := out * lean * f * f + Vector3.UP * tall * f + out * 0.03
+			var half := w * (1.0 - f * 0.9)
+			var l := c - side * half
+			var r := c + side * half
+			if j > 0:
+				var g0 := lerpf(0.45, 1.0, (j - 1) / 4.0)
+				var g1 := lerpf(0.45, 1.0, f)
+				_quad(st, prev_l, prev_r, r, l, Color(g0, g0, g0), Color(g1, g1, g1))
+			prev_l = l
+			prev_r = r
+		if k <= 2: # an ear on the middle stalks: a slim spindle at the top
+			var top := out * lean + Vector3.UP * tall
+			var ear := Color(1, 1, 1)
+			for q in 3:
+				var b := TAU * q / 3.0
+				var d := Vector3(cos(b), 0, sin(b)) * 0.045
+				_quad(st, top + Vector3.DOWN * 0.02, top + Vector3.DOWN * 0.02, top + d + Vector3.UP * 0.1, top + Vector3.UP * 0.24, ear, ear)
+				_quad(st, top + Vector3.DOWN * 0.02, top + Vector3.DOWN * 0.02, top + Vector3.UP * 0.24, top - d + Vector3.UP * 0.1, ear, ear)
+	st.generate_normals()
+	return st.commit()
+
+
+static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, lo: Color, hi: Color) -> void:
+	for v in [[a, lo], [b, lo], [c, hi], [a, lo], [c, hi], [d, hi]]:
+		st.set_color(v[1])
+		st.add_vertex(v[0])
 
 
 ## A place in the field to work at, on the ground, in the world.
@@ -155,8 +202,8 @@ func _burn_fx() -> void:
 
 func _draw() -> void:
 	var n := _spots.size()
-	var green := Color(0.3, 0.5, 0.14)
-	var gold := Color(0.78, 0.63, 0.25)
+	var green := Color(0.34, 0.52, 0.16)
+	var gold := Color(0.86, 0.68, 0.3)
 	var cut := int(float(reaped) / YIELD * n) if stage == "ripe" else 0
 	var burnt := int(clampf(burning / 10.0, 0.0, 1.0) * n)
 	for i in n:
@@ -164,13 +211,13 @@ func _draw() -> void:
 		var c := green
 		match stage:
 			"sowing":
-				h = 0.04 if float(i) / n < sown else 0.0
+				h = 0.08 if float(i) / n < sown else 0.0
 			"growing":
 				h = 0.05 + growth * 0.85
 				c = green.lerp(gold, smoothstep(0.7, 1.0, growth))
 			"ripe":
-				h = 0.95 if i >= cut else 0.08
-				c = gold if i >= cut else gold.darkened(0.3)
+				h = 0.95 if i >= cut else 0.1
+				c = gold if i >= cut else gold.darkened(0.35) # (the stubble)
 		if burning > 0.0 and i < burnt:
 			h = 0.06
 			c = Color(0.05, 0.04, 0.03)
@@ -179,5 +226,6 @@ func _draw() -> void:
 		if h <= 0.0:
 			multimesh.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), p))
 		else:
-			multimesh.set_instance_transform(i, Transform3D(Basis(Vector3.UP, wob).scaled(Vector3(1.0, h, 1.0)), p + Vector3.UP * h * 0.5))
+			var wide := lerpf(1.6, 1.0, clampf(h, 0.0, 1.0)) * (1.0 + wob) # (a shoot sprawls; the grown stalk stands)
+			multimesh.set_instance_transform(i, Transform3D(Basis(Vector3.UP, wob * 20.0).scaled(Vector3(wide, h, wide)), p))
 		multimesh.set_instance_color(i, c)

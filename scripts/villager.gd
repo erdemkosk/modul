@@ -87,6 +87,9 @@ var _ox_head: Node3D
 var _lantern: Node3D
 var _tool: Node3D
 var _tool_kind := ""
+var _body: Townsfolk ## the rigged townsman (null: the old jointed figure)
+var _speed_now := 0.0 ## m/s over the ground this frame
+var _rifle := false
 
 ## The tool in the right hand for each kind of work.
 const TOOLS := {"eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet"}
@@ -126,6 +129,14 @@ static func _parts(variant: String) -> Dictionary:
 
 
 func _build_look() -> void:
+	if Townsfolk.available():
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		_body = Townsfolk.new()
+		add_child(_body)
+		_body.build("outlaw" if team == 1 else ("child" if is_child else "man"), rng)
+		_tunic = _body.coat_material
+		return
 	var parts := _parts("outlaw" if team == 1 else FOLK[randi() % FOLK.size()])
 	if parts.has("Torso") and parts.has("ArmL"):
 		_build_model(parts)
@@ -255,11 +266,15 @@ static func _joint(upper: Node3D, parts: Dictionary, name: String, look: Materia
 
 ## What a hand holds hangs from: the forearm, or the whole arm on a model with no elbow.
 func _hand(i: int) -> Node3D:
+	if _body:
+		return _body.hand(i)
 	return _elbows[i] if i < _elbows.size() else _arms[i]
 
 
 ## How far down that is to the palm.
 func _palm() -> float:
+	if _body:
+		return 0.0
 	return -0.27 if not _elbows.is_empty() else -0.6
 
 
@@ -296,7 +311,7 @@ func set_carry(res: String, n: int) -> void:
 			c.radial_segments = 8
 			mi.mesh = c
 			m.albedo_color = Color(0.36, 0.25, 0.15)
-			mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.62, 0.0))
+			mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.5 if _body else 1.62, 0.0))
 		"tas":
 			var b := BoxMesh.new()
 			b.size = Vector3(0.36, 0.28, 0.3)
@@ -573,11 +588,55 @@ func sleep_in(h: Building, hide := false) -> void:
 	visible = false
 
 
+## Asleep out of doors (no roof of its own): curled up on its side in a blanket at `at`, its feet
+## to the fire at `fire`.
+var _blanket: Node3D
+var _rough := false
+
+
+func sleep_rough(cover: Building, at: Vector3, fire: Vector3) -> void:
+	sleeping = true
+	hiding = false
+	inside = cover
+	_rough = true
+	if _lantern:
+		_lantern.visible = false
+	position = at
+	_face(fire, 1.0)
+	rotation.y = _yaw + PI * 0.5
+	_blanket = MeshInstance3D.new()
+	var m := BoxMesh.new()
+	m.size = Vector3(1.8, 0.1, 0.75)
+	(_blanket as MeshInstance3D).mesh = m
+	var wool := StandardMaterial3D.new()
+	wool.albedo_color = [Color(0.36, 0.2, 0.15), Color(0.3, 0.3, 0.27), Color(0.42, 0.36, 0.24)][get_instance_id() % 3]
+	wool.roughness = 1.0
+	(_blanket as MeshInstance3D).material_override = wool
+	_blanket.position = Vector3(-0.55, 0.05, 0)
+	add_child(_blanket)
+	if _body:
+		_body.play("CrouchIdle", 0.08)
+		_body.rotation = Vector3(0, 0, PI * 0.5)
+		_body.position = Vector3(0.1, 0.28, 0)
+	else:
+		visible = false
+
+
 func wake() -> void:
 	sleeping = false
 	hiding = false
 	visible = true
 	job = "Boşta"
+	if _rough:
+		_rough = false
+		inside = null
+		if _blanket:
+			_blanket.queue_free()
+			_blanket = null
+		if _body:
+			_body.rotation = Vector3.ZERO
+			_body.position = Vector3.ZERO
+		return
 	var from: Building = inside if is_instance_valid(inside) else (home if is_instance_valid(home) else null)
 	inside = null
 	if from:
@@ -614,8 +673,13 @@ func arm_with(kind: String) -> void:
 	if _weapon:
 		_weapon.queue_free()
 	_weapon = Node3D.new()
-	_weapon.position = Vector3(0, _palm() + 0.02, -0.04)
-	_hand(1).add_child(_weapon)
+	_rifle = kind == "rifle" and _body != null
+	if _rifle:
+		# Held as the rifle clips hold it: the grip in the right hand, the barrel out along -z.
+		_body.weapon_mount().add_child(_weapon)
+	else:
+		_weapon.position = Vector3(0, _palm() + 0.02, -0.04)
+		_hand(1).add_child(_weapon)
 	var wood := StandardMaterial3D.new()
 	wood.albedo_color = Color(0.32, 0.22, 0.13)
 	var iron := StandardMaterial3D.new()
@@ -668,11 +732,16 @@ func arm_with(kind: String) -> void:
 		"bow":
 			_rod(Vector3(0, 0.0, 0), 0.02, 1.3, wood)
 		"rifle":
-			_rod(Vector3(0, 0.1, 0), 0.025, 1.2, iron)
-			_rod(Vector3(0, -0.35, 0.02), 0.04, 0.45, wood)
+			if _rifle:
+				_rod(Vector3(0, 0.06, -0.55), 0.016, 0.8, iron).rotation.x = PI * 0.5
+				_rod(Vector3(0, 0.03, -0.3), 0.03, 0.55, wood).rotation.x = PI * 0.5
+				_rod(Vector3(0, -0.02, 0.2), 0.04, 0.35, wood).rotation.x = PI * 0.5 + 0.2
+			else:
+				_rod(Vector3(0, 0.1, 0), 0.025, 1.2, iron)
+				_rod(Vector3(0, -0.35, 0.02), 0.04, 0.45, wood)
 
 
-func _rod(at: Vector3, r: float, length: float, mat: Material) -> void:
+func _rod(at: Vector3, r: float, length: float, mat: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var m := CylinderMesh.new()
 	m.top_radius = r
@@ -683,6 +752,7 @@ func _rod(at: Vector3, r: float, length: float, mat: Material) -> void:
 	mi.material_override = mat
 	mi.position = at
 	_weapon.add_child(mi)
+	return mi
 
 
 ## A blow (an arrow) of `dmg` from `by`.
@@ -714,8 +784,12 @@ func die() -> void:
 		get_down()
 	died.emit(self)
 	var tw := create_tween()
-	tw.tween_property(self, "rotation:x", -PI * 0.5, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(self, "position:y", position.y + 0.2, 0.45)
+	if _body:
+		_body.die() # (the knees go, and it falls)
+		tw.tween_interval(1.4)
+	else:
+		tw.tween_property(self, "rotation:x", -PI * 0.5, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(self, "position:y", position.y + 0.2, 0.45)
 	tw.tween_interval(30.0)
 	tw.tween_property(self, "position:y", position.y - 1.0, 4.0)
 	tw.tween_callback(queue_free)
@@ -782,6 +856,7 @@ func _process(dt: float) -> void:
 			var d := Vector2(to.x - position.x, to.z - position.z)
 			var len := d.length()
 			var move := 1.7 * dt
+			_speed_now = 1.7
 			if len <= move:
 				position = to
 				position.y = village.ground_at(position)
@@ -830,6 +905,7 @@ func _walk(dt: float) -> bool:
 			_stuck = randf_range(5.0, 9.0) if vehicle == "ox" else randf_range(2.5, 5.0)
 			job = job if job.ends_with("(çamura saplandı)") else job + " (çamura saplandı)"
 	speed *= _rate() * (1.1 if team == 1 else 1.0) * speed_mul
+	_speed_now = speed
 	var left := speed * dt
 	var moved := 0.0
 	while left > 0.0 and _path_i < _path.size():
@@ -920,7 +996,7 @@ func _hold(kind: String) -> void:
 	if _tool:
 		_tool.queue_free()
 		_tool = null
-	if kind == "" or _arms.size() < 2:
+	if kind == "" or (_arms.size() < 2 and _body == null):
 		return
 	_tool = Node3D.new()
 	_tool.position = Vector3(0, _palm(), -0.04)
@@ -1239,6 +1315,12 @@ func _animate(dt: float, walking: bool) -> void:
 	elif carry_n > 0 and carry_res == "odun" and _anim == "walk":
 		arm_r = -2.6
 		er = 1.8 # (the hand over on the log)
+	if _body:
+		if _lantern and _lantern.visible:
+			_lantern.global_basis = Basis.IDENTITY # (it hangs from the hand, upright)
+		_body.drive(_anim, walking, _speed_now, _rate(), carry_res if carry_n > 0 else "", vehicle, _rifle,
+			{"arm_l": arm_l, "arm_r": arm_r, "el": el, "er": er, "lean": lean, "twist": twist, "kn": kn})
+		return
 	var k := 1.0 - exp(-14.0 * dt)
 	# Sitting: down on the ground, the knees up a little.
 	_sit = move_toward(_sit, 1.0 if _anim in ["sit", "eat"] else 0.0, dt * 2.5)

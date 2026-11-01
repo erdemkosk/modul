@@ -595,6 +595,7 @@ func _process(dt: float) -> void:
 	if _heat_t >= 2.0:
 		_hearths(_heat_t)
 		_evenings()
+		_camp_fires()
 		_heat_t = 0.0
 	if day != _last_day:
 		_last_day = day
@@ -677,13 +678,27 @@ func _hearths(t: float) -> void:
 			else:
 				b.set_lit(false)
 			continue
+		if b.def.role == "tower" and b.state == "done":
+			var up := false
+			for w in b.workers:
+				if is_instance_valid(w) and (w as Villager).perched == b:
+					up = true
+			b.set_watch_light(night and up)
+			continue
+		if b.def.role == "barracks" and b.state == "done":
+			var manned := not b.workers.is_empty()
+			b.set_watch_light(night and manned)
+			b.set_lit(night and manned)
+			continue
 		if b.def.role != "house" or b.state != "done":
 			continue
 		var lived := not b.residents.is_empty()
 		b.set_lit(night and lived and b.warm)
 		if not want or not lived:
 			b.warm = true
-			b.set_hearth(false)
+			# Warm enough without it, the stove's still lit for the cooking: morning, noon and evening.
+			var h := weather.hour
+			b.set_hearth(lived and ((h > 5.8 and h < 8.3) or (h > 11.3 and h < 13.0) or (h > 17.3 and h < 20.5)))
 			continue
 		b.heat_acc += t / LOG_EVERY * (1.0 + clampf(-weather.temperature / 12.0, 0.0, 1.0)) # (bitter cold: up to twice the wood)
 		while b.heat_acc >= 1.0:
@@ -945,7 +960,7 @@ func _assign() -> void:
 		if v.sleeping:
 			var cover := v.inside
 			var unsafe := not is_instance_valid(cover) or cover.state != "done" or cover.is_burning()
-			if unsafe or (v.hiding and not raid) or (not v.hiding and not night and not raid):
+			if unsafe or (v.hiding and not raid) or (not v.hiding and not night and not raid) or (not v.hiding and night and on_watch(v)):
 				v.wake()
 			continue
 		if raid and _plan_raid(v):
@@ -958,8 +973,12 @@ func _assign() -> void:
 		if meal != "" and v.meal_key != meal and (v.plan.is_empty() or v.idle) and not raid:
 			_plan_meal(v, meal)
 			continue
-		if night and is_instance_valid(v.home) and v.home.state == "done":
-			_plan_home(v)
+		if night and not on_watch(v):
+			# Work done for the day: home to bed, or with no house, to the camp fire.
+			if is_instance_valid(v.home) and v.home.state == "done":
+				_plan_home(v)
+			else:
+				_plan_bed(v)
 			continue
 		if v.workplace:
 			if v.workplace.state == "done":
@@ -1045,6 +1064,141 @@ func _go_out(b: Building, v: Villager = null) -> Array:
 		return true}, {"t": "step", "to": b.door()}]
 
 
+## Keeping the watch tonight: a guard or a lookout whose turn it is. The guards of a post (the
+## lookouts of a tower) split the night: the first half has the evening till two, the second from
+## two till morning. One alone keeps the first half.
+func on_watch(v: Villager) -> bool:
+	var b := v.workplace
+	if b == null or b.state != "done" or not b.def.role in ["barracks", "tower"]:
+		return false
+	var ws: Array = b.workers.filter(func(w: Variant) -> bool: return is_instance_valid(w) and not (w as Villager).dead)
+	var i := ws.find(v)
+	if i < 0:
+		return false
+	var first := weather.hour >= 12.0 or weather.hour < 2.0
+	if ws.size() == 1:
+		return first
+	return (i % 2 == 0) == first
+
+
+## To bed with no house of its own: a guard in its guardhouse's bunks, anyone else out by the camp
+## fire beside the store.
+func _plan_bed(v: Villager) -> void:
+	if v.workplace and v.workplace.def.role == "barracks" and v.workplace.state == "done":
+		var g := v.workplace
+		v.give(_go_in(g) + [{"t": "do", "f": func() -> bool:
+			if is_instance_valid(g) and g.state == "done" and not g.is_burning():
+				v.sleep_in(g)
+			return true}], "Eve gidiyor", g)
+		return
+	var store := _nearest(stores(), v.position)
+	if store == null:
+		return
+	var fire := camp_fire(store)
+	var k := _camp_sleepers(store)
+	var a := k * 0.9 + 0.4
+	var spot := fire + Vector3(cos(a), 0, sin(a)) * (2.4 + (k / 7) * 1.4)
+	spot.y = ground_at(spot)
+	v.give([{"t": "go", "to": spot}, {"t": "do", "f": func() -> bool:
+		if is_instance_valid(store) and store.state == "done":
+			v.sleep_rough(store, spot, fire)
+		return true}], "Kampa gidiyor", store)
+
+
+## The camp fire for those with no roof: out in front of the store, a little to the side.
+func camp_fire(store: Building) -> Vector3:
+	if _camp_at.has(store):
+		return _camp_at[store]
+	# (the first open ground round the store with room for the sleepers about it)
+	var sz: Vector2 = store.def.size
+	var best := store.global_transform * Vector3(sz.x * 0.5 + 5.0, 0, sz.y * 0.5 + 4.0)
+	for r in [7.0, 10.0, 13.0, 17.0, 22.0]:
+		var found := false
+		for k in 12:
+			var a := k * TAU / 12.0 + 0.6
+			var p: Vector3 = store.global_position + Vector3(cos(a), 0, sin(a)) * (r + sz.length() * 0.5)
+			var clear := true
+			for q in 8:
+				var e: Vector3 = p + Vector3(cos(q * TAU / 8.0), 0, sin(q * TAU / 8.0)) * 4.0
+				if not nav.is_open(e) or not nav.is_open(p):
+					clear = false
+					break
+			for b in buildings:
+				if b.global_position.distance_to(p) < b.radius + 5.0:
+					clear = false
+			for y in yards:
+				if is_instance_valid(y) and is_instance_valid(y.house) and y.house.global_position.distance_to(p) < 13.0:
+					clear = false
+			if clear:
+				best = p
+				found = true
+				break
+		if found:
+			break
+	best.y = ground_at(best)
+	_camp_at[store] = best
+	return best
+
+
+var _camp_at := {} ## store -> where its camp fire is
+
+
+func _camp_sleepers(store: Building) -> int:
+	var n := 0
+	for o in villagers:
+		if o.sleeping and o.inside == store and o.get("_rough"):
+			n += 1
+		elif o.job == "Kampa gidiyor" and o.target == store:
+			n += 1
+	return n
+
+
+var _camps := {} ## store -> the camp fire's nodes
+
+
+## The camp fires burn the night through while anyone's asleep by them.
+func _camp_fires() -> void:
+	for s in stores():
+		var n := 0
+		for o in villagers:
+			if o.sleeping and o.inside == s and o.get("_rough"):
+				n += 1
+		var on := n > 0
+		if on and not _camps.has(s):
+			var root := Node3D.new()
+			add_child(root)
+			root.global_position = camp_fire(s)
+			var f := FireFx.flames()
+			f.amount = 16
+			(f.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.25, 0.15, 0.25)
+			f.position = Vector3.UP * 0.3
+			root.add_child(f)
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.58, 0.26)
+			l.light_energy = 2.4
+			l.omni_range = 10.0
+			l.light_volumetric_fog_energy = 3.0
+			l.position = Vector3.UP * 0.9
+			root.add_child(l)
+			var ring := Building.material("stone")
+			for k in 8:
+				var st := MeshInstance3D.new()
+				var sm := SphereMesh.new()
+				sm.radius = 0.14
+				sm.height = 0.2
+				st.mesh = sm
+				st.material_override = ring
+				st.position = Vector3(cos(k * TAU / 8.0), 0.05, sin(k * TAU / 8.0)) * 0.55
+				root.add_child(st)
+			_camps[s] = root
+		if _camps.has(s):
+			var root: Node3D = _camps[s]
+			root.visible = on
+			for c in root.get_children():
+				if c is GPUParticles3D:
+					(c as GPUParticles3D).emitting = on
+
+
 func _plan_home(v: Villager) -> void:
 	var h := v.home
 	if v.idle:
@@ -1084,6 +1238,41 @@ func _plan_idle(v: Villager) -> void:
 			v.give([{"t": "go", "to": meet - dir * 0.6}, {"t": "work", "time": talk, "anim": "chat", "face": meet + dir}], "Sohbet ediyor", null, true)
 			o.give([{"t": "go", "to": meet + dir * 0.6}, {"t": "work", "time": talk, "anim": "chat", "face": meet - dir}], "Sohbet ediyor", null, true)
 			return
+	# By day, a chore about the house: splitting wood at the block, hanging the washing, hoeing the
+	# garden; or a bucket fetched from the well.
+	var h := weather.hour
+	if not v.is_child and h > 7.0 and h < 19.0 and randf() < 0.6:
+		var y := _yard_of(v.home) if is_instance_valid(v.home) else null
+		var wells: Array[Building] = []
+		for b in buildings:
+			if b.state == "done" and b.def.role == "well":
+				wells.append(b)
+		var well := _nearest(wells, v.position)
+		if well and randf() < 0.2:
+			v.give([{"t": "go", "to": well.door()},
+				{"t": "work", "time": 5.0, "anim": "draw", "face": well.global_position},
+				{"t": "do", "f": func() -> bool:
+					v.set_carry("su", 1)
+					return true},
+				{"t": "go", "to": v.home.door() if is_instance_valid(v.home) else v.position + Vector3(4, 0, 4)},
+				{"t": "do", "f": func() -> bool:
+					v.set_carry("", 0)
+					return true}], "Kuyudan su taşıyor", null, true)
+			return
+		if y:
+			var list := y.chores()
+			if not list.is_empty():
+				var c: Dictionary = list[randi() % list.size()]
+				var step := {"t": "work", "time": float(c.time), "anim": c.anim, "face": c.face}
+				if c.has("split"):
+					var t := [0.0]
+					step["tick"] = func(dt: float) -> bool:
+						t[0] += dt
+						if fmod(t[0], 1.37) < dt and is_instance_valid(y):
+							y.split_one()
+						return t[0] < float(c.time)
+				v.give([{"t": "go", "to": c.at}, step], c.job, null, true)
+				return
 	var roll := randf()
 	var what: Array
 	if roll < 0.35:
@@ -1324,12 +1513,23 @@ func _plan_work(v: Villager) -> void:
 			v.perch_on(b)
 			return true},
 			{"t": "work", "anim": "aim", "tick": func(_dt: float) -> bool:
-				return v.workplace == b and b.state == "done" and (not weather.is_night() or (raids and raids.threat()))},
+				return v.workplace == b and b.state == "done" and (not weather.is_night() or on_watch(v) or (raids and raids.threat()))},
 			{"t": "do", "f": func() -> bool:
 				v.get_down()
 				return true}], "Gözcü kulesinde", b)
 		return
 	if b.def.role == "barracks":
+		if weather.is_night():
+			# The round: from one lit house, lamp or store to another, a stop at each to look about.
+			var stops: Array[Building] = []
+			for o in buildings:
+				if o.state == "done" and o.def.role in ["house", "store", "light", "square", "work", "farm"] and o.global_position.distance_to(b.global_position) < 180.0:
+					stops.append(o)
+			if not stops.is_empty():
+				var o: Building = stops[randi() % stops.size()]
+				var p := o.door() + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
+				v.give([{"t": "go", "to": p}, {"t": "work", "time": randf_range(5.0, 9.0), "anim": "look"}], "Nöbette (devriye)", b, true)
+				return
 		var p := b.door() + Vector3(randf_range(-7, 7), 0, randf_range(1, 8))
 		v.give([{"t": "go", "to": p}, {"t": "work", "time": randf_range(5.0, 12.0), "anim": "idle"}], "Nöbette", b, true)
 		return

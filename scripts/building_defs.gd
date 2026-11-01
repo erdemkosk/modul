@@ -47,7 +47,7 @@ const DEFS := {
 		"desc": "Yangında kasabalılar buradan su taşır. Kuyu yoksa yangın söndürülemez."},
 	"fener": {"name": "Fener", "size": Vector2(1, 1), "cost": {"odun": 3, "tas": 1}, "time": 6.0, "role": "light", "light": 20.0,
 		"desc": "Gece çevresini aydınlatır, çıra yakar (her gece bir odun; kasabalılar akşamüstü getirir). Bekçiler haydudu ve kurdu yalnızca aydınlıkta görür; haydutlar karanlıktan sızar. Rüzgârda kıvılcım saçabilir."},
-	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 1,
+	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 2,
 		"desc": "Tüfekli bir gözcü çıkar, 70 m içinde aydınlıkta gördüğü haydudu ve kurdu vurur. Yaklaşanları duyar, kasabayı uyarır."},
 	"kisla": {"name": "Bekçi karakolu", "size": Vector2(8, 6), "cost": {"odun": 24, "tas": 8}, "time": 34.0, "role": "barracks", "slots": 6,
 		"desc": "Buraya verilen kasabalılar tüfekli bekçi olur; gördükleri haydutla ve kurtla çarpışır. Karanlıktakini göremezler."},

@@ -27,6 +27,7 @@ var _butterflies: GPUParticles3D
 var _breath: GPUParticles3D
 var _chips: GPUParticles3D
 var _puff_t := 0.0
+var _haze: FogVolume ## the stoves' smoke lying over the town on a still morning or evening
 
 
 func _ready() -> void:
@@ -59,6 +60,43 @@ void fragment() {
 	add_child(_chips)
 
 
+## Smoke from every chimney settles over the roofs in a blue haze when the air's still, thickest in
+## the cold of the morning and evening; a wind clears it.
+func _update_haze(dt: float) -> void:
+	if village == null:
+		return
+	if _haze == null:
+		_haze = FogVolume.new()
+		var m := FogMaterial.new()
+		m.albedo = Color(0.62, 0.64, 0.7)
+		m.height_falloff = 0.12
+		m.edge_fade = 0.6
+		m.density = 0.0
+		_haze.material = m
+		_haze.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+		add_child(_haze)
+	var n := 0
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for b in village.buildings:
+		if b.def.role == "house" and b.state == "done":
+			lo = lo.min(b.global_position)
+			hi = hi.max(b.global_position)
+			if b.smoking():
+				n += 1
+	var m := _haze.material as FogMaterial
+	var want := 0.0
+	if n > 0:
+		var h := weather.hour
+		var still := 1.0 - smoothstep(2.0, 7.0, Weather.wind_now.length())
+		var cool := maxf(smoothstep(5.0, 7.0, h) * (1.0 - smoothstep(9.0, 11.0, h)), smoothstep(17.0, 19.0, h) * (1.0 - smoothstep(22.0, 24.0, h)))
+		want = clampf(n * 0.004, 0.0, 0.035) * still * (0.35 + 0.65 * cool) * (1.0 - weather.rain_intensity * 0.7)
+		var mid := (lo + hi) * 0.5
+		_haze.global_position = Vector3(mid.x, mid.y + 7.0, mid.z)
+		_haze.size = Vector3(hi.x - lo.x + 50.0, 22.0, hi.z - lo.z + 50.0)
+	m.density = move_toward(m.density, want, dt * 0.004)
+
+
 func _process(dt: float) -> void:
 	var env := weather.environment
 	if env == null:
@@ -83,6 +121,7 @@ func _process(dt: float) -> void:
 	_attrs.dof_blur_far_distance = cam.dist + (18.0 if photo else 30.0)
 	_attrs.dof_blur_far_transition = 50.0
 	_attrs.dof_blur_amount = (0.11 if photo else 0.07) * maxf(close, 0.6 if photo else 0.0)
+	_update_haze(dt)
 	_update_birds(dt)
 	var day := not weather.is_night() and weather.rain_intensity < 0.3 and weather.snow_intensity < 0.3
 	_butterflies.emitting = day and season in [0, 1] and weather.temperature > 12.0 and cam.dist < 120.0

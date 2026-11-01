@@ -182,9 +182,9 @@ class Piece:
                 self._face_color(f, heart)
         return faces
 
-    def stone(self, center, size, color=STONE, rng=random):
-        """A fieldstone: a lumpy, flattened ball."""
-        res = bmesh.ops.create_icosphere(self.bm, subdivisions=1, radius=0.5)
+    def stone(self, center, size, color=STONE, rng=random, subdiv=1):
+        """A fieldstone: a lumpy, flattened ball (a sack, at subdiv 2)."""
+        res = bmesh.ops.create_icosphere(self.bm, subdivisions=subdiv, radius=0.5)
         verts = res["verts"]
         m = Matrix.Translation(Vector(center)) @ Matrix.Rotation(rng.uniform(0, math.tau), 4, "Z") @ Matrix.Diagonal((size[0], size[1], size[2], 1.0))
         for vv in verts:
@@ -776,7 +776,14 @@ def _store_extra(k, w, d):
     barrel(k, w * 0.5 + 0.6, 0.0)
     p = k.piece("wood", "sacks")
     for i in range(5):
-        p.stone((-0.4 + i * 0.4 + (0.2 if i > 2 else 0), -d * 0.5 - 1.0 - (0.3 if i > 2 else 0), 0.66 + (0.3 if i == 4 else 0)), (0.42, 0.32, 0.36), color=(0.68, 0.6, 0.45), rng=k.rng)
+        # grain sacks: soft, sagging, tied at the neck
+        x = -0.4 + i * 0.4 + (0.2 if i > 2 else 0)
+        y = -d * 0.5 - 1.0 - (0.3 if i > 2 else 0)
+        z = 0.7 + (0.36 if i == 4 else 0)
+        burlap = jit((0.62, 0.53, 0.38), 0.06, k.rng)
+        p.stone((x, y, z), (0.4, 0.34, 0.46), color=burlap, rng=k.rng, subdiv=2)
+        p.log((x, y, z + 0.2), (x, y, z + 0.3), 0.055, color=burlap, end=burlap, segs=6, rng=k.rng, taper=0.3)
+        p.log((x, y, z + 0.29), (x, y, z + 0.36), 0.075, color=burlap, end=burlap, segs=6, rng=k.rng, taper=-0.2)
     k.add(p)
     p = k.piece("dark", "sign")
     p.box((0, -d * 0.5 - 0.02, 3.0), (2.0, 0.06, 0.45), jit(DARK, 0.04, k.rng))
@@ -1044,17 +1051,98 @@ EARTH = (0.36, 0.29, 0.2)
 SAWDUST = (0.86, 0.74, 0.52)
 
 
-def yard_pad(k, w, d, top=EARTH):
-    """A yard's ground: the buried block, its top packed earth, a few stones at its edge."""
+MUD = (0.25, 0.19, 0.13)
+TURF = (0.24, 0.26, 0.15)
+CHIPS = (0.66, 0.64, 0.6)
+
+
+def yard_pad(k, w, d, top=EARTH, floor="earth"):
+    """A yard's ground: the block buried under it, and on it trodden earth that runs out past its
+    edge and down into the grass in a soft, ragged, muddy skirt (no hard step). `floor`: "earth",
+    "sawdust" (the felling camp: sawdust and chips trodden in) or "chips" (the stone yard: stone
+    chips and grit)."""
+    rng = k.rng
     p = k.piece("stone", "plinth")
-    p.box((0, 0, PLINTH_TOP - 1.75), (w + 0.2, d + 0.2, 3.5), jit(STONE, 0.04, k.rng))
-    p.box((0, 0, PLINTH_TOP + 0.02), (w + 0.1, d + 0.1, 0.04), jit(top, 0.04, k.rng))
+    p.box((0, 0, PLINTH_TOP - 1.78), (w + 0.1, d + 0.1, 3.5), jit(MUD, 0.04, rng))
     k.add(p)
+    p = k.piece("stone", "ground")
+    bm = p.bm
+    hw, hd = w * 0.5 + 0.1, d * 0.5 + 0.1
+    spokes = 64
+    rings = [0.0, 0.08, 0.16, 0.25, 0.34, 0.43, 0.52, 0.61, 0.7, 0.78, 0.86, 0.93, 1.0, 1.1, 1.22, 1.36]
+    rim = [1.0 + rng.uniform(-0.06, 0.08) for _ in range(spokes)]
+    rim = [(rim[i - 1] + rim[i] * 2 + rim[(i + 1) % spokes]) / 4 for i in range(spokes)]
+
+    def radius(a):
+        n = 4.0
+        return (abs(math.cos(a) / hw) ** n + abs(math.sin(a) / hd) ** n) ** (-1.0 / n)
+
+    grid = []
+    for ri, t in enumerate(rings):
+        row = []
+        for j in range(spokes):
+            a = j / spokes * math.tau
+            R = radius(a)
+            if t <= 1.0:
+                r = R * t
+                z = PLINTH_TOP + 0.03 + rng.uniform(-0.012, 0.012)
+            else:
+                f = (t - 1.0) / (rings[-1] - 1.0)
+                r = R + f * 1.5 * rim[j]
+                z = PLINTH_TOP + 0.03 - (PLINTH_TOP + 0.65) * (f ** 1.4)
+            row.append(bm.verts.new((math.cos(a) * r, math.sin(a) * r, z)))
+            if ri == 0:
+                break
+        grid.append(row)
+    speck = {"sawdust": SAWDUST, "chips": CHIPS}.get(floor)
+
+    def colour(t):
+        if t > 1.0:
+            f = (t - 1.0) / (rings[-1] - 1.0)
+            c = tuple(MUD[i] * (1 - f) + TURF[i] * f for i in range(3))
+        else:
+            # trodden lighter in the middle, darker and wetter toward the edge
+            c = tuple(top[i] * (1.06 - 0.16 * t) for i in range(3))
+            if speck and rng.random() < (0.22 if t < 0.95 else 0.08):
+                m = rng.uniform(0.15, 0.4)
+                c = tuple(c[i] * (1 - m) + speck[i] * m for i in range(3))
+        return jit(c, 0.05, rng)
+
+    for ri in range(1, len(rings)):
+        t = (rings[ri - 1] + rings[ri]) * 0.5
+        for j in range(spokes):
+            j1 = (j + 1) % spokes
+            if ri == 1:
+                vs = [grid[0][0], grid[1][j], grid[1][j1]]
+            else:
+                vs = [grid[ri - 1][j], grid[ri][j], grid[ri][j1], grid[ri - 1][j1]]
+            f = bm.faces.new(vs)
+            f.normal_update()
+            if f.normal.z < 0:
+                f.normal_flip()
+            p._face_color(f, colour(t))
+    k.add(p)
+    # a few stones half sunk at the edge, and the floor's litter
     p = k.piece("stone", "found")
-    for i in range(14):
-        a = i / 14 * math.tau
-        p.stone((math.cos(a) * w * 0.52, math.sin(a) * d * 0.52, 0.18), (0.35, 0.3, 0.25), rng=k.rng)
+    for i in range(10):
+        a = rng.uniform(0, math.tau)
+        R = radius(a) * rng.uniform(0.98, 1.12)
+        p.stone((math.cos(a) * R, math.sin(a) * R, PLINTH_TOP - 0.05), (0.3, 0.25, 0.16), color=jit(STONE, 0.1, rng), rng=rng)
+    if floor == "chips":
+        for i in range(40):
+            a = rng.uniform(0, math.tau)
+            R = radius(a) * math.sqrt(rng.random()) * 0.95
+            s = rng.uniform(0.05, 0.12)
+            p.stone((math.cos(a) * R, math.sin(a) * R, PLINTH_TOP + 0.04), (s * 1.3, s, s * 0.5), color=jit(CHIPS, 0.08, rng), rng=rng)
     k.add(p)
+    if floor == "sawdust":
+        p = k.piece("wood")
+        for i in range(30):
+            a = rng.uniform(0, math.tau)
+            R = radius(a) * math.sqrt(rng.random()) * 0.95
+            p.box((math.cos(a) * R, math.sin(a) * R, PLINTH_TOP + 0.045), (rng.uniform(0.06, 0.16), rng.uniform(0.03, 0.06), 0.015),
+                  jit(SAWDUST_C, 0.1, rng), rot_z=rng.uniform(0, math.tau))
+        k.add(p)
 
 
 def lean_to(k, x0, x1, y0, y1, h_front, h_back):
@@ -1101,7 +1189,12 @@ def kesim():
     there; the raw logs in a deck at the back, sawdust underfoot, the tools under a lean-to."""
     w, d = 7.0, 6.0
     k = Kit("oduncu")
-    yard_pad(k, w, d)
+    yard_pad(k, w, d, floor="sawdust")
+    # rounds of log the sawyers sit on, an axe-chopping stump
+    p = k.piece("log", "stools")
+    for (x, y, h) in ((-w * 0.5 + 0.9, -d * 0.5 + 0.9, 0.45), (-w * 0.5 + 1.6, -d * 0.5 + 0.7, 0.42), (w * 0.5 - 0.9, -d * 0.5 + 0.9, 0.6)):
+        p.log((x, y, PLINTH_TOP), (x, y, PLINTH_TOP + h), 0.2 if h < 0.5 else 0.28, rng=k.rng, taper=0.0)
+    k.add(p)
     # the sawhorse in the middle, a log on it and the frame saw across it
     for x in (-0.9, 0.9):
         trestle(k, x, 0.3)
@@ -1147,7 +1240,7 @@ def tas_ocagi():
     tripod derrick to lift them, the rough ones heaped at the back, the dressed ones stacked."""
     w, d = 7.0, 6.0
     k = Kit("tasci")
-    yard_pad(k, w, d, top=(0.42, 0.4, 0.36))
+    yard_pad(k, w, d, top=(0.4, 0.36, 0.3), floor="chips")
     # the bench: a stone slab on two blocks, a block on it being dressed, the tools
     p = k.piece("stone", "work")
     for x in (-0.55, 0.55):
@@ -1257,7 +1350,7 @@ def meydan():
     w = d = 10.0
     k = Kit("meydan")
     k.paint = k.rng.choice(PAINTS)
-    yard_pad(k, w, d, top=(0.42, 0.4, 0.37))
+    yard_pad(k, w, d, top=(0.4, 0.34, 0.26))
     for ring in range(4):
         p = k.piece("stone", "found")
         r = 1.8 + ring * 0.95

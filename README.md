@@ -61,6 +61,18 @@ place from its hands. The card says which stage it's at.
 - **Tahta yol** (TAŞIMA): drag from one point to another to lay a plank road, a log for every 2 m.
   On planks the townsfolk walk half as fast again, never in mud, and paths prefer them.
 
+The night has its watch. The guards of a post split it: half have the evening till two, half from
+two till morning; the one on watch walks a round from light to light with a lantern, the other
+sleeps in the guardhouse's bunks, and a lantern burns by its door all night. A lookout tower takes
+two lookouts who take turns up it, a lantern hung under its roof while one's there. Anyone with no
+house of their own stops work at dark and sleeps rough by a camp fire beside the store, curled in a
+blanket; the fire burns while they sleep.
+
+The town by day: the stoves are lit morning, noon and evening for the cooking, and on a still day the
+smoke settles over the roofs in a blue haze. Between jobs people split wood at the chopping block in
+their yard (the split pieces pile up round it), hang out the washing, hoe the garden, fetch a bucket
+from the well.
+
 A house when finished gets its yard: a fence with a gate before the door, a garden of cabbages,
 an outhouse, a hen house, a woodshed, and the odds and ends of a farm (a cart, hay, a trough, a
 bench, a sledge). Where another yard or building is in the way the fence is left open. A new
@@ -177,6 +189,13 @@ a storm can start one.
   its look and its moves. `scripts/village.gd`: the store, the buildings, who does what (fires,
   workplaces, hauling, building, sleeping), eating, newcomers, fire leaping between buildings,
   lightning, felling.
+- The townsfolk (`scripts/townsfolk.gd`, `scripts/townsfolk_pose.gd`): a skinned, rigged man
+  (`assets/townsfolk/townsman.glb`, the Mud Run character with its MakeHuman head, CC0, see
+  `assets/townsfolk/heads/CREDITS.md`) dressed for the 1880s (wool coat or smock, canvas trousers,
+  boots, knit cap, slouch hat or fur hat, a beard more often than not), moving by its clips and
+  Quaternius' Universal Animation Library (CC0, `assets/townsfolk/anims/ual.res`); the work no clip
+  has (felling, the pick, the saw, the sickle, the hammer) is turned onto the bones over the
+  standing clip. Faces: `shaders/face_skin.gdshader`.
 - `scripts/yard.gd`: a house's yard: fence, garden, outbuildings, clutter; its fence shut on the grid.
 - `scripts/crop.gd`: a field's crop: sowing, growing, ripe, reaped, burning; its tufts.
   `scripts/village_save.gd`: the save (user://village_save.dat): buildings with their fallen and

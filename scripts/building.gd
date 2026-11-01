@@ -303,9 +303,11 @@ static func material(stuff: String) -> Material:
 			"window":
 				m.albedo_color = BuildingDefs.STUFF.window.color
 				m.emission_enabled = true
-				m.emission = Color(1.0, 0.62, 0.28)
+				m.emission = Color(1.0, 0.6, 0.26)
 				m.emission_energy_multiplier = 0.0
 				m.roughness = 0.4
+				m.rim_enabled = true # (a sheen that catches the eye at a glancing angle, from above)
+				m.rim = 0.4
 			"water":
 				m.albedo_color = BuildingDefs.STUFF.water.color
 				m.roughness = 0.05
@@ -332,9 +334,58 @@ static func _look(p: Piece) -> Material:
 	return material(p.stuff + ("+" if p.painted else ""))
 
 
+## Broken rock, as quarried: a few lumpy, faceted shapes made once, and a few tints of stone.
+static var _rocks: Array[Mesh] = []
+static var _rock_mats: Array[Material] = []
+
+
+static func rock(i: int) -> Mesh:
+	if _rocks.is_empty():
+		for k in 5:
+			var sphere := SphereMesh.new()
+			sphere.radius = 0.5
+			sphere.height = 1.0
+			sphere.radial_segments = 7
+			sphere.rings = 4
+			var arr := sphere.get_mesh_arrays()
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			# (the same point gets the same knock, so the seams stay shut)
+			var squash := Vector3(randf_range(0.85, 1.25), randf_range(0.55, 0.75), randf_range(0.8, 1.1))
+			for j in verts.size():
+				var v := verts[j]
+				var h := absf(sin(v.x * 12.9898 * (k + 1) + v.y * 78.233 + v.z * 37.719) * 43758.5453)
+				h = h - floorf(h)
+				v *= 1.0 + (h - 0.5) * 0.45
+				# a flat broken face or two, where it was split off
+				if v.x > 0.32 - k * 0.04:
+					v.x = 0.32 - k * 0.04
+				if v.y < -0.3:
+					v.y = -0.3
+				verts[j] = v * squash
+			arr[Mesh.ARRAY_VERTEX] = verts
+			arr[Mesh.ARRAY_NORMAL] = null
+			arr[Mesh.ARRAY_TANGENT] = null
+			var st := SurfaceTool.new()
+			st.create_from_arrays(arr)
+			st.deindex()
+			st.generate_normals() # (deindexed: flat facets)
+			_rocks.append(st.commit())
+		for c in [Color(0.55, 0.53, 0.49), Color(0.6, 0.56, 0.5), Color(0.48, 0.47, 0.45), Color(0.58, 0.55, 0.47)]:
+			var m := StandardMaterial3D.new()
+			m.albedo_color = c
+			m.roughness = 0.97
+			_rock_mats.append(m)
+	return _rocks[i % _rocks.size()]
+
+
+static func rock_material(i: int) -> Material:
+	rock(0)
+	return _rock_mats[i % _rock_mats.size()]
+
+
 ## The windows glow at night (0..1).
 static func set_night(n: float) -> void:
-	(material("window") as StandardMaterial3D).emission_energy_multiplier = n * 2.4
+	(material("window") as StandardMaterial3D).emission_energy_multiplier = n * 6.0
 
 
 func set_ghost(on: bool, ok := true) -> void:
@@ -459,12 +510,11 @@ func _update_stack() -> void:
 		_stack.add_child(mi)
 	for k in mini(stones, 12):
 		var mi := MeshInstance3D.new()
-		var b := BoxMesh.new()
-		b.size = Vector3(0.4, 0.3, 0.35)
-		mi.mesh = b
-		mi.material_override = material("stone")
-		mi.position = Vector3(1.0 + (k % 3) * 0.42, 0.15 + (k / 6) * 0.31, -0.6 + ((k / 3) % 2) * 0.4)
-		mi.rotation.y = randf_range(-0.2, 0.2)
+		mi.mesh = rock(k)
+		mi.material_override = rock_material(k * 7)
+		mi.scale = Vector3.ONE * randf_range(0.42, 0.55)
+		mi.position = Vector3(1.0 + (k % 3) * 0.42, 0.13 + (k / 6) * 0.24, -0.6 + ((k / 3) % 2) * 0.4)
+		mi.rotation = Vector3(randf_range(-0.2, 0.2), randf() * TAU, randf_range(-0.2, 0.2))
 		_stack.add_child(mi)
 
 
@@ -902,17 +952,28 @@ func set_hearth(on: bool) -> void:
 			stack_up = true
 	on = on and stack_up
 	if on and _chimney == null:
-		_chimney = FireFx.smoke()
-		_chimney.amount = 14
-		_chimney.lifetime = 5.0
+		_chimney = FireFx.smoke(false)
+		_chimney.amount = 22
+		_chimney.lifetime = 9.0
 		(_chimney.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.15, 0.1, 0.15)
 		(_chimney.process_material as ParticleProcessMaterial).initial_velocity_min = 0.6
 		(_chimney.process_material as ParticleProcessMaterial).initial_velocity_max = 1.2
+		# wood smoke: a bluish grey thinning to nothing
+		(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.32, 0.33, 0.36, 0.0),
+			Color(0.42, 0.43, 0.46, 0.5), Color(0.55, 0.56, 0.58, 0.22), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.1, 0.55, 1.0])
 		(_chimney.draw_pass_1 as QuadMesh).size = Vector2(1.4, 1.4)
 		_chimney.position = smoke_at
 		add_child(_chimney)
 	if _chimney:
 		_chimney.emitting = on
+		# Laid over by the wind: straight up on a still morning, streaming off in a breeze.
+		var w := Weather.wind_now
+		(_chimney.process_material as ParticleProcessMaterial).gravity = Vector3(w.x * 0.55, 0.45 / (1.0 + w.length() * 0.25), w.z * 0.55)
+
+
+## Its chimney smoking.
+func smoking() -> bool:
+	return _chimney != null and _chimney.emitting
 
 
 ## Its night light: a lamp's flame, a house's windows. (A lamp whose post is down gives none.)
@@ -948,6 +1009,42 @@ func set_lit(on: bool) -> void:
 		add_child(_glow)
 	if _glow:
 		_glow.visible = on
+
+
+## The watch's lantern: hung up under a lookout tower's roof while someone's up there, or by a
+## guardhouse's door all night.
+var _watch: Node3D
+
+
+func set_watch_light(on: bool) -> void:
+	if on and _watch == null:
+		_watch = Node3D.new()
+		var tower: bool = def.role == "tower"
+		_watch.position = Vector3(0, 10.9, 0) if tower else Vector3(1.1, 2.3, (def.size as Vector2).y * 0.5 + 0.15)
+		var box := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.22, 0.32, 0.22)
+		box.mesh = bm
+		var glow := StandardMaterial3D.new()
+		glow.albedo_color = Color(1.0, 0.75, 0.4)
+		glow.emission_enabled = true
+		glow.emission = Color(1.0, 0.62, 0.25)
+		glow.emission_energy_multiplier = 4.0
+		box.material_override = glow
+		_watch.add_child(box)
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.66, 0.32)
+		l.omni_range = 20.0 if tower else 12.0
+		l.light_energy = 2.6 if tower else 1.8
+		l.light_volumetric_fog_energy = 3.0
+		l.position = Vector3.DOWN * 0.25
+		l.shadow_enabled = false
+		_watch.add_child(l)
+		add_child(_watch)
+	if _watch:
+		_watch.visible = on
+	if def.role == "tower":
+		lit = on
 
 
 ## The square's evening fire: flames in the pit, its light, a little smoke.
@@ -1012,6 +1109,8 @@ func light_reach() -> float:
 		return 0.0
 	if def.role == "square":
 		return 14.0
+	if def.role == "tower":
+		return 20.0
 	return float(def.light) if def.role == "light" else 8.0
 
 
@@ -1068,12 +1167,12 @@ func _show_pile() -> void:
 				mi.material_override = material("wood")
 				mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3((k % 4) * 0.34 - 0.5 + (k / 4) * 0.17, 0.17 + (k / 4) * 0.3, 0))
 			"tas":
-				var b := BoxMesh.new()
-				b.size = Vector3(0.45, 0.32, 0.4)
-				mi.mesh = b
-				mi.material_override = material("stone")
-				mi.position = Vector3((k % 3) * 0.5 - 0.5, 0.16 + (k / 3) * 0.33, randf_range(-0.1, 0.1))
-				mi.rotation.y = randf_range(-0.4, 0.4)
+				# a heap of broken rock, the bigger lumps at the bottom
+				mi.mesh = rock(k)
+				mi.material_override = rock_material(k * 3 + 1)
+				mi.scale = Vector3.ONE * randf_range(0.48, 0.62) * (1.0 - (k / 4) * 0.12)
+				mi.position = Vector3((k % 4) * 0.42 - 0.63 + (k / 4) * 0.2, 0.14 + (k / 4) * 0.24, randf_range(-0.15, 0.15))
+				mi.rotation = Vector3(randf_range(-0.3, 0.3), randf() * TAU, randf_range(-0.3, 0.3))
 			_:
 				var c := CylinderMesh.new()
 				c.top_radius = 0.22
