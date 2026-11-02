@@ -33,7 +33,9 @@ void fragment() {
 	float up = clamp(wn.y, 0.0, 1.0);
 	float snow = smoothstep(0.4, 0.8, up) * smoothstep(0.05, 0.55, weather_snow);
 	vec3 c = COLOR.rgb * (0.86 + 0.26 * grain);
-	c = mix(c, daub * (0.9 + 0.2 * grain), daub_k);
+	// (the plaster's own patchiness: thicker here, worn thin there so the log shows through)
+	float worn = vnoise(wp * vec3(1.6, 3.5, 1.6)) * 0.6 + vnoise(wp * 9.0) * 0.4;
+	c = mix(c, daub * (0.86 + 0.28 * grain), daub_k * mix(0.6, 1.0, smoothstep(0.25, 0.6, worn)));
 	c *= mix(1.0, 0.7, weather_wetness * (1.0 - snow));
 	ALBEDO = mix(c, vec3(0.92, 0.94, 0.97), snow);
 	ROUGHNESS = mix(roughness_base * mix(1.0, 0.55, weather_wetness), 0.75, snow);

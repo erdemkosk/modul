@@ -1316,19 +1316,16 @@ func _show_pile() -> void:
 				mi.scale = Vector3.ONE * randf_range(0.48, 0.62) * (1.0 - (k / 4) * 0.12)
 				mi.position = Vector3((k % 4) * 0.42 - 0.63 + (k / 4) * 0.2, 0.14 + (k / 4) * 0.24, randf_range(-0.15, 0.15))
 				mi.rotation = Vector3(randf_range(-0.3, 0.3), randf() * TAU, randf_range(-0.3, 0.3))
-			"camur": # (a wet heap, slumped)
-				var sph := SphereMesh.new()
-				sph.radius = 0.4
-				sph.height = 0.5
-				sph.radial_segments = 8
-				sph.rings = 4
-				mi.mesh = sph
+			"camur": # (a wet heap: lumps slopped one on another, slumping)
+				mi.mesh = rock(k)
 				mi.material_override = mud_material()
-				mi.position = Vector3((k % 4) * 0.45 - 0.68 + (k / 4) * 0.22, -0.25 + (k / 4) * 0.2, randf_range(-0.15, 0.15))
-				mi.scale = Vector3(1.0, 0.7, 1.0) * (1.0 - (k / 4) * 0.15)
+				var s := (0.62 - (k / 4) * 0.1) * randf_range(0.85, 1.1)
+				mi.scale = Vector3(s, s * 0.45, s * 1.1)
+				mi.position = Vector3((k % 4) * 0.36 - 0.54 + (k / 4) * 0.18, 0.02 + (k / 4) * 0.11, randf_range(-0.2, 0.2))
+				mi.rotation.y = randf() * TAU
 			"kerpic": # (stacked in courses, crosswise each course)
 				mi.mesh = _brick_mesh()
-				mi.material_override = material("plaster")
+				mi.material_override = clay_material(k)
 				var course := k / 4
 				mi.position = Vector3((k % 4) * 0.3 - 0.45, -0.32 + course * 0.13, 0) if course % 2 == 0 else Vector3(0, -0.32 + course * 0.13, (k % 4) * 0.3 - 0.45)
 				mi.rotation.y = 0.0 if course % 2 == 0 else PI * 0.5
@@ -1365,6 +1362,20 @@ static func mud_material() -> StandardMaterial3D:
 		_mud_mat.albedo_color = Color(0.24, 0.17, 0.11)
 		_mud_mat.roughness = 0.35 # (wet)
 	return _mud_mat
+
+
+static var _clays: Array[StandardMaterial3D] = []
+
+
+## A dry mud brick's colour: a few earths, a brick to brick difference.
+static func clay_material(i: int) -> StandardMaterial3D:
+	if _clays.is_empty():
+		for c in [Color(0.68, 0.56, 0.4), Color(0.62, 0.5, 0.35), Color(0.72, 0.61, 0.45), Color(0.58, 0.47, 0.34)]:
+			var m := StandardMaterial3D.new()
+			m.albedo_color = c
+			m.roughness = 0.97
+			_clays.append(m)
+	return _clays[i % _clays.size()]
 
 
 static func _brick_mesh() -> BoxMesh:
@@ -1405,8 +1416,8 @@ func drying_count() -> int:
 	return n
 
 
-## The bricks drying, in rows on the shed's floor in front of the pit (out of the rain, but for the
-## weather's say in Village._dry_bricks), pale once they're nearly dry.
+## The bricks drying, in rows on the straw under the drying shelter at the back left (the model's;
+## the weather still has its say: Village._dry_bricks), pale once they're nearly dry.
 func _show_racks() -> void:
 	if _racks:
 		_racks.queue_free()
@@ -1416,7 +1427,6 @@ func _show_racks() -> void:
 	_racks = Node3D.new()
 	add_child(_racks)
 	var wet := mud_material()
-	var dry_mat := material("plaster")
 	var k := 0
 	for d in drying:
 		for j in int(d.y):
@@ -1424,8 +1434,14 @@ func _show_racks() -> void:
 				break
 			var mi := MeshInstance3D.new()
 			mi.mesh = _brick_mesh()
-			mi.material_override = dry_mat if d.x < DRY_TIME * 0.4 else wet
-			mi.position = Vector3(-2.0 + (k % 6) * 0.32, 0.53, -0.2 + (k / 6) * 0.3)
+			mi.material_override = clay_material(k) if d.x < DRY_TIME * 0.4 else wet
+			var lx := -2.4 + (k % 6) * 0.4
+			var lz := -0.85 - (k / 6) * 0.3
+			var ground := global_transform * Vector3(lx, 0, lz)
+			# (on the straw, or on the ground where the land stands higher than it)
+			var y := maxf(0.55, (nav.height(ground.x, ground.z) - global_position.y + 0.06) if nav else 0.0)
+			mi.position = Vector3(lx, y, lz)
+			mi.rotation.y = (k * 0.37 - floorf(k * 0.37)) * 0.12 - 0.06 # (laid by hand, not quite square)
 			_racks.add_child(mi)
 			k += 1
 

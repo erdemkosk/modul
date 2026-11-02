@@ -26,6 +26,9 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
              block, rough blocks heaped, dressed ones stacked, rubble
   toplayici  the gatherers' hut: drying racks hung with berries, a sorting table, baskets
   ormanci    the forester's nursery: raised beds of seedlings, a water barrel, a lean-to
+  camur      the mud pit: a plank-framed pit of wet mud with a spade in it, a moulding table with
+             brick moulds and fresh bricks, a thatched drying shelter over a straw-strewn floor,
+             a heap of straw, a water barrel, puddles on the trodden mud
   arabaci    the cart shed (a work shed with a handcart and spare wheels); ahir, the barn
 """
 
@@ -1425,6 +1428,103 @@ def ormanci():
 
 
 
+CLAY = (0.66, 0.54, 0.38) # a dry mud brick
+WET_MUD = (0.22, 0.16, 0.1)
+STRAW = (0.78, 0.66, 0.38)
+
+
+def brick(p, x, y, z, rng, rot=0.0, wet=False):
+    """A mud brick, its corners a little worn: dry and pale, or fresh and dark."""
+    c = jit(WET_MUD if wet else CLAY, 0.1, rng)
+    p.box((x, y, z + 0.06), (0.3, 0.16, 0.12), c, rot_z=rot + rng.uniform(-0.05, 0.05))
+
+
+def camur_ocagi():
+    """The mud pit: mud dug from the wet ground is trodden with straw in a framed pit, pressed into
+    moulds on the table out front and laid out to dry under a thatched shelter at the back left; the
+    straw heaped by it, a barrel of water, puddles about."""
+    w, d = 6.0, 5.0
+    k = Kit("camur")
+    rng = k.rng
+    yard_pad(k, w, d, top=(0.3, 0.23, 0.16))
+    # wet patches on the trodden mud, where it's slopped over
+    p = k.piece("dark", "slop")
+    for (x, y, rx, ry) in ((1.6, -1.0, 0.55, 0.32), (-0.4, -1.5, 0.38, 0.24), (2.6, 0.3, 0.3, 0.45), (0.9, 0.5, 0.35, 0.3)):
+        p.stone((x, y, PLINTH_TOP + 0.06), (rx * 2, ry * 2, 0.025), color=jit(WET_MUD, 0.08, rng), rng=rng)
+    k.add(p)
+    # the mixing pit at the back right: a plank frame round mud trodden with straw, a spade in it
+    px, py, pw, pd = 1.75, 1.35, 1.9, 1.6
+    p = k.piece("plank", "pit")
+    for sy in (-1, 1):
+        p.box((px, py + sy * pd * 0.5, FLOOR - 0.02), (pw + 0.12, 0.08, 0.3), jit(DARK, 0.08, rng))
+    for sx in (-1, 1):
+        p.box((px + sx * pw * 0.5, py, FLOOR - 0.02), (0.08, pd, 0.3), jit(DARK, 0.08, rng))
+    k.add(p)
+    p = k.piece("dark", "mud")
+    p.box((px, py, FLOOR - 0.06), (pw - 0.04, pd - 0.04, 0.12), WET_MUD)
+    for i in range(14): # (lumps, and the straw trodden in)
+        p.stone((px + rng.uniform(-0.8, 0.8), py + rng.uniform(-0.65, 0.65), FLOOR + 0.0), (0.22, 0.18, 0.08), color=jit(WET_MUD, 0.15, rng), rng=rng)
+    for i in range(22):
+        p.box((px + rng.uniform(-0.85, 0.85), py + rng.uniform(-0.7, 0.7), FLOOR + 0.015), (rng.uniform(0.12, 0.25), 0.012, 0.008), jit(STRAW, 0.1, rng), rot_z=rng.uniform(0, math.tau))
+    k.add(p)
+    p = k.piece("wood", "spade")
+    blade_at = Vector((px - 0.4, py - 0.3, FLOOR + 0.05))
+    shaft = Vector((0.15, 0.1, 1.0)).normalized()
+    p.log(blade_at + shaft * 0.15, blade_at + shaft * 1.2, 0.022, color=PLANK, end=PLANK, taper=0.0, segs=6, rng=rng)
+    p.obox(blade_at + shaft * 1.24, (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.2, 0.04, 0.04), PLANK)
+    p.obox(blade_at, shaft.cross(Vector((1, 0, 0))).normalized(), (1, 0, 0), shaft, (0.04, 0.22, 0.28), IRON)
+    k.add(p)
+    # the moulding table out front: planks on trestle legs, a four-brick mould, fresh bricks beside it
+    p = k.piece("plank", "work")
+    p.box((0.0, -0.6, FLOOR + 0.72), (1.7, 0.7, 0.06), jit(PLANK, 0.05, rng))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.box((sx * 0.72, -0.6 + sy * 0.26, FLOOR + 0.35), (0.07, 0.07, 0.72), jit(DARK, 0.05, rng))
+    k.add(p)
+    p = k.piece("wood", "mould")
+    mx, my, mz = -0.3, -0.6, FLOOR + 0.78
+    p.box((mx, my - 0.105, mz), (1.32, 0.03, 0.12), jit(PLANK, 0.06, rng))
+    p.box((mx, my + 0.105, mz), (1.32, 0.03, 0.12), jit(PLANK, 0.06, rng))
+    for i in range(5):
+        p.box((mx - 0.64 + i * 0.32, my, mz), (0.03, 0.24, 0.12), jit(PLANK, 0.06, rng))
+    p.box((mx + 0.62, my, mz + 0.05), (0.2, 0.03, 0.03), PLANK) # (a handle)
+    k.add(p)
+    p = k.piece("dark", "fresh")
+    for i in range(4): # (in the mould, filled and struck off level)
+        p.box((mx - 0.48 + i * 0.32, my, mz - 0.01), (0.28, 0.17, 0.1), jit(WET_MUD, 0.08, rng))
+    for i in range(3):
+        brick(p, 0.62, -0.6 - 0.2 + i * 0.2, FLOOR + 0.75, rng, rot=math.pi * 0.5, wet=True)
+    k.add(p)
+    # the drying shelter at the back left: a thatched roof on posts, straw strewn under it (the
+    # game lays its drying bricks there), a few left from the last lot stacked at its side
+    lean_to(k, -2.7, 0.3, 0.6, 2.3, 2.2, 1.8)
+    p = k.piece("thatch", "floor")
+    p.box((-1.2, 1.45, PLINTH_TOP + 0.1), (2.8, 1.5, 0.06), jit(STRAW, 0.05, rng))
+    for i in range(30):
+        p.box((-1.2 + rng.uniform(-1.5, 1.5), 1.45 + rng.uniform(-0.8, 0.8), PLINTH_TOP + 0.135), (rng.uniform(0.15, 0.3), 0.015, 0.01), jit(STRAW, 0.12, rng), rot_z=rng.uniform(0, math.tau))
+    k.add(p)
+    p = k.piece("plaster", "stack")
+    for c in range(4):
+        for i in range(3):
+            if c % 2 == 0:
+                brick(p, -2.45, 0.95 + i * 0.17, FLOOR - 0.03 + c * 0.12, rng, rot=0.0)
+            else:
+                brick(p, -2.6 + i * 0.17, 1.12, FLOOR - 0.03 + c * 0.12, rng, rot=math.pi * 0.5)
+    k.add(p)
+    # the straw heaped at the front left, a barrel of water, a bucket
+    p = k.piece("thatch", "straw")
+    p.stone((-2.2, -1.5, FLOOR + 0.12), (1.3, 1.05, 0.95), color=STRAW, rng=rng, subdiv=2)
+    for i in range(16):
+        a = rng.uniform(0, math.tau)
+        p.box((-2.2 + math.cos(a) * rng.uniform(0.55, 0.85), -1.5 + math.sin(a) * rng.uniform(0.45, 0.7), PLINTH_TOP + 0.04), (rng.uniform(0.2, 0.4), 0.02, 0.02), jit(STRAW, 0.12, rng), rot_z=rng.uniform(0, math.tau))
+    k.add(p)
+    barrel(k, -0.9, -1.9, z=PLINTH_TOP)
+    p = k.piece("wood", "bucket")
+    p.log((-0.35, -1.95, PLINTH_TOP), (-0.35, -1.95, PLINTH_TOP + 0.3), 0.15, color=PLANK, end=(0.12, 0.1, 0.08), taper=0.25, segs=10, rng=rng)
+    k.add(p)
+    k.finish()
+
+
 def meydan():
     """The town square: paved, a fire pit in the middle ringed with stones and logs laid ready, log
     benches round it, a notice board, a lamp on a post."""
@@ -1778,7 +1878,7 @@ BUILDERS = {
     "ev": ev, "ambar": ambar, "kisla": kisla, "fener": fener, "kuyu": kuyu, "kule": kule, "ahir": ahir,
     "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik, "istasyon": istasyon,
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
-    "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci,
+    "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci, "camur": camur_ocagi,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
     "yayci": lambda: shed("yayci", 5.0, 4.0, _bowyer_props),
     "insaatci": lambda: shed("insaatci", 6.0, 5.0, _builders_props),

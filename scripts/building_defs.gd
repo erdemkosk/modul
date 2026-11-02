@@ -14,7 +14,7 @@ extends RefCounted
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
-const YARDS := ["oduncu", "tasci", "toplayici", "ormanci", "meydan"]
+const YARDS := ["oduncu", "tasci", "camur", "toplayici", "ormanci", "meydan"]
 const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "camur", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci"]
 
 const DEFS := {
