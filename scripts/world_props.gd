@@ -40,6 +40,7 @@ const RANGES := {
 }
 
 var terrain: WorldTerrain
+static var detail := 1.0 ## the near ranges' share (Graphics: a lower quality draws the trees in full less far off)
 
 var _models: Array[Dictionary] = [] ## Per kind index: {id, kind, info, lod0, lod1, near, far}
 var _xf: Array[Transform3D] = []
@@ -131,9 +132,9 @@ func _load_model(id: String, info: Dictionary) -> Dictionary:
 		"id": id, "kind": kind, "info": info, "height": height,
 		# The two crossfade over the last 28 m of the near range (nature.gdshader): with no
 		# LOD1 at all (ferns), LOD0 just dissolves away there instead of vanishing.
-		"lod0": _with_nature_materials(lod0, kind, height, 0.0, r[0]),
-		"lod1": _with_nature_materials(lod1, kind, height, 1.0, r[0]),
-		"near": r[0], "far": r[1], "far_shadow": r[2],
+		"lod0": _with_nature_materials(lod0, kind, height, 0.0, float(r[0]) * detail),
+		"lod1": _with_nature_materials(lod1, kind, height, 1.0, float(r[0]) * detail),
+		"near": float(r[0]) * detail, "far": r[1], "far_shadow": r[2],
 	}
 
 

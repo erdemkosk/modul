@@ -48,6 +48,9 @@ var _saved_day := -1
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	Graphics.apply(get_tree()) # (before the world's made: the trees' detail is read as it's built)
+	if not get_tree().root.size_changed.is_connected(_on_resized):
+		get_tree().root.size_changed.connect(_on_resized)
 	if title:
 		_titled = true
 		var menu := TitleMenu.new()
@@ -71,6 +74,7 @@ func _ready() -> void:
 	weather.day_length_minutes = 16.0
 	weather.preset = "clear"
 	add_child(weather)
+	Graphics.apply(get_tree(), weather)
 	terrain = WorldTerrain.new()
 	add_child(terrain)
 	decor = WorldDecor.new()
@@ -799,6 +803,12 @@ func repair_selected() -> void:
 			hud.toast(why, "info")
 		else:
 			hud.toast("%s onarılacak: köylüler malzeme taşıyacak" % selected.display_name(), "info")
+
+
+## The window resized (or made full screen): the 3D drawn at the share the new size asks.
+func _on_resized() -> void:
+	if is_inside_tree():
+		Graphics.apply(get_tree(), weather if is_instance_valid(weather) else null)
 
 
 func upgrade_selected(what := "oda") -> void:

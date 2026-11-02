@@ -575,7 +575,7 @@ func _make_pause() -> void:
 	Ui.label(col, "DURAKLATILDI", 28, Ui.INK, "display")
 	Ui.rule(col)
 	for pair in [["DEVAM", func() -> void: game.set_menu(false)], ["KAYDET", func() -> void: game.save_game()], ["YÜKLE", func() -> void: game.load_game()],
-			["TUŞLAR", func() -> void: toggle_help()], ["YENİ OYUN", func() -> void: game.new_game()], ["KAYDET VE ÇIK", func() -> void:
+			["TUŞLAR", func() -> void: toggle_help()], ["GRAFİK", func() -> void: _show_graphics(true)], ["YENİ OYUN", func() -> void: game.new_game()], ["KAYDET VE ÇIK", func() -> void:
 				game.save_game()
 				game.get_tree().quit()]]:
 		var b := _small_button(pair[0], pair[1])
@@ -585,6 +585,25 @@ func _make_pause() -> void:
 
 func show_menu(on: bool) -> void:
 	_pause.visible = on
+	if not on and _graphics:
+		_graphics.visible = false
+
+
+var _graphics: GraphicsPanel
+
+
+## The graphics plate over the pause menu.
+func _show_graphics(on: bool) -> void:
+	if _graphics == null:
+		_graphics = GraphicsPanel.new()
+		_graphics.weather = game.weather
+		_graphics.set_anchors_preset(Control.PRESET_CENTER)
+		_graphics.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_graphics.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_graphics.closed.connect(func() -> void: _pause.visible = true)
+		add_child(_graphics)
+	_graphics.visible = on
+	_pause.visible = not on
 
 
 func set_hint(text: String, bad := false) -> void:

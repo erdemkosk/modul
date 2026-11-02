@@ -11,6 +11,8 @@ var _people := 6
 var _people_label: Label
 var _choice := {"supplies": 1, "raids": 1, "season": 0}
 var _groups := {} ## setting -> its buttons
+var _new_plate: PanelContainer
+var _graphics: GraphicsPanel
 
 
 func _ready() -> void:
@@ -49,12 +51,28 @@ func _ready() -> void:
 	Ui.rule(col, 60.0)
 	if VillageSave.exists():
 		col.add_child(_button("DEVAM ET", func() -> void: game.continue_game(), 260))
+	col.add_child(_button("GRAFİK", func() -> void: _show_graphics(not _graphics.visible), 260))
 	col.add_child(_button("ÇIK", func() -> void: get_tree().quit(), 260))
 	_new_game_plate()
+	_graphics = GraphicsPanel.new()
+	_graphics.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	_graphics.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_graphics.offset_right = -80
+	_graphics.offset_top = -250
+	_graphics.visible = false
+	_graphics.closed.connect(func() -> void: _show_graphics(false))
+	add_child(_graphics)
+
+
+## The graphics plate shown in place of the new town's (and back).
+func _show_graphics(on: bool) -> void:
+	_graphics.visible = on
+	_new_plate.visible = not on
 
 
 func _new_game_plate() -> void:
 	var plate := PanelContainer.new()
+	_new_plate = plate
 	plate.add_theme_stylebox_override("panel", Ui.glass(false, 18.0))
 	plate.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	plate.grow_horizontal = Control.GROW_DIRECTION_BEGIN
