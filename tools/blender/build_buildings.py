@@ -1559,7 +1559,7 @@ def camur_ocagi():
 
 def meydan():
     """The town square: paved, a fire pit in the middle ringed with stones and logs laid ready, log
-    benches round it, a notice board, a lamp on a post."""
+    benches round it, a notice board, a lamp on a post, the town bell on its frame."""
     w = d = 10.0
     k = Kit("meydan")
     k.paint = k.rng.choice(PAINTS)
@@ -1601,96 +1601,27 @@ def meydan():
     for i in range(5):
         p.box((bx - 0.45 + (i % 3) * 0.42, by - 0.05, 1.5 + (i // 3) * 0.35), (0.3, 0.01, 0.24), (0.88, 0.85, 0.76))
     k.add(p)
-    k.finish()
-
-
-def cankulesi():
-    """The bell tower: a stone footing, four leaning posts braced across, a railed bell deck, the
-    bell hanging from its beam, a steep shingled roof with a ball on top, a ladder up."""
-    k = Kit("cankulesi")
-    k.paint = k.rng.choice(PAINTS)
-    plinth(k, 4.0, 4.0)
-    p = k.piece("stone")
-    for c in range(3):
-        for side in range(4):
-            for i in range(5):
-                t = (i + 0.5) / 5 - 0.5 + (0.1 if c % 2 else 0)
-                ctr = (t * 3.6, (-1 if side == 0 else 1) * 1.8, 0.5 + c * 0.4) if side < 2 else ((-1 if side == 2 else 1) * 1.8, t * 3.6, 0.5 + c * 0.4)
-                p.stone(ctr, (0.62, 0.45, 0.4), rng=k.rng)
-    p.box((0, 0, 0.95), (3.4, 3.4, 1.2), jit((0.4, 0.39, 0.36), 0.03, k.rng))
+    # the town bell, on a frame of two posts in the far corner, under a little roof
+    gx, gy = -3.6, 3.6
+    p = k.piece("log", "frame")
+    for s in (-1, 1):
+        p.log((gx + s * 0.75, gy, PLINTH_TOP - 0.1), (gx + s * 0.75, gy, PLINTH_TOP + 3.3), 0.13, rng=k.rng)
+    p.log((gx - 1.0, gy, PLINTH_TOP + 3.1), (gx + 1.0, gy, PLINTH_TOP + 3.1), 0.11, rng=k.rng)
     k.add(p)
-    base, deck = 1.55, 7.2
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            p = k.piece("log")
-            p.log((sx * 1.5, sy * 1.5, base), (sx * 1.05, sy * 1.05, deck + 2.6), 0.15, rng=k.rng)
-            k.add(p)
-    for lvl in (base + 2.6, base + 5.0):
-        for side in range(4):
-            p = k.piece("log")
-            a = [(-1.4, -1.4), (1.4, -1.4), (1.4, 1.4), (-1.4, 1.4)][side]
-            b = [(1.4, -1.4), (1.4, 1.4), (-1.4, 1.4), (-1.4, -1.4)][side]
-            f = 1.0 - (lvl - base) / (deck + 2.6 - base) * 0.3
-            p.log((a[0] * f, a[1] * f, lvl), (b[0] * f, b[1] * f, lvl), 0.08, rng=k.rng)
-            p.log((a[0] * f, a[1] * f, lvl - 2.3), (b[0] * f, b[1] * f, lvl), 0.06, rng=k.rng)
-            k.add(p)
-    p = k.piece("plank")
-    for i in range(12):
-        p.box((-1.5 + (i + 0.5) * 3.0 / 12, 0, deck), (3.0 / 12 - 0.01, 3.2, 0.08), jit(PLANK, 0.08, k.rng))
-    k.add(p)
-    trim = k.paint[0]
-    for side in range(4):
-        p = k.piece("plank", "rail")
-        for i in range(9):
-            t = -1.4 + i * 0.35
-            q = (t, (-1 if side == 0 else 1) * 1.55, deck + 0.45) if side < 2 else ((-1 if side == 2 else 1) * 1.55, t, deck + 0.45)
-            p.box(q, (0.04, 0.04, 0.8), jit(trim, 0.04, k.rng))
-        q = (0, (-1 if side == 0 else 1) * 1.55, deck + 0.85) if side < 2 else ((-1 if side == 2 else 1) * 1.55, 0, deck + 0.85)
-        p.box(q, (3.1, 0.07, 0.06) if side < 2 else (0.07, 3.1, 0.06), jit(trim, 0.03, k.rng))
-        k.add(p)
-    p = k.piece("log")
-    p.log((-1.2, 0, deck + 2.2), (1.2, 0, deck + 2.2), 0.1, rng=k.rng)
+    p = k.piece("shingle", "frame")
+    for s in (-1, 1):
+        p.obox((gx, gy + s * 0.32, PLINTH_TOP + 3.55), (1, 0, 0), (0, s * math.cos(0.7), -math.sin(0.7)), (0, s * math.sin(0.7), math.cos(0.7)), (2.3, 0.9, 0.05), jit(SHINGLE, 0.05, k.rng))
     k.add(p)
     p = k.piece("stone", "bell")
     bronze = (0.5, 0.38, 0.18)
-    p.log((0, 0, deck + 1.25), (0, 0, deck + 2.05), 0.36, color=bronze, end=bronze, taper=0.9, segs=16, jitter=0.0, bow=0.0)
-    p.log((0, 0, deck + 1.18), (0, 0, deck + 1.3), 0.4, color=bronze, end=bronze, taper=0.0, segs=16, jitter=0.0, bow=0.0)
-    p.box((0, 0, deck + 1.1), (0.06, 0.06, 0.25), IRON)
-    k.add(p)
-    roof_base = deck + 2.6
-    for side in range(4):
-        p = k.piece("shingle")
-        ang = side * math.pi * 0.5
-        out = Vector((math.sin(ang), -math.cos(ang), 0))
-        across = Vector((math.cos(ang), math.sin(ang), 0))
-        slope = math.atan2(2.4, 1.8)
-        down = (out * math.cos(slope) + Vector((0, 0, -math.sin(slope)))).normalized()
-        nrm = (out * math.sin(slope) + Vector((0, 0, math.cos(slope)))).normalized()
-        apex = Vector((0, 0, roof_base + 2.4))
-        L = 1.8 / math.cos(slope) + 0.4
-        rows = 10
-        for r in range(rows):
-            v = (r + 0.5) * L / rows
-            width = 2 * (v * math.cos(slope)) + 0.3
-            x = -width * 0.5
-            while x < width * 0.5:
-                sw = min(k.rng.uniform(0.2, 0.3), width * 0.5 - x + 0.01)
-                p.obox(apex + down * v + nrm * 0.03 + across * (x + sw * 0.5), across, down, nrm, (sw - 0.012, L / rows * 1.5, 0.03), jit(SHINGLE, 0.12, k.rng))
-                x += sw
-        k.add(p)
-    p = k.piece("wood", "finial")
-    p.log((0, 0, roof_base + 2.3), (0, 0, roof_base + 2.8), 0.05, color=trim, end=trim, taper=0.3)
-    p.stone((0, 0, roof_base + 2.9), (0.2, 0.2, 0.2), color=trim, rng=k.rng)
-    k.add(p)
-    p = k.piece("wood")
-    for sx in (-0.25, 0.25):
-        p.log((sx, -2.3, 0.3), (sx, -1.6, deck + 0.4), 0.04, rng=k.rng)
-    n = int(deck / 0.35)
-    for i in range(n):
-        t = (i + 0.5) / n
-        p.log((-0.27, -2.3 + 0.7 * t, 0.3 + deck * t), (0.27, -2.3 + 0.7 * t, 0.3 + deck * t), 0.03, segs=6, rng=k.rng)
+    top = PLINTH_TOP + 3.0
+    p.log((0 + gx, gy, top - 0.75), (gx, gy, top - 0.05), 0.3, color=bronze, end=bronze, taper=0.9, segs=16, jitter=0.0, bow=0.0)
+    p.log((gx, gy, top - 0.82), (gx, gy, top - 0.7), 0.34, color=bronze, end=bronze, taper=0.0, segs=16, jitter=0.0, bow=0.0)
+    p.box((gx, gy, top - 0.9), (0.05, 0.05, 0.22), IRON)
     k.add(p)
     k.finish()
+
+
 
 
 # --- the train and its station ----------------------------------------------------------------------
@@ -1908,7 +1839,7 @@ def istasyon():
 
 BUILDERS = {
     "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
-    "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik, "istasyon": istasyon,
+    "meydan": meydan, "silahlik": silahlik, "istasyon": istasyon,
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,
     "ev_oda": ev_oda, "ev_soba": ev_soba,

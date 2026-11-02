@@ -13,7 +13,7 @@ extends RefCounted
 
 ## What each brings, in a few words (the build bar's buttons).
 const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına kova", "fener": "geceye ışık",
-	"meydan": "akşam ateşi", "cankulesi": "baskın alarmı", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
+	"meydan": "akşam ateşi · çan", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
 	"oduncu": "odun", "tasci": "taş", "camur": "çamur · kerpiç", "toplayici": "yemiş (yiyecek)",
 	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
 	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yaraları sarar · ot", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
@@ -23,15 +23,13 @@ const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur"
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "camur", "toplayici", "meydan"]
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "tasci", "camur", "toplayici", "ambar", "arabaci", "kuyu", "fener", "kule", "silahlik", "hapishane", "sifaci", "okuma", "demirci"]
+const KINDS := ["meydan", "ev", "tarla", "oduncu", "tasci", "camur", "toplayici", "ambar", "arabaci", "kuyu", "fener", "kule", "silahlik", "hapishane", "sifaci", "okuma", "demirci"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
 		"desc": "Dört kişilik kütük ev, taş bacalı. Soğukta ve gece ocağında odun yakar. Boş yatak varsa kasabaya yeni insanlar gelir. Arkasına bir oda eklenerek altı kişilik büyütülebilir."},
 	"meydan": {"name": "Meydan", "size": Vector2(10, 10), "cost": {"odun": 8, "tas": 12}, "time": 30.0, "role": "square",
-		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar. Akşamları ateş yakılır, kasabalılar başında toplanıp oturur, konuşur; çocuklar orada oynar."},
-	"cankulesi": {"name": "Çan kulesi", "size": Vector2(4, 4), "cost": {"odun": 20, "tas": 8}, "time": 36.0, "role": "bell",
-		"desc": "Çan sabah işbaşını, akşam paydosu çalar. Baskında tehlike çanı çalınca kasabanın her yerindeki herkes saklanır."},
+		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar, köşede kasabanın çanı. Akşamları ateş yakılır; başında oturan kasabalının morali yükselir, çocuklar orada oynar. Çan sabah işbaşını, akşam paydosu çalar; baskında tehlike çanı çalınınca kasabanın her yerindeki herkes saklanır. Meydan yoksa haydudu ancak yakınındakiler fark eder."},
 	"istasyon": {"name": "İstasyon", "size": Vector2(7, 5), "cost": {"odun": 30, "tas": 6}, "time": 30.0, "role": "store", "holds": 200,
 		"desc": "Demiryolunun ucu, kasabanın ilk deposu (200 yük alır). Trenle gelenler burada indi; mallar burada durur."},
 	"sur": {"name": "Kazık sur", "size": Vector2(1, 1), "cost": {"odun": 1}, "time": 0.0, "role": "wall",

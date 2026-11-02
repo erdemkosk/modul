@@ -14,7 +14,7 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "sifaci"]],
+const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "sifaci"]],
 	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},

@@ -17,12 +17,12 @@ func squares() -> Array[Building]:
 func bells() -> Array[Building]:
 	var out: Array[Building] = []
 	for b in buildings:
-		if b.state == "done" and b.def.role == "bell":
+		if b.state == "done" and b.def.role in ["bell", "square"]:
 			out.append(b)
 	return out
 
 
-## Rings every bell tower (`times` strokes).
+## Rings every bell (`times` strokes): the square's.
 func ring_bells(times := 3, gap := 1.6) -> void:
 	for b in bells():
 		b.ring(times, gap)
@@ -423,7 +423,7 @@ func _plan_idle(v: Villager) -> void:
 		v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": seat},
 			{"t": "work", "time": randf_range(15.0, 30.0), "anim": "sit" if randf() < 0.6 else "chat", "face": sq.global_position + Vector3.UP},
 			{"t": "do", "f": func() -> bool:
-				v.think("fire", "Akşam ateş başında oturdu", 6.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+				v.think("fire", "Akşam meydanda ateş başında oturdu", 10.0, maxf(weather.day_length_minutes * 60.0, 60.0))
 				return true},
 			{"t": "step", "to": sq.door()}], "Meydanda, ateş başında", sq, true)
 		return

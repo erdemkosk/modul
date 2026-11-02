@@ -18,7 +18,7 @@ const TIPS := [
 	"Evin bahçesi, içinde oturanların işine göre her sabah biraz daha dolar.",
 	"Boş yatak ve depoda yiyecek varsa kasabaya zamanla yeni insanlar gelir.",
 	"Fenerler geceyi aydınlatır; haydutlar en karanlık yerden yaklaşır.",
-	"Çan kulesi baskında herkesi saklanmaya çağırır.",
+	"Meydanın çanı baskında herkesi saklanmaya çağırır; akşam ateşinin başında oturmak morali yükseltir.",
 	"Tahta yollar çamura batmaz ve taşımayı hızlandırır.",
 	"Kartından ODA EKLE ile bir eve iki yatak daha eklenir.",
 	"K: kasabalıların becerileri ve hangi işe öncelikle verileceği.",
