@@ -525,18 +525,23 @@ func _road_click(at: Vector2) -> void:
 
 
 ## The palisade as it would stand, to the mouse: its stakes, faint.
+## The palisade as it would stand along `line`: its stakes, pale as far as the wood goes, red past.
 func _wall_ghost(line: PackedVector3Array, into: MultiMeshInstance3D) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
 	mm.mesh = Wall.stake_mesh()
 	mm.instance_count = line.size()
+	var afford := int(village.stock.get("odun", 0)) * Wall.WOOD_PER
 	for k in line.size():
 		var g := line[k]
 		g.y = village.nav.height(g.x, g.z) - 0.3
-		mm.set_instance_transform(k, Transform3D(Basis.IDENTITY, g))
+		var h := fposmod(sin(k * 78.233) * 43758.5453, 1.0)
+		mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, h * TAU).scaled(Vector3(1, 0.9 + h * 0.2, 1)), g))
+		mm.set_instance_color(k, Color(0.75, 1.0, 0.7, 0.45) if k < afford else Color(1.0, 0.35, 0.3, 0.45))
 	var mi := into if into else MultiMeshInstance3D.new()
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.5, 1.0, 0.6, 0.35)
+	m.vertex_color_use_as_albedo = true
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mi.material_override = m
@@ -566,8 +571,20 @@ func _road_finish() -> void:
 
 ## The road as it would be laid, to the mouse: its planks, green as far as the wood goes, red past.
 func _update_road_line() -> void:
+	if _placing == "sur" and _road_pts.is_empty():
+		# (before the first corner: a stretch of it under the mouse, so it's seen what's being put down)
+		var at: Variant = cam.ground_under(get_viewport().get_mouse_position())
+		if at != null:
+			var across := cam.global_basis.x
+			across.y = 0.0
+			across = across.normalized() * 1.5
+			var pts := PackedVector3Array()
+			for k in 11:
+				pts.append((at as Vector3) - across + across * 2.0 * k / 10.0)
+			_road_line = _wall_ghost(pts, _road_line)
+			_road_line.visible = true
 	if not _placing in ["yol", "sur"] or _road_pts.is_empty():
-		if _road_line:
+		if _road_line and _placing != "sur":
 			_road_line.visible = false
 		if _placing == "sur":
 			hud.set_hint("Kazık sur: sol tık ile başla, köşeleri tıkla, sağ tık / Enter: bitir · yolu kestiği yere kapı konur · Esc: vazgeç")

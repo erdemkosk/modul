@@ -34,30 +34,91 @@ const WALK_H := 1.45 ## m the walkway stands off the ground
 var _solid: MultiMeshInstance3D
 var _marks: MultiMeshInstance3D
 var _walk: MultiMeshInstance3D
+var _bind: MultiMeshInstance3D ## the rails binding the standing stakes on the inside
+var _trench: MultiMeshInstance3D ## the trench dug along what's still to be raised
+const BIND_EVERY := 6 ## stakes a rail spans
 var _burn_t := 0.0
 static var _stake_mesh: Mesh
 
 
+## A stake: a barked log, a little knobbly (its own shade, the stake's instance colour), its top hewn
+## to a point (the fresh-cut wood pale: a surface of its own, coloured once).
 static func stake_mesh() -> Mesh:
 	if _stake_mesh == null:
+		var sides := 8
+		var rings: Array = [[0.0, 0.15], [0.9, 0.142], [1.7, 0.136], [2.45, 0.13]]
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var shaft := CylinderMesh.new()
-		shaft.top_radius = 0.13
-		shaft.bottom_radius = 0.14
-		shaft.height = 2.5
-		shaft.radial_segments = 7
-		shaft.rings = 1
-		st.append_from(shaft, 0, Transform3D(Basis.IDENTITY, Vector3(0, 1.25, 0)))
-		var tip := CylinderMesh.new()
-		tip.top_radius = 0.0
-		tip.bottom_radius = 0.13
-		tip.height = 0.38
-		tip.radial_segments = 7
-		tip.rings = 1
-		st.append_from(tip, 0, Transform3D(Basis.IDENTITY, Vector3(0, 2.69, 0)))
-		_stake_mesh = st.commit()
+		for r in rings.size() - 1:
+			var y0: float = rings[r][0]
+			var y1: float = rings[r + 1][0]
+			for i in sides:
+				var a0 := TAU * i / sides
+				var a1 := TAU * (i + 1) / sides
+				var w0 := 1.0 + 0.06 * sin(i * 2.3 + r)
+				var w1 := 1.0 + 0.06 * sin((i + 1) * 2.3 + r)
+				var p00 := Vector3(cos(a0) * rings[r][1] * w0, y0, sin(a0) * rings[r][1] * w0)
+				var p01 := Vector3(cos(a1) * rings[r][1] * w1, y0, sin(a1) * rings[r][1] * w1)
+				var p10 := Vector3(cos(a0) * rings[r + 1][1] * w0, y1, sin(a0) * rings[r + 1][1] * w0)
+				var p11 := Vector3(cos(a1) * rings[r + 1][1] * w1, y1, sin(a1) * rings[r + 1][1] * w1)
+				for p in [p00, p10, p11, p00, p11, p01]:
+					st.add_vertex(p)
+		st.generate_normals()
+		st.set_material(bark_material(1))
+		var mesh := st.commit()
+		# the hewn point: axe-cut facets, off centre a touch
+		var tip := SurfaceTool.new()
+		tip.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var top: float = rings[rings.size() - 1][0]
+		var r_top: float = rings[rings.size() - 1][1]
+		var apex := Vector3(0.02, top + 0.42, -0.01)
+		for i in sides:
+			var a0 := TAU * i / sides
+			var a1 := TAU * (i + 1) / sides
+			var w0 := 1.0 + 0.06 * sin(i * 2.3 + 3)
+			var w1 := 1.0 + 0.06 * sin((i + 1) * 2.3 + 3)
+			for p in [Vector3(cos(a0) * r_top * w0, top, sin(a0) * r_top * w0), apex, Vector3(cos(a1) * r_top * w1, top, sin(a1) * r_top * w1)]:
+				tip.add_vertex(p)
+		tip.generate_normals()
+		var cut := StandardMaterial3D.new()
+		cut.albedo_color = Color(0.72, 0.58, 0.4)
+		cut.roughness = 0.9
+		tip.set_material(cut)
+		tip.commit(mesh)
+		_stake_mesh = mesh
 	return _stake_mesh
+
+
+static var _barks := {}
+
+
+## The bark of a stake or a rail: weathered grey-brown (a strengthened wall's rails darker).
+static func bark_material(lvl: int) -> StandardMaterial3D:
+	if not _barks.has(lvl):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.4, 0.31, 0.22) if lvl < 2 else Color(0.3, 0.23, 0.16)
+		m.roughness = 0.95
+		_barks[lvl] = m
+	return _barks[lvl]
+
+
+static var _rail_mesh: Mesh
+
+
+## A binding rail: a thinner barked log, lying along x, 1 m long (scaled to the gap it spans).
+static func rail_mesh() -> Mesh:
+	if _rail_mesh == null:
+		var c := CylinderMesh.new()
+		c.top_radius = 0.075
+		c.bottom_radius = 0.075
+		c.height = 1.0
+		c.radial_segments = 6
+		c.rings = 1
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.append_from(c, 0, Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3.ZERO))
+		_rail_mesh = st.commit()
+	return _rail_mesh
 
 
 func setup(points: PackedVector3Array, v: Node, n: Nav) -> void:
@@ -79,6 +140,11 @@ func _ready() -> void:
 	add_child(_marks)
 	_walk = MultiMeshInstance3D.new()
 	add_child(_walk)
+	_bind = MultiMeshInstance3D.new()
+	add_child(_bind)
+	_trench = MultiMeshInstance3D.new()
+	_trench.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_trench)
 	# the town's side: where its store is
 	var stores: Array = village.stores()
 	if not stores.is_empty() and line.size() > 2:
@@ -101,6 +167,70 @@ func redraw() -> void:
 	_solid.multimesh = _stakes(up, false)
 	_marks.multimesh = _stakes(todo, true)
 	_walk.multimesh = _walkway(up)
+	_bind.multimesh = _binding()
+	_trench.multimesh = _ditch(todo)
+
+
+## Two rails along the inside of each standing stretch, low and high, a rail to every few stakes.
+func _binding() -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = rail_mesh()
+	var xfs: Array[Transform3D] = []
+	var k := 0
+	while k + BIND_EVERY < line.size():
+		var whole := true
+		for j in range(k, k + BIND_EVERY + 1):
+			if built[j] != 1:
+				whole = false
+				break
+		if whole:
+			var a := line[k]
+			var b := line[k + BIND_EVERY]
+			var dir := Vector3(b.x - a.x, 0, b.z - a.z)
+			var len := dir.length() + 0.25
+			dir = dir.normalized() if dir.length() > 0.001 else Vector3.RIGHT
+			var left := Vector3.UP.cross(dir).normalized() * inward
+			var basis := Basis(dir, Vector3.UP, dir.cross(Vector3.UP)).scaled(Vector3(len, 1, 1))
+			for hgt in [0.75, 1.95]:
+				var mid := (a + b) * 0.5 + left * 0.19
+				mid.y = (nav.height(a.x, a.z) + nav.height(b.x, b.z)) * 0.5 + hgt - 0.3
+				xfs.append(Transform3D(basis, mid))
+		k += BIND_EVERY
+	mm.instance_count = xfs.size()
+	for j in xfs.size():
+		mm.set_instance_transform(j, xfs[j])
+		var shade := (0.27 if level >= 2 else 0.33) + fposmod(sin(j * 3.7) * 437.5, 1.0) * 0.1
+		mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.56))
+	_bind.material_override = bark_material(level)
+	return mm
+
+
+## Turned earth along the stretches still to be raised: a dug trench for the stakes to stand in.
+func _ditch(todo: Array[int]) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var box := BoxMesh.new()
+	box.size = Vector3(0.55, 0.06, 0.42)
+	mm.mesh = box
+	var spots: Array[int] = []
+	for j in range(0, todo.size(), 2):
+		spots.append(todo[j])
+	mm.instance_count = spots.size()
+	for j in spots.size():
+		var k := spots[j]
+		var dir := line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		var p := line[k]
+		p.y = nav.height(p.x, p.z) + 0.02
+		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), p))
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.24, 0.18, 0.12)
+	m.roughness = 1.0
+	_trench.material_override = m
+	return mm
 
 
 func _stakes(which: Array[int], ghost: bool) -> MultiMesh:
@@ -119,12 +249,15 @@ func _stakes(which: Array[int], ghost: bool) -> MultiMesh:
 		var k := which[j]
 		mm.set_instance_transform(j, stake_xf(line[k], k, ghost))
 		if ghost:
-			mm.set_instance_color(j, Color(1.0, 0.95, 0.8, 0.22))
+			mm.set_instance_color(j, Color(0.95, 0.85, 0.68, 0.13))
 		else:
 			var h := fposmod(sin(k * 12.9898) * 43758.5453, 1.0)
 			var shade := (0.28 if level >= 2 else 0.36) + h * 0.14
 			mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.55))
-	(_marks if ghost else _solid).material_override = m
+	if ghost:
+		_marks.material_override = m
+	else:
+		_solid.material_override = null # (the stake's own bark and its cut point)
 	return mm
 
 
@@ -217,8 +350,8 @@ func stake_xf(at: Vector3, k: int, ghost := false) -> Transform3D:
 	var h := fposmod(sin(k * 78.233) * 43758.5453, 1.0)
 	var g := Vector3(at.x, nav.height(at.x, at.z) - 0.3, at.z)
 	var b := Basis(Vector3.UP, h * TAU).rotated(Vector3.RIGHT, (h - 0.5) * 0.06)
-	if ghost:
-		return Transform3D(b.scaled(Vector3(0.7, 0.25, 0.7)), g + Vector3.UP * 0.25)
+	if ghost: # (still to be raised: its full height, faint, over the trench)
+		return Transform3D(b.scaled(Vector3(0.95, 0.9 + h * 0.2, 0.95)), g)
 	var thick := 1.45 if level >= 2 else 1.0 # (a strengthened wall: logs half again as thick)
 	return Transform3D(b.scaled(Vector3(thick, 0.9 + h * 0.2 + (0.12 if level >= 2 else 0.0), thick)), g)
 

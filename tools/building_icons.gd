@@ -111,15 +111,25 @@ func _take_line(kind: String) -> void:
 	plank.albedo_color = Color(0.62, 0.48, 0.32)
 	match kind:
 		"sur", "kapi":
-			for k in 9:
-				var x := (k - 4) * 0.36
+			for k in 11:
+				var x := (k - 5) * 0.3
 				if kind == "kapi" and absf(x) < 0.9:
 					continue
 				var st := MeshInstance3D.new()
-				st.mesh = Wall.stake_mesh()
-				st.material_override = wood
+				st.mesh = Wall.stake_mesh() # (its own bark and cut point)
+				var h := fposmod(sin(k * 78.233) * 43758.5453, 1.0)
 				st.position = Vector3(x, 0, 0)
+				st.rotation.y = h * TAU
+				st.scale = Vector3(1, 0.9 + h * 0.2, 1)
 				n.add_child(st)
+			if kind == "sur": # (the rails binding them on the inside)
+				for hgt in [0.75, 1.95]:
+					var r := MeshInstance3D.new()
+					r.mesh = Wall.rail_mesh()
+					r.material_override = Wall.bark_material(1)
+					r.position = Vector3(0, hgt, -0.19)
+					r.scale = Vector3(3.3, 1, 1)
+					n.add_child(r)
 			if kind == "kapi":
 				for s in [-1.0, 1.0]:
 					var leaf := MeshInstance3D.new()
