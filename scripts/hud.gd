@@ -34,7 +34,15 @@ const KEYS := [
 var game: Node
 var category := 0
 
-var _res: Dictionary = {}
+var _res: Dictionary = {} ## good -> [row, amount Label, change Label]
+const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic"]
+const GOOD_TIPS := {"odun": "Kesim kampından: inşaat ve evlerin, fenerlerin yakacağı",
+	"tas": "Taş ocağından: temeller, bacalar, kuyu, meydan", "yiyecek": "Tarladan ve toplayıcıdan: herkes yer, öküzler de",
+	"camur": "Çamur ocağından: evleri sıvamak için", "kerpic": "Çamur ocağında kerpiç yaptırınca: soba için"}
+var _seen := {} ## goods once had: shown from then on
+var _goods_head: Button
+var _folds: Array = [] ## [header, body, seconds since the mouse left both]
+var _history: Array = [] ## [clock, stock] every few seconds, the last minute's
 var _pop: Label
 var _free: Label
 var _clock: Label
@@ -75,6 +83,7 @@ func _ready() -> void:
 	layer = 10
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_stores_plate()
+	_goods_plate()
 	_clock_plate()
 	_build_bar()
 	add_child(Portraits.new())
@@ -118,6 +127,58 @@ func _stat(row: HBoxContainer, title: String, tip := "") -> Label:
 	return Ui.label(box, "-", 22, Ui.INK, "display")
 
 
+## The goods down the left: each as it's first had, how much is in the stores, and how it's gone
+## the last minute.
+func _goods_plate() -> void:
+	var p := _plate()
+	p.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	p.offset_left = 12
+	p.offset_top = 84
+	add_child(p)
+	_fold(_goods_head, p)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.custom_minimum_size = Vector2(170, 0)
+	p.add_child(col)
+	Ui.label(col, "KAYNAKLAR", 13, Ui.ACCENT, "head")
+	for id: String in GOODS:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.tooltip_text = str(GOOD_TIPS[id]) + "\n(bütün depolardakinin toplamı; yanında son bir dakikadaki değişim)"
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.visible = false
+		col.add_child(row)
+		var name := Ui.label(row, Ui.upper(BuildingDefs.RES_NAMES[id]), 13, Ui.DIM, "head")
+		name.custom_minimum_size = Vector2(70, 0)
+		var amount := Ui.label(row, "0", 22, Ui.INK, "display")
+		amount.custom_minimum_size = Vector2(52, 0)
+		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var change := Ui.label(row, "", 13, Ui.DIM, "head")
+		change.custom_minimum_size = Vector2(40, 0)
+		_res[id] = [row, amount, change]
+
+
+## The goods column's numbers, and the minute's change (sampled every few seconds of game time).
+func _refresh_goods(v: Village, stock: Dictionary) -> void:
+	if _history.is_empty() or v.clock - float(_history[-1][0]) >= 5.0:
+		_history.append([v.clock, stock.duplicate()])
+		while _history.size() > 1 and v.clock - float(_history[0][0]) > 62.0:
+			_history.pop_front()
+	var then: Dictionary = _history[0][1]
+	for id: String in GOODS:
+		var n := int(stock.get(id, 0))
+		if n > 0:
+			_seen[id] = true
+		var parts: Array = _res[id]
+		(parts[0] as Control).visible = _seen.has(id) or id in ["odun", "tas", "yiyecek"]
+		(parts[1] as Label).text = str(n)
+		(parts[1] as Label).add_theme_color_override("font_color", Ui.BAD if id == "yiyecek" and n <= 5 else Ui.INK)
+		var d := n - int(then.get(id, 0))
+		(parts[2] as Label).text = ("+%d" % d) if d > 0 else (str(d) if d < 0 else "")
+		(parts[2] as Label).add_theme_color_override("font_color", Ui.GOOD if d > 0 else Ui.BAD)
+	_goods_head.add_theme_color_override("font_color", Ui.BAD if int(stock.get("yiyecek", 0)) <= 5 else Ui.INK) # (short of food: it says so, folded or not)
+
+
 func _stores_plate() -> void:
 	var p := _plate()
 	p.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -127,8 +188,9 @@ func _stores_plate() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
-	for id: String in ["odun", "tas", "yiyecek", "camur", "kerpic"]:
-		_res[id] = _stat(row, Ui.upper(BuildingDefs.RES_NAMES[id]), "Bütün depolardakinin toplamı")
+	_goods_head = _small_button("KAYNAKLAR ▾", func() -> void: pass)
+	_goods_head.tooltip_text = "Depolardaki odun, taş, yiyecek...: üzerine gel"
+	row.add_child(_goods_head)
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 	var who := _small_button("KASABALILAR", func() -> void: toggle_people())
@@ -171,15 +233,23 @@ func _clock_plate() -> void:
 	btns.add_child(menu)
 
 
-## Bottom right: to try things out at once.
+## Bottom right, folded under its name: to try things out at once.
 func _test_plate() -> void:
-	var p := _plate(false, Color(0.05, 0.055, 0.06, 0.65))
+	var head := _small_button("DENEME ▴", func() -> void: pass)
+	head.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	head.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	head.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	head.offset_right = -12
+	head.offset_bottom = -10
+	add_child(head)
+	var p := _plate(false, Color(0.05, 0.055, 0.06, 0.8))
 	p.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	p.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	p.offset_right = -12
-	p.offset_bottom = -10
+	p.offset_bottom = -46
 	add_child(p)
+	_fold(head, p)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 4)
 	p.add_child(col)
@@ -253,10 +323,10 @@ func show_category(i: int) -> void:
 		var b := Button.new()
 		b.text = "%d  %s\n%s" % [k + 1, Ui.upper(str(BuildingDefs.DEFS[kind].name)), BuildingDefs.cost_text(kind)]
 		b.tooltip_text = str(BuildingDefs.DEFS[kind].desc)
-		b.custom_minimum_size = Vector2(150, 54)
+		b.custom_minimum_size = Vector2(134, 54)
 		b.focus_mode = Control.FOCUS_NONE
 		b.add_theme_font_override("font", Ui.font("head"))
-		b.add_theme_font_size_override("font_size", 14)
+		b.add_theme_font_size_override("font_size", 13)
 		b.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1, 1, 1, 0.05)))
 		var hover := Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.25), Ui.ACCENT)
 		b.add_theme_stylebox_override("hover", hover)
@@ -285,6 +355,7 @@ func _make_card() -> void:
 	_card.add_child(col)
 	_card_title = Ui.label(col, "", 26, Ui.INK, "display")
 	Ui.rule(col)
+	_make_folk_box(col)
 	_card_lines = Ui.label(col, "", 15, Ui.INK)
 	_card_lines.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_card_lines.custom_minimum_size = Vector2(300, 0)
@@ -625,16 +696,44 @@ func toast(text: String, kind := "info") -> void:
 	tw.tween_callback(l.queue_free)
 
 
+## `body` folded away under `header`: it slides out as the mouse comes onto the header and folds
+## again a moment after the mouse has left both.
+func _fold(header: Control, body: Control) -> void:
+	body.visible = false
+	_folds.append([header, body, 1.0, null])
+
+
+func _unfold(dt: float) -> void:
+	for f: Array in _folds:
+		var header: Control = f[0]
+		var body: Control = f[1]
+		var at := header.get_global_mouse_position()
+		var over := header.is_visible_in_tree() and (header.get_global_rect().has_point(at) or (body.visible and body.get_global_rect().grow(6.0).has_point(at)))
+		f[2] = 0.0 if over else float(f[2]) + dt
+		if over and not body.visible:
+			body.visible = true
+			body.modulate.a = 0.0
+			var down := body.grow_vertical != Control.GROW_DIRECTION_BEGIN
+			if f[3] == null:
+				f[3] = body.position # (where it stands open, kept: a slide cut short won't move it)
+			var to: Vector2 = f[3]
+			body.position = to + Vector2(0, -10 if down else 10)
+			var tw := create_tween().set_parallel().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+			tw.tween_property(body, "modulate:a", 1.0, 0.16)
+			tw.tween_property(body, "position", to, 0.16)
+		elif body.visible and float(f[2]) > 0.35:
+			body.visible = false
+
+
 func _process(dt: float) -> void:
+	_unfold(dt)
 	_t += dt
 	if _t < 0.15:
 		return
 	_t = 0.0
 	var v: Village = game.village
 	var stock := v.stock
-	for id: String in _res:
-		(_res[id] as Label).text = str(int(stock.get(id, 0)))
-	(_res["yiyecek"] as Label).add_theme_color_override("font_color", Ui.BAD if int(stock.yiyecek) <= 5 else Ui.INK)
+	_refresh_goods(v, stock)
 	_pop.text = "%d / %d" % [v.villagers.size(), v.beds()]
 	_free.text = str(v.free_count())
 	var guns := 0
@@ -709,6 +808,7 @@ func _update_card() -> void:
 		return
 	_card.visible = true
 	_card_folk.visible = false
+	_folk_box.visible = false
 	_card_acts.visible = true
 	_card_train.visible = b.state == "done" and b.def.role == "armory"
 	_card_pick.visible = _pick_open == b and b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]
@@ -838,6 +938,7 @@ func _wall_card(w: Wall) -> void:
 	_card_train.visible = false
 	_card_pick.visible = false
 	_card_folk.visible = false
+	_folk_box.visible = false
 	_card_acts.visible = true
 	(_btn.repair as Button).visible = false
 	for what: String in BuildingDefs.UPGRADES:
@@ -865,6 +966,112 @@ func _wall_card(w: Wall) -> void:
 	_card_lines.text = "\n".join(lines)
 
 
+# --- A villager's card: its face, what it's doing, how it is, what it's good at ------------------
+
+var _folk_box: VBoxContainer
+var _folk_face: TextureRect
+var _folk_job: Label
+var _folk_state: Label
+var _folk_hp: ProgressBar
+var _folk_rows: Array = [] ## [name Label, ProgressBar, number Label, marks Label] a skill each, best first
+
+
+func _bar(fill: Color, width: float, height: float) -> ProgressBar:
+	var b := ProgressBar.new()
+	b.show_percentage = false
+	b.custom_minimum_size = Vector2(width, height)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(1, 1, 1, 0.08)
+	bg.set_corner_radius_all(2)
+	var fg := StyleBoxFlat.new()
+	fg.bg_color = fill
+	fg.set_corner_radius_all(2)
+	b.add_theme_stylebox_override("background", bg)
+	b.add_theme_stylebox_override("fill", fg)
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
+
+
+func _make_folk_box(col: VBoxContainer) -> void:
+	_folk_box = VBoxContainer.new()
+	_folk_box.add_theme_constant_override("separation", 6)
+	_folk_box.visible = false
+	col.add_child(_folk_box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	_folk_box.add_child(head)
+	_folk_face = TextureRect.new()
+	_folk_face.custom_minimum_size = Vector2(84, 84)
+	_folk_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_folk_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	head.add_child(_folk_face)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation", 4)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(side)
+	_folk_job = Ui.label(side, "", 16, Ui.INK, "strong")
+	_folk_job.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_folk_job.custom_minimum_size = Vector2(230, 0)
+	_folk_state = Ui.label(side, "", 13, Ui.DIM, "head")
+	_folk_hp = _bar(Color(0.55, 0.78, 0.4), 230, 8)
+	side.add_child(_folk_hp)
+	Ui.label(_folk_box, "BECERİLER  ·  ♥ hevesli  ·  ▲ önce  ·  – hiç", 12, Ui.ACCENT, "head")
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 1)
+	_folk_box.add_child(grid)
+	for i in Villager.SKILLS.size():
+		var n := Ui.label(grid, "", 13, Ui.INK, "head")
+		n.custom_minimum_size = Vector2(96, 0)
+		var bar := _bar(Ui.ACCENT, 130, 7)
+		bar.max_value = 10.0
+		grid.add_child(bar)
+		var num := Ui.label(grid, "", 15, Ui.INK, "display")
+		num.custom_minimum_size = Vector2(22, 0)
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var marks := Ui.label(grid, "", 13, Ui.ACCENT, "head")
+		marks.custom_minimum_size = Vector2(26, 0)
+		_folk_rows.append([n, bar, num, marks])
+	Ui.rule(_folk_box)
+
+
+func _fill_folk_box(v: Villager) -> void:
+	_folk_box.visible = true
+	_folk_face.texture = Portraits.of(v)
+	_folk_job.text = v.job
+	var state := "iyi"
+	if v.down:
+		state = "YARALI, YERDE"
+	elif v.recovering:
+		state = "yatakta, iyileşiyor"
+	elif v.sleeping:
+		state = "uyuyor"
+	elif v.hp < v.max_hp * 0.999:
+		state = "yaralı"
+	var age := "çocuk, %d günlük" % (game.village.day - v.born_day) if v.is_child else ("kadın" if v.female else "erkek")
+	_folk_state.text = "%s · %s · can %d/%d" % [age, state, int(v.hp), int(v.max_hp)]
+	_folk_hp.max_value = v.max_hp
+	_folk_hp.value = v.hp
+	(_folk_hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.BAD if v.hp < v.max_hp * 0.4 else (Color(0.9, 0.7, 0.3) if v.hp < v.max_hp * 0.8 else Color(0.55, 0.78, 0.4))
+	var ks: Array = Villager.SKILLS.keys()
+	ks.sort_custom(func(a: String, b: String) -> bool: return v.skill(a) > v.skill(b))
+	var work := Villager.skill_of(v.workplace) if is_instance_valid(v.workplace) else ""
+	for i in ks.size():
+		var k: String = ks[i]
+		var row: Array = _folk_rows[i]
+		var sk := v.skill(k)
+		var pr := int(v.prio.get(k, 1))
+		(row[0] as Label).text = str(Villager.SKILLS[k])
+		(row[0] as Label).add_theme_color_override("font_color", Ui.ACCENT if k == work else (Ui.DIM if pr == 0 else Ui.INK))
+		(row[1] as ProgressBar).value = sk
+		(row[1] as ProgressBar).modulate = Color(1, 1, 1, 0.35 if pr == 0 else 1.0)
+		(row[2] as Label).text = str(int(sk))
+		(row[2] as Label).add_theme_color_override("font_color", Ui.GOOD if sk >= 6.0 else (Ui.DIM if sk < 2.0 else Ui.INK))
+		(row[3] as Label).text = ("♥" if k in v.keen else "") + (" ▲" if pr == 2 else (" –" if pr == 0 else ""))
+
+
 func _folk_card(v: Villager) -> void:
 	_card.visible = true
 	_card_workers.visible = false
@@ -883,22 +1090,18 @@ func _folk_card(v: Villager) -> void:
 	(_btn.lantern as Button).text = "FENERİ YAK" if v.lantern_mode == "off" else "FENERİ SÖNDÜR"
 	_card_title.text = Ui.upper(v.display_name) if many.size() <= 1 else "%d KİŞİ SEÇİLİ" % many.size()
 	var lines: Array[String] = []
-	lines.append("Ne yapıyor: " + v.job)
+	if many.size() <= 1:
+		_fill_folk_box(v)
+	else:
+		_folk_box.visible = false
+		lines.append("Ne yapıyor: " + v.job)
 	var kin: Array[String] = []
 	for o in game.village.family_of(v.family):
 		if o != v:
 			kin.append(o.display_name.split(" ")[0] + (" (çocuk)" if o.is_child else ""))
 	lines.append("%s ailesi%s" % [v.family, (": " + ", ".join(kin)) if not kin.is_empty() else " (tek)"])
-	if not v.is_child:
-		var ks: Array = Villager.SKILLS.keys()
-		ks.sort_custom(func(a: String, b: String) -> bool: return v.skill(a) > v.skill(b))
-		lines.append("Usta: %s %d, %s %d · zayıf: %s %d" % [Villager.SKILLS[ks[0]], int(v.skill(ks[0])), Villager.SKILLS[ks[1]], int(v.skill(ks[1])),
-			Villager.SKILLS[ks[ks.size() - 1]], int(v.skill(ks[ks.size() - 1]))])
-	if not v.keen.is_empty():
-		lines.append("Hevesli ♥: %s (iki kat hızlı öğrenir)" % ", ".join(v.keen.map(func(k: String) -> String: return str(Villager.SKILLS[k]))))
 	lines.append("İşyeri: " + (v.workplace.display_name() if is_instance_valid(v.workplace) else "yok (taşır, inşa eder)"))
-	lines.append("Evi: " + (v.home.display_name() if is_instance_valid(v.home) else "yok"))
-	lines.append("Can: %d / %d" % [int(v.hp), int(v.max_hp)])
+	lines.append("Evi: " + (v.home.display_name() if is_instance_valid(v.home) else "yok, ateş başında yatıyor"))
 	if v.down:
 		lines.append("YARALI, YERDE: %d sn içinde eve taşınmazsa ölecek" % int(v.bleed))
 	if v.militia:

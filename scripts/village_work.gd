@@ -577,23 +577,44 @@ func _plan_mud(v: Villager, b: Building) -> void:
 	var spot := at + (away.normalized() if away.length() > 0.1 else Vector3.BACK) * 0.8
 	spot.y = nav.height(spot.x, spot.z)
 	var bricks := b.mode == "kerpic"
-	var steps: Array = [{"t": "go", "to": spot}, {"t": "work", "time": 6.0, "anim": "dig", "face": at},
+	var name := b.display_name()
+	var steps: Array = [{"t": "go", "to": spot, "job": "%s: çamura gidiyor" % name}, {"t": "work", "time": 6.0, "anim": "dig", "face": at, "job": "%s: çamur kazıyor" % name},
 		{"t": "do", "f": func() -> bool:
 			terrain.churn(at, 0.5)
 			v.set_carry("camur", 4)
 			return true}]
 	if bricks:
-		steps.append_array([{"t": "go", "to": b.door()}, {"t": "step", "to": b.station()},
-			{"t": "work", "time": 7.0, "anim": "gather", "face": b.station_face()},
+		# Into the pit and trodden with straw, pressed into the mould at the table and struck off level,
+		# then the fresh bricks carried to the drying shelter and laid out on its straw.
+		var at_pit := _yard_spot(b, Vector3(1.75, 0, -0.3))
+		var pit := b.global_transform * Vector3(1.75, 0, -1.35)
+		var at_rack := _yard_spot(b, Vector3(-1.2, 0, -0.25))
+		var rack := b.global_transform * Vector3(-1.2, 0, -1.45)
+		steps.append_array([{"t": "go", "to": at_pit, "job": "%s: çamuru getiriyor" % name},
+			{"t": "work", "time": 4.0, "anim": "hoe", "face": pit, "job": "%s: çamuru samanla karıştırıyor" % name},
+			{"t": "step", "to": b.station()},
+			{"t": "work", "time": 3.0, "anim": "gather", "face": b.station_face(), "job": "%s: kalıba basıyor" % name},
+			{"t": "work", "time": 2.0, "anim": "chisel", "face": b.station_face(), "job": "%s: kalıbı düzlüyor" % name},
+			{"t": "do", "f": func() -> bool:
+				v.set_carry("kerpic", v.carry_n) # (the mud, bricks now)
+				return true},
+			{"t": "go", "to": at_rack, "job": "%s: kerpiçleri rafa taşıyor" % name},
+			{"t": "work", "time": 2.5, "anim": "gather", "face": rack, "job": "%s: kerpiçleri kurumaya diziyor" % name},
 			{"t": "do", "f": func() -> bool:
 				if is_instance_valid(b) and b.state == "done" and v.carry_n > 0:
 					b.lay_to_dry(v.carry_n)
 				v.set_carry("", 0)
-				return true},
-			{"t": "step", "to": b.door()}])
+				return true}])
 	else:
 		steps.append_array(_work_at(b, v, "camur"))
-	v.give(steps, "%s: %s" % [b.display_name(), "kerpiç döküyor" if bricks else "çamur kazıyor"], b)
+	v.give(steps, "%s: %s" % [name, "kerpiç yapıyor" if bricks else "çamur kazıyor"], b)
+
+
+## A point of `b`'s yard (in its space) on the ground.
+func _yard_spot(b: Building, local: Vector3) -> Vector3:
+	var p := b.global_transform * local
+	p.y = nav.height(p.x, p.z)
+	return p
 
 
 ## The muddiest open ground a few tries find in `b`'s reach (INF: none muddy enough).

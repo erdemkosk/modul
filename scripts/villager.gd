@@ -7,6 +7,7 @@ extends Node3D
 ##   {t: "do", f: Callable}                       do something at once; false calls the plan off
 ##   {t: "fight", foe: Villager, give_up?}         run it down and strike till one of them falls
 ##   {t: "step", to: Vector3}                     a few steps straight there (in through a door)
+## Any step may carry a `job`: what it's doing, said from when that step's under way.
 ## An emptied plan and the village gives it the next one. Called off (`abort`), what it carried for a
 ## building site goes back into the store and what it had set aside (a tree) is let go.
 ##
@@ -990,6 +991,8 @@ func _process(dt: float) -> void:
 		_animate(dt, false)
 		return
 	var step: Dictionary = plan[0]
+	if step.has("job"):
+		job = str(step.job)
 	match str(step.t):
 		"go":
 			if _path.is_empty():
