@@ -989,8 +989,11 @@ func add_stump(at: Vector3, r: float, prop := -1) -> void:
 	stump.material_override = m
 	stump.position = at
 	stump.set_meta("prop", prop)
+	stump.set_meta("born", clock)
 	_stumps.add_child(stump)
 
+
+const STUMP_LIFE := 420.0 ## s (about half a day) a stump stands before it's rotted away
 
 ## A sapling on the stump of tree `i`; in SAPLING_TIME (or `left`) it's the tree again.
 func plant(i: int, left := SAPLING_TIME) -> void:
@@ -1023,9 +1026,32 @@ func _grow_one(i: int, dt: float) -> void:
 				st.queue_free()
 
 
+var _rot_t := 0.0
+
+
 func _grow_saplings(dt: float) -> void:
 	for i: int in saplings.keys():
 		_grow_one(i, dt)
+	# Stumps rot down and are gone a while after the tree came down (one with a sapling on it stays
+	# till the tree's up; a gone one is still there, unseen, for a forester to plant on).
+	_rot_t += dt
+	if _rot_t < 4.0:
+		return
+	_rot_t = 0.0
+	for st: Node in _stumps.get_children():
+		var s := st as Node3D
+		if not s.visible or s.has_meta("rotting"):
+			continue
+		var i := int(s.get_meta("prop", -1))
+		if saplings.has(i) or clock - float(s.get_meta("born", clock)) < STUMP_LIFE:
+			continue
+		s.set_meta("rotting", true)
+		var tw := create_tween()
+		tw.tween_property(s, "scale", Vector3(1.15, 0.02, 1.15), 6.0).set_ease(Tween.EASE_IN)
+		tw.tween_callback(func() -> void:
+			s.visible = false
+			s.scale = Vector3.ONE
+			s.remove_meta("rotting"))
 
 
 ## A forester's next stint: a sapling on the nearest stump in reach without one.

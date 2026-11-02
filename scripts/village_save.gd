@@ -59,7 +59,8 @@ static func save(game: Node) -> bool:
 			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate(), "keen": vl.keen.duplicate(), "traits": vl.traits.duplicate(), "look": vl.look_seed})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
-		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
+		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1)),
+			v.clock - float(s.get_meta("born", v.clock)), s.visible])
 	var bush := {}
 	for i: int in v.bush_rest:
 		bush[i] = float(v.bush_rest[i]) - v.clock
@@ -134,6 +135,10 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.bush_rest[i] = v.clock + float(d.bush[i])
 	for s: Array in d.stumps:
 		v.add_stump(Vector3(s[0], s[1], s[2]), float(s[3]), int(s[4]) if s.size() > 4 else -1)
+		var st := v._stumps.get_child(v._stumps.get_child_count() - 1) as Node3D
+		if s.size() > 6:
+			st.set_meta("born", v.clock - float(s[5]))
+			st.visible = bool(s[6])
 	var rl: Array = d.get("rail", [])
 	if rl.size() > 1:
 		var line := PackedVector3Array()

@@ -1162,7 +1162,7 @@ func _walk(dt: float) -> bool:
 			_animate(dt, false)
 			return false
 	var worn := nav.worn(position)
-	var speed := 2.9 * (1.0 + 0.5 * worn * (1.0 - 0.75 * Weather.wet_now))
+	var speed := 2.9 * (1.0 + 0.8 * worn * (1.0 - 0.75 * Weather.wet_now)) # (a trodden path: up to 80% quicker going)
 	speed *= 0.82 if carry_n > 0 else 1.0
 	# A trodden way in the wet is mud underfoot; deep snow is slow going everywhere; planks are neither.
 	var planks := nav.on_road(position)
@@ -1173,7 +1173,7 @@ func _walk(dt: float) -> bool:
 	var mud := 0.0
 	if has_cart:
 		# Quick on a hard path, slow off it; in the wet the path is mud, and soft ground is worse.
-		speed = 2.4 * (1.0 + 0.9 * worn * (1.0 - 0.8 * Weather.wet_now))
+		speed = 2.4 * (1.0 + 1.2 * worn * (1.0 - 0.8 * Weather.wet_now))
 		mud = 0.0 if planks else clampf(Weather.wet_now * (0.4 + worn * 0.6) + nav.terrain.soft_at(position.x, position.z).x * 1.5 + Weather.snow_cover_now * 0.5, 0.0, 1.0)
 		speed *= 1.0 - 0.6 * mud
 		if _stuck > 0.0:

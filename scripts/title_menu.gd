@@ -242,7 +242,7 @@ func _new_game_plate(root: Control) -> void:
 	_people_label.custom_minimum_size = Vector2(40, 0)
 	_people_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	row.add_child(_button("+", func() -> void: _set_people(_people + 1), 40))
-	_choices(col, "MALZEME", "supplies", ["AZ", "NORMAL", "BOL"], "Trenin getirdiği odun, taş, yiyecek")
+	_choices(col, "MALZEME", "supplies", ["AZ", "NORMAL", "BOL"], "Trenin getirdiği odun, taş, yiyecek (kişi sayısıyla birlikte artar)")
 	_choices(col, "BASKINLAR", "raids", ["KOLAY", "NORMAL", "ZOR"], "Haydutların ne zaman, ne sıklıkla, kaç kişi geldiği")
 	_choices(col, "MEVSİM", "season", ["İLKBAHAR", "YAZ", "SONBAHAR", "KIŞ"], "Trenin geldiği mevsim")
 	# the crew, on the right

@@ -204,7 +204,7 @@ func _start_old(at: Vector3) -> void:
 	if store:
 		store.complete_now()
 		for k: String in START_STOCK:
-			store.add_goods(k, roundi(int(START_STOCK[k]) * supplies))
+			store.add_goods(k, roundi(int(START_STOCK[k]) * supplies * _crowd()))
 	if house:
 		house.complete_now()
 	var door := store.door() if store else at
@@ -533,7 +533,8 @@ func _train_arrived(station: Building) -> void:
 	var to_station := station.global_position - train.door(Vector3.ZERO)
 	to_station.y = 0.0
 	var sd := to_station.normalized()
-	_cargo = {"yiyecek": roundi(int(START_STOCK.yiyecek) * supplies), "odun": roundi(int(START_STOCK.odun) * supplies), "tas": roundi(int(START_STOCK.tas) * supplies)}
+	var many := _crowd() # (more on the train, more brought with them)
+	_cargo = {"yiyecek": roundi(int(START_STOCK.yiyecek) * supplies * many), "odun": roundi(int(START_STOCK.odun) * supplies * many), "tas": roundi(int(START_STOCK.tas) * supplies * many)}
 	for k in start_people:
 		get_tree().create_timer(0.8 + k * 0.7, false).timeout.connect(func() -> void:
 			if not is_instance_valid(train):
@@ -617,6 +618,12 @@ const SURNAMES := ["Ivanov", "Petrov", "Smirnov", "Kuznetsov", "Popov", "Sokolov
 
 ## A newcomer at `p`: a child or not, of `fam` (a new family if ""), a woman or a man (`woman`: -1
 ## either), named and given its knacks.
+## What the settlers bring, by how many they are: six bring the stock as it stands, each more a
+## sixth more (each fewer a sixth less).
+func _crowd() -> float:
+	return maxf(float(start_people) / 6.0, 0.5)
+
+
 func spawn_villager(p: Vector3, child := false, fam := "", woman := -1, data := {}) -> Villager:
 	var v := Villager.new()
 	v.is_child = child
