@@ -66,6 +66,26 @@ float pebbles(vec2 p) {
 	return sqrt(d);
 }
 
+// Distance to the nearest stone: jittered points like pebbles(), but only one cell in so many has one
+// (`keep`: the share left empty), each a size of its own; 1.0 where there's none near.
+float stones_at(vec2 p, float keep) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	float d = 1.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			float h = hash12(i + o + 5.0);
+			if (h < keep) {
+				continue;
+			}
+			vec2 r = o + vec2(hash12(i + o), hash12(i + o + 17.0)) - f;
+			d = min(d, length(r) / mix(0.6, 1.4, fract(h * 13.7)));
+		}
+	}
+	return d;
+}
+
 // Distance to the nearest edge between jittered cells (F2 - F1): the cracks in a sheet of ice.
 float cell_edge(vec2 p) {
 	vec2 i = floor(p);
@@ -245,7 +265,19 @@ void fragment() {
 	base = mix(base, wet_c, wet * 0.85);
 	base = mix(base, shore_c, shore);
 	base = mix(base, road_c, road);
-	vec3 trail_c = mix(vec3(0.19, 0.145, 0.1), vec3(0.27, 0.21, 0.15), mid) * (0.92 + 0.14 * fine); // packed earth
+	// Packed earth, but never one flat brown: clods of it lighter and darker, humus-black patches and
+	// dusty pale ones, small stones worked up through it and wisps of dry grass and needles close up.
+	float clod = fbm(xz * 0.7 + 3.0, 3);
+	vec3 trail_c = mix(vec3(0.15, 0.115, 0.085), vec3(0.28, 0.225, 0.165), smoothstep(0.2, 0.8, mid * 0.55 + clod * 0.45));
+	trail_c = mix(trail_c, vec3(0.095, 0.075, 0.055), smoothstep(0.6, 0.85, fbm(xz * 0.16 + 17.0, 3)) * 0.55); // humus
+	trail_c = mix(trail_c, vec3(0.33, 0.295, 0.235), smoothstep(0.64, 0.9, fbm(xz * 0.22 + 51.0, 3)) * 0.4); // dust
+	float near_e = 1.0 - smoothstep(18.0, 55.0, dist);
+	// (stones of a few sizes, here and there, not a polka dot: two scales, most cells left empty)
+	float stone_e = max(smoothstep(0.24, 0.12, stones_at(xz * 3.1 + 7.0, 0.75)), smoothstep(0.26, 0.14, stones_at(xz * 1.4 + 2.0, 0.88))) * near_e;
+	trail_c = mix(trail_c, mix(vec3(0.27, 0.25, 0.22), vec3(0.36, 0.34, 0.3), fine), stone_e * 0.7);
+	float litter_e = smoothstep(0.7, 0.9, fbm(xz * 2.4 + 9.0, 2)) * near_e;
+	trail_c = mix(trail_c, vec3(0.31, 0.26, 0.13), litter_e * 0.45);
+	trail_c *= 0.9 + 0.18 * fine;
 	base = mix(base, base * vec3(0.95, 0.9, 0.72) + vec3(0.03, 0.025, 0.0), worn_grass * 0.7); // grass trodden pale
 	base = mix(base, trail_c, trail * 0.95);
 	base = mix(base, rock_c, rock);
@@ -403,6 +435,16 @@ void fragment() {
 			detail_n.x += (t0 - tx) * 4.5 * kr * tw.z;
 			detail_n.y += (t0 - ty) * 4.5 * kr * tw.z;
 		}
+	}
+	// Packed earth isn't flat either: clods and the stones in it stand up out of it, close up.
+	if (trail > 0.05 && dist < 55.0) {
+		float k_e = trail * (1.0 - smoothstep(22.0, 55.0, dist)) * (1.0 - snow_in) * (1.0 - mud_in);
+		float o = 0.07;
+		float e0 = fbm(xz * 1.1, 3) * 0.5 + smoothstep(0.24, 0.0, stones_at(xz * 3.1 + 7.0, 0.75)) * 0.3;
+		float ex = fbm((xz + vec2(o, 0.0)) * 1.1, 3) * 0.5 + smoothstep(0.24, 0.0, stones_at((xz + vec2(o, 0.0)) * 3.1 + 7.0, 0.75)) * 0.3;
+		float ez = fbm((xz + vec2(0.0, o)) * 1.1, 3) * 0.5 + smoothstep(0.24, 0.0, stones_at((xz + vec2(0.0, o)) * 3.1 + 7.0, 0.75)) * 0.3;
+		detail_n.x += (e0 - ex) * 1.2 * k_e;
+		detail_n.z += (e0 - ez) * 1.2 * k_e;
 	}
 	n = normalize(n + detail_n);
 	// Ambient occlusion in creases and under the forest canopy.
