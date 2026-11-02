@@ -1078,6 +1078,9 @@ var _folk_face: TextureRect
 var _folk_job: Label
 var _folk_state: Label
 var _folk_traits: VBoxContainer ## a line a trait: its name, its good, its bad
+var _folk_mood: ProgressBar
+var _folk_mood_word: Label
+var _folk_thoughts: Label ## what it's been thinking, each with its say (+5, -14)
 var _folk_traits_of: Villager
 var _folk_hp: ProgressBar
 var _folk_rows: Array = [] ## [name Label, ProgressBar, number Label, marks Label] a skill each, best first
@@ -1126,6 +1129,17 @@ func _make_folk_box(col: VBoxContainer) -> void:
 	side.add_child(_folk_traits)
 	_folk_hp = _bar(Color(0.55, 0.78, 0.4), 230, 8)
 	side.add_child(_folk_hp)
+	var mrow := HBoxContainer.new()
+	mrow.add_theme_constant_override("separation", 8)
+	_folk_box.add_child(mrow)
+	Ui.label(mrow, "MORAL", 12, Ui.ACCENT, "head")
+	_folk_mood = _bar(Ui.GOOD, 150, 8)
+	_folk_mood.max_value = 100.0
+	mrow.add_child(_folk_mood)
+	_folk_mood_word = Ui.label(mrow, "", 13, Ui.INK, "head")
+	_folk_thoughts = Ui.label(_folk_box, "", 13, Ui.INK)
+	_folk_thoughts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_folk_thoughts.custom_minimum_size = Vector2(330, 0)
 	Ui.label(_folk_box, "BECERİLER  ·  ♥ hevesli  ·  ▲ önce  ·  – hiç", 12, Ui.ACCENT, "head")
 	var grid := GridContainer.new()
 	grid.columns = 4
@@ -1171,6 +1185,16 @@ func _fill_folk_box(v: Villager) -> void:
 			var line := Ui.label(_folk_traits, "%s: + %s · − %s" % [tr.name, tr.plus, tr.minus], 12, Ui.ACCENT, "head")
 			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			line.custom_minimum_size = Vector2(230, 0)
+	var m := v.mood
+	_folk_mood.value = m
+	(_folk_mood.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.GOOD if m >= 55.0 else (Ui.ACCENT if m >= 35.0 else Ui.BAD)
+	_folk_mood_word.text = "%s (%d)" % [v.mood_word(), roundi(m)]
+	var th: Array = v.thoughts.duplicate()
+	th.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return absf(float(a.value)) > absf(float(b.value)))
+	var lines: Array[String] = []
+	for t: Dictionary in th.slice(0, 6):
+		lines.append("%+d  %s" % [roundi(float(t.value)), t.text])
+	_folk_thoughts.text = "\n".join(lines) if not lines.is_empty() else "Aklında bir şey yok"
 	_folk_hp.max_value = v.max_hp
 	_folk_hp.value = v.hp
 	(_folk_hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.BAD if v.hp < v.max_hp * 0.4 else (Color(0.9, 0.7, 0.3) if v.hp < v.max_hp * 0.8 else Color(0.55, 0.78, 0.4))

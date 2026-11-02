@@ -83,6 +83,9 @@ func _card(i: int) -> Button:
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.clip_text = true
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mood := Ui.label(top, "•", 18, Ui.GOOD, "display") # (its spirits, by colour)
+	mood.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.move_child(mood, 0)
 	var mark := Ui.label(top, "", 12, Ui.BAD, "head")
 	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var hp := ProgressBar.new()
@@ -96,7 +99,7 @@ func _card(i: int) -> Button:
 	hp.add_theme_stylebox_override("background", bg)
 	hp.add_theme_stylebox_override("fill", fg)
 	col.add_child(hp)
-	_cards.append([b, face, name, hp, mark])
+	_cards.append([b, face, name, hp, mark, mood])
 	return b
 
 
@@ -106,6 +109,10 @@ func _trouble(v: Villager) -> Array:
 		return ["YERDE", 4]
 	if v.hp < v.max_hp * 0.5:
 		return ["YARALI", 3]
+	if v.leaving:
+		return ["GİDİYOR", 3]
+	if v.mood < Villager.BREAK:
+		return ["ÇÖKMÜŞ", 3]
 	if is_instance_valid(v.home) and v.home.cold_night:
 		return ["ÜŞÜDÜ", 2]
 	if game.village._hungry:
@@ -143,10 +150,12 @@ func refresh() -> void:
 		hp.max_value = v.max_hp
 		hp.value = v.hp
 		(hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.BAD if v.hp < v.max_hp * 0.4 else (Ui.ACCENT if v.hp < v.max_hp * 0.8 else Ui.GOOD)
+		var m := v.mood
+		(parts[5] as Label).add_theme_color_override("font_color", Ui.GOOD if m >= 55.0 else (Ui.ACCENT if m >= 35.0 else Ui.BAD))
 		var t: Array = _trouble(v)
 		(parts[4] as Label).text = str(t[0])
 		(parts[4] as Label).add_theme_color_override("font_color", Ui.ACCENT if t[0] == "EMİRDE" else Ui.BAD)
-		b.tooltip_text = "%s\n%s" % [v.display_name, v.job]
+		b.tooltip_text = "%s\n%s\nMoral: %s (%d)" % [v.display_name, v.job, v.mood_word(), roundi(v.mood)]
 
 
 func _pick(i: int) -> void:

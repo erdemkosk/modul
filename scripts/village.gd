@@ -58,6 +58,47 @@ func _process(dt: float) -> void:
 		_assign()
 
 
+## Off on its own a while, its spirits broken: sat at the edge of the woods, or walking about.
+func _plan_sulk(v: Villager) -> void:
+	v.abort()
+	v.sulk_cd = randf_range(70.0, 120.0)
+	var to := v.position
+	for k in 12:
+		var a := randf() * TAU
+		var p := v.position + Vector3(cos(a), 0, sin(a)) * randf_range(18.0, 35.0)
+		if nav.is_open(p):
+			to = p
+			break
+	to.y = nav.height(to.x, to.z)
+	var what: String = ["Morali çökmüş: kendi başına oturuyor", "Morali çökmüş: ağlıyor", "Morali çökmüş: amaçsızca dolaşıyor"][randi() % 3]
+	v.give([{"t": "go", "to": to}, {"t": "work", "time": randf_range(30.0, 50.0), "anim": "sit" if not what.ends_with("dolaşıyor") else "look"}], what)
+
+
+## It's had enough: it says so and walks off down the valley, and the town's one fewer (its family
+## the worse for it).
+func _leave(v: Villager) -> void:
+	v.abort()
+	v.leaving = true
+	if is_instance_valid(v.workplace):
+		v.workplace.workers.erase(v)
+	v.workplace = null
+	var away := (v.position - (stores()[0].global_position if not stores().is_empty() else Vector3.ZERO))
+	away.y = 0.0
+	var to := v.position + (away.normalized() if away.length() > 1.0 else Vector3.FORWARD) * 120.0
+	to.y = nav.height(to.x, to.z)
+	message.emit("%s artık dayanamadı: kasabayı terk ediyor" % v.display_name, "bad")
+	for o in villagers:
+		if o != v and o.family == v.family:
+			o.think("left", "%s kasabayı terk etti" % v.display_name.split(" ")[0], -12.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+	v.give([{"t": "go", "to": to}, {"t": "do", "f": func() -> bool:
+		villagers.erase(v)
+		if is_instance_valid(v.home):
+			v.home.residents.erase(v)
+		v.home = null
+		v.queue_free()
+		return true}], "Kasabayı terk ediyor")
+
+
 func _assign() -> void:
 	var night := weather.is_night()
 	var fires: Array[Building] = []
@@ -66,9 +107,19 @@ func _assign() -> void:
 			fires.append(b)
 	var raid := raids != null and raids.threat()
 	_rescues()
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
 	for v in villagers:
-		if v.dead or v.down or v.drafted:
+		if v.dead or v.down or v.drafted or v.leaving:
 			continue
+		# Broken in spirit: now and then it downs tools and goes off on its own; a day of it, and it
+		# leaves the valley.
+		if v.mood < Villager.BREAK and not raid and not v.sleeping and not v.is_child:
+			if v.low_for > day_s:
+				_leave(v)
+				continue
+			if v.sulk_cd <= 0.0 and (v.plan.is_empty() or v.idle or (is_instance_valid(v.workplace) and v.target == v.workplace and v.carry_n == 0)):
+				_plan_sulk(v)
+				continue
 		if v.sleeping:
 			var cover := v.inside
 			var unsafe := not is_instance_valid(cover) or cover.state != "done" or cover.is_burning()

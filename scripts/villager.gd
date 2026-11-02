@@ -130,7 +130,20 @@ const TRAITS := {
 	"obur": {"name": "Obur", "plus": "sağlam: can +20", "minus": "%50 daha çok yer", "hp": 20, "eat": 1.5},
 	"kanaatkar": {"name": "Kanaatkâr", "plus": "%40 daha az yer", "minus": "zayıf: can −15", "eat": 0.6, "hp": -15},
 }
-const BUILD_PACE := 1.25 ## building, mending, a house made better: a quarter quicker than other work
+## How it's feeling (0..100): 50 and what it's been thinking lately, each thought for a while.
+var thoughts: Array = [] ## {id, text, value, left (s)}
+var low_for := 0.0 ## s its spirits have been at breaking point
+var leaving := false ## (gone for good: on its way out of the valley)
+var sulk_cd := 0.0 ## s before it can go off on its own again
+var mood: float:
+	get:
+		var m := 50.0
+		for t: Dictionary in thoughts:
+			m += float(t.value)
+		return clampf(m, 0.0, 100.0)
+
+const BUILD_PACE := 1.25
+const BREAK := 15.0 ## spirits this low: it can't go on ## building, mending, a house made better: a quarter quicker than other work
 const TRAIT_CLASH := [["caliskan", "tembel"], ["obur", "kanaatkar"], ["gozukara", "korkak"], ["obur", "tembel"]]
 var family := "" ## the surname's stem ("Ivanov"): a family shares a house
 var female := false
@@ -167,6 +180,39 @@ static func candidate(rng: RandomNumberGenerator, female: bool, family: String) 
 		"skills": v.skills.duplicate(), "keen": v.keen.duplicate(), "traits": v.traits.duplicate(), "look_seed": (rng.randi() % 2147483646) + 1}
 	v.free()
 	return out
+
+
+## A thought `id` (one of a kind at a time: a new one takes its place) worth `value` to its
+## spirits, said as `text`, for `secs` s.
+func think(id: String, text: String, value: float, secs: float) -> void:
+	for t: Dictionary in thoughts:
+		if t.id == id:
+			t.text = text
+			t.value = value
+			t.left = maxf(float(t.left), secs)
+			return
+	thoughts.append({"id": id, "text": text, "value": value, "left": secs})
+
+
+## The thoughts worn off with `dt` s.
+func _fade_thoughts(dt: float) -> void:
+	for i in range(thoughts.size() - 1, -1, -1):
+		thoughts[i].left = float(thoughts[i].left) - dt
+		if float(thoughts[i].left) <= 0.0:
+			thoughts.remove_at(i)
+
+
+## Its spirits in a word, and their colour.
+func mood_word() -> String:
+	var m := mood
+	return "keyifli" if m >= 75.0 else ("iyi" if m >= 55.0 else ("idare eder" if m >= 40.0 else ("morali bozuk" if m >= 20.0 else "çökmüş")))
+
+
+## Its spirits' say in its pace and learning: in good heart a tenth quicker, low a sixth slower,
+## broken a third.
+func mood_mul() -> float:
+	var m := mood
+	return 1.1 if m >= 70.0 else (1.0 if m >= 35.0 else (0.85 if m >= 18.0 else 0.67))
 
 
 ## None, one or (now and then) two traits, never two that clash.
@@ -222,14 +268,18 @@ func skill(k: String) -> float:
 
 ## How quick at `k` it is: 0.7 at nothing, 1 at middling (5), 1.3 at the best (10).
 func knack(k: String) -> float:
-	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work") * (BUILD_PACE if k == "insa" else 1.0)
+	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work") * mood_mul() * (BUILD_PACE if k == "insa" else 1.0)
 
 
 ## Better at `k` for `secs` s of doing it (slower the better it already is).
 func learn(k: String, secs: float) -> void:
 	if k == "" or is_child:
 		return
-	skills[k] = minf(skill(k) + secs * 0.004 * (2.0 if k in keen else 1.0) * trait_mul("learn") * (1.0 - skill(k) / 12.0), 10.0)
+	skills[k] = minf(skill(k) + secs * 0.004 * (2.0 if k in keen else 1.0) * trait_mul("learn") * mood_mul() * (1.0 - skill(k) / 12.0), 10.0)
+	if k in keen and not is_child:
+		think("keen", "Sevdiği işi yaptı (%s)" % SKILLS[k], 6.0, 240.0)
+	elif skill(k) < 1.5 and workplace and Villager.skill_of(workplace) == k:
+		think("unfit", "Beceremediği işe verildi", -5.0, 120.0)
 
 
 ## What its work just now draws on.
@@ -1007,6 +1057,8 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		die() # (struck again where it lies)
 		return
 	hp -= dmg
+	if team == 0 and dmg >= 5.0:
+		think("hurt", "Yaralandı", -10.0, 600.0)
 	if _tunic:
 		var c := _tunic.albedo_color
 		_tunic.albedo_color = Color(1.0, 0.3, 0.25)
@@ -1049,6 +1101,11 @@ func die() -> void:
 func _process(dt: float) -> void:
 	if dead:
 		return
+	if team == 0:
+		var g := dt * _rate()
+		_fade_thoughts(g)
+		sulk_cd -= g
+		low_for = low_for + g if mood < BREAK else maxf(low_for - g * 2.0, 0.0)
 	if revealed > 0.0:
 		revealed -= dt
 	if down:

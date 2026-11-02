@@ -682,6 +682,13 @@ func family_of(f: String) -> Array[Villager]:
 
 func _on_villager_died(v: Villager) -> void:
 	villagers.erase(v)
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	if v.team == 0:
+		for o in villagers:
+			if o.family == v.family:
+				o.think("grief", "%s öldü: yasta" % v.display_name.split(" ")[0], -25.0, day_s * 2.0)
+			else:
+				o.think("loss", "Kasabadan biri öldü", -5.0, day_s * 0.6)
 	if is_instance_valid(v.workplace):
 		v.workplace.workers.erase(v)
 	if is_instance_valid(v.home):

@@ -58,6 +58,9 @@ func _eat(dt: float) -> void:
 		if s:
 			s.take_goods("yiyecek", 1)
 	var hungry := int(stock.yiyecek) <= 0
+	if hungry:
+		for v in villagers:
+			v.think("hungry", "Aç", -18.0, 60.0)
 	if hungry and not _hungry:
 		message.emit("Yiyecek bitti! Köylüler aç, yavaş çalışıyorlar.", "bad")
 	_hungry = hungry
@@ -199,6 +202,26 @@ func _morning() -> void:
 			v.grow_up()
 			message.emit("%s büyüdü, artık çalışabilir" % v.display_name, "good")
 	var cold := 0
+	# How the night was: warm or cold in a house (a stove, a back room, plaster to its credit), or out.
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	for v in villagers:
+		if v.dead or v.team != 0:
+			continue
+		var h := v.home
+		if not is_instance_valid(h) or h.state != "done":
+			v.think("night", "Açıkta, ateş başında yattı", -8.0, day_s)
+		elif h.cold_night and not v.has_trait("cold"):
+			v.think("night", "Soğuk evde üşüdü", -14.0, day_s)
+		else:
+			v.think("night", "Sıcak evde uyudu", 5.0, day_s)
+			if h.stove:
+				v.think("home", "Sobalı evde oturuyor", 6.0, day_s * 1.05)
+			elif h.level >= 2:
+				v.think("home", "Geniş bir evde oturuyor", 4.0, day_s * 1.05)
+			elif h.plastered:
+				v.think("home", "Sıvalı, sıcak bir evde oturuyor", 3.0, day_s * 1.05)
+			if h.residents.size() >= h.beds() and h.beds() > 0:
+				v.think("crowd", "Evi dolu, sıkışık", -3.0, day_s)
 	for b in buildings:
 		if b.def.role == "house" and b.cold_night:
 			b.cold_night = false
@@ -395,6 +418,9 @@ func _plan_idle(v: Villager) -> void:
 		seat.y = ground_at(seat)
 		v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": seat},
 			{"t": "work", "time": randf_range(15.0, 30.0), "anim": "sit" if randf() < 0.6 else "chat", "face": sq.global_position + Vector3.UP},
+			{"t": "do", "f": func() -> bool:
+				v.think("fire", "Akşam ateş başında oturdu", 6.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+				return true},
 			{"t": "step", "to": sq.door()}], "Meydanda, ateş başında", sq, true)
 		return
 	var near: Building = v.workplace if v.workplace else _nearest(stores(), v.position)
