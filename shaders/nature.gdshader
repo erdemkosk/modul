@@ -29,6 +29,7 @@ const float LOD_BAND = 28.0; // wide, so the two shapes trade places gradually r
 global uniform vec3 weather_wind;
 global uniform float weather_wetness;
 global uniform float weather_snow;
+global uniform float season_autumn; // 0 green .. 1 the autumn's colours (Seasons)
 global uniform vec3 props_lod_center;
 global uniform vec4 view_focus; // xyz: what the view is on (your machine); w: 1 when there is one
 
@@ -103,11 +104,13 @@ void vertex() {
 
 vec3 crown_colour(float pick) {
 	if (broadleaf > 0.5) {
-		// The autumn wood: mostly gold and orange, some still green, a few red.
-		if (pick < 0.22) return vec3(0.42, 0.55, 0.14);
-		if (pick < 0.52) return vec3(0.9, 0.62, 0.12);
-		if (pick < 0.8) return vec3(0.92, 0.4, 0.09);
-		return vec3(0.78, 0.17, 0.08);
+		// Green in spring and summer (a fresh birch green, a darker one), turning in the autumn
+		// (season_autumn, Seasons): mostly gold and orange, some still green, a few red; each tree
+		// turns on its own day (pick), not all at once.
+		vec3 green = mix(vec3(0.3, 0.48, 0.12), vec3(0.45, 0.6, 0.16), fract(pick * 7.13));
+		vec3 turned = pick < 0.22 ? vec3(0.42, 0.55, 0.14) : (pick < 0.52 ? vec3(0.9, 0.62, 0.12) : (pick < 0.8 ? vec3(0.92, 0.4, 0.09) : vec3(0.78, 0.17, 0.08)));
+		float t = smoothstep(fract(pick * 3.71) * 0.7, fract(pick * 3.71) * 0.7 + 0.3, season_autumn);
+		return mix(green, turned, t);
 	}
 	// Conifers: deep, slightly blue greens, a few brighter.
 	return mix(vec3(0.05, 0.16, 0.11), vec3(0.15, 0.29, 0.12), pick);
@@ -135,8 +138,8 @@ void fragment() {
 		vec3 d = view_focus.xyz - eye;
 		float t = dot(p - eye, d) / max(dot(d, d), 0.001);
 		if (t > 0.0 && t < 0.92) {
-			float r = max(1.3, length(d) * 0.16);
-			float clear = smoothstep(r, r * 2.4, length(p - (eye + d * t)));
+			float r = max(1.3, length(d) * 0.14);
+			float clear = smoothstep(r, r * 1.25, length(p - (eye + d * t))); // (a narrow dissolving rim: a wide one reads as noise)
 			float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(5.0, 11.0), vec2(0.06711056, 0.00583715))));
 			if (n >= clear) {
 				discard;

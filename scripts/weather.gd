@@ -31,9 +31,9 @@ const WIND_NORM := 15.0 ## m/s that maps to 1.0 in the weather_wind shader globa
 const PRESETS := {
 	"clear":    {"cover": 0.24, "dark": 0.0,  "rain": 0.0, "snow": 0.0, "fog": 0.0,  "wind": 2.5,  "haze": 1.0, "lightning": 0.0, "temp": 18.0},
 	"cloudy":   {"cover": 0.5,  "dark": 0.12, "rain": 0.0, "snow": 0.0, "fog": 0.05, "wind": 4.5,  "haze": 1.3, "lightning": 0.0, "temp": 15.0},
-	"overcast": {"cover": 0.9,  "dark": 0.4,  "rain": 0.0, "snow": 0.0, "fog": 0.12, "wind": 5.5,  "haze": 1.8, "lightning": 0.0, "temp": 12.0},
-	"rain":     {"cover": 0.97, "dark": 0.62, "rain": 0.6, "snow": 0.0, "fog": 0.1,  "wind": 6.5,  "haze": 2.2, "lightning": 0.0, "temp": 10.0},
-	"storm":    {"cover": 1.0,  "dark": 0.85, "rain": 1.0, "snow": 0.0, "fog": 0.15, "wind": 13.0, "haze": 2.5, "lightning": 1.0, "temp": 9.0},
+	"overcast": {"cover": 0.9,  "dark": 0.3,  "rain": 0.0, "snow": 0.0, "fog": 0.12, "wind": 5.5,  "haze": 1.8, "lightning": 0.0, "temp": 12.0},
+	"rain":     {"cover": 0.97, "dark": 0.45, "rain": 0.6, "snow": 0.0, "fog": 0.1,  "wind": 6.5,  "haze": 2.2, "lightning": 0.0, "temp": 10.0},
+	"storm":    {"cover": 1.0,  "dark": 0.6, "rain": 1.0, "snow": 0.0, "fog": 0.15, "wind": 13.0, "haze": 2.5, "lightning": 1.0, "temp": 9.0},
 	"fog":      {"cover": 0.6,  "dark": 0.3,  "rain": 0.0, "snow": 0.0, "fog": 1.0,  "wind": 0.8,  "haze": 3.0, "lightning": 0.0, "temp": 8.0},
 	"snow":     {"cover": 0.95, "dark": 0.35, "rain": 0.0, "snow": 0.8, "fog": 0.35, "wind": 4.0,  "haze": 2.0, "lightning": 0.0, "temp": -4.0},
 	# A hard frost after a thaw: clear, still and bitter, last night's water frozen on the roads.

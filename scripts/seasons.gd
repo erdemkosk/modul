@@ -58,7 +58,17 @@ func force(s: int) -> void:
 	message.emit(ARRIVE[s], "info")
 
 
+var _autumn := -1.0
+
+
 func _process(dt: float) -> void:
+	# The broadleaf trees turning: green in spring and summer, gold and red through the autumn,
+	# coming on over its first days (nature.gdshader's season_autumn).
+	var into := float((village.day - 1) % DAYS) / float(DAYS) if season == 2 else 0.0
+	var want := clampf(into * 2.5 + 0.25, 0.0, 1.0) if season == 2 else (1.0 if season == 3 else 0.0)
+	if absf(want - _autumn) > 0.01:
+		_autumn = want
+		RenderingServer.global_shader_parameter_set(&"season_autumn", want)
 	var s := (of_day(village.day) + offset) % 4
 	if s != season:
 		var first := season < 0

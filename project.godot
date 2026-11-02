@@ -46,6 +46,10 @@ weather_wetness={
 "type": "float",
 "value": 0.0
 }
+season_autumn={
+"type": "float",
+"value": 0.0
+}
 weather_snow={
 "type": "float",
 "value": 0.0

@@ -1104,8 +1104,12 @@ func set_hearth(on: bool) -> void:
 		(_chimney.process_material as ParticleProcessMaterial).initial_velocity_max = 1.2
 		# wood smoke: a bluish grey thinning to nothing
 		(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.32, 0.33, 0.36, 0.0),
-			Color(0.42, 0.43, 0.46, 0.5), Color(0.55, 0.56, 0.58, 0.22), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.1, 0.55, 1.0])
-		(_chimney.draw_pass_1 as QuadMesh).size = Vector2(1.4, 1.4)
+			Color(0.42, 0.43, 0.46, 0.28), Color(0.55, 0.56, 0.58, 0.1), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.12, 0.5, 1.0])
+		# (a thin wisp, not a cloud: smaller, fainter, fewer)
+		(_chimney.process_material as ParticleProcessMaterial).scale_min = 0.55
+		(_chimney.process_material as ParticleProcessMaterial).scale_max = 1.0
+		_chimney.amount = 16
+		(_chimney.draw_pass_1 as QuadMesh).size = Vector2(1.0, 1.0)
 		_chimney.position = smoke_at
 		add_child(_chimney)
 	if _chimney:
