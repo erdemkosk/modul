@@ -1288,6 +1288,7 @@ var _folk_box: VBoxContainer
 var _folk_face: TextureRect
 var _folk_job: Label
 var _folk_state: Label
+var _folk_wounds: Label ## where it's hurt, whether it's bleeding
 var _folk_traits: VBoxContainer ## a line a trait: its name, its good, its bad
 var _folk_mood: ProgressBar
 var _folk_mood_word: Label
@@ -1335,6 +1336,9 @@ func _make_folk_box(col: VBoxContainer) -> void:
 	_folk_job.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_folk_job.custom_minimum_size = Vector2(230, 0)
 	_folk_state = Ui.label(side, "", 13, Ui.DIM, "head")
+	_folk_wounds = Ui.label(side, "", 13, Ui.BAD, "head")
+	_folk_wounds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_folk_wounds.custom_minimum_size = Vector2(230, 0)
 	_folk_traits = VBoxContainer.new()
 	_folk_traits.add_theme_constant_override("separation", 0)
 	side.add_child(_folk_traits)
@@ -1389,6 +1393,9 @@ func _fill_folk_box(v: Villager) -> void:
 		state = "yaralı"
 	var age := "çocuk, %d günlük" % (game.village.day - v.born_day) if v.is_child else ("kadın" if v.female else "erkek")
 	_folk_state.text = "%s%s · %s · can %d/%d" % [age, (" · " + str(Villager.ORIGINS[v.origin].name).to_lower()) if v.origin != "" else "", state, int(v.hp), int(v.max_hp)]
+	_folk_wounds.visible = not v.wounds.is_empty() or v.bleeding
+	if _folk_wounds.visible:
+		_folk_wounds.text = "YARALAR: %s%s%s" % [v.wounds_text() if not v.wounds.is_empty() else "yarası var", "  ·  KANIYOR" if v.bleeding else "", "  ·  sarıldı" if v.treated else ""]
 	if _folk_traits_of != v or _folk_traits.get_child_count() != v.traits.size() + v.scars.size():
 		_folk_traits_of = v
 		for ch in _folk_traits.get_children():

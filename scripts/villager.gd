@@ -118,6 +118,7 @@ var origin := "" ## where it came from, before the valley (ORIGINS): a knack it 
 var traits: Array[String] = [] ## who it is (TRAITS): none, one or two, each for better and for worse
 var scars: Array[String] = [] ## what a bad wound left it with for good (SCARS)
 var bleeding := false ## wounded and on its feet, losing blood till it's bound up (a healer)
+var wounds: Array[Dictionary] = [] ## where it's hurt just now: {part (PARTS), how (WOUND_KINDS)}, gone when it's mended
 var treated := false ## its wound seen to by a healer: mends quicker, seldom leaves a scar
 var wounded_badly := false ## it went down: its mending may leave a scar
 
@@ -143,13 +144,54 @@ func roll_origin(rng: RandomNumberGenerator) -> void:
 	skills[o.skill] = minf(skill(o.skill) + float(o.by), 10.0)
 
 
+## Where a blow lands, and how often (the body's the biggest mark, the head the smallest).
+const PARTS := {"bas": ["baş", 1], "govde": ["gövde", 4], "sol_kol": ["sol kol", 2], "sag_kol": ["sağ kol", 2], "sol_bacak": ["sol bacak", 2], "sag_bacak": ["sağ bacak", 2]}
+## What a wound is, worst last.
+const WOUND_KINDS := ["sıyrık", "kesik", "derin kesik", "kurşun yarası"]
+
+
+## A wound where the blow landed (`dmg` hard, from `by`): the worse kept if it's struck there again.
+func _wound(dmg: float, by: Villager) -> void:
+	var can: Array[String] = []
+	for p: String in PARTS:
+		if not (p == "sol_kol" and "tek_kol" in scars) and not (p == "sol_bacak" and "tek_bacak" in scars): # (not where a limb's gone)
+			can.append(p)
+	var total := 0
+	for p in can:
+		total += int(PARTS[p][1])
+	var roll := randi() % total
+	var part := "govde"
+	for p in can:
+		roll -= int(PARTS[p][1])
+		if roll < 0:
+			part = p
+			break
+	var how := "sıyrık"
+	if dmg >= 10.0:
+		how = "kurşun yarası" if by and is_instance_valid(by) and by.held == "rifle" else ("derin kesik" if dmg >= 20.0 else "kesik")
+	for w: Dictionary in wounds:
+		if w.part == part:
+			if WOUND_KINDS.find(how) > WOUND_KINDS.find(str(w.how)):
+				w.how = how
+			return
+	wounds.append({"part": part, "how": how})
+
+
+## Its wounds in a word each ("sağ bacak: kurşun yarası, gövde: sıyrık").
+func wounds_text() -> String:
+	var out: Array[String] = []
+	for w: Dictionary in wounds:
+		out.append("%s: %s" % [PARTS[w.part][0], w.how])
+	return ", ".join(out)
+
+
 ## What a bad wound can leave, for good: like a trait, but only the worse.
 const SCARS := {
 	"topal": {"name": "Topal", "minus": "%25 yavaş yürür", "walk": 0.75},
 	"eli_sakat": {"name": "Eli sakat", "minus": "%15 yavaş çalışır, nişanı kötü", "work": 0.85, "aim": 0.8},
 	"yuzu_yarali": {"name": "Yüzü yaralı", "minus": "yarası iz bıraktı", },
-	"tek_kol": {"name": "Tek kollu", "minus": "kolunu yitirdi: %35 yavaş çalışır, yarı yük taşır, tüfek kullanamaz", "work": 0.65, "carry": 0.5, "aim": 0.5, "no_rifle": true},
-	"tek_bacak": {"name": "Tek bacaklı", "minus": "bacağını yitirdi: koltuk değneğiyle, %45 yavaş yürür", "walk": 0.55, "work": 0.9},
+	"tek_kol": {"name": "Tek kollu", "minus": "sol kolu omuzdan yok: %35 yavaş çalışır, yarı yük taşır, tüfek kullanamaz", "work": 0.65, "carry": 0.5, "aim": 0.5, "no_rifle": true},
+	"tek_bacak": {"name": "Tek bacaklı", "minus": "sol bacağı dizden aşağı yok: koltuk değneğiyle, %45 yavaş yürür", "walk": 0.55, "work": 0.9},
 }
 
 ## What it can be, each as good as it's bad, by how it changes: its work's pace, how quick it
@@ -1190,6 +1232,7 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		_go_down()
 		return
 	if team == 0 and dmg >= 5.0:
+		_wound(dmg, by)
 		think("hurt", "Yaralandı", -10.0, 600.0)
 		if dmg >= 10.0 and hp > 0.0 and hp < max_hp * 0.6 and randf() < 0.6:
 			bleeding = true # (on its feet but losing blood till someone binds it)
@@ -1264,6 +1307,8 @@ func _process(dt: float) -> void:
 			return
 	elif hp < max_hp:
 		hp = minf(hp + dt * (0.35 if sleeping else 0.12) * (2.0 if treated else 1.0), max_hp) # (mending, quicker asleep, quicker seen to)
+		if hp >= max_hp:
+			wounds.clear() # (mended: what's left of it is a scar, if anything)
 	if sleeping:
 		return
 	_lantern_check()
