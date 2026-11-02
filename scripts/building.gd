@@ -83,6 +83,10 @@ var nav: Nav ## (for scorching the ground round a fire)
 var goods := {} ## a store's goods, a workplace's pile: res -> count
 var pile_claim: Node ## the carter on its way for the pile
 var repaired := false ## (its last finish was a mending)
+var level := 1 ## a house: 2 once its back room's up (BuildingDefs.annex)
+var annex := Rect2() ## a house's back room, in its space (the yard keeps off it)
+var upgrading := false ## the back room going up (a mending, of pieces not there before)
+var upgraded_now := false ## (its last finish put the back room up)
 var crop: Crop ## a field's
 var heat_acc := 0.0 ## a house: the firewood burnt toward the next log
 var warm := true ## a house: its hearth lit (or no need of it)
@@ -844,8 +848,12 @@ func _dust(at: Vector3) -> void:
 
 
 func _finish() -> void:
-	repaired = state == "repair"
-	if repaired:
+	upgraded_now = upgrading
+	if upgrading:
+		upgrading = false
+		level = 2
+	repaired = state == "repair" and not upgraded_now
+	if state == "repair":
 		cost = (def.cost as Dictionary).duplicate()
 		for r: String in cost:
 			delivered[r] = cost[r]
@@ -903,22 +911,76 @@ func repair_cost() -> Dictionary:
 func start_repair() -> bool:
 	if not can_repair():
 		return false
+	_mend(repair_cost(), maxf(6.0, float(def.time) * float(fallen_count()) / float(pieces.size()) * 1.2))
+	return true
+
+
+## The pieces that are down put back for `what`, over `secs` of work.
+func _mend(what: Dictionary, secs: float) -> void:
 	_repair_list.clear()
 	for k in pieces.size():
 		if pieces[k].built and not pieces[k].alive:
 			_repair_list.append(k)
-	cost = repair_cost()
+	cost = what
 	delivered = {}
 	incoming = {}
 	for r: String in cost:
 		delivered[r] = 0
 		incoming[r] = 0
-	_repair_time = maxf(6.0, float(def.time) * float(_repair_list.size()) / float(pieces.size()) * 1.2)
+	_repair_time = secs
 	_repair_done = 0
 	work = 0.0
 	state = "repair"
-	_make_scaffold()
+	if not upgrading: # (the back room's low enough to build off the ground)
+		_make_scaffold()
+
+
+# --- Made bigger ------------------------------------------------------------------------------------
+
+## How many sleep here.
+func beds() -> int:
+	return BuildingDefs.UPGRADE_BEDS if level >= 2 else int(def.get("beds", 0))
+
+
+func can_upgrade() -> bool:
+	return def.role == "house" and level < 2 and not upgrading and state == "done" and not is_burning() and fallen_count() == 0
+
+
+## The back room put up as a mending of pieces that were never there: its stuff carried in and
+## built on, a piece at a time. `resume`: (a loaded game) its pieces are already on.
+func start_upgrade(resume := false) -> bool:
+	if not resume and not can_upgrade():
+		return false
+	if not resume:
+		add_annex(false)
+	upgrading = true
+	_mend((BuildingDefs.UPGRADE_COST as Dictionary).duplicate(), 24.0)
 	return true
+
+
+## The back room's pieces on the building: standing (`up`), or not yet built.
+func add_annex(up: bool) -> void:
+	annex = BuildingDefs.ANNEX
+	var first := pieces.size()
+	for spec in BuildingDefs.annex():
+		_add_piece(spec)
+	for k in range(first, pieces.size()):
+		var p := pieces[k]
+		p.stage = _stage_of(p)
+		p.res = "tas" if p.stuff == "stone" else "odun"
+		p.built = true
+		body.add_child(p.shape)
+		add_child(p.mesh)
+		p.mesh.cast_shadow = _shadow()
+		if not up:
+			p.alive = false
+			p.mesh.visible = false
+			p.shape.disabled = true
+	for p in pieces:
+		p.supports.clear()
+		p.near.clear()
+		p.grounded = false
+	_link()
 
 
 ## A fallen piece back in its place, its rubble cleared away.

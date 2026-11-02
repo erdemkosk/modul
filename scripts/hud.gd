@@ -328,6 +328,8 @@ func _make_card() -> void:
 	_card_acts.add_theme_constant_override("separation", 8)
 	col.add_child(_card_acts)
 	_btn.repair = _add(_card_acts, "ONAR", func() -> void: game.repair_selected(), "Yıkılan parçaları yeniden yap (O)")
+	_btn.upgrade = _add(_card_acts, "BÜYÜT", func() -> void: game.upgrade_selected(),
+		"Arkasına bir oda ekle: %d yatak (%s)" % [BuildingDefs.UPGRADE_BEDS, BuildingDefs.cost_text_of(BuildingDefs.UPGRADE_COST)])
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
 	_card_train = HBoxContainer.new()
@@ -689,11 +691,12 @@ func _update_card() -> void:
 	if _card_pick.visible:
 		_fill_pick(b)
 	(_btn.repair as Button).visible = b.state == "ruin" or (b.state == "done" and b.can_repair())
+	(_btn.upgrade as Button).visible = b.can_upgrade()
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
 	match b.state:
 		"site", "repair":
-			lines.append(("Onarılıyor: %%%d" if b.state == "repair" else "İnşa ediliyor: %%%d · " + b.stage_name()) % int(b.progress() * 100.0))
+			lines.append(("Büyütülüyor: %%%d" if b.upgrading else "Onarılıyor: %%%d" if b.state == "repair" else "İnşa ediliyor: %%%d · " + b.stage_name()) % int(b.progress() * 100.0))
 			var need: Array[String] = []
 			for r: String in b.cost:
 				need.append("%s %d/%d" % [BuildingDefs.RES_NAMES[r], int(b.delivered[r]), int(b.cost[r])])
@@ -721,7 +724,7 @@ func _update_card() -> void:
 		var parts: Array[String] = []
 		for f: String in fams:
 			parts.append("%s ailesi: %s" % [f, ", ".join(fams[f])])
-		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), int(b.def.beds), " · ".join(parts) if not parts.is_empty() else "kimse"])
+		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), b.beds(), " · ".join(parts) if not parts.is_empty() else "kimse"])
 		if not b.warm:
 			lines.append("SOĞUK: yakacak bitti!")
 		else:
@@ -791,6 +794,7 @@ func _wall_card(w: Wall) -> void:
 	_card_folk.visible = false
 	_card_acts.visible = true
 	(_btn.repair as Button).visible = false
+	(_btn.upgrade as Button).visible = false
 	_card_title.text = "KAZIK SUR"
 	var up := 0
 	var todo := 0

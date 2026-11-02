@@ -35,7 +35,7 @@ static func save(game: Node) -> bool:
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
+			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -179,12 +179,17 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.restore_site(bd.delivered, bd.get("built", PackedByteArray()))
 		else:
 			b.complete_now()
+			var up := bool(bd.get("upgrading", false))
+			if int(bd.get("level", 1)) >= 2 or up:
+				b.add_annex(true)
+				b.level = int(bd.get("level", 1))
+				v._close_annex(b)
 			b.apply_damage(bd.alive, bd.charred)
 			if st == "ruin":
 				b.state = "ruin"
 			elif st == "repair":
-				b.state = "done" if b.standing_share() >= 0.45 else "ruin"
-				if b.start_repair():
+				b.state = "done" if up or b.standing_share() >= 0.45 else "ruin"
+				if b.start_upgrade(true) if up else b.start_repair():
 					for r: String in bd.delivered:
 						if b.delivered.has(r):
 							b.delivered[r] = mini(int(bd.delivered[r]), int(b.cost[r]))

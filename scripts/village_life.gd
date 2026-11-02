@@ -155,7 +155,7 @@ func _births() -> void:
 	if int(stock.get("yiyecek", 0)) < 25:
 		return
 	for b in buildings:
-		if b.state != "done" or b.def.role != "house" or b.residents.size() >= int(b.def.beds):
+		if b.state != "done" or b.def.role != "house" or b.residents.size() >= b.beds():
 			continue
 		var fams := {}
 		for o in b.residents:

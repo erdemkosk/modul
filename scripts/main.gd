@@ -801,6 +801,12 @@ func repair_selected() -> void:
 			hud.toast("%s onarılacak: köylüler malzeme taşıyacak" % selected.display_name(), "info")
 
 
+func upgrade_selected() -> void:
+	if selected and is_instance_valid(selected):
+		var why := village.upgrade(selected)
+		hud.toast(why if why != "" else "%s büyütülecek: arkasına oda eklenecek" % selected.display_name(), "info")
+
+
 func ignite_selected() -> void:
 	if selected and is_instance_valid(selected) and selected.state in ["done", "site", "ruin"]:
 		if not selected.ignite():

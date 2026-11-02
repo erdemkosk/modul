@@ -57,6 +57,8 @@ func _at(x: float, z: float) -> Vector3:
 
 ## Free to be part of this yard: not under a building, not in another yard, not water or cliff.
 func _free(x: float, z: float) -> bool:
+	if house.annex.has_area() and house.annex.grow(0.7).has_point(Vector2(x, z)):
+		return false
 	var w := house.global_transform * Vector3(x, 0, z)
 	if not nav.is_open(w):
 		return false

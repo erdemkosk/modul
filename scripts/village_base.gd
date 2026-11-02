@@ -840,6 +840,11 @@ func _let_go(b: Building) -> void:
 func _on_finished(b: Building) -> void:
 	if loading:
 		return
+	if b.upgraded_now:
+		b.upgraded_now = false
+		message.emit("%s büyütüldü: artık %d yatak" % [b.display_name(), b.beds()], "good")
+		_house_people()
+		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
 	if b.def.role == "armory" and not b.has_meta("stocked"):
 		b.set_meta("stocked", true)
@@ -1158,6 +1163,79 @@ func repair(b: Building) -> String:
 	return ""
 
 
+## A house made bigger: its back room staked out and to be built (Building.start_upgrade).
+func upgrade(b: Building) -> String:
+	if b.def.role != "house":
+		return "Yalnızca evler büyütülür"
+	if b.level >= 2 or b.upgrading:
+		return "Bu ev zaten büyük"
+	if b.is_burning():
+		return "Önce yangın sönmeli"
+	if b.state != "done" or b.fallen_count() > 0:
+		return "Önce onarılmalı"
+	var y0 := b.global_position.y
+	for c: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
+		var l := BuildingDefs.ANNEX.position + BuildingDefs.ANNEX.size * c
+		var w := b.global_transform * Vector3(l.x, 0, l.y)
+		var h := terrain.height_at(w.x, w.z)
+		if h > y0 + 0.25 or h < y0 - 2.8:
+			return "Evin arkası çok eğimli"
+	for c in _annex_cells(b):
+		if not nav.is_ground_open(Nav.center_of(c)):
+			return "Evin arkasında su ya da uçurum var"
+	var room := BuildingDefs.ANNEX.grow(0.4)
+	for o in buildings:
+		if o == b or o.state == "gone":
+			continue
+		var os: Vector2 = o.def.size
+		for c: Vector2 in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-0.5, 0.5), Vector2(0.5, 0.5), Vector2.ZERO]:
+			var l := b.global_transform.affine_inverse() * (o.global_transform * Vector3(c.x * os.x, 0, c.y * os.y))
+			if room.has_point(Vector2(l.x, l.z)):
+				return "Evin arkasında %s var" % o.display_name()
+	if not b.start_upgrade():
+		return "Şu an büyütülemez"
+	_close_annex(b)
+	_let_go(b)
+	return ""
+
+
+## The nav cells under a house's back room.
+func _annex_cells(b: Building) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var r := BuildingDefs.ANNEX.grow(0.3)
+	var inv := b.global_transform.affine_inverse()
+	var reach := b.radius + r.size.length() + 6.0
+	var c0 := Nav.cell_of(b.global_position - Vector3(reach, 0, reach))
+	var c1 := Nav.cell_of(b.global_position + Vector3(reach, 0, reach))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var c := Vector2i(cx, cz)
+			var l := inv * Nav.center_of(c)
+			if r.has_point(Vector2(l.x, l.z)):
+				out.append(c)
+	return out
+
+
+## The back room's ground shut to walkers, and the yard laid out again round it.
+func _close_annex(b: Building) -> void:
+	var cells := _annex_cells(b)
+	nav.set_building(cells, true)
+	for c in cells:
+		if not c in b.cells:
+			b.cells.append(c)
+	var old := _yard_of(b)
+	if old:
+		yards.erase(old)
+		remove_child(old) # (its fence let go at once)
+		old.free()
+		var y := Yard.new()
+		y.house = b
+		y.village = self
+		y.nav = nav
+		yards.append(y)
+		add_child(y)
+
+
 # --- Goods ----------------------------------------------------------------------------------------
 
 
@@ -1221,7 +1299,7 @@ func beds() -> int:
 	var n := 0
 	for b in buildings:
 		if b.state == "done" and b.def.role == "house":
-			n += int(b.def.beds)
+			n += b.beds()
 	return n
 
 
@@ -1253,7 +1331,7 @@ func _house_people() -> void:
 		for b in buildings:
 			if b.state != "done" or b.def.role != "house":
 				continue
-			var free := int(b.def.beds) - b.residents.size()
+			var free := b.beds() - b.residents.size()
 			if free <= 0:
 				continue
 			var theirs := b.residents.any(func(o: Variant) -> bool: return is_instance_valid(o) and (o as Villager).family == v.family)
@@ -1265,7 +1343,7 @@ func _house_people() -> void:
 		if best == null:
 			continue
 		for o in fam:
-			if best.residents.size() < int(best.def.beds):
+			if best.residents.size() < best.beds():
 				best.residents.append(o)
 				o.home = best
 

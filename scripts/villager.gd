@@ -149,7 +149,7 @@ func learn(k: String, secs: float) -> void:
 ## What its work just now draws on.
 func work_skill() -> String:
 	var j := str(job)
-	if j.begins_with("İnşa") or j.begins_with("Sur") or j.begins_with("Onarıyor"):
+	if j.begins_with("İnşa") or j.begins_with("Sur") or j.begins_with("Onarıyor") or j.begins_with("Büyütüyor"):
 		return "insa"
 	if j.begins_with("Taşıyor") or j.begins_with("Yakacak") or j.begins_with("Trenden yük"):
 		return "tasima"

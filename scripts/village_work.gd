@@ -325,6 +325,17 @@ func _plan_build(v: Villager) -> bool:
 	if v.idle:
 		v.abort()
 	var site := best
+	if site.state == "repair" and site.upgrading:
+		# (the back room: from beside it, round the back of the house)
+		var c := site.global_transform * Vector3(site.annex.get_center().x, 0, site.annex.get_center().y)
+		var out := site.global_transform.basis * Vector3(randf_range(-2.4, 2.4), 0, -site.annex.size.y * 0.5 - 1.3)
+		var at := c + out
+		at.y = nav.height(at.x, at.z)
+		v.give([
+			{"t": "go", "to": at},
+			{"t": "work", "anim": "build", "face": c, "tick": func(dt: float) -> bool: return site.add_work(dt)},
+		], "Büyütüyor: %s" % site.display_name(), site)
+		return true
 	if site.state == "repair":
 		v.give([
 			{"t": "go", "to": _spot_by(site, v.position)},

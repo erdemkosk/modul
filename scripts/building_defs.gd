@@ -19,7 +19,7 @@ const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasc
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
-		"desc": "Dört kişilik kütük ev, taş bacalı. Soğukta ve gece ocağında odun yakar. Boş yatak varsa kasabaya yeni insanlar gelir."},
+		"desc": "Dört kişilik kütük ev, taş bacalı. Soğukta ve gece ocağında odun yakar. Boş yatak varsa kasabaya yeni insanlar gelir. Arkasına bir oda eklenerek altı kişilik büyütülebilir."},
 	"meydan": {"name": "Meydan", "size": Vector2(10, 10), "cost": {"odun": 8, "tas": 12}, "time": 30.0, "role": "square",
 		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar. Akşamları ateş yakılır, kasabalılar başında toplanıp oturur, konuşur; çocuklar orada oynar."},
 	"cankulesi": {"name": "Çan kulesi", "size": Vector2(4, 4), "cost": {"odun": 20, "tas": 8}, "time": 36.0, "role": "bell",
@@ -89,11 +89,55 @@ static func def(kind: String) -> Dictionary:
 
 
 static func cost_text(kind: String) -> String:
+	return cost_text_of(DEFS[kind].cost)
+
+
+static func cost_text_of(cost: Dictionary) -> String:
 	var parts: Array[String] = []
-	var cost: Dictionary = DEFS[kind].cost
 	for r: String in cost:
 		parts.append("%d %s" % [cost[r], RES_NAMES[r].to_lower()])
 	return " · ".join(parts)
+
+
+## A house made bigger: a back room against its back wall, two more beds.
+const ANNEX := Rect2(-2.6, -5.85, 4.0, 3.2) ## the room's ground, in the house's space (x, z)
+const UPGRADE_COST := {"odun": 10, "tas": 6}
+const UPGRADE_BEDS := 6
+
+
+## The back room: a stone plinth, a plank floor, log walls on three sides (the fourth is the
+## house's), a shuttered window at the back and a lean-to roof running up under the house's eaves.
+static func annex() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var c := ANNEX.get_center()
+	var w := ANNEX.size.x
+	var d := ANNEX.size.y
+	var hx := w * 0.5 - 0.15
+	var back := c.y - d * 0.5 + 0.15
+	var y0 := 0.47
+	var wall_h := 2.1
+	var dia := 0.3
+	_p(out, "box", Vector3(w + 0.3, 3.5, d), Vector3(c.x, -1.4, c.y - 0.15), "stone")
+	_p(out, "box", Vector3(w + 0.4, 0.35, 0.45), Vector3(c.x, 0.17, back - 0.05), "stone")
+	_p(out, "box", Vector3(0.45, 0.35, d - 0.3), Vector3(c.x - hx - 0.05, 0.17, c.y + 0.1), "stone")
+	_p(out, "box", Vector3(w - 0.1, 0.12, d - 0.1), Vector3(c.x, 0.41, c.y), "plank")
+	for k in roundi(wall_h / dia):
+		var y := y0 + dia * 0.5 + k * dia
+		_p(out, "xcyl", Vector3(w + 0.5, dia, dia), Vector3(c.x, y, back), "log")
+		for sx in [-1.0, 1.0]:
+			_p(out, "xcyl", Vector3(d + 0.2, dia, dia), Vector3(c.x + sx * hx, y, c.y + 0.1), "log", Vector3(0, 90, 0))
+	_p(out, "box", Vector3(0.9, 0.7, 0.1), Vector3(c.x, y0 + 1.3, back - 0.17), "window")
+	for sx in [-1.0, 1.0]:
+		_p(out, "box", Vector3(0.45, 0.78, 0.05), Vector3(c.x + sx * 0.7, y0 + 1.3, back - 0.2), "plank")
+	var low := y0 + wall_h
+	var high := 3.1
+	var run := d
+	var ang := rad_to_deg(atan2(high - low, run))
+	_p(out, "box", Vector3(w + 0.3, 0.16, 0.22), Vector3(c.x, low + 0.08, back), "dark")
+	_p(out, "box", Vector3(w + 0.7, 0.14, sqrt(run * run + (high - low) * (high - low)) + 0.5), Vector3(c.x, (low + high) * 0.5 + 0.2, c.y - 0.1), "shingle", Vector3(-ang, 0, 0))
+	for sx in [-1.0, 1.0]:
+		_p(out, "box", Vector3(0.1, high - low, d * 0.55), Vector3(c.x + sx * hx, low + (high - low) * 0.5 - 0.05, c.y + d * 0.2), "plank")
+	return out
 
 
 const MODEL := "res://assets/buildings/%s.glb"
