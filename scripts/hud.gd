@@ -74,6 +74,8 @@ var _people_grid: GridContainer
 var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
 var _store_line: Button ## under the goods: how full the stores are, and what's stopped (a click: show it)
+var _tele_plate: PanelContainer ## the telegraph office
+var _tele: TelegraphPanel
 var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
 var _tech_note: Label
@@ -130,6 +132,7 @@ func _ready() -> void:
 	_make_placing()
 	_make_people()
 	_make_tech()
+	_make_telegraph()
 	_test_plate()
 	_make_help()
 	_make_pause()
@@ -793,6 +796,44 @@ func _make_tech() -> void:
 	pad.add_child(_tech_tree)
 
 
+## The telegraph office, over the middle of the screen.
+func _make_telegraph() -> void:
+	_tele_plate = _plate(false)
+	_tele_plate.set_anchors_preset(Control.PRESET_CENTER)
+	_tele_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_tele_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_tele_plate.visible = false
+	add_child(_tele_plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	_tele_plate.add_child(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	Ui.label(head, "TELGRAFHANE", 26, Ui.INK, "display")
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	head.add_child(_small_button("KAPAT", func() -> void: toggle_telegraph()))
+	Ui.rule(col)
+	_tele = TelegraphPanel.new()
+	_tele.game = game
+	col.add_child(_tele)
+
+
+func toggle_telegraph() -> void:
+	_tele_plate.visible = not _tele_plate.visible
+	if _tele_plate.visible:
+		_people_plate.visible = false
+		_tech_plate.visible = false
+		_tele.refresh()
+		if game.village.orders.is_empty() and _tele._tape._lines.is_empty():
+			_tele.send("HAT ACIK STOP", "BURASI MERKEZ STOP DINLIYORUZ STOP")
+
+
+func telegraph_open() -> bool:
+	return _tele_plate.visible
+
+
 func toggle_tech() -> void:
 	_tech_plate.visible = not _tech_plate.visible
 	if _tech_plate.visible:
@@ -1063,7 +1104,9 @@ func _update_card() -> void:
 		_people_t = 0.0
 		_refresh_people()
 		_refresh_tech()
-	if _people_plate.visible or _tech_plate.visible:
+		if _tele_plate.visible:
+			_tele.refresh()
+	if _people_plate.visible or _tech_plate.visible or _tele_plate.visible:
 		_card.visible = false # (the table's over where the card stands)
 		return
 	_placing_plate.visible = game._placing != "" and not game._placing in ["yol", "sur", "kapi"]
@@ -1462,32 +1505,9 @@ func _fill_extra(b: Building) -> void:
 				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				l.custom_minimum_size = Vector2(300, 0)
 			else:
-				for what: String in Village.OFFERS:
-					var o: Dictionary = Village.OFFERS[what]
-					var row := HBoxContainer.new()
-					row.add_theme_constant_override("separation", 8)
-					_card_extra.add_child(row)
-					var l := Ui.label(row, "%s  ·  %d ruble" % [o.name, int(o.price)], 13, Ui.INK if v.rubles >= int(o.price) else Ui.DIM)
-					l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-					var bt := _small_button("ISMARLA", func() -> void:
-						var why := v.order(what)
-						toast(why if why != "" else "%s ısmarlandı: bir sonraki trenle gelecek" % o.name, "bad" if why != "" else "good"))
-					bt.disabled = v.orders.size() >= Village.ORDERS_MAX
-					row.add_child(bt)
-				Ui.label(_card_extra, "TRENE SAT  (her maldan %d'u kalır, trene en çok %d yük)" % [Village.KEEP, Village.LOAD], 12, Ui.ACCENT, "head")
-				var sell := HBoxContainer.new()
-				sell.add_theme_constant_override("separation", 4)
-				_card_extra.add_child(sell)
-				for r: String in Village.PRICES:
-					var on := r in v.selling
-					var sb := _small_button("%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])], func() -> void:
-						if r in v.selling:
-							v.selling.erase(r)
-						else:
-							v.selling.append(r))
-					sb.tooltip_text = "%s: tane başı %d ruble. İşaretliyse tren gelince fazlası satılır." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r])]
-					sb.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
-					sell.add_child(sb)
+				var tb := _small_button("TELGRAF ▸  sipariş · satış · tren çağır", func() -> void: toggle_telegraph())
+				tb.tooltip_text = "Telgrafhaneyi aç"
+				_card_extra.add_child(tb)
 		else:
 			Ui.label(_card_extra, "ARAŞTIRMA", 12, Ui.ACCENT, "head")
 			for t: String in BuildingDefs.TECHS:

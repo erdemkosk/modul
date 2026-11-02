@@ -103,6 +103,7 @@ var rubles := 40 ## the town's purse: what the train paid, spent on what's sent 
 var repute := 0 ## how well the town's thought of up the line (families come at REPUTE_FAMILY)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
+var express := false ## a train wired for: tomorrow, and not late
 var known: Array[String] = [] ## what's been found out in a reading room (BuildingDefs.TECHS)
 var studying := "" ## what the reading rooms are on just now ("" nothing chosen)
 var study_pts := 0.0 ## how far into it
@@ -215,6 +216,7 @@ const OFFERS := {
 	"erzak": {"name": "60 yiyecek", "price": 40},
 }
 const ORDERS_MAX := 3 ## on one train
+const CALL_PRICE := 30 ## rubles to wire for a train tomorrow (TREN ÇAĞIR)
 
 ## What the train buys, a ruble or a few each; of what's marked to be sold, KEEP of each stays
 ## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line, and
@@ -299,15 +301,32 @@ func order(what: String) -> String:
 	return ""
 
 
+## A train wired for (CALL_PRICE): it comes tomorrow and isn't late. "" or why not.
+func call_train() -> String:
+	if not knows("telgraf"):
+		return "Önce telgraf araştırılmalı"
+	if is_instance_valid(train) or express:
+		return "Tren zaten yolda"
+	if next_train - day <= 1:
+		return "Tren zaten yarın geliyor"
+	if rubles < CALL_PRICE:
+		return "Kasada %d ruble gerek" % CALL_PRICE
+	rubles -= CALL_PRICE
+	express = true
+	next_train = day + 1
+	return ""
+
+
 ## Of a morning: the train, if it's due (now and then it's late a day or two).
 func _train_morning() -> void:
 	if not knows("telgraf") or depot() == null or rail.size() < 2 or is_instance_valid(train) or day < next_train:
 		return
-	if randf() < 0.25:
+	if not express and randf() < 0.25:
 		var late := 1 + randi() % 2
 		next_train = day + late
 		message.emit("Tren gecikti: %d gün daha bekleniyor." % late, "info")
 		return
+	express = false
 	var st := depot()
 	train = Train.new()
 	train.nav = nav

@@ -236,6 +236,8 @@ func _unhandled_input(e: InputEvent) -> void:
 					hud.toggle_people()
 				elif hud.tech_open():
 					hud.toggle_tech()
+				elif hud.telegraph_open():
+					hud.toggle_telegraph()
 				elif _placing != "":
 					stop_placing()
 				elif selected or selected_villager:
