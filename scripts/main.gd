@@ -1067,6 +1067,31 @@ func refit_selected(what: String) -> void:
 	hud.toast("%s %s" % [nb.display_name(), "kuruldu" if nb.state == "done" else "olarak kurulacak"], "good")
 
 
+var _trouble_i := -1 ## which of the troubled places was shown last (show_trouble)
+
+
+## The next of what's stopped the work (a workshop with its pile full, or with the stores full the
+## fullest store): picked, and the view taken to it.
+func show_trouble() -> void:
+	var list: Array[Building] = village.full_yards()
+	var why := "yığın dolu: %s" % ("arabacılar yetişemiyor" if village.carters_about() else "arabacı yok")
+	if list.is_empty():
+		list = village.unmanned()
+		why = "çalışan yok: boşta kasabalı kalmadı"
+	var fill := village.store_fill()
+	if fill.y > 0 and fill.x >= fill.y:
+		list = village.stores()
+		list.sort_custom(func(a: Building, b: Building) -> bool: return a.goods_total() > b.goods_total())
+		why = "depolar dolu: yeni depo kur"
+	if list.is_empty():
+		return
+	_trouble_i = (_trouble_i + 1) % list.size()
+	var b := list[_trouble_i]
+	select(b)
+	cam.jump_to(b.global_position)
+	hud.toast("%s · %s (%d/%d)" % [b.display_name(), why, _trouble_i + 1, list.size()], "bad")
+
+
 ## A side line laid to the selected building.
 func lay_spur_selected() -> void:
 	var b := selected
@@ -1096,14 +1121,7 @@ func place_workshop_as(what: String) -> void:
 	_ghost.setup(_placing)
 	add_child(_ghost)
 	_ghost_reason = "x"
-	hud.set_hint("Atölye (%s): %s · R çevir · Sağ tık iptal" % [BuildingDefs.RES_NAMES[what].to_lower(), BuildingDefs.cost_text(_placing)])
-
-
-## The selected logging camp's men set to planting the stumps when they've nothing to fell (or not).
-func toggle_planting() -> void:
-	if selected and is_instance_valid(selected) and selected.kind == "oduncu":
-		selected.planting = not selected.planting
-		hud.toast("%s: %s" % [selected.display_name(), "boş kaldıkça kütüklere fidan dikilecek" if selected.planting else "fidan dikilmeyecek"], "info")
+	hud.set_hint("Atölye (%s): %s · R çevir · Sağ tık iptal" % [w.word, BuildingDefs.cost_text(_placing)])
 
 
 ## Oxen bought for the selected carter's: its carts ox carts from now on.

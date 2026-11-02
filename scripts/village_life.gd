@@ -143,9 +143,14 @@ func _hearths(t: float) -> void:
 		b.heat_acc += t / LOG_EVERY * (1.0 + clampf(-weather.temperature / 12.0, 0.0, 1.0)) * b.fuel_mul() # (bitter cold: up to twice the wood; plaster and a stove save it)
 		while b.heat_acc >= 1.0:
 			b.heat_acc -= 1.0
-			if b.take_goods("odun", 1) == 0:
+			# (the coal on the fire first; a fresh one lasts COAL_LASTS firewood; then the wood)
+			if b.coal_burn > 0:
+				b.coal_burn -= 1
+			elif b.take_goods("komur", 1) == 1:
+				b.coal_burn = COAL_LASTS - 1
+			elif b.take_goods("odun", 1) == 0:
 				b.warm = false
-		if int(b.goods.get("odun", 0)) > 0:
+		if house_fuel(b) > 0:
 			b.warm = true
 		b.set_hearth(b.warm)
 		if not b.warm and weather.is_night():

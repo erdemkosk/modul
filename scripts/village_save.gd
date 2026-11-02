@@ -36,7 +36,7 @@ static func save(game: Node) -> bool:
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
 			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "plastered": b.plastered, "stove": b.stove,
-			"mode": b.mode, "casting": b.casting, "bowing": b.bowing, "planting": b.planting, "ox": b.ox, "spur": b.spur, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
+			"mode": b.mode, "casting": b.casting, "bowing": b.bowing, "ox": b.ox, "spur": b.spur, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
 				return {"name": o.display_name, "family": o.family, "skills": o.skills.duplicate(), "traits": o.traits.duplicate(), "keen": o.keen.duplicate(),
 					"look": o.look_seed, "mode": o.held_mode, "won": o.won}), "area": [b.work_area.position.x, b.work_area.position.y, b.work_area.size.x, b.work_area.size.y], "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
@@ -210,7 +210,6 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.mode = str(bd.get("mode", ""))
 			b.casting = bool(bd.get("casting", false))
 			b.bowing = bool(bd.get("bowing", false))
-			b.planting = bool(bd.get("planting", false))
 			b.ox = bool(bd.get("ox", false))
 			if bool(bd.get("spur", false)):
 				b.spur = true

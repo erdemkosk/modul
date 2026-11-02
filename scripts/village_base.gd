@@ -120,6 +120,12 @@ const SAPLING_TIME := 240.0
 
 
 const LOG_EVERY := 55.0 ## s a lit hearth goes on one firewood
+const COAL_LASTS := 3 ## a coal burns as long as this many firewood
+
+
+## What a house has to burn, in firewood's worth (its coal counted as COAL_LASTS each).
+static func house_fuel(b: Building) -> int:
+	return int(b.goods.get("odun", 0)) + int(b.goods.get("komur", 0)) * COAL_LASTS + b.coal_burn
 
 
 const COLD_BELOW := 12.0 ## deg C under which a house wants its fire in the day too
@@ -1921,6 +1927,15 @@ func store_fill() -> Vector2i:
 		held += b.goods_total()
 		cap += b.holds()
 	return Vector2i(held, cap)
+
+
+## The workplaces asked for workers that have none (nobody free to send).
+func unmanned() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role in ["work", "farm", "research", "smith", "healer", "carts"] and b.wanted > 0 and b.workers.is_empty():
+			out.append(b)
+	return out
 
 
 ## The workplaces whose piles are full (their work stopped till someone carries it off).

@@ -73,7 +73,7 @@ var _people_plate: PanelContainer ## the townsfolk table
 var _people_grid: GridContainer
 var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
-var _store_line: Label ## under the goods: how full the stores are, and what's stopped
+var _store_line: Button ## under the goods: how full the stores are, and what's stopped (a click: show it)
 var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
 var _tech_note: Label
@@ -237,10 +237,15 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 	elif not full.is_empty():
 		line += "   ·   %d işyerinin yığını dolu: %s" % [full.size(), "arabacılar yetişemiyor" if v.carters_about() else "arabacı kur"]
 		bad = true
+	elif not v.unmanned().is_empty():
+		line += "   ·   %d işyerinde çalışan yok: boşta kasabalı kalmadı" % v.unmanned().size()
+		bad = true
 	elif fill.y > 0 and fill.x >= fill.y * 0.85:
 		line += "   ·   depolar dolmak üzere"
-	_store_line.text = line
-	_store_line.add_theme_color_override("font_color", Ui.BAD if bad else (Ui.ACCENT if fill.x >= fill.y * 0.85 else Color(Ui.INK, 0.75)))
+	_store_line.text = line + ("   ▸ GÖSTER" if bad else "")
+	var lc: Color = Ui.BAD if bad else (Ui.ACCENT if fill.x >= fill.y * 0.85 else Color(Ui.INK, 0.75))
+	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
+		_store_line.add_theme_color_override(state, lc.lightened(0.25) if state == "font_hover_color" else lc)
 	_store_line.tooltip_text = "Bütün depoların aldığı ve içindeki yük.\n" + ("\n".join(full.map(func(b: Building) -> String: return "%s: yığın dolu" % b.display_name())) if not full.is_empty() else "")
 
 
@@ -250,14 +255,19 @@ func _stores_plate() -> void:
 	p.offset_left = 12
 	p.offset_top = 10
 	add_child(p)
-	_store_line = Ui.label(self, "", 14, Ui.INK, "head")
+	_store_line = Button.new()
+	_store_line.flat = true
+	_store_line.focus_mode = Control.FOCUS_NONE
+	_store_line.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_store_line.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_store_line.offset_left = 22
-	_store_line.offset_top = 92
-	_store_line.mouse_filter = Control.MOUSE_FILTER_PASS
-	_store_line.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	_store_line.add_theme_constant_override("shadow_offset_x", 1)
-	_store_line.add_theme_constant_override("shadow_offset_y", 1)
+	_store_line.offset_left = 16
+	_store_line.offset_top = 88
+	_store_line.add_theme_font_override("font", Ui.font("head"))
+	_store_line.add_theme_font_size_override("font_size", 14)
+	_store_line.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_store_line.add_theme_constant_override("outline_size", 3)
+	_store_line.pressed.connect(func() -> void: game.show_trouble())
+	add_child(_store_line)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
@@ -556,7 +566,6 @@ func _make_card() -> void:
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
 	_btn.spur = _add(_card_acts, "YAN HAT DÖŞE", func() -> void: game.lay_spur_selected(), "Ana hattan buraya dar hatlı ray: tren yükü buradan doğrudan alır")
-	_btn.plant = _add(_card_acts, "FİDAN DİK", func() -> void: game.toggle_planting(), "Kesimciler boş kaldıkça kesilen ağaçların kütüklerine fidan diksin")
 	_btn.ox = _add(_card_acts, "ÖKÜZ AL", func() -> void: game.buy_oxen(), "Arabalar öküz arabası olsun: 30 yük, yavaş; her öküz bir kişi kadar yer (%s)" % BuildingDefs.cost_text_of(BuildingDefs.OX_COST))
 	_btn.strong = _add(_card_acts, "GÜÇLENDİR", func() -> void: game.strengthen_wall(), "Kalın kütük ve taş temel: kazıklar üç kat dayanıklı olur, zor kesilir, zor yanar")
 	_btn.area = _add(_card_acts, "ALAN ÇİZ", func() -> void: game.start_placing("alan"), "İşçiler yalnızca sürükleyeceğin alanda çalışsın")
@@ -567,7 +576,7 @@ func _make_card() -> void:
 	Ui.label(_card_make, "ÜRET:", 12, Ui.ACCENT, "head")
 	for what: String in BuildingDefs.WORKSHOP:
 		var mb := _small_button(str(BuildingDefs.WORKSHOP[what].name), func() -> void: game.refit_selected(what))
-		mb.tooltip_text = "Atölye %s için kurulsun: içi ona göre değişir, işçiler kalır" % BuildingDefs.RES_NAMES[what].to_lower()
+		mb.tooltip_text = "Atölye %s için kurulsun: içi ona göre değişir, işçiler kalır" % BuildingDefs.WORKSHOP[what].word
 		_card_make.add_child(mb)
 		_make_btns[what] = mb
 	_card_train = HBoxContainer.new()
@@ -719,7 +728,7 @@ func _make_placing() -> void:
 	Ui.label(_place_make, "  ÜRET:", 12, Ui.ACCENT, "head")
 	for what: String in BuildingDefs.WORKSHOP:
 		var mb := _small_button(str(BuildingDefs.WORKSHOP[what].name), func() -> void: game.place_workshop_as(what))
-		mb.tooltip_text = "Atölye %s için kurulsun" % BuildingDefs.RES_NAMES[what].to_lower()
+		mb.tooltip_text = "Atölye %s için kurulsun" % BuildingDefs.WORKSHOP[what].word
 		_place_make.add_child(mb)
 		_place_btns[what] = mb
 
@@ -1099,11 +1108,9 @@ func _update_card() -> void:
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
 	(_btn.mode as Button).visible = b.state == "done" and b.kind == "camur"
-	(_btn.plant as Button).visible = b.kind == "oduncu" and b.state == "done"
 	(_btn.spur as Button).visible = b.state == "done" and not b.spur and b != game.village.depot() and b.def.role in ["store", "work"] and game.village.knows("dekovil")
 	if (_btn.spur as Button).visible:
 		(_btn.spur as Button).tooltip_text = "Ana hattan buraya dar hatlı ray: tren yükü buradan doğrudan alır (%s)" % BuildingDefs.cost_text_of(game.village.spur_cost(b))
-	(_btn.plant as Button).text = "FİDAN DİKMEYİ BIRAK" if b.planting else "FİDAN DİK"
 	(_btn.ox as Button).visible = b.kind == "arabaci" and b.state == "done" and not b.ox
 	(_btn.strong as Button).visible = false
 	(_btn.area as Button).visible = b.def.role in ["work", "forest"] and b.kind != "camur" and b.state == "done"
@@ -1216,14 +1223,18 @@ func _update_card() -> void:
 		lines.append(("İçinde (%d / %d): " if b.def.role == "store" else "Yığın (%d / %d): ") % [b.goods_total(), b.holds()] + ", ".join(g))
 	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"] and b.state == "done"
 	if _card_workers.visible:
-		_card_count.text = "%d / %d" % [b.wanted, int(b.def.slots)]
+		# (working there now, of how many it's asked for: red while it's short)
+		_card_count.text = "%d / %d" % [b.workers.size(), b.wanted]
+		_card_count.add_theme_color_override("font_color", Ui.BAD if b.workers.size() < b.wanted or b.wanted == 0 else Ui.INK)
+		_card_count.tooltip_text = "Çalışan / istenen (en çok %d)" % int(b.def.slots)
+		_card_count.mouse_filter = Control.MOUSE_FILTER_PASS
 		var names: Array[String] = []
 		var sk := Villager.skill_of(b)
 		for x in b.workers:
 			if is_instance_valid(x):
 				names.append(x.display_name + ((" (%d)" % int(x.skill(sk))) if sk != "" else ""))
 		if names.is_empty():
-			lines.append("Çalışan yok: aşağıdan birini ata")
+			lines.append("ÇALIŞAN YOK: + ile işçi iste ya da ATA'dan birini seç" if b.wanted == 0 else "ÇALIŞAN YOK: boşta kasabalı yok")
 		if b.workers.size() < b.wanted:
 			lines.append("Boşta kasabalı yok: %d işçi eksik" % (b.wanted - b.workers.size()))
 	_card_lines.text = "\n".join(lines)

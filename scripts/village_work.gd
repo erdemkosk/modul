@@ -21,7 +21,7 @@ func _plan_firewood(v: Villager, lamps_only := false) -> bool:
 		if b.state != "done" or (is_instance_valid(b.pile_claim) and b.pile_claim != v):
 			continue
 		if b.def.role == "house":
-			if lamps_only or b.residents.is_empty() or int(b.goods.get("odun", 0)) >= 3:
+			if lamps_only or b.residents.is_empty() or house_fuel(b) >= 3:
 				continue
 		elif b.def.role == "light":
 			if int(b.goods.get("odun", 0)) >= (LAMP_NIGHT if evening else 2):
@@ -39,32 +39,46 @@ func _plan_firewood(v: Villager, lamps_only := false) -> bool:
 			best = b
 	if best == null:
 		return false
-	var store := store_with("odun", best.global_position)
+	return _fuel_trip(v, best)
+
+
+## Fuel carried from the store to `house` (a house, a lamp, the square): to a house coal if there's
+## any (it lasts COAL_LASTS times as long), else firewood. False if there's none to take.
+func _fuel_trip(v: Villager, house: Building) -> bool:
+	var res := "odun"
+	var store: Building = null
+	if house.def.role == "house":
+		store = store_with("komur", house.global_position)
+		if store:
+			res = "komur"
+	if store == null:
+		store = store_with("odun", house.global_position)
 	if store == null:
 		return false
 	if v.idle:
 		v.abort()
-	var house := best
 	house.pile_claim = v
 	var want := 8 if house.def.role == "house" else (LAMP_NIGHT - int(house.goods.get("odun", 0)) if house.def.role == "light" else 3)
-	var n := store.take_goods("odun", mini(v.capacity("odun"), maxi(want, 1)))
-	v.owed = {"res": "odun", "n": n, "store": store}
+	if res == "komur": # (a night's worth and more: coal's carried in by the bucket)
+		want = ceili(12.0 / COAL_LASTS)
+	var n := store.take_goods(res, mini(v.capacity(res), maxi(want, 1)))
+	v.owed = {"res": res, "n": n, "store": store}
 	var into: Array = _go_in(house, v) if house.def.role == "house" else [{"t": "go", "to": house.door()}]
 	var back: Array = _go_out(house, v) if house.def.role == "house" else []
 	v.give(_go_in(store, v) + [
 		{"t": "do", "f": func() -> bool:
-			v.set_carry("odun", n)
+			v.set_carry(res, n)
 			return true}] + _go_out(store, v) + into + [
 		{"t": "do", "f": func() -> bool:
 			house.pile_claim = null
 			v.owed = {}
 			v.set_carry("", 0)
 			if not is_instance_valid(house) or house.state != "done":
-				add_anywhere("odun", n, v.position)
+				add_anywhere(res, n, v.position)
 				return true
-			house.add_goods("odun", n)
+			house.add_goods(res, n)
 			return true}] + back,
-		("Yakacak taşıyor: %s" % house.display_name()) if house.def.role == "house" else "Fenere çıra götürüyor", house)
+		("%s taşıyor: %s" % ["Kömür" if res == "komur" else "Yakacak", house.display_name()]) if house.def.role == "house" else "Fenere çıra götürüyor", house)
 	return true
 
 
@@ -527,8 +541,13 @@ func _plan_work(v: Villager) -> void:
 	if b.kind == "camur":
 		_plan_mud(v, b)
 		return
-	# (now and then, if it's been told to, a stump planted instead)
-	if res == "odun" and b.planting and randf() < 0.3 and _plan_forest(v, b):
+	# A workshop set to planting: the stumps planted, no tree felled.
+	if b.kind == "oduncu" and b.mode == "fidan":
+		if _plan_forest(v, b):
+			b.idle_note = ""
+		else:
+			b.idle_note = "Yakında dikilecek kütük yok"
+			_plan_idle(v)
 		return
 	# Logs lying from a tree already down: one fetched and sawn.
 	if res == "odun":

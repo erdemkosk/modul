@@ -165,6 +165,12 @@ func _assign() -> void:
 		if meal != "" and v.meal_key != meal and (v.plan.is_empty() or v.idle) and not raid:
 			_plan_meal(v, meal)
 			continue
+		# Its own house out of fuel in the cold: fetched from the store on the way home, before the night.
+		var home := v.home
+		if is_instance_valid(home) and home.state == "done" and needs_fire() and house_fuel(home) <= 0 \
+				and not is_instance_valid(home.pile_claim) and not raid and _fuel_trip(v, home):
+			v.job = "Evine yakacak götürüyor"
+			continue
 		if night and not on_watch(v):
 			# Work done for the day: home to bed, or with no house, to the camp fire.
 			if is_instance_valid(v.home) and v.home.state == "done":

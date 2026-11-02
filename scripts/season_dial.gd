@@ -63,10 +63,10 @@ func refresh() -> void:
 	for b in v.buildings:
 		if b.def.role == "house" and b.state == "done" and not b.residents.is_empty():
 			burn += b.fuel_mul()
-			held += int(b.goods.get("odun", 0))
+			held += Village.house_fuel(b)
 	var share := 0.95 if se.season == 3 else (0.6 if se.season == 2 else 0.4)
 	var wood_rate := burn * share / v.LOG_EVERY * day_secs * (1.5 if se.season == 3 else 1.0)
-	_wood_days = float(int(v.stock.get("odun", 0)) + held) / wood_rate if wood_rate > 0.0 else 99.0
+	_wood_days = float(int(v.stock.get("odun", 0)) + int(v.stock.get("komur", 0)) * v.COAL_LASTS + held) / wood_rate if wood_rate > 0.0 else 99.0
 	var short := _winter_in + per_season # (to the winter's end)
 	_season.text = "%s · %d°%s" % [Ui.upper(str(Seasons.NAMES[se.season])), roundi(_temp),
 		"  ·  kışa %d gün" % ceili(_winter_in) if se.season != 3 and _winter_in < per_season * 2.0 else ""]

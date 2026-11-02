@@ -42,7 +42,7 @@ const DEFS := {
 		"desc": "Çitle çevrili çavdar tarlası. Çiftçiler eker, ekin büyür (yağmurda hızlı, karda hiç), olgunlaşınca biçip 60 yiyecek getirirler. Olgun ekin yanar."},
 	"oduncu": {"name": "Atölye", "size": Vector2(7, 6), "cost": {"odun": 8}, "time": 18.0, "role": "work", "slots": 3,
 		"res": "odun", "reach": 80.0, "station": Vector3(0, 0, 0.55), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "saw",
-		"desc": "Her türlü toplama işi için bir atölye: kartından ne üreteceğini seç (odun, taş, çamur, yemiş; araştırınca demir, kömür), içi ona göre değişir. Odun için: Kesimciler ağacı devirir, budar, tomruklara böler; tomrukları omuzlayıp kampa getirir, sehpada testereyle biçerler. Biçilen odun kampta yığılır, depoya taşınır. Kartından FİDAN DİK açılırsa kesimciler boş kaldıkça kesilen ağaçların kütüklerine fidan diker."},
+		"desc": "Her türlü toplama işi için bir atölye: kartından ne üreteceğini seç (odun, ağaç dikimi, taş, çamur, yemiş; araştırınca demir, kömür), içi ona göre değişir. Odun için: Kesimciler ağacı devirir, budar, tomruklara böler; tomrukları omuzlayıp kampa getirir, sehpada testereyle biçerler. Biçilen odun kampta yığılır, depoya taşınır. AĞAÇ DİK seçilirse ağaç kesmez, kesilen ağaçların kütüklerine fidan diker; fidan birkaç dakikada ağaç olur."},
 	"tasci": {"name": "Atölye", "size": Vector2(7, 6), "cost": {"odun": 14}, "time": 24.0, "role": "work", "slots": 3,
 		"res": "tas", "reach": 130.0, "station": Vector3(0, 0, 0.45), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "chisel",
 		"desc": "Atölye, taş (ya da demir, kömür) için kurulu: Taşçılar kayadan blok kırar, bloğu ocağa taşır, tezgâhta keski ve tokmakla yontar. Yontulan taş ocakta yığılır, depoya taşınır. Madencilik araştırılınca demir ve kömür damarlarından da çıkarabilir."},
@@ -126,12 +126,13 @@ static func cost_text_of(cost: Dictionary) -> String:
 ## kind it's fitted out as for that (its yard and its gear) and the mode on that kind. Iron and coal
 ## wait on mining.
 const WORKSHOP := {
-	"odun": {"kind": "oduncu", "name": "ODUN"},
-	"tas": {"kind": "tasci", "name": "TAŞ"},
-	"camur": {"kind": "camur", "name": "ÇAMUR"},
-	"yiyecek": {"kind": "toplayici", "name": "YEMİŞ"},
-	"demir": {"kind": "tasci", "mode": "demir", "name": "DEMİR", "needs": "madencilik"},
-	"komur": {"kind": "tasci", "mode": "komur", "name": "KÖMÜR", "needs": "madencilik"},
+	"odun": {"kind": "oduncu", "name": "ODUN", "word": "odun"},
+	"fidan": {"kind": "oduncu", "mode": "fidan", "name": "AĞAÇ DİK", "word": "ağaç dikimi"},
+	"tas": {"kind": "tasci", "name": "TAŞ", "word": "taş"},
+	"camur": {"kind": "camur", "name": "ÇAMUR", "word": "çamur"},
+	"yiyecek": {"kind": "toplayici", "name": "YEMİŞ", "word": "yemiş"},
+	"demir": {"kind": "tasci", "mode": "demir", "name": "DEMİR", "word": "demir", "needs": "madencilik"},
+	"komur": {"kind": "tasci", "mode": "komur", "name": "KÖMÜR", "word": "kömür", "needs": "madencilik"},
 }
 
 

@@ -77,9 +77,9 @@ var arrows := 0 ## (an armoury) arrows
 var training: Array[String] = [] ## (an armoury) the militia to be trained, in turn: "rifle", "bow"
 var casting := false ## (an armoury) cartridges cast each morning, from stone and wood
 var bowing := false ## (an armoury) a bow or a sheaf of arrows made each morning, of wood
-var planting := false ## (a logging camp) its men planting the stumps when they've nothing to fell
 var ox := false ## (a carter's) its carts drawn by oxen
 var spur := false ## on a side line: the train loads straight from it
+var coal_burn := 0 ## (a house) what's left of the coal on the fire, in firewood's worth
 var wanted := 0
 var residents: Array = []
 var cells: Array[Vector2i] = []
@@ -1534,7 +1534,7 @@ func center() -> Vector3:
 func display_name() -> String:
 	var what := BuildingDefs.workshop_of(self)
 	if what != "":
-		return "Atölye (%s)" % BuildingDefs.RES_NAMES[what].to_lower().replace("yiyecek", "yemiş")
+		return "Atölye (%s)" % BuildingDefs.WORKSHOP[what].word
 	return str(def.name)
 
 
