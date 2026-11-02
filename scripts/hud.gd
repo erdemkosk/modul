@@ -14,16 +14,19 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "toplayici", "ormanci"]],
-	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["kule", "kisla", "silahlik"]]]
+const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "toplayici", "ormanci", "insaatci"]],
+	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci"]]]
 const SPEEDS := [1.0, 2.0, 4.0]
+## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
+## is a button on its card, and the build bar, the speed and the menu have their own.
 const KEYS := [
 	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön"],
-	["Bina", "Tab: bina grubu · 1-5: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç"],
-	["Seçim", "Sol tık: bina ya da kasabalı seç · kasabalı seçiliyken sağ tık bir işyerine: oraya ata · O: onar · Del: yık"],
-	["Zaman", "Boşluk: duraklat · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
+	["Bina", "Tab: bina grubu · 1-6: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç · tahta yol: sürükle"],
+	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
+	["Kart", "Seçtiğin şeyin yapabileceği her şey kartında düğme: onar, yık, işçi ekle, milis yap, topla, fener, tüfekçi / okçu yetiştir..."],
+	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
+	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
-	["Savunma", "M: seçili kasabalıyı milis yap · G: milisi topla / bırak · Shift+tık: birkaç kişi seç · toplanmışken sağ tık: oraya git (siper arar), bir hayduda sağ tık: ona ateş et · L: fener (oto / sönük / yanık) · Boşluk ile durdurup emir ver"],
 	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını"],
 ]
 
@@ -47,6 +50,11 @@ var _card_workers: HBoxContainer
 var _card_count: Label
 var _card_acts: HBoxContainer
 var _card_folk: HBoxContainer
+var _btn := {} ## the card's buttons by name, shown and labelled for what's selected
+var _placing_plate: PanelContainer
+var _card_train: HBoxContainer
+var _guns: Label
+var _bows: Label
 var _pause: PanelContainer
 var _help: PanelContainer
 var _t := 0.0
@@ -66,12 +74,15 @@ func _ready() -> void:
 	_toasts.add_theme_constant_override("separation", 2)
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
-	var help := Ui.label(self, "F1: tuşlar", 13, Ui.DIM, "head")
+	var help := _small_button("? TUŞLAR", func() -> void: toggle_help())
+	help.tooltip_text = "Bütün tuşlar (F1)"
 	help.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	help.offset_left = 14
-	help.offset_top = -30
+	help.offset_left = 12
+	help.offset_top = -44
 	help.offset_bottom = -10
+	add_child(help)
+	_make_placing()
 	_test_plate()
 	_make_help()
 	_make_pause()
@@ -107,6 +118,8 @@ func _stores_plate() -> void:
 		_res[id] = _stat(row, Ui.upper(BuildingDefs.RES_NAMES[id]), "Bütün depolardakinin toplamı")
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
+	_guns = _stat(row, "TÜFEK", "Silahlıklardaki ve eldeki Mosin tüfekleri · fişek")
+	_bows = _stat(row, "YAY", "Silahlıklardaki ve eldeki yaylar · ok")
 
 
 func _clock_plate() -> void:
@@ -137,6 +150,9 @@ func _clock_plate() -> void:
 		b.tooltip_text = "Oyun hızı (+ / -)"
 		btns.add_child(b)
 		_speed_buttons.append(b)
+	var menu := _small_button("MENÜ", func() -> void: game.set_menu(true))
+	menu.tooltip_text = "Kaydet, yükle, yeni oyun (Esc)"
+	btns.add_child(menu)
 
 
 ## Bottom right: to try things out at once.
@@ -266,15 +282,30 @@ func _make_card() -> void:
 	_card_acts = HBoxContainer.new()
 	_card_acts.add_theme_constant_override("separation", 8)
 	col.add_child(_card_acts)
-	_card_acts.add_child(_small_button("ONAR", func() -> void: game.repair_selected()))
-	_card_acts.add_child(_small_button("YIK", func() -> void: game.demolish_selected()))
+	_btn.repair = _add(_card_acts, "ONAR", func() -> void: game.repair_selected(), "Yıkılan parçaları yeniden yap (O)")
+	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
+	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
+	_card_train = HBoxContainer.new()
+	_card_train.add_theme_constant_override("separation", 8)
+	col.add_child(_card_train)
+	_card_train.add_child(_small_button("+ TÜFEKÇİ", func() -> void: game.train("rifle")))
+	_card_train.add_child(_small_button("+ OKÇU", func() -> void: game.train("bow")))
+	_card_train.add_child(_small_button("SIRAYI SİL", func() -> void: game.train("")))
 	_card_folk = HBoxContainer.new()
 	_card_folk.add_theme_constant_override("separation", 8)
 	col.add_child(_card_folk)
-	_card_folk.add_child(_small_button("SERBEST BIRAK", func() -> void: game.release_selected()))
-	_card_folk.add_child(_small_button("MİLİS", func() -> void: game.toggle_militia()))
-	_card_folk.add_child(_small_button("TOPLA", func() -> void: game.toggle_draft()))
-	_card_folk.add_child(_small_button("ODAKLAN", func() -> void: game.focus_selected()))
+	_btn.release = _add(_card_folk, "İŞTEN AL", func() -> void: game.release_selected(), "İşyerinden çıkar: taşır, inşa eder")
+	_btn.militia = _add(_card_folk, "MİLİS YAP", func() -> void: game.toggle_militia(), "Tehlike çanında silahlıktan silah alıp mevziye geçer (M)")
+	_btn.draft = _add(_card_folk, "TOPLA", func() -> void: game.toggle_draft(), "Emrine al: sağ tık mevzi, hayduda sağ tık hedef (G)")
+	_btn.lantern = _add(_card_folk, "FENERİ SÖNDÜR", func() -> void: game.toggle_lantern(), "Karanlıkta görünmez olur ama az görür (L)")
+	_btn.folk_look = _add(_card_folk, "ODAKLAN", func() -> void: game.focus_selected(), "Kamerayı ona götür")
+
+
+func _add(row: HBoxContainer, text: String, f: Callable, tip := "") -> Button:
+	var b := _small_button(text, f)
+	b.tooltip_text = tip
+	row.add_child(b)
+	return b
 
 
 func _small_button(text: String, f: Callable) -> Button:
@@ -313,6 +344,23 @@ func _make_help() -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(620, 0)
 	Ui.label(col, "F1 ya da Esc: kapat", 13, Ui.DIM, "head")
+
+
+## While a building's being placed: turn it, or give up, with the mouse.
+func _make_placing() -> void:
+	_placing_plate = _plate(false)
+	_placing_plate.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_placing_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_placing_plate.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_placing_plate.offset_bottom = -126
+	_placing_plate.visible = false
+	add_child(_placing_plate)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_placing_plate.add_child(row)
+	_add(row, "↺ ÇEVİR", func() -> void: game.rotate_ghost(-15.0), "Sola çevir (Shift+R)")
+	_add(row, "ÇEVİR ↻", func() -> void: game.rotate_ghost(15.0), "Sağa çevir (R)")
+	_add(row, "VAZGEÇ", func() -> void: game.stop_placing(), "Koymaktan vazgeç (sağ tık / Esc)")
 
 
 func toggle_help() -> bool:
@@ -380,6 +428,25 @@ func _process(dt: float) -> void:
 	(_res["yiyecek"] as Label).add_theme_color_override("font_color", Ui.BAD if int(stock.yiyecek) <= 5 else Ui.INK)
 	_pop.text = "%d / %d" % [v.villagers.size(), v.beds()]
 	_free.text = str(v.free_count())
+	var guns := 0
+	var shots := 0
+	var bows := 0
+	var arrows := 0
+	for a in v.armories():
+		guns += a.arms
+		shots += a.ammo
+		bows += a.bows
+		arrows += a.arrows
+	for x in v.villagers:
+		if x.armed and not x.dead:
+			if x.held == "bow":
+				bows += 1
+				arrows += x.ammo
+			else:
+				guns += 1
+				shots += x.ammo
+	_guns.text = "%d·%d" % [guns, shots]
+	_bows.text = "%d·%d" % [bows, arrows]
 	var w: Weather = game.weather
 	var h := int(w.hour)
 	var m := int((w.hour - h) * 60.0)
@@ -411,9 +478,14 @@ func _process(dt: float) -> void:
 
 
 func _update_card() -> void:
+	_placing_plate.visible = game._placing != "" and not game._placing in ["yol", "sur", "kapi"]
 	var folk: Villager = game.selected_villager
 	if folk and is_instance_valid(folk) and not folk.dead:
 		_folk_card(folk)
+		return
+	var w: Wall = game.selected_wall
+	if w and is_instance_valid(w):
+		_wall_card(w)
 		return
 	var b: Building = game.selected
 	if b == null or not is_instance_valid(b) or b.state == "gone":
@@ -422,6 +494,8 @@ func _update_card() -> void:
 	_card.visible = true
 	_card_folk.visible = false
 	_card_acts.visible = true
+	_card_train.visible = b.state == "done" and b.def.role == "armory"
+	(_btn.repair as Button).visible = b.state == "ruin" or (b.state == "done" and b.can_repair())
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
 	match b.state:
@@ -443,8 +517,6 @@ func _update_card() -> void:
 			lines.append(str(b.def.desc))
 	if b.is_burning():
 		lines.append("YANIYOR! (%d parça)" % b.burning_count())
-	if game.slides.risk_at(b.global_position) > 0.35:
-		lines.append("Çevredeki yamaç çıplak: şiddetli yağmurda kayabilir. Ormancı ile fidan dik.")
 	if b.state == "done" and b.def.role == "house":
 		var names: Array[String] = []
 		for x in b.residents:
@@ -455,7 +527,7 @@ func _update_card() -> void:
 			lines.append("SOĞUK: yakacak bitti!")
 		else:
 			lines.append("Yakacak: %d odun" % int(b.goods.get("odun", 0)))
-	if b.state == "done" and b.def.role in ["work", "farm", "forest"] and b.idle_note != "":
+	if b.state == "done" and b.def.role in ["work", "farm", "forest", "bowyer", "builders"] and b.idle_note != "":
 		lines.append(b.idle_note)
 	var standing := b.standing_share()
 	if standing < 0.999 and b.state != "ghost":
@@ -467,18 +539,37 @@ func _update_card() -> void:
 				need.append("%d %s" % [rc[r], BuildingDefs.RES_NAMES[r].to_lower()])
 			lines.append("Onarım: %d parça · %s" % [b.fallen_count(), " · ".join(need)])
 	if b.state == "done" and b.def.role == "armory":
-		var m := 0
+		var rifles := 0
+		var archers := 0
+		var any := 0
 		for x in game.village.villagers:
 			if x.militia and not x.dead:
-				m += 1
-		lines.append("Rafta: %d tüfek · %d fişek · Milis: %d kişi" % [b.arms, b.ammo, m])
+				match x.weapon:
+					"rifle":
+						rifles += 1
+					"bow":
+						archers += 1
+					_:
+						any += 1
+		lines.append("Rafta: %d Mosin · %d fişek · %d yay · %d ok" % [b.arms, b.ammo, b.bows, b.arrows])
+		lines.append("Milis: %d tüfekçi · %d okçu%s" % [rifles, archers, (" · %d elle işaretli" % any) if any > 0 else ""])
+		if not b.training.is_empty():
+			var q: Array[String] = []
+			for t in b.training:
+				q.append("tüfekçi" if t == "rifle" else "okçu")
+			lines.append("Yetişecek: " + ", ".join(q))
+			var tr: Variant = b.get_meta("trainee") if b.has_meta("trainee") else null
+			if tr != null and is_instance_valid(tr) and str((tr as Villager).job).begins_with("Talim"):
+				lines.append("Talimde: " + (tr as Villager).display_name)
+			elif game.village._weapon_at(b, b.training[0]) == "":
+				lines.append("Bekliyor: rafta %s yok" % ("tüfek" if b.training[0] == "rifle" else "yay ya da ok"))
 	if b.goods_total() > 0 and b.def.role != "house":
 		var g: Array[String] = []
 		for r: String in b.goods:
 			if int(b.goods[r]) > 0:
 				g.append("%d %s" % [int(b.goods[r]), BuildingDefs.RES_NAMES[r].to_lower()])
 		lines.append(("İçinde: " if b.def.role == "store" else "Yığın: ") + ", ".join(g))
-	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest"] and b.state == "done"
+	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest", "bowyer", "builders"] and b.state == "done"
 	if _card_workers.visible:
 		_card_count.text = "%d / %d" % [b.wanted, int(b.def.slots)]
 		var names: Array[String] = []
@@ -491,12 +582,51 @@ func _update_card() -> void:
 	_card_lines.text = "\n".join(lines)
 
 
+func _wall_card(w: Wall) -> void:
+	_card.visible = true
+	_card_workers.visible = false
+	_card_train.visible = false
+	_card_folk.visible = false
+	_card_acts.visible = true
+	(_btn.repair as Button).visible = false
+	_card_title.text = "KAZIK SUR"
+	var up := 0
+	var todo := 0
+	for k in w.line.size():
+		if w.built[k] == 1:
+			up += 1
+		elif w.built[k] == 0 and not w.in_gap(k):
+			todo += 1
+	var lines: Array[String] = []
+	lines.append("Dikili: %d kazık · dikilecek: %d (%d odun)" % [up, todo, ceili(todo / float(Wall.WOOD_PER))])
+	var gs: Array[String] = []
+	for g in w.gates:
+		if is_instance_valid(g):
+			gs.append("kırık" if g.broken else ("açık" if g.is_open else "kapalı"))
+	lines.append("Kapılar: " + (", ".join(gs) if not gs.is_empty() else "yok"))
+	if not w.burning.is_empty():
+		lines.append("YANIYOR: %d kazık (yavaş yanar; yağmur söndürür)" % w.burning.size())
+	lines.append("")
+	lines.append("Milis surun iç tarafındaki basamaktan ateş eder. YIK: sökülür, kazıkların yarısının odunu geri gelir.")
+	_card_lines.text = "\n".join(lines)
+
+
 func _folk_card(v: Villager) -> void:
 	_card.visible = true
 	_card_workers.visible = false
 	_card_acts.visible = false
+	_card_train.visible = false
 	_card_folk.visible = true
-	_card_title.text = Ui.upper(v.display_name)
+	var many: Array = game._chosen()
+	var guard: bool = v.workplace != null and v.workplace.def.role in ["barracks", "tower"]
+	(_btn.release as Button).visible = v.workplace != null and many.size() <= 1
+	(_btn.militia as Button).visible = not v.is_child and not guard
+	(_btn.militia as Button).text = "MİLİSTEN ÇIKAR" if v.militia else "MİLİS YAP"
+	(_btn.draft as Button).visible = v.militia and not v.down
+	(_btn.draft as Button).text = "BIRAK" if v.drafted else "TOPLA"
+	(_btn.lantern as Button).visible = v.militia
+	(_btn.lantern as Button).text = "FENERİ YAK" if v.lantern_mode == "off" else "FENERİ SÖNDÜR"
+	_card_title.text = Ui.upper(v.display_name) if many.size() <= 1 else "%d KİŞİ SEÇİLİ" % many.size()
 	var lines: Array[String] = []
 	lines.append("Ne yapıyor: " + v.job)
 	lines.append("İşyeri: " + (v.workplace.display_name() if is_instance_valid(v.workplace) else "yok (taşır, inşa eder)"))
@@ -505,11 +635,20 @@ func _folk_card(v: Villager) -> void:
 	if v.down:
 		lines.append("YARALI, YERDE: %d sn içinde eve taşınmazsa ölecek" % int(v.bleed))
 	if v.militia:
-		lines.append("Milis%s · Fişek: %d · Fener: %s" % [" (TOPLANDI)" if v.drafted else "", v.ammo, {"": "oto", "off": "sönük", "on": "yanık"}[v.lantern_mode]])
+		lines.append("Milis (%s)%s · %s: %d · Fener: %s" % [{"rifle": "tüfekçi", "bow": "okçu"}.get(v.weapon, "silahı raftan"), " TOPLANDI" if v.drafted else "",
+			"Ok" if v.held == "bow" else "Fişek", v.ammo, {"": "oto", "off": "sönük", "on": "yanık"}[v.lantern_mode]])
 		if v.in_cover:
 			lines.append("Siperde")
 	if v.carry_n > 0:
 		lines.append("Taşıdığı: %d %s" % [v.carry_n, str(BuildingDefs.RES_NAMES.get(v.carry_res, v.carry_res)).to_lower()])
+	if many.size() > 1:
+		var names: Array[String] = []
+		for x in many:
+			names.append((x as Villager).display_name)
+		lines.append("Seçili: " + ", ".join(names))
 	lines.append("")
-	lines.append("Bir işyerine, tarlaya ya da karakola sağ tıkla: oraya ata.")
+	if v.drafted:
+		lines.append("Toplandı: yere sağ tık mevzi (siper arar), hayduda sağ tık hedef.")
+	else:
+		lines.append("Bir işyerine, tarlaya ya da karakola sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç.")
 	_card_lines.text = "\n".join(lines)

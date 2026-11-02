@@ -1061,6 +1061,63 @@ def _cart_props(k, w, d):
         k.add(p)
 
 
+def _bowyer_props(k, w, d):
+    # the bench with a stave clamped on it, finished bows hung on the back wall, staves leaning to
+    # season, arrow shafts in a bundle, a block for fletching
+    p = k.piece("plank", "work")
+    p.box((0.0, 0.3, 0.95), (1.8, 0.6, 0.08), jit(PLANK, 0.06, k.rng))
+    for sx in (-0.75, 0.75):
+        for sy in (0.05, 0.55):
+            p.box((sx, sy, 0.7), (0.07, 0.07, 0.5), DARK)
+    k.add(p)
+    p = k.piece("wood", "bows")
+    for i in range(4):
+        x = -1.4 + i * 0.6
+        # a bow: a bent stave (three short sections) with its string
+        for (a, b) in (((x, 1.75, 1.2), (x + 0.12, 1.75, 1.75)), ((x + 0.12, 1.75, 1.75), (x + 0.12, 1.75, 2.15)), ((x + 0.12, 1.75, 2.15), (x, 1.75, 2.7))):
+            p.log(a, b, 0.022, color=(0.52, 0.34, 0.18), end=(0.6, 0.42, 0.24), segs=6, rng=k.rng, taper=0.0)
+        p.log((x, 1.72, 1.2), (x, 1.72, 2.7), 0.004, color=(0.85, 0.82, 0.72), end=(0.85, 0.82, 0.72), segs=4, rng=k.rng, taper=0.0)
+    p.log((0.4, 0.3, 1.02), (-0.5, 0.3, 1.02), 0.025, color=(0.6, 0.44, 0.26), end=(0.7, 0.55, 0.35), segs=6, rng=k.rng, taper=0.0)
+    for i in range(5):
+        p.log((w * 0.5 - 0.4 - i * 0.12, 1.4, 0.47), (w * 0.5 - 0.55 - i * 0.12, 1.25, 2.3), 0.03, color=(0.55, 0.4, 0.24), end=(0.7, 0.55, 0.35), segs=6, rng=k.rng, taper=0.0)
+    for i in range(14):
+        a = i / 14 * math.tau
+        p.log((-1.9 + math.cos(a) * 0.06, -0.2 + math.sin(a) * 0.06, 0.47), (-1.9 + math.cos(a) * 0.09, -0.2 + math.sin(a) * 0.09, 1.3), 0.006, color=(0.75, 0.62, 0.42), end=(0.85, 0.85, 0.82), segs=4, rng=k.rng, taper=0.0)
+    k.add(p)
+
+
+def _builders_props(k, w, d):
+    # the builders' yard: sawn planks stacked to season on bearers, ladders on the back wall, a
+    # sawhorse with a beam on it, a rack of axes and adzes, a barrow of pegs
+    p = k.piece("plank", "stack")
+    for row in range(5):
+        for i in range(5):
+            p.box((-w * 0.5 + 1.1 + i * 0.32, 0.2, FLOOR + 0.1 + row * 0.09), (0.28, 2.6, 0.06), jit(PLANK, 0.07, k.rng))
+        p.box((-w * 0.5 + 1.75, -0.9, FLOOR + 0.05 + row * 0.09), (1.7, 0.08, 0.03), DARK)
+        p.box((-w * 0.5 + 1.75, 1.3, FLOOR + 0.05 + row * 0.09), (1.7, 0.08, 0.03), DARK)
+    k.add(p)
+    p = k.piece("plank", "ladders")
+    for j, x in enumerate((0.6, 1.4)):
+        for sx in (-0.22, 0.22):
+            p.obox((x + sx, d * 0.5 - 0.55, FLOOR + 1.3), (1, 0, 0), (0, 0.2, 1), (0, 1, -0.2), (0.06, 2.6, 0.06), jit(PLANK, 0.06, k.rng))
+        for r in range(7):
+            p.box((x, d * 0.5 - 0.55 - (0.15 + r * 0.33) * 0.2, FLOOR + 0.2 + r * 0.33), (0.44, 0.04, 0.04), jit(PLANK, 0.06, k.rng))
+    k.add(p)
+    p = k.piece("log", "work")
+    for x in (w * 0.5 - 1.6, w * 0.5 - 0.6):
+        for sy in (-0.18, 0.18):
+            p.log((x, -0.6 + sy, FLOOR), (x, -0.6 - sy, FLOOR + 0.75), 0.05, rng=k.rng, taper=0.0)
+    p.log((w * 0.5 - 2.3, -0.6, FLOOR + 0.82), (w * 0.5 + 0.1, -0.6, FLOOR + 0.82), 0.14, rng=k.rng)
+    k.add(p)
+    p = k.piece("dark", "tools")
+    p.box((w * 0.5 - 0.25, 0.6, FLOOR + 1.45), (0.06, 1.3, 0.08), DARK)
+    for i in range(4):
+        y = 0.1 + i * 0.32
+        p.box((w * 0.5 - 0.3, y, FLOOR + 1.0), (0.04, 0.04, 0.85), (0.5, 0.36, 0.22))
+        p.box((w * 0.5 - 0.3, y, FLOOR + 0.6), (0.05, 0.16, 0.12), (0.22, 0.22, 0.23))
+    k.add(p)
+
+
 def ahir():
     def extra(k, w, d):
         p = k.piece("thatch", "hay")
@@ -1509,6 +1566,8 @@ BUILDERS = {
     "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
+    "yayci": lambda: shed("yayci", 5.0, 4.0, _bowyer_props),
+    "insaatci": lambda: shed("insaatci", 6.0, 5.0, _builders_props),
 }
 
 

@@ -370,7 +370,7 @@ func _shoot_lamp(r: Villager) -> void:
 	for b in village.buildings:
 		if b.def.role == "light" and b.lit and b.state == "done" and b.global_position.distance_to(r.position) < 42.0 and randf() < 0.5:
 			r.revealed = 2.5
-			_flash(r.position + Vector3.UP * 1.45)
+			_flash(r.muzzle())
 			b.take_goods("odun", int(b.goods.get("odun", 0)))
 			b.set_lit(false)
 			if not _lamp_said:
@@ -546,7 +546,8 @@ func _tower_shots(dt: float) -> void:
 		if foe == null:
 			continue
 		_shoot_t[t] = randf_range(2.2, 3.0)
-		shoot(man.position + Vector3.UP * 1.4, foe, randf_range(28.0, 40.0), 0.6)
+		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
+		shoot(man.muzzle(), foe, randf_range(28.0, 40.0), 0.6)
 
 
 ## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,
@@ -561,10 +562,10 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	var length := from.distance_to(to)
-	m.size = Vector3(0.025, 0.025, length)
+	m.size = Vector3(0.012, 0.012, length)
 	streak.mesh = m
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.85, 0.6, 0.7)
+	mat.albedo_color = Color(1.0, 0.85, 0.6, 0.45)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	streak.material_override = mat
@@ -575,6 +576,66 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	st.tween_callback(streak.queue_free)
 	if randf() < chance:
 		foe.hurt(dmg, by)
+
+
+## An arrow loosed from `from` at `foe` (by `by`): no flash, hardly a sound, so the archer isn't
+## shown; the shaft flies, and `dmg` if it hits (`chance`, halved behind cover).
+func arrow(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null) -> void:
+	if foe.in_cover:
+		chance *= 0.5
+	var to := foe.position + Vector3.UP * 1.1 + Vector3(randf_range(-0.5, 0.5), randf_range(-0.3, 0.3), randf_range(-0.5, 0.5))
+	var hit := randf() < chance
+	_fly_arrow(from, to, func() -> void:
+		if hit and is_instance_valid(foe) and not foe.dead:
+			foe.hurt(dmg, by))
+
+
+func _fly_arrow(from: Vector3, to: Vector3, landed: Callable) -> void:
+	var a := MeshInstance3D.new()
+	var m := BoxMesh.new()
+	m.size = Vector3(0.015, 0.015, 0.75)
+	a.mesh = m
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.55, 0.42, 0.26)
+	a.material_override = mat
+	add_child(a)
+	var time := clampf(from.distance_to(to) / 45.0, 0.12, 0.9)
+	var arc := Vector3.UP * from.distance_to(to) * 0.06
+	var tw := a.create_tween()
+	tw.tween_method(func(u: float) -> void:
+		var p := from.lerp(to, u) + arc * 4.0 * u * (1.0 - u)
+		var ahead := from.lerp(to, minf(u + 0.05, 1.0)) + arc * 4.0 * (u + 0.05) * (1.0 - u - 0.05)
+		if p.distance_to(ahead) > 0.001:
+			a.look_at_from_position(p, ahead, Vector3.UP)
+		else:
+			a.global_position = p, 0.0, 1.0, time)
+	tw.tween_callback(landed)
+	tw.tween_interval(4.0)
+	tw.tween_callback(a.queue_free)
+	Ambience.knock(from, 3.2) # (the string's twang, soft)
+
+
+## A practice shot at the armoury's target: a rifle's crack and flash, or an arrow thudding in.
+func practice(from: Vector3, at: Vector3, kind: String) -> void:
+	var to := at + Vector3(randf_range(-0.3, 0.3), randf_range(-0.3, 0.3), 0)
+	if kind == "rifle":
+		_flash(from)
+		var streak := MeshInstance3D.new()
+		var m := BoxMesh.new()
+		m.size = Vector3(0.012, 0.012, from.distance_to(to))
+		streak.mesh = m
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.85, 0.6, 0.45)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		streak.material_override = mat
+		add_child(streak)
+		streak.look_at_from_position((from + to) * 0.5, to, Vector3.UP)
+		var st := streak.create_tween()
+		st.tween_property(mat, "albedo_color:a", 0.0, 0.15)
+		st.tween_callback(streak.queue_free)
+	else:
+		_fly_arrow(from, to, func() -> void: pass)
 
 
 func _flash(at: Vector3) -> void:
@@ -588,4 +649,43 @@ func _flash(at: Vector3) -> void:
 	var ft := flash.create_tween()
 	ft.tween_property(flash, "light_energy", 0.0, 0.12)
 	ft.tween_callback(flash.queue_free)
+	# the flame at the muzzle, there and gone; then a puff of powder smoke drifting off
+	var fire := MeshInstance3D.new()
+	var fm := SphereMesh.new()
+	fm.radius = 0.09
+	fm.height = 0.18
+	fm.radial_segments = 8
+	fm.rings = 4
+	fire.mesh = fm
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(1.0, 0.82, 0.45)
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fire.material_override = glow
+	add_child(fire)
+	fire.global_position = at
+	var fw := fire.create_tween()
+	fw.tween_property(fire, "scale", Vector3.ONE * 2.2, 0.06)
+	fw.parallel().tween_property(glow, "albedo_color:a", 0.0, 0.08)
+	fw.tween_callback(fire.queue_free)
+	var puff := MeshInstance3D.new()
+	var pm := SphereMesh.new()
+	pm.radius = 0.16
+	pm.height = 0.3
+	pm.radial_segments = 8
+	pm.rings = 4
+	puff.mesh = pm
+	var smoke := StandardMaterial3D.new()
+	smoke.albedo_color = Color(0.62, 0.62, 0.6, 0.22)
+	smoke.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smoke.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smoke.cull_mode = BaseMaterial3D.CULL_DISABLED
+	puff.material_override = smoke
+	add_child(puff)
+	puff.global_position = at
+	var pw := puff.create_tween()
+	pw.tween_property(puff, "scale", Vector3.ONE * 4.0, 1.6).set_ease(Tween.EASE_OUT)
+	pw.parallel().tween_property(puff, "global_position", at + Vector3.UP * 0.6 + Weather.wind_now * 0.25, 1.6)
+	pw.parallel().tween_property(smoke, "albedo_color:a", 0.0, 1.6)
+	pw.tween_callback(puff.queue_free)
 	Ambience.knock(at, 0.45) # (the crack of it)

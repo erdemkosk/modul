@@ -90,7 +90,7 @@ func _update_haze(dt: float) -> void:
 		var h := weather.hour
 		var still := 1.0 - smoothstep(2.0, 7.0, Weather.wind_now.length())
 		var cool := maxf(smoothstep(5.0, 7.0, h) * (1.0 - smoothstep(9.0, 11.0, h)), smoothstep(17.0, 19.0, h) * (1.0 - smoothstep(22.0, 24.0, h)))
-		want = clampf(n * 0.004, 0.0, 0.035) * still * (0.35 + 0.65 * cool) * (1.0 - weather.rain_intensity * 0.7)
+		want = clampf(n * 0.0015, 0.0, 0.01) * still * (0.35 + 0.65 * cool) * (1.0 - weather.rain_intensity * 0.7)
 		var mid := (lo + hi) * 0.5
 		_haze.global_position = Vector3(mid.x, mid.y + 7.0, mid.z)
 		_haze.size = Vector3(hi.x - lo.x + 50.0, 22.0, hi.z - lo.z + 50.0)
@@ -107,7 +107,14 @@ func _process(dt: float) -> void:
 	var dawn := smoothstep(4.5, 6.0, h) * (1.0 - smoothstep(8.0, 10.5, h))
 	var dusk := smoothstep(18.0, 19.5, h) * (1.0 - smoothstep(21.5, 23.5, h))
 	var mist: float = (dawn + dusk * 0.6) * float([1.2, 0.55, 1.5, 0.8][season]) * (1.0 - weather.rain_intensity * 0.5)
-	env.volumetric_fog_density += mist * 0.008
+	env.volumetric_fog_density += mist * 0.0006
+	# Kept light, whatever the weather: the valley should read clearly from above, the mist a veil
+	# at most, never a wall (the weather sets these afresh every frame, before this).
+	env.volumetric_fog_density = minf(env.volumetric_fog_density * 0.3, 0.0018)
+	env.fog_density = minf(env.fog_density * 0.3, 0.0009)
+	env.fog_sky_affect = minf(env.fog_sky_affect, 0.25)
+	if weather._ground_fog_mat:
+		weather._ground_fog_mat.density = minf(weather._ground_fog_mat.density * 0.25, 0.004)
 	env.volumetric_fog_anisotropy = maxf(env.volumetric_fog_anisotropy, 0.72 * dawn)
 	# Colour: the golden hours warmer and richer, winter paler, night plain.
 	var sun_y := weather.sun_direction().y

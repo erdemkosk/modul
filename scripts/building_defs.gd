@@ -15,7 +15,7 @@ const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "toplayici", "ormanci", "meydan"]
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik"]
+const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -24,6 +24,10 @@ const DEFS := {
 		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar. Akşamları ateş yakılır, kasabalılar başında toplanıp oturur, konuşur; çocuklar orada oynar."},
 	"cankulesi": {"name": "Çan kulesi", "size": Vector2(4, 4), "cost": {"odun": 20, "tas": 8}, "time": 36.0, "role": "bell",
 		"desc": "Çan sabah işbaşını, akşam paydosu çalar. Baskında tehlike çanı çalınca kasabanın her yerindeki herkes saklanır."},
+	"sur": {"name": "Kazık sur", "size": Vector2(1, 1), "cost": {"odun": 1}, "time": 0.0, "role": "wall",
+		"desc": "Sivri kütüklerden çit: nokta nokta çiz, kasabalılar parça parça diker (4 kazığa bir odun). Yolu kestiği yere kendiliğinden kapı konur. Haydutlar ancak kırarak geçer."},
+	"kapi": {"name": "Sur kapısı", "size": Vector2(3, 1), "cost": {"odun": 6}, "time": 0.0, "role": "gate",
+		"desc": "Surun üstüne konur. Gündüz açık; gece ve tehlike çanında kapanır, kasabalı yaklaşınca açılır. Haydut ancak kırarak geçer."},
 	"yol": {"name": "Tahta yol", "size": Vector2(2, 2), "cost": {"odun": 1}, "time": 0.0, "role": "road",
 		"desc": "Basılı tutup sürükleyerek döşenir: her 2 m'si bir odun. Üstünde hızlı yüründü, araba saplanmaz, yağmurda çamur olmaz."},
 	"tarla": {"name": "Tarla", "size": Vector2(14, 10), "cost": {"odun": 10}, "time": 12.0, "role": "farm", "slots": 4,
@@ -53,8 +57,12 @@ const DEFS := {
 		"desc": "Tüfekli bir gözcü çıkar, 70 m içinde aydınlıkta gördüğü haydudu ve kurdu vurur. Yaklaşanları duyar, kasabayı uyarır."},
 	"kisla": {"name": "Bekçi karakolu", "size": Vector2(8, 6), "cost": {"odun": 24, "tas": 8}, "time": 34.0, "role": "barracks", "slots": 6,
 		"desc": "Buraya verilen kasabalılar tüfekli bekçi olur; gördükleri haydutla ve kurtla çarpışır. Karanlıktakini göremezler."},
+	"insaatci": {"name": "İnşaatçı", "size": Vector2(6, 5), "cost": {"odun": 14, "tas": 4}, "time": 24.0, "role": "builders", "slots": 4,
+		"desc": "Buraya verilen kasabalılar inşaatçı olur: işleri şantiyeler. Malzemeyi taşır, binayı parça parça kurar, onarır. Boştakiler de yine yardıma koşar; inşaat yokken inşaatçılar tezgâhta tahta biçer."},
+	"yayci": {"name": "Yayçı", "size": Vector2(5, 4), "cost": {"odun": 12}, "time": 22.0, "role": "bowyer", "slots": 2,
+		"desc": "Depodan odun alıp yay (2 odun) ve ok (1 odundan 12 ok) yapar, silahlığa taşır. Yay kasabanın kendi silahıdır: sessiz, kısa menzilli, atanı ele vermez."},
 	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "armory",
-		"desc": "Kasabanın tüfekleri ve fişekleri burada durur. Milis işaretli kasabalılar tehlike çanında buradan tüfek alıp mevziye geçer. Tüfek kasabada yapılamaz: haydutlardan düşeni toplanır, ya da satın alınır."},
+		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Kartından tüfekçi ya da okçu yetiştir: biri gelip yandaki hedefte talim eder, sonra o silahın milisi olur. Milis işaretli kasabalılar tehlike çanında buradan tüfek alıp mevziye geçer. Tüfek kasabada yapılamaz: haydutlardan düşeni toplanır, ya da satın alınır."},
 }
 
 ## What each stuff is: its colour, hit points, whether it burns and how long it takes to burn through

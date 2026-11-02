@@ -33,6 +33,7 @@ var bridge := {} ## {center: Vector3, along: Vector3, half_len, half_w, y}
 var _base := PackedFloat32Array() ## each cell's own cost
 var _shut := PackedByteArray() ## 1 the ground's own (water, cliff), 2 a building's
 var _road := PackedByteArray() ## 1 under a plank road: quick, never mud, the cheapest way
+var _wall := PackedByteArray() ## 1 under a palisade: dear to cross (a way round through a gate is taken), not solid
 var _claim := PackedByteArray() ## 1 under a field: walked over, not built on
 var _worn := {} ## cell index -> true while it carries any wear
 var _scorched := {} ## cell index -> how scorched, 0..1
@@ -57,6 +58,7 @@ func _ready() -> void:
 	_base.resize(N * N)
 	_shut.resize(N * N)
 	_road.resize(N * N)
+	_wall.resize(N * N)
 	_shown.resize(N * N)
 	_claim.resize(N * N)
 	astar.region = Rect2i(0, 0, N, N)
@@ -515,6 +517,23 @@ func set_road(cells: Array[Vector2i]) -> void:
 		_grid(c, false, _base[i] * COST_SCALE * 0.3)
 
 
+## A palisade's cells (`on`) or no longer (breached, pulled down). Not solid: a way through one costs
+## four hundred times a step, so any way round through a gate is taken; one who comes to it with no way
+## round (an outlaw) hacks through (Villager._walk).
+func set_wall(cells: Array[Vector2i], on: bool) -> void:
+	for c in cells:
+		var i := c.y * N + c.x
+		if _shut[i] != 0:
+			continue
+		_wall[i] = 1 if on else 0
+		_grid(c, false, _base[i] * COST_SCALE * (400.0 if on else (0.3 if _road[i] == 1 else 1.0)))
+
+
+func on_wall(p: Vector3) -> bool:
+	var c := cell_of(p)
+	return _wall[c.y * N + c.x] == 1
+
+
 func on_road(p: Vector3) -> bool:
 	var c := cell_of(p)
 	return _road[c.y * N + c.x] == 1
@@ -528,7 +547,7 @@ func _show(c: Vector2i, i: int) -> void:
 	var px := terrain.village_img.get_pixel(c.x, c.y)
 	px.r = v / 255.0
 	terrain.village_img.set_pixel(c.x, c.y, px)
-	if _shut[i] == 0 and _road[i] == 0:
+	if _shut[i] == 0 and _road[i] == 0 and _wall[i] == 0:
 		_grid(c, false, _base[i] * COST_SCALE * lerpf(1.0, 0.42, v / 255.0))
 	_dirty = true
 

@@ -91,7 +91,9 @@ var _body: Townsfolk ## the rigged townsman (null: the old jointed figure)
 # --- the defence
 var militia := false ## takes a rifle from the armoury when the alarm goes
 var drafted := false ## under the player's orders (skipped by Village._assign)
-var armed := false ## has an armoury rifle in hand
+var armed := false ## has an armoury weapon in hand
+var weapon := "" ## what it's trained to: "rifle", "bow" ("" marked by hand: whatever's on the rack)
+var held := "" ## what it took from the rack this time
 var ammo := 0 ## cartridges on it
 var lantern_mode := "" ## "": lit at night, "off": kept dark
 var revealed := 0.0 ## s it can be seen anywhere (the flash of its own shot)
@@ -752,7 +754,14 @@ func arm_with(kind: String) -> void:
 			light.position = Vector3(0, -0.6, 0)
 			_weapon.add_child(light)
 		"bow":
-			_rod(Vector3(0, 0.0, 0), 0.02, 1.3, wood)
+			var limb := StandardMaterial3D.new()
+			limb.albedo_color = Color(0.5, 0.33, 0.17)
+			for k in 3:
+				var seg := _rod(Vector3(0, -0.45 + k * 0.45, -0.08 * float(k == 1)), 0.018, 0.48, limb)
+				seg.rotation.x = [0.28, 0.0, -0.28][k]
+			var cord := StandardMaterial3D.new()
+			cord.albedo_color = Color(0.85, 0.82, 0.72)
+			_rod(Vector3(0, 0.0, 0.06), 0.004, 1.3, cord)
 		"rifle":
 			if _rifle:
 				_rod(Vector3(0, 0.06, -0.55), 0.016, 0.8, iron).rotation.x = PI * 0.5
@@ -826,7 +835,7 @@ func hurt(dmg: float, by: Villager = null) -> void:
 			return
 		die()
 		return
-	if fighter and by and is_instance_valid(by) and not by.dead and (plan.is_empty() or str(plan[0].t) != "fight"):
+	if fighter and not armed and by and is_instance_valid(by) and not by.dead and (plan.is_empty() or str(plan[0].t) != "fight"):
 		abort()
 		give([{"t": "fight", "foe": by, "give_up": 40.0}], "Savaşıyor")
 
@@ -943,6 +952,25 @@ func _walk(dt: float) -> bool:
 	in_cover = false
 	if _path_i >= _path.size():
 		return true
+	if team == 1 and village.has_method("barrier_at"):
+		var bar: Dictionary = village.barrier_at(position, _path[_path_i])
+		if not bar.is_empty():
+			# A shut gate or the stakes in the way: hacked at till it gives.
+			var at: Vector3 = (bar.gate as Node3D).global_position if bar.has("gate") else bar.at
+			_face(at, dt)
+			_anim = "strike"
+			_attack_t -= dt
+			if _attack_t <= 0.0:
+				_attack_t = randf_range(1.0, 1.4)
+				if bar.has("gate"):
+					(bar.gate as Gate).hit(attack)
+				else:
+					if role == "torch" and randf() < 0.35:
+						(bar.wall as Wall).ignite(at) # (a torch to it as well: it takes, slowly)
+					(bar.wall as Wall).hit(at, attack)
+			job = "Suru kırıyor"
+			_animate(dt, false)
+			return false
 	var worn := nav.worn(position)
 	var speed := 2.9 * (1.0 + 0.5 * worn * (1.0 - 0.75 * Weather.wet_now))
 	speed *= 0.82 if carry_n > 0 else 1.0
@@ -1061,6 +1089,8 @@ func _hold(kind: String) -> void:
 	if _tool:
 		_tool.queue_free()
 		_tool = null
+	if _body:
+		_body.grip(null)
 	if kind == "" or (_arms.size() < 2 and _body == null):
 		return
 	_tool = Node3D.new()
@@ -1088,8 +1118,9 @@ func _hold(kind: String) -> void:
 	if kind == "scythe":
 		# the snath, long and bent, held by its two grips; the blade out at its foot
 		_tool_part(Vector3(0.035, 1.6, 0.035), Vector3(0, -0.55, -0.1), wood, Vector3(-0.15, 0, 0))
-		_tool_part(Vector3(0.03, 0.03, 0.2), Vector3(0, -0.15, -0.12), wood)
+		_tool_part(Vector3(0.03, 0.03, 0.2), Vector3(0, -0.45, -0.2), wood)
 		_tool_part(Vector3(0.012, 0.08, 0.75), Vector3(0.0, -1.32, -0.42), iron, Vector3(0, 0.25, 0))
+		_second_hand(Vector3(0, -0.45, -0.28))
 		return
 	var haft: float = {"axe": 0.85, "pick": 0.85, "hammer": 0.38, "sickle": 0.18, "hoe": 1.3, "spade": 1.1, "saw": 0.16, "mallet": 0.3}[kind]
 	_tool_part(Vector3(0.035, haft, 0.035), Vector3(0, -haft * 0.35, 0), wood)
@@ -1114,6 +1145,20 @@ func _hold(kind: String) -> void:
 			_tool_part(Vector3(0.03, 0.03, 0.8), tip + Vector3(0, 0.22, -0.4), wood)
 		"mallet":
 			_tool_part(Vector3(0.12, 0.12, 0.2), tip, wood)
+	# A long haft's held in both hands: the left one further down it.
+	var other: float = {"axe": 0.3, "pick": 0.36, "hoe": 0.5, "spade": 0.5}.get(kind, 0.0)
+	if other > 0.0:
+		_second_hand(Vector3(0, -other, 0))
+
+
+## Where the left hand takes hold of the tool (Townsfolk.grip).
+func _second_hand(at: Vector3) -> void:
+	if _body == null or _tool == null:
+		return
+	var m := Node3D.new()
+	m.position = at
+	_tool.add_child(m)
+	_body.grip(m)
 
 
 func _tool_part(size: Vector3, at: Vector3, mat: Material, rot := Vector3.ZERO) -> void:
@@ -1148,20 +1193,42 @@ func _hold_post(step: Dictionary, dt: float) -> void:
 	if foe and (ammo > 0 or not armed):
 		_face(foe.position, dt * 3.0)
 		_anim = "aim"
-		_attack_t -= dt
+		_attack_t = _attack_t - dt if _aimed_at(foe.position) else maxf(_attack_t, 0.5) # (turned to it, the gun up, then the shot)
 		if _attack_t <= 0.0:
 			_attack_t = randf_range(2.2, 3.0)
 			if armed:
 				ammo -= 1
 			var d := foe.position.distance_to(position)
-			raids.shoot(position + Vector3.UP * 1.45, foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
+			if held == "bow":
+				_attack_t = randf_range(1.4, 1.9) # (a bow's quicker than a bolt)
+				raids.arrow(muzzle(), foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.4), 0.3, 0.8), self)
+			else:
+				raids.shoot(muzzle(), foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
 	else:
 		_anim = "idle"
 		if step.has("face"):
 			_face(step.face, dt)
 	if armed and ammo <= 0:
-		job = "Fişeği bitti"
+		job = "Oku bitti" if held == "bow" else "Fişeği bitti"
 	_animate(dt, false)
+
+
+## Where a shot leaves from: the rifle's muzzle, the bow in the hand (or about the shoulder).
+func muzzle() -> Vector3:
+	if _weapon and is_instance_valid(_weapon) and _weapon.get_child_count() > 0:
+		if _rifle:
+			return _weapon.global_transform * Vector3(0, 0.06, -0.96)
+		return _weapon.global_position
+	return global_position + Vector3.UP * 1.45
+
+
+## Turned to `p` near enough to shoot at it.
+func _aimed_at(p: Vector3) -> bool:
+	var to := Vector2(p.x - position.x, p.z - position.z)
+	var fwd := Vector2(-global_basis.z.x, -global_basis.z.z)
+	if to.length() < 0.1 or fwd.length() < 0.1:
+		return true
+	return to.normalized().dot(fwd.normalized()) > 0.985
 
 
 func _fight(step: Dictionary, dt: float) -> void:
@@ -1181,10 +1248,10 @@ func _fight(step: Dictionary, dt: float) -> void:
 		_path = PackedVector3Array()
 		_face(f.position, dt * 3.0)
 		_anim = "aim"
-		_attack_t -= dt
+		_attack_t = _attack_t - dt if _aimed_at(f.position) else maxf(_attack_t, 0.5)
 		if _attack_t <= 0.0:
 			_attack_t = randf_range(2.0, 2.8)
-			village.raids.shoot(position + Vector3.UP * 1.45, f, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
+			village.raids.shoot(muzzle(), f, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
 		_animate(dt, false)
 		return
 	if role == "shooter" or (armed and ranged > 0.0):
@@ -1283,16 +1350,16 @@ func _animate(dt: float, walking: bool) -> void:
 			kn = 0.5
 		"hoe":
 			# Raised high, brought down hard into the ground (body behind it), drawn back toward the feet.
-			var u := fmod(t + (get_instance_id() % 7) * 0.2, 1.5) / 1.5
-			var up := smoothstep(0.0, 0.55, u) * (1.0 - smoothstep(0.55, 0.68, u))
-			var pull := smoothstep(0.7, 1.0, u)
-			arm_l = -0.55 - up * 1.7 + pull * 0.25
-			arm_r = arm_l - 0.1
-			lean = 0.42 - up * 0.3 + pull * 0.08
-			el = 0.35 + up * 0.4 + pull * 0.5
-			er = el
-			kn = 0.3 + (1.0 - up) * 0.15
-			twist = -0.15
+			var u := fmod(t + (get_instance_id() % 7) * 0.2, 1.6) / 1.6
+			var up := smoothstep(0.0, 0.5, u) * (1.0 - smoothstep(0.55, 0.66, u))
+			var pull := smoothstep(0.68, 1.0, u)
+			arm_r = -0.35 - up * 0.95 + pull * 0.15
+			arm_l = arm_r
+			lean = 0.38 - up * 0.18 + pull * 0.06
+			er = 0.25 + up * 0.75 + pull * 0.3
+			el = er
+			kn = 0.3 + (1.0 - up) * 0.1
+			twist = -0.2
 		"dig":
 			var s := sin(t * 3.0)
 			arm_l = -0.8 + s * 0.4

@@ -71,6 +71,9 @@ var work := 0.0 ## seconds of building done
 var workers: Array = []
 var arms := 0 ## (an armoury) rifles on the rack
 var ammo := 0 ## (an armoury) cartridges
+var bows := 0 ## (an armoury) bows on the rack
+var arrows := 0 ## (an armoury) arrows
+var training: Array[String] = [] ## (an armoury) the militia to be trained, in turn: "rifle", "bow"
 var wanted := 0
 var residents: Array = []
 var cells: Array[Vector2i] = []
@@ -127,7 +130,7 @@ func setup(k: String) -> void:
 		incoming[r] = 0
 	var sz: Vector2 = def.size
 	radius = sz.length() * 0.5
-	wanted = {"work": 1, "tower": 1, "barracks": 2, "carts": 1, "oxen": 1, "farm": 2, "forest": 1}.get(str(def.role), 0)
+	wanted = {"work": 1, "tower": 1, "barracks": 2, "bowyer": 1, "builders": 2, "carts": 1, "oxen": 1, "farm": 2, "forest": 1}.get(str(def.role), 0)
 	body = StaticBody3D.new()
 	body.collision_layer = 2
 	body.collision_mask = 0
@@ -1454,21 +1457,6 @@ static func _sink_later(rb: RigidBody3D, after: float) -> void:
 	tw.tween_callback(rb.set.bind("freeze", true))
 	tw.tween_property(rb, "position:y", rb.position.y - 1.5, 6.0)
 	tw.tween_callback(rb.queue_free)
-
-
-## Struck by something heavy (a landslide): about `share` of what's up above the plinth is
-## knocked off, thrown along `push`, and what it held comes down after it.
-func struck(push: Vector3, share: float) -> void:
-	var can: Array[Piece] = []
-	for p in pieces:
-		if p.alive and p.built and p.aabb.end.y > 0.6:
-			can.append(p)
-	can.shuffle()
-	for k in ceili(can.size() * share):
-		_drop(can[k], push * randf_range(0.6, 1.2))
-	_restand()
-	if state in ["done", "site", "repair"] and standing_share() < 0.45:
-		_to_ruin()
 
 
 func _to_ruin() -> void:

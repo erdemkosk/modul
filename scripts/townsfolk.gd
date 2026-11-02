@@ -55,6 +55,7 @@ var model: Node3D
 var skeleton: Skeleton3D
 var player: AnimationPlayer
 var pose: TownsfolkPose
+var grip_ik: TownsfolkGrip
 var coat_material: StandardMaterial3D ## (flashed red when it's struck)
 var _hands: Array[Node3D] = [] ## left, right: what's held hangs here, axes as the old arms had them
 var _weapon_mount: Node3D
@@ -85,6 +86,8 @@ func build(kind: String, rng: RandomNumberGenerator) -> void:
 				player.get_animation(c).loop_mode = Animation.LOOP_LINEAR
 	pose = TownsfolkPose.new()
 	skeleton.add_child(pose)
+	grip_ik = TownsfolkGrip.new()
+	skeleton.add_child(grip_ik)
 	_dress(kind, rng)
 	# A man's build varies: a little taller or shorter, broader or leaner.
 	var tall := rng.randf_range(0.94, 1.03)
@@ -96,24 +99,41 @@ func build(kind: String, rng: RandomNumberGenerator) -> void:
 	player.seek(rng.randf() * 3.0, true)
 
 
-## A holder on a hand bone, turned so its -y runs on down the forearm past the fist and its -z
-## points forward when the arm hangs: the axes the tools and lanterns were made for.
+## A holder on a hand bone, turned the way a haft lies in a fist: its -y out past the thumb, the
+## wrist a little cocked (so a tool's head stands up and forward of the hand), its -z the way the
+## knuckles face (an axe's or a hoe's blade, a hammer's face, toward what's struck). The axes the
+## tools and lanterns are made for (Villager._hold, arm_with).
 func _grip(bone: String) -> Node3D:
 	var b := skeleton.find_bone(bone)
 	var at := BoneAttachment3D.new()
 	at.bone_name = bone
 	skeleton.add_child(at)
-	var rest := skeleton.get_bone_global_rest(b).basis.orthonormalized()
-	var fwd := rest.inverse() * Vector3(0, 0, -1)
-	fwd.y = 0.0
-	fwd = fwd.normalized()
-	var y := Vector3(0, -1, 0)
-	var z := -fwd
+	var rest := skeleton.get_bone_global_rest(b)
+	var thumb := skeleton.find_bone(bone.replace("Hand", "ThumbProximal"))
+	# (in the hand's own frame y runs along the fingers; the thumb's side is across them)
+	var radial := rest.basis.orthonormalized().inverse() * (skeleton.get_bone_global_rest(thumb).origin - rest.origin) if thumb >= 0 else Vector3.RIGHT
+	radial.y = 0.0
+	radial = radial.normalized() if radial.length() > 0.001 else Vector3.RIGHT
+	var fingers := Vector3(0, 1, 0)
+	var head := (radial + fingers * 0.8).normalized()
+	var blade := (fingers - head * fingers.dot(head)).normalized()
+	var y := -head
+	var z := -blade
 	var g := Node3D.new()
 	g.basis = Basis(y.cross(z), y, z)
-	g.position = Vector3(0, 0.085, 0) # (the palm, a little past the wrist)
+	g.position = Vector3(0, 0.08, 0) + radial * 0.02 # (in the fist)
 	at.add_child(g)
 	return g
+
+
+## The left hand onto `marker` (a point on what the right hand holds), or let go (null).
+func grip(marker: Node3D) -> void:
+	if marker == null or not marker.is_inside_tree():
+		grip_ik.on = false
+		return
+	var bone := _hands[1].get_parent() as Node3D # (the right hand's attachment: the bone's frame)
+	grip_ik.hold = bone.global_transform.affine_inverse() * marker.global_transform
+	grip_ik.on = true
 
 
 ## What a hand holds hangs from (0 left, 1 right).

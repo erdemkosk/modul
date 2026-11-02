@@ -17,13 +17,13 @@ var village: Village
 var cam: RtsCamera
 var hud: Hud
 var raids: Raids
-var slides: Landslides
 var seasons: Seasons
 var atmosphere: Atmosphere
 var ambience: Ambience
 var critters: Critters
 var selected: Building
 var selected_villager: Villager
+var selected_wall: Wall
 var group: Array[Villager] = [] ## the townsfolk chosen together (Shift+click), the first is selected_villager
 var _rings: Array[MeshInstance3D] = []
 
@@ -33,8 +33,9 @@ var _ghost_yaw := 0.0
 var _ghost_pos := Vector3.ZERO
 var _ghost_reason := "x"
 var _yaw_manual := false ## R pressed: the player's turning it, not the town
-var _road_from: Variant = null ## where a road being dragged began
-var _road_line: MeshInstance3D
+var _road_pts: Array = [] ## the road being laid out: its points so far (clicks)
+var _road_dir := Vector3.ZERO ## the way the road it starts from runs (it bends away smoothly)
+var _road_line: MultiMeshInstance3D ## its planks, shown before they're laid
 var _ring: MeshInstance3D
 var _menu := false
 var _saved_day := -1
@@ -80,15 +81,10 @@ func _ready() -> void:
 	seasons.village = village
 	village.seasons = seasons
 	add_child(seasons)
-	slides = Landslides.new()
-	slides.village = village
-	slides.terrain = terrain
-	slides.props = decor.props
-	add_child(slides)
 	var start := terrain.spawn.origin
 	if saved.is_empty():
 		village.start(start)
-	for n: Node in [weather, terrain, decor, nav, village, raids, slides, seasons]:
+	for n: Node in [weather, terrain, decor, nav, village, raids, seasons]:
 		n.process_mode = Node.PROCESS_MODE_PAUSABLE # (this node runs while paused, for the keys: the world doesn't)
 	cam = RtsCamera.new()
 	cam.terrain = terrain
@@ -131,7 +127,6 @@ func _ready() -> void:
 	add_child(hud)
 	village.message.connect(hud.toast)
 	raids.message.connect(hud.toast)
-	slides.message.connect(hud.toast)
 	seasons.message.connect(hud.toast)
 	if saved.is_empty():
 		hud.toast("Kasaba kuruldu. Önce bir Kesim kampı ve bir Toplayıcı kur (ÜRETİM). F1: tuşlar", "info")
@@ -145,27 +140,24 @@ func _ready() -> void:
 # --- Input ------------------------------------------------------------------------------------------
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _placing == "yol" and _road_from != null:
-		var to: Variant = cam.ground_under((e as InputEventMouseButton).position)
-		if to != null:
-			var got := village.lay_road(_road_from, to)
-			if got <= 0.0:
-				hud.toast("Depoda odun yok", "bad")
-			else:
-				hud.toast("Tahta yol döşendi: %d m" % roundi(got), "good")
-		_road_from = null
-		return
 	if e is InputEventMouseButton and e.pressed:
 		var mb := e as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if _placing == "yol":
-				_road_from = cam.ground_under(mb.position)
+			if _placing in ["yol", "sur"]:
+				_road_click(mb.position)
+			elif _placing == "kapi":
+				var to: Variant = cam.ground_under(mb.position)
+				if to != null:
+					var why := village.add_gate_at(to)
+					hud.toast(why if why != "" else "Sur kapısı kondu", "bad" if why != "" else "good")
 			elif _placing != "":
 				_place_here(mb.shift_pressed)
 			else:
 				_pick(mb.position, mb.shift_pressed)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
-			if _placing != "":
+			if _placing in ["yol", "sur"] and _road_pts.size() >= 2:
+				_road_finish()
+			elif _placing != "":
 				stop_placing()
 			elif _chosen().any(func(v: Villager) -> bool: return v.drafted):
 				_order(mb.position)
@@ -176,6 +168,12 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		match k.physical_keycode:
+			KEY_ENTER, KEY_KP_ENTER:
+				if _placing in ["yol", "sur"] and _road_pts.size() >= 2:
+					_road_finish()
+			KEY_BACKSPACE:
+				if _placing in ["yol", "sur"] and not _road_pts.is_empty():
+					_road_pts.pop_back()
 			KEY_ESCAPE:
 				if hud.help_open():
 					hud.toggle_help()
@@ -192,9 +190,7 @@ func _unhandled_input(e: InputEvent) -> void:
 				hud.visible = not atmosphere.photo
 				_ring.visible = false
 			KEY_R:
-				_ghost_yaw += deg_to_rad(-15.0 if k.shift_pressed else 15.0)
-				_yaw_manual = true
-				_ghost_reason = "x"
+				rotate_ghost(-15.0 if k.shift_pressed else 15.0)
 			KEY_SPACE:
 				if not _menu:
 					set_speed(Engine.time_scale if get_tree().paused else 0.0)
@@ -280,8 +276,11 @@ func start_placing(kind: String) -> void:
 	select(null)
 	_placing = kind
 	_yaw_manual = false
-	if kind == "yol":
-		hud.set_hint("Tahta yol: basılı tutup sürükle, bırakınca döşenir (her 2 m bir odun) · Sağ tık bitir")
+	if kind in ["yol", "sur"]:
+		hud.set_hint("%s: sol tık ile başla, sol tık ile köşe ekle · sağ tık / Enter: bitir · Geri: son köşeyi sil · Esc: vazgeç" % BuildingDefs.DEFS[kind].name)
+		return
+	if kind == "kapi":
+		hud.set_hint("Sur kapısı: bir surun üstüne tıkla (6 odun) · sağ tık / Esc: vazgeç")
 		return
 	_ghost = Building.new()
 	_ghost.setup(kind)
@@ -292,7 +291,8 @@ func start_placing(kind: String) -> void:
 
 func stop_placing() -> void:
 	_placing = ""
-	_road_from = null
+	_road_pts.clear()
+	_road_dir = Vector3.ZERO
 	if _road_line:
 		_road_line.visible = false
 	if _ghost:
@@ -388,38 +388,112 @@ func _auto_yaw(kind: String, p: Vector3) -> float:
 	return snappedf(face, deg_to_rad(15.0))
 
 
+## A road's next point where clicked: the first one taken onto a road already there if one's close
+## (the new one leaves it bending smoothly away), any other onto a road it comes to.
+func _road_click(at: Vector2) -> void:
+	var p: Variant = cam.ground_under(at)
+	if p == null:
+		return
+	var snap := village.road_snap(p, 3.0)
+	if not snap.is_empty():
+		p = snap.at
+		if _road_pts.is_empty() and snap.end:
+			_road_dir = snap.dir # (carried on from a road's end: it bends on from it; from its side it branches straight off)
+	_road_pts.append(p)
+
+
+## The palisade as it would stand, to the mouse: its stakes, faint.
+func _wall_ghost(line: PackedVector3Array, into: MultiMeshInstance3D) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = Wall.stake_mesh()
+	mm.instance_count = line.size()
+	for k in line.size():
+		var g := line[k]
+		g.y = village.nav.height(g.x, g.z) - 0.3
+		mm.set_instance_transform(k, Transform3D(Basis.IDENTITY, g))
+	var mi := into if into else MultiMeshInstance3D.new()
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.5, 1.0, 0.6, 0.35)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mi.material_override = m
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if mi.get_parent() == null:
+		add_child(mi)
+	return mi
+
+
+func _road_finish() -> void:
+	if _placing == "sur":
+		var w := village.lay_wall(_road_pts, _road_dir)
+		if w:
+			hud.toast("Sur çizildi: %d kazık, %d kapı · kasabalılar dikecek" % [w.line.size(), w.gates.size()], "good")
+		_road_pts.clear()
+		_road_dir = Vector3.ZERO
+		return
+	var got := village.lay_path(_road_pts, false, _road_dir)
+	if got <= 0.0:
+		hud.toast("Depoda odun yok", "bad")
+	else:
+		hud.toast("Tahta yol döşendi: %d m" % roundi(got), "good")
+	_road_pts.clear()
+	_road_dir = Vector3.ZERO
+
+
+## The road as it would be laid, to the mouse: its planks, green as far as the wood goes, red past.
 func _update_road_line() -> void:
-	if _placing != "yol" or _road_from == null:
+	if not _placing in ["yol", "sur"] or _road_pts.is_empty():
 		if _road_line:
 			_road_line.visible = false
+		if _placing == "sur":
+			hud.set_hint("Kazık sur: sol tık ile başla, köşeleri tıkla, sağ tık / Enter: bitir · yolu kestiği yere kapı konur · Esc: vazgeç")
+		elif _placing == "yol":
+			hud.set_hint("Tahta yol: sol tık ile başla (bir yolun yanından başlarsan ondan kıvrılarak ayrılır) · Esc: vazgeç")
 		return
 	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
 	if to == null:
 		return
-	if _road_line == null:
-		_road_line = MeshInstance3D.new()
-		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(1.0, 0.8, 0.45, 0.55)
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_road_line.material_override = m
-		add_child(_road_line)
-	var a: Vector3 = _road_from
-	var b: Vector3 = to
-	var flat := Vector3(b.x - a.x, 0, b.z - a.z)
-	if flat.length() < 0.2:
+	var snap := village.road_snap(to, 3.0)
+	if not snap.is_empty():
+		to = snap.at
+	var pts := _road_pts.duplicate()
+	pts.append(to)
+	var line := village.road_curve(pts, _road_dir)
+	if line.size() < 2:
 		return
-	var bm := BoxMesh.new()
-	bm.size = Vector3(1.8, 0.1, flat.length())
-	_road_line.mesh = bm
+	var wood := int(village.stock.get("odun", 0))
+	if _placing == "sur":
+		_road_line = _wall_ghost(line, _road_line)
+		_road_line.visible = true
+		hud.set_hint("Kazık sur: %d m · %d kazık · %d odun (kasabalılar parça parça diker) · sol tık: köşe · sağ tık / Enter: bitir · Esc: vazgeç" % [roundi((line.size() - 1) * village.ROAD_STEP), line.size(), ceili(line.size() / float(Wall.WOOD_PER))])
+		return
+	var afford := int(wood * 2.0 / village.ROAD_STEP)
+	if _road_line:
+		_road_line.material_override = null
+	_road_line = village._road_mesh(line, true, afford, _road_line)
 	_road_line.visible = true
-	_road_line.global_transform = Transform3D(Basis.looking_at(flat.normalized(), Vector3.UP), (a + b) * 0.5 + Vector3.UP * 0.2)
-	hud.set_hint("Tahta yol: %d m · %d odun" % [roundi(flat.length()), ceili(flat.length() / 2.0)])
+	var metres := (line.size() - 1) * village.ROAD_STEP
+	var cost := ceili(metres / 2.0)
+	hud.set_hint("Tahta yol: %d m · %d odun%s · sol tık: köşe · sağ tık / Enter: döşe · Geri: köşe sil · Esc: vazgeç" % [roundi(metres), cost,
+		"" if cost <= wood else " (depoda %d var: kırmızısı döşenmez)" % wood], cost > wood)
 
 
 # --- Picking ----------------------------------------------------------------------------------------
 
 func _pick(at: Vector2, add := false) -> void:
+	var b := _building_under(at)
+	if b == null and _villager_under(at) == null:
+		var p: Variant = cam.ground_under(at)
+		if p != null:
+			for w in village.walls:
+				if is_instance_valid(w):
+					var n := w.nearest(p)
+					if not n.is_empty() and float(n.dist) < 2.0:
+						select(null)
+						selected_wall = w
+						return
 	var folk := _villager_under(at)
 	if folk:
 		if add and selected_villager and is_instance_valid(selected_villager):
@@ -464,6 +538,7 @@ func _villager_under(at: Vector2) -> Villager:
 func select(b: Building) -> void:
 	selected = b
 	selected_villager = null
+	selected_wall = null
 	group.clear()
 
 
@@ -476,6 +551,19 @@ func _chosen() -> Array[Villager]:
 	if out.is_empty() and selected_villager and is_instance_valid(selected_villager) and not selected_villager.dead:
 		out.append(selected_villager)
 	return out
+
+
+## One more to train at the selected armoury ("rifle", "bow"; "" empties the queue).
+func train(kind: String) -> void:
+	if selected == null or not is_instance_valid(selected) or selected.def.role != "armory":
+		return
+	if kind == "":
+		selected.training.clear()
+		hud.toast("Yetiştirme sırası boşaltıldı", "info")
+		return
+	selected.training.append(kind)
+	var have := village._weapon_at(selected, kind) != ""
+	hud.toast(("Sıraya bir %s eklendi" % ("tüfekçi" if kind == "rifle" else "okçu")) + ("" if have else (": rafta %s yok, gelince başlar" % ("tüfek" if kind == "rifle" else "yay ya da ok"))), "good" if have else "info")
 
 
 func toggle_militia() -> void:
@@ -522,7 +610,7 @@ func toggle_draft() -> void:
 		if v.armed:
 			village.hold_at(v, village.cover_near(v.position))
 		else:
-			var a := village.armory_with_rifle(v.position)
+			var a: Building = village.armory_for(v)
 			if a:
 				village.arm(v, a)
 			else:
@@ -608,6 +696,21 @@ func release_selected() -> void:
 		village.free_from_work(selected_villager)
 
 
+func focus_building() -> void:
+	if selected_wall and is_instance_valid(selected_wall):
+		cam.jump_to(selected_wall.line[selected_wall.line.size() / 2])
+		return
+	if selected and is_instance_valid(selected):
+		cam.jump_to(selected.global_position)
+
+
+## The ghost turned by `deg` (the placing panel's buttons, R).
+func rotate_ghost(deg: float) -> void:
+	_ghost_yaw += deg_to_rad(deg)
+	_yaw_manual = true
+	_ghost_reason = "x"
+
+
 func focus_selected() -> void:
 	if selected_villager and is_instance_valid(selected_villager):
 		cam.jump_to(selected_villager.global_position)
@@ -619,6 +722,18 @@ func change_workers(d: int) -> void:
 
 
 func demolish_selected() -> void:
+	if selected_wall and is_instance_valid(selected_wall):
+		var up := 0
+		for k in selected_wall.built:
+			if k == 1:
+				up += 1
+		var back := up / Wall.WOOD_PER / 2
+		village.add_anywhere("odun", back, selected_wall.line[0])
+		village.walls.erase(selected_wall)
+		selected_wall.pull_down()
+		selected_wall = null
+		hud.toast("Sur söküldü: %d odun geri alındı" % back, "info")
+		return
 	if selected and is_instance_valid(selected) and selected.state != "gone":
 		village.remove_building(selected)
 		select(null)

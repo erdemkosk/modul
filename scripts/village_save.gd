@@ -35,7 +35,7 @@ static func save(game: Node) -> bool:
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo],
+			"wanted": b.wanted, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -54,7 +54,7 @@ static func save(game: Node) -> bool:
 			p = vl.inside.door()
 		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
-			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia})
+			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
@@ -68,6 +68,16 @@ static func save(game: Node) -> bool:
 	var d := {
 		"saplings": young,
 		"roads": v.roads.duplicate(true),
+		"walls": v.walls.filter(func(w: Wall) -> bool: return is_instance_valid(w)).map(func(w: Wall) -> Dictionary:
+			var pts: Array = []
+			for k in w.line.size():
+				pts.append(snappedf(w.line[k].x, 0.01))
+				pts.append(snappedf(w.line[k].z, 0.01))
+			var gs: Array = []
+			for g in w.gates:
+				if is_instance_valid(g):
+					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken])
+			return {"line": pts, "built": Array(w.built), "gates": gs}),
 		"version": VERSION, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
@@ -118,8 +128,33 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.bush_rest[i] = v.clock + float(d.bush[i])
 	for s: Array in d.stumps:
 		v.add_stump(Vector3(s[0], s[1], s[2]), float(s[3]), int(s[4]) if s.size() > 4 else -1)
+	for wd: Dictionary in d.get("walls", []):
+		var line := PackedVector3Array()
+		var lp: Array = wd.line
+		for k in range(0, lp.size() - 1, 2):
+			line.append(Vector3(float(lp[k]), 0, float(lp[k + 1])))
+		var w := Wall.new()
+		w.setup(line, v, v.nav)
+		v.add_child(w)
+		v.walls.append(w)
+		for gd: Array in wd.get("gates", []):
+			var g := w.add_gate(int(w.nearest(Vector3(float(gd[0]), 0, float(gd[1]))).k))
+			g.hp = float(gd[2])
+			if bool(gd[3]):
+				g.hit(99999.0)
+		var bl: Array = wd.get("built", [])
+		var cells: Array[Vector2i] = []
+		for k in mini(bl.size(), w.built.size()):
+			if int(bl[k]) == 1 and not w.in_gap(k):
+				w.built[k] = 1
+				cells.append(Nav.cell_of(w.line[k]))
+		v.nav.set_wall(cells, true)
+		w.redraw()
 	for rd: Array in d.get("roads", []):
-		v.lay_road(Vector3(float(rd[0]), 0, float(rd[1])), Vector3(float(rd[2]), 0, float(rd[3])), true)
+		var pts: Array = []
+		for k in range(0, rd.size() - 1, 2):
+			pts.append(Vector3(float(rd[k]), 0, float(rd[k + 1])))
+		v.lay_path(pts, true)
 	var young: Dictionary = d.get("saplings", {})
 	for i: int in young:
 		v.plant(i, float(young[i]))
@@ -149,6 +184,10 @@ static func restore(game: Node, d: Dictionary) -> void:
 		var arms: Array = bd.get("arms", [0, 0])
 		b.arms = int(arms[0])
 		b.ammo = int(arms[1])
+		b.bows = int(arms[2]) if arms.size() > 2 else 0
+		b.arrows = int(arms[3]) if arms.size() > 3 else 0
+		for t: String in bd.get("training", []):
+			b.training.append(t)
 		b.set_meta("stocked", true)
 		b.wanted = int(bd.wanted)
 		var cr: Array = bd.get("crop", [])
@@ -164,6 +203,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 		vl.born_day = int(pd.get("born", v.day))
 		vl.hp = float(pd.hp)
 		vl.militia = bool(pd.get("militia", false))
+		vl.weapon = str(pd.get("weapon", ""))
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":
 			v.employ(vl, made[w])

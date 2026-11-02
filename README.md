@@ -40,6 +40,10 @@ place from its hands. The card says which stage it's at.
   nearest one, a site's stuff is fetched from the nearest that has it. A store that burns loses
   what's in it; one raided is plundered; one left a ruin keeps its goods under the rubble till
   it's mended.
+- **İnşaatçı**: a builders' yard. Its crew's work is the building sites: they carry the materials
+  and put the building up piece by piece (and mend), and can always join a site even when six
+  others are on it. Those with no workplace still run to help too. With no site, the crew saw
+  planks at the bench.
 - **Arabacı**: its workers push handcarts, twelve to a load. With carters about, a workplace
   more than 20 m from a store piles what its workers bring by its own door, and the carters fetch
   the piles. A cart wears a path three times as fast, but in the rain or on soft ground it's slow
@@ -65,15 +69,37 @@ The defence is light and a few rifles. The band has its parts: shooters lie up i
 edge of the light and shoot whoever they can see in it (a lantern marks whoever carries it; they
 shoot the lamps out too), torchmen go for the unlit, unguarded buildings, looters for the store.
 Hurt badly, one runs. A rifle's flash shows the one who fired it for a moment, to both sides.
-Rifles can't be made in the town: the **Silahlık** (armoury) starts with the town's two old ones
-and 40 cartridges; a shooter who falls drops his, and someone carries it to the rack after the
-raid. Mark townsfolk as militia (M): at the alarm they run to the armoury for a rifle and ten
-cartridges and hold a post behind cover between the store and where the band came from (cover
+Rifles (Mosin-Nagant) can't be made in the town: the **Silahlık** (armoury) starts with the
+town's two old ones and 40 cartridges; a shooter who falls drops his, and someone carries it to
+the rack after the raid. Bows can: the **Yayçı** (bowyer) takes odun from the store and makes a bow
+(2 odun) or a dozen arrows (1 odun) at the bench and carries them to the armoury. A bow is short
+(26 m) and weaker, but quick and silent: no flash, the archer isn't shown. Militia are raised at
+the armoury: its card has + TÜFEKÇİ and + OKÇU; one at a time, by day, an idle townsman comes,
+takes the weapon out to the target beside the armoury and practises (half a minute for a rifle,
+burning a few cartridges; a minute and a half for a bow), then puts it back: from then on that's
+his weapon when the alarm goes. The top bar counts the rifles and bows (rack and in hand) with
+their cartridges and arrows. Militia can also be marked by hand (M): they take whatever's on the
+rack. At the alarm the militia run to the armoury for their weapon (ten cartridges or twenty
+arrows) and hold a post behind cover between the store and where the band came from (cover
 halves the chance of being hit); after the raid they put the rifle back. Draft them (G) to give
 orders yourself, paused or not: right-click the ground for a post (they look for cover there),
 a raider to make him their mark; L puts their lanterns out (unseen in the dark, but they see less);
 Shift+click chooses several. One of the town who's shot mostly goes down wounded rather than dead:
 it bleeds out in two minutes unless someone carries it in to a bed, where it mends.
+
+A palisade (**Kazık sur**, SAVUNMA) is laid out like a road, point by point, bent smoothly; at first
+only a line of pale marks, it's stood up a stretch of twelve stakes at a time by the builders and
+anyone free (an odun for every four stakes). Where it crosses a road a gate is set in by itself;
+crossing none, one goes on the side toward the store; more can be set on it (**Sur kapısı**, 6
+odun). The palisade's cells are dear to walk through (Nav.set_wall), so the townsfolk go round by a
+gate. Gates stand open by day and shut at night and at the alarm, opening for one of the town coming
+up (unless an outlaw's close). An outlaw who meets the stakes or a shut gate hacks at it: a stake
+falls after a few blows and its cell opens; a gate beaten in hangs open till it's mended after the
+raid. A torch set to it takes, but slowly (green logs in damp ground: a stake burns through in the
+better part of a minute, the fire creeps on only now and then, rain puts it out). Along the inside
+runs a plank walkway: the militia climb onto it and shoot over the points, in cover. Click a
+palisade to choose it: its card counts the stakes up and to come, its gates, what's burning; YIK
+pulls it down (half its wood back). The first house is set square beside the store, the fronts in line, room left for its yard.
 
 The night has its watch. The guards of a post split it: half have the evening till two, half from
 two till morning; the one on watch walks a round from light to light with a lantern, the other
@@ -151,12 +177,6 @@ carry to it from the store; smoke rises from its chimney while it burns. A house
 goes cold, and those who slept in it are hurt by morning. A lit hearth now and then throws a spark
 onto its roof, more often when it's dry and windy. People mend slowly, quicker asleep.
 
-The woods hold the hills. Where enough of a slope's trees have been felled (counted per 48 m
-square), heavy rain can bring it down (`landslides.gd`): a tongue of mud and stones runs off down
-the fall line, the ground it crossed left deep mud (carts sink in it), pieces knocked off any
-building in its way, anyone standing there hurt. A slope goes once; grow its trees back and it
-holds again. A building's card warns when the hillside round it is bare.
-
 Buildings are made of pieces that rest on one another. Fire burns piece by piece (thatch quickest,
 plaster slowest, stone never), chars them and spreads to what touches them, and from building to
 building, downwind most. A piece burnt through falls, and what rested on it falls after it. Too
@@ -200,9 +220,12 @@ a storm can start one.
   `scripts/building.gd`: a building: ghost, site, done, ruin; pieces going up, what rests on what,
   fire per piece, falling pieces as rigid bodies. `scripts/fire_fx.gd`: flames and smoke.
 - `scripts/villager.gd`: a villager: its plan (go, work, do), walking and wearing the ground, carrying,
-  its look and its moves. `scripts/village.gd`: the store, the buildings, who does what (fires,
-  workplaces, hauling, building, sleeping), eating, newcomers, fire leaping between buildings,
-  lightning, felling.
+  its look and its moves. The town (`Village`) is a chain of layers, each
+  extending the one before: `village_base.gd` (what's built and where, the stores, placing,
+  roads, light), `village_life.gd` (meals, hearths, newcomers, evenings, sleep, idle hours and
+  chores, fires), `village_defense.gd` (the armoury, militia, posts, the watch, the bowyer, the
+  wounded), `village_work.gd` (staffing, hauling, building sites, the workplaces' rounds, felling)
+  and `village.gd` (the tick and who does what next). A layer only calls into itself or below.
 - The townsfolk (`scripts/townsfolk.gd`, `scripts/townsfolk_pose.gd`): a skinned, rigged man
   (`assets/townsfolk/townsman.glb`, the Mud Run character with its MakeHuman head, CC0, see
   `assets/townsfolk/heads/CREDITS.md`) dressed for the 1880s (wool coat or smock, canvas trousers,
@@ -210,6 +233,8 @@ a storm can start one.
   Quaternius' Universal Animation Library (CC0, `assets/townsfolk/anims/ual.res`); the work no clip
   has (felling, the pick, the saw, the sickle, the hammer) is turned onto the bones over the
   standing clip. Faces: `shaders/face_skin.gdshader`.
+- `scripts/wall.gd`, `scripts/gate.gd`: a palisade's stakes, raised a stretch at a time, hacked
+  down; its gates swinging on their hinges, shut, broken, mended.
 - `scripts/yard.gd`: a house's yard: fence, garden, outbuildings, clutter; its fence shut on the grid.
 - `scripts/crop.gd`: a field's crop: sowing, growing, ripe, reaped, burning; its tufts.
   `scripts/village_save.gd`: the save (user://village_save.dat): buildings with their fallen and
