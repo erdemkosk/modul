@@ -173,6 +173,9 @@ func _births() -> void:
 
 func _morning() -> void:
 	_births()
+	for y in yards:
+		if is_instance_valid(y):
+			y.grow()
 	for v in villagers:
 		if v.is_child and day - v.born_day >= 4:
 			v.grow_up()

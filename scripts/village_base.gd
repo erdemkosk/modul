@@ -854,12 +854,7 @@ func _on_finished(b: Building) -> void:
 	if b.def.role == "house":
 		_house_people()
 		if not _yard_of(b):
-			var y := Yard.new()
-			y.house = b
-			y.village = self
-			y.nav = nav
-			yards.append(y)
-			add_child(y)
+			add_yard(b)
 	if b.def.role == "light" and not b.repaired:
 		b.add_goods("odun", 2) # (it's put up with its first kindling)
 
@@ -869,6 +864,17 @@ func _on_ruined(b: Building) -> void:
 	if b.def.role == "store" and b.goods_total() > 0:
 		message.emit("Ambardakiler enkazın altında kaldı; onarılınca geri gelir.", "bad")
 	_let_go(b)
+
+
+## A house's yard laid out round it (what's in it from `Building.yard_has`).
+func add_yard(b: Building) -> Yard:
+	var y := Yard.new()
+	y.house = b
+	y.village = self
+	y.nav = nav
+	yards.append(y)
+	add_child(y)
+	return y
 
 
 func _yard_of(b: Building) -> Yard:
@@ -1228,12 +1234,7 @@ func _close_annex(b: Building) -> void:
 		yards.erase(old)
 		remove_child(old) # (its fence let go at once)
 		old.free()
-		var y := Yard.new()
-		y.house = b
-		y.village = self
-		y.nav = nav
-		yards.append(y)
-		add_child(y)
+		add_yard(b)
 
 
 # --- Goods ----------------------------------------------------------------------------------------

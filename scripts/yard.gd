@@ -1,18 +1,27 @@
 class_name Yard
 extends Node3D
-## A house's yard, laid out round it when it's finished: a rail fence with a gate in front of the
-## door, a kitchen garden in rows behind the house, a hen house, an outhouse in the back corner, a
-## woodshed against the side, and the clutter of living there (a cart, a sledge in winter, a hay
-## stack, a trough, a bench). Every post stands on the ground where it is, so the fence follows the
-## slope. Where the yard would run into another yard or a building, that stretch of fence is left
-## out: neighbouring yards share their fences and the lanes stay open between them. The fence is
-## shut to walking but at its gate (Nav).
+## A house's yard: a rail fence with a gate in front of the door when it's finished, and then, a
+## thing a morning, what the people living there bring to it: the woodcutter's woodshed and
+## chopping block, the farmer's kitchen garden and hen house, the carter's cart, and what any
+## household has (an outhouse, a water barrel, washing on a line, flowers by the door). Every post
+## stands on the ground where it is, so the fence follows the slope. Where the yard would run into
+## another yard or a building, that stretch of fence is left out: neighbouring yards share their
+## fences and the lanes stay open between them. The fence is shut to walking but at its gate (Nav).
 ##
-## Nothing in it is saved: it's laid out again, the same, from the house (seeded by where it stands).
+## What's come is kept on the house (`Building.yard_has`, saved), and each thing is laid out from
+## a seed of its own and the house's place, so it's put back the same.
 
 const BACK := 6.5 ## m of yard behind the house
 const SIDE := 2.6 ## m either side of it
 const FRONT := 2.4 ## m in front of it, to the gate
+## What each kind of work brings to the yard of a house where someone good at it, or keen on it,
+## lives; and what any household has.
+const TRADE := {"odun": ["woodshed", "block", "sawhorse"], "tarim": ["garden", "hens", "hay"],
+	"toplama": ["garden", "hens"], "tas": ["barrow"], "tasima": ["cart", "barrow", "sledge"],
+	"insa": ["ladder", "sawhorse"], "zanaat": ["sawhorse", "bench"]}
+const HOME := ["outhouse", "barrel", "washing", "flowers", "bucket", "bench", "trough"]
+## The things that stand in the yard's corners, a corner each in the order they came.
+const CORNER := ["cart", "hay", "trough", "bench", "sledge"]
 
 var house: Building
 var village: Village
@@ -28,6 +37,9 @@ var _block := Vector3.INF ## the chopping block (world)
 var _splits: Array[MeshInstance3D] = [] ## split wood lying round the block
 var _line: Array[Vector3] = [] ## the clothes line's ends (world)
 var _t := 0.0
+var _parts := {} ## what's in it -> the node its meshes hang on
+var _into: Node3D ## (what _mesh hangs a mesh on just now)
+var _corners := 0 ## the corners taken
 
 
 func _ready() -> void:
@@ -35,17 +47,87 @@ func _ready() -> void:
 	rect = Rect2(-sz.x * 0.5 - SIDE, -sz.y * 0.5 - BACK, sz.x + SIDE * 2.0, sz.y + BACK + FRONT)
 	_rng.seed = hash(Vector2i(roundi(house.global_position.x), roundi(house.global_position.z)))
 	_fence()
-	_garden()
-	_outbuildings()
-	_clutter()
-	_odds()
-	_washing()
-	_chopping()
+	for f: String in house.yard_has.duplicate():
+		if not _add(f):
+			house.yard_has.erase(f) # (no room for it now)
 
 
 func _exit_tree() -> void:
 	if not _shut.is_empty():
 		nav.set_building(_shut, false)
+
+
+## Of a morning: the next thing those living here bring to it. False if nothing came.
+func grow() -> bool:
+	if house.state != "done":
+		return false
+	for f in wanted():
+		if not f in house.yard_has and _add(f):
+			house.yard_has.append(f)
+			return true
+	return false
+
+
+## What the household would have, in turn: a thing of their work, a thing any home has, and so on.
+## Their work is what each grown one is best at and what each is keen on.
+func wanted() -> Array[String]:
+	var out: Array[String] = []
+	if house.residents.is_empty():
+		return out # (nobody lives here)
+	var trade: Array[String] = []
+	for v in house.residents:
+		if not is_instance_valid(v) or (v as Villager).dead or (v as Villager).is_child:
+			continue
+		var vl := v as Villager
+		var ks: Array[String] = vl.keen.duplicate()
+		var best := ""
+		for k: String in Villager.SKILLS:
+			if best == "" or vl.skill(k) > vl.skill(best):
+				best = k
+		if not best in ks:
+			ks.push_front(best)
+		for k in ks:
+			for f: String in TRADE.get(k, []):
+				if not f in trade:
+					trade.append(f)
+	for i in maxi(trade.size(), HOME.size()):
+		if i < trade.size() and not trade[i] in out:
+			out.append(trade[i])
+		if i < HOME.size() and not HOME[i] in out:
+			out.append(HOME[i])
+	return out
+
+
+## `f` laid out in the yard. False if there's no room for it.
+func _add(f: String) -> bool:
+	if _parts.has(f):
+		return true
+	_rng.seed = hash([roundi(house.global_position.x), roundi(house.global_position.z), f])
+	_into = Node3D.new()
+	add_child(_into)
+	match f:
+		"garden": _garden()
+		"outhouse": _outhouse()
+		"hens": _hen_house()
+		"woodshed": _woodshed()
+		"block": _chopping()
+		"washing": _washing()
+		"flowers": _flower_bed()
+		"barrel": _barrel()
+		"bucket": _bucket()
+		"ladder": _ladder()
+		"sawhorse": _sawhorse()
+		"barrow": _barrow()
+		_:
+			if f in CORNER:
+				_corner(f)
+	var made := _into
+	_into = null
+	if made.get_child_count() == 0:
+		made.queue_free()
+		return false
+	_parts[f] = made
+	return true
 
 
 ## A point of the yard (house space) in the world, on the ground.
@@ -59,8 +141,14 @@ func _at(x: float, z: float) -> Vector3:
 func _free(x: float, z: float) -> bool:
 	if house.annex.has_area() and house.annex.grow(0.7).has_point(Vector2(x, z)):
 		return false
+	var sz: Vector2 = house.def.size
+	if absf(x) < sz.x * 0.5 + 0.2 and absf(z) < sz.y * 0.5 + 0.2:
+		return false # (the house itself)
 	var w := house.global_transform * Vector3(x, 0, z)
-	if not nav.is_open(w):
+	var c := Nav.cell_of(w)
+	if not nav.is_open(w) and not c in house.cells and not c in _shut:
+		return false # (the house's margin and this yard's own fence are no hindrance)
+	if not nav.is_ground_open(w):
 		return false
 	for y: Yard in village.yards:
 		if y == self or not is_instance_valid(y) or not is_instance_valid(y.house):
@@ -82,13 +170,22 @@ func _mesh(mesh: Mesh, mat: Material, xf: Transform3D) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
-	add_child(mi)
+	(_into if _into else self as Node).add_child(mi)
 	mi.global_transform = xf
 
 
 static func _box_mesh(size: Vector3) -> BoxMesh:
 	var m := BoxMesh.new()
 	m.size = size
+	return m
+
+
+static func _cyl(top: float, bottom: float, height: float, sides: int) -> CylinderMesh:
+	var m := CylinderMesh.new()
+	m.top_radius = top
+	m.bottom_radius = bottom
+	m.height = height
+	m.radial_segments = sides
 	return m
 
 
@@ -163,55 +260,57 @@ func _garden() -> void:
 		z -= 0.75
 
 
-## The hen house, the outhouse in the back corner, the woodshed against the side.
-func _outbuildings() -> void:
+## The outhouse in the back corner.
+func _outhouse() -> void:
 	var r := rect
-	var plank := Building.material("plank")
-	var dark := Building.material("dark")
-	var shingle := Building.material("shingle")
-	var yaw := house.global_rotation.y
-	# the outhouse
 	var ox := r.end.x - 0.9
 	var oz := r.position.y + 0.9
-	if _free(ox, oz):
-		var w := _at(ox, oz)
-		var b := Basis(Vector3.UP, yaw)
-		_mesh(_box_mesh(Vector3(1.0, 2.0, 1.0)), plank, Transform3D(b, w + Vector3.UP * 1.0))
-		_mesh(_box_mesh(Vector3(1.2, 0.06, 1.25)), shingle, Transform3D(b * Basis(Vector3.RIGHT, 0.2), w + Vector3.UP * 2.08))
-		_mesh(_box_mesh(Vector3(0.6, 1.7, 0.04)), dark, Transform3D(b, w + b * Vector3(0, 0.88, 0.52)))
-		_mesh(_box_mesh(Vector3(0.08, 0.12, 0.02)), Building.material("window"), Transform3D(b, w + b * Vector3(0, 1.55, 0.55))) # (the little window cut in the door)
-	# the hen house
+	if not _free(ox, oz):
+		return
+	var w := _at(ox, oz)
+	var b := Basis(Vector3.UP, house.global_rotation.y)
+	_mesh(_box_mesh(Vector3(1.0, 2.0, 1.0)), Building.material("plank"), Transform3D(b, w + Vector3.UP * 1.0))
+	_mesh(_box_mesh(Vector3(1.2, 0.06, 1.25)), Building.material("shingle"), Transform3D(b * Basis(Vector3.RIGHT, 0.2), w + Vector3.UP * 2.08))
+	_mesh(_box_mesh(Vector3(0.6, 1.7, 0.04)), Building.material("dark"), Transform3D(b, w + b * Vector3(0, 0.88, 0.52)))
+	_mesh(_box_mesh(Vector3(0.08, 0.12, 0.02)), Building.material("window"), Transform3D(b, w + b * Vector3(0, 1.55, 0.55))) # (the little window cut in the door)
+
+
+## The hen house in the other back corner.
+func _hen_house() -> void:
+	var r := rect
 	var hx := r.position.x + 1.1
 	var hz := r.position.y + 1.2
-	if _free(hx, hz):
-		var w := _at(hx, hz)
-		var b := Basis(Vector3.UP, yaw)
-		_mesh(_box_mesh(Vector3(1.4, 0.9, 1.0)), plank, Transform3D(b, w + Vector3.UP * 0.75))
-		for s in [-1.0, 1.0]:
-			for t in [-1.0, 1.0]:
-				_mesh(_box_mesh(Vector3(0.08, 0.35, 0.08)), dark, Transform3D(b, w + b * Vector3(s * 0.6, 0.17, t * 0.42)))
-		_mesh(_box_mesh(Vector3(1.6, 0.05, 1.25)), shingle, Transform3D(b * Basis(Vector3.RIGHT, -0.25), w + Vector3.UP * 1.3))
-		_mesh(_box_mesh(Vector3(0.3, 0.05, 0.8)), dark, Transform3D(b * Basis(Vector3.RIGHT, 0.5), w + b * Vector3(0.3, 0.2, 0.75))) # (the ramp)
-	# the woodshed against the house's side: split wood stacked under a lean-to
+	if not _free(hx, hz):
+		return
+	var dark := Building.material("dark")
+	var w := _at(hx, hz)
+	var b := Basis(Vector3.UP, house.global_rotation.y)
+	_mesh(_box_mesh(Vector3(1.4, 0.9, 1.0)), Building.material("plank"), Transform3D(b, w + Vector3.UP * 0.75))
+	for s in [-1.0, 1.0]:
+		for t in [-1.0, 1.0]:
+			_mesh(_box_mesh(Vector3(0.08, 0.35, 0.08)), dark, Transform3D(b, w + b * Vector3(s * 0.6, 0.17, t * 0.42)))
+	_mesh(_box_mesh(Vector3(1.6, 0.05, 1.25)), Building.material("shingle"), Transform3D(b * Basis(Vector3.RIGHT, -0.25), w + Vector3.UP * 1.3))
+	_mesh(_box_mesh(Vector3(0.3, 0.05, 0.8)), dark, Transform3D(b * Basis(Vector3.RIGHT, 0.5), w + b * Vector3(0.3, 0.2, 0.75))) # (the ramp)
+
+
+## The woodshed against the house's side: split wood stacked under a lean-to.
+func _woodshed() -> void:
 	var sz: Vector2 = house.def.size
 	var wx := sz.x * 0.5 + 1.0
-	if _free(wx, -sz.y * 0.5 + 0.8):
-		var w := _at(wx, -0.2)
-		var b := Basis(Vector3.UP, yaw)
-		var split := CylinderMesh.new()
-		split.top_radius = 0.08
-		split.bottom_radius = 0.08
-		split.height = 0.5
-		split.radial_segments = 5
-		var wood := Building.material("wood")
-		for k in 30:
-			var lx := (k % 5) * 0.18 - 0.36
-			var ly := (k / 10) * 0.16 + 0.1
-			var lz := ((k / 5) % 2) * 0.5 - 1.0 + _rng.randf_range(-0.03, 0.03)
-			_mesh(split, wood, Transform3D(b * Basis(Vector3.FORWARD, PI * 0.5) * Basis(Vector3.UP, _rng.randf()), w + b * Vector3(lx, ly, lz * 2.0)))
-		_mesh(_box_mesh(Vector3(1.2, 0.05, 2.6)), shingle, Transform3D(b * Basis(Vector3.FORWARD, -0.3), w + b * Vector3(0, 1.0, -0.4)))
-		for t in [-1.0, 1.0]:
-			_mesh(_box_mesh(Vector3(0.08, 1.0, 0.08)), Building.material("dark"), Transform3D(b, w + b * Vector3(0.5, 0.5, -0.4 + t * 1.2)))
+	if not _free(wx, -sz.y * 0.5 + 0.8):
+		return
+	var w := _at(wx, -0.2)
+	var b := Basis(Vector3.UP, house.global_rotation.y)
+	var split := _cyl(0.08, 0.08, 0.5, 5)
+	var wood := Building.material("wood")
+	for k in 30:
+		var lx := (k % 5) * 0.18 - 0.36
+		var ly := (k / 10) * 0.16 + 0.1
+		var lz := ((k / 5) % 2) * 0.5 - 1.0 + _rng.randf_range(-0.03, 0.03)
+		_mesh(split, wood, Transform3D(b * Basis(Vector3.FORWARD, PI * 0.5) * Basis(Vector3.UP, _rng.randf()), w + b * Vector3(lx, ly, lz * 2.0)))
+	_mesh(_box_mesh(Vector3(1.2, 0.05, 2.6)), Building.material("shingle"), Transform3D(b * Basis(Vector3.FORWARD, -0.3), w + b * Vector3(0, 1.0, -0.4)))
+	for t in [-1.0, 1.0]:
+		_mesh(_box_mesh(Vector3(0.08, 1.0, 0.08)), Building.material("dark"), Transform3D(b, w + b * Vector3(0.5, 0.5, -0.4 + t * 1.2)))
 
 
 func _process(dt: float) -> void:
@@ -242,7 +341,7 @@ func chores() -> Array[Dictionary]:
 		mid.y = nav.height(mid.x, mid.z)
 		out.append({"at": mid + hb * Vector3(0.7, 0, 0), "face": mid, "anim": "stretch", "time": 7.0, "job": "Çamaşır asıyor"})
 	var sz: Vector2 = house.def.size
-	if _free(0, -sz.y * 0.5 - 1.8) and Weather.snow_cover_now < 0.3:
+	if _parts.has("garden") and Weather.snow_cover_now < 0.3:
 		var g := _at(_rng.randf_range(-sz.x * 0.3, sz.x * 0.3), -sz.y * 0.5 - 1.8)
 		out.append({"at": g, "face": g + hb * Vector3(0, 0, -2), "anim": "hoe", "time": 12.0, "job": "Bostanı çapalıyor"})
 	return out
@@ -252,11 +351,7 @@ func chores() -> Array[Dictionary]:
 func split_one() -> void:
 	if _block == Vector3.INF:
 		return
-	var m := CylinderMesh.new()
-	m.top_radius = 0.07
-	m.bottom_radius = 0.07
-	m.height = 0.42
-	m.radial_segments = 3 # (a split quarter)
+	var m := _cyl(0.07, 0.07, 0.42, 3) # (a split quarter)
 	if _splits.size() >= 12:
 		_splits.pop_front().queue_free()
 	var a := _rng.randf() * TAU
@@ -278,11 +373,7 @@ func _chopping() -> void:
 	if not _free(x, z):
 		return
 	_block = _at(x, z)
-	var stump := CylinderMesh.new()
-	stump.top_radius = 0.28
-	stump.bottom_radius = 0.32
-	stump.height = 0.55
-	stump.radial_segments = 10
+	var stump := _cyl(0.28, 0.32, 0.55, 10)
 	_mesh(stump, Building.material("log"), Transform3D(Basis.IDENTITY, _block + Vector3.UP * 0.27))
 	var b := Basis(Vector3.UP, _rng.randf() * TAU) * Basis(Vector3.RIGHT, 0.5)
 	_mesh(_box_mesh(Vector3(0.035, 0.75, 0.035)), Building.material("wood"), Transform3D(b, _block + Vector3.UP * 0.55 + b * Vector3(0, 0.36, 0)))
@@ -329,7 +420,7 @@ func _washing() -> void:
 			var mi := MeshInstance3D.new()
 			mi.mesh = q
 			mi.material_override = m
-			add_child(mi)
+			_into.add_child(mi)
 			# (hung along the line, its faces to either side)
 			var xf := Transform3D(look * Basis(Vector3.UP, PI * 0.5), a + along * (s + w * 0.5))
 			mi.global_transform = xf
@@ -340,133 +431,138 @@ func _washing() -> void:
 			s += 0.5
 
 
-## The odds and ends round a lived-in house: flowers along the front, a water barrel under the
-## eave, a bucket by the door, a ladder against the side, a sawhorse with a log on it or a barrow.
-func _odds() -> void:
+## Flowers in a bed either side of the door.
+func _flower_bed() -> void:
 	var sz: Vector2 = house.def.size
-	var b := Basis(Vector3.UP, house.global_rotation.y)
+	var petals := [Color(0.85, 0.3, 0.25), Color(0.95, 0.8, 0.3), Color(0.75, 0.55, 0.85), Color(0.95, 0.95, 0.9), Color(0.95, 0.5, 0.2)]
+	var stem := StandardMaterial3D.new()
+	stem.albedo_color = Color(0.22, 0.4, 0.16)
+	var bloom := SphereMesh.new()
+	bloom.radius = 0.06
+	bloom.height = 0.1
+	bloom.radial_segments = 6
+	bloom.rings = 3
+	var bush := SphereMesh.new()
+	bush.radius = 0.16
+	bush.height = 0.24
+	bush.radial_segments = 6
+	bush.rings = 3
+	var bed := Node3D.new()
+	_into.add_child(bed)
+	_flowers.append(bed)
+	var mats: Array[StandardMaterial3D] = []
+	for k in 2:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = petals[_rng.randi() % petals.size()]
+		mats.append(m)
+	var x := -sz.x * 0.5 + 0.4
+	while x < sz.x * 0.5 - 0.4:
+		if absf(x) > 0.9:
+			var w := _at(x, sz.y * 0.5 + 0.35)
+			var mi := MeshInstance3D.new()
+			mi.mesh = bush
+			mi.material_override = stem
+			bed.add_child(mi)
+			mi.global_position = w + Vector3.UP * 0.12
+			for k in 3:
+				var f := MeshInstance3D.new()
+				f.mesh = bloom
+				f.material_override = mats[_rng.randi() % mats.size()]
+				bed.add_child(f)
+				f.global_position = w + Vector3(_rng.randf_range(-0.14, 0.14), 0.26 + _rng.randf() * 0.08, _rng.randf_range(-0.1, 0.1))
+		x += 0.32
+
+
+## A water barrel under the eave at the front corner.
+func _barrel() -> void:
+	var sz: Vector2 = house.def.size
+	if not _free(sz.x * 0.5 + 0.45, sz.y * 0.5 - 0.4):
+		return
 	var plank := Building.material("plank")
 	var dark := Building.material("dark")
-	# flowers in a bed either side of the door
-	if _rng.randf() < 0.75:
-		var petals := [Color(0.85, 0.3, 0.25), Color(0.95, 0.8, 0.3), Color(0.75, 0.55, 0.85), Color(0.95, 0.95, 0.9), Color(0.95, 0.5, 0.2)]
-		var stem := StandardMaterial3D.new()
-		stem.albedo_color = Color(0.22, 0.4, 0.16)
-		var bloom := SphereMesh.new()
-		bloom.radius = 0.06
-		bloom.height = 0.1
-		bloom.radial_segments = 6
-		bloom.rings = 3
-		var bush := SphereMesh.new()
-		bush.radius = 0.16
-		bush.height = 0.24
-		bush.radial_segments = 6
-		bush.rings = 3
-		var bed := Node3D.new()
-		add_child(bed)
-		_flowers.append(bed)
-		var mats: Array[StandardMaterial3D] = []
-		for k in 2:
-			var m := StandardMaterial3D.new()
-			m.albedo_color = petals[_rng.randi() % petals.size()]
-			mats.append(m)
-		var x := -sz.x * 0.5 + 0.4
-		while x < sz.x * 0.5 - 0.4:
-			if absf(x) > 0.9:
-				var w := _at(x, sz.y * 0.5 + 0.35)
-				var mi := MeshInstance3D.new()
-				mi.mesh = bush
-				mi.material_override = stem
-				bed.add_child(mi)
-				mi.global_position = w + Vector3.UP * 0.12
-				for k in 3:
-					var f := MeshInstance3D.new()
-					f.mesh = bloom
-					f.material_override = mats[_rng.randi() % mats.size()]
-					bed.add_child(f)
-					f.global_position = w + Vector3(_rng.randf_range(-0.14, 0.14), 0.26 + _rng.randf() * 0.08, _rng.randf_range(-0.1, 0.1))
-			x += 0.32
-	# a water barrel under the eave at the front corner
-	if _free(sz.x * 0.5 + 0.45, sz.y * 0.5 - 0.4):
-		var w := _at(sz.x * 0.5 + 0.45, sz.y * 0.5 - 0.4)
-		_mesh(_cyl(0.3, 0.3, 0.85, 12), plank, Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.43))
-		for hy: float in [0.2, 0.68]:
-			_mesh(_cyl(0.31, 0.31, 0.04, 12), dark, Transform3D(Basis.IDENTITY, w + Vector3.UP * hy))
-		_mesh(_cyl(0.27, 0.27, 0.01, 12), Building.material("water"), Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.8))
-	# a bucket by the door
-	if _rng.randf() < 0.7:
-		var w := _at(1.0 + _rng.randf() * 0.4, sz.y * 0.5 + 0.55)
-		_mesh(_cyl(0.15, 0.12, 0.28, 10), plank, Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.14))
-	# a ladder against the side wall
-	if _rng.randf() < 0.55 and _free(-sz.x * 0.5 - 0.5, 0.0):
-		var lb := b * Basis(Vector3.FORWARD, -0.28)
-		var foot := _at(-sz.x * 0.5 - 0.75, _rng.randf_range(-1.0, 1.0))
-		for s: float in [-0.22, 0.22]:
-			_mesh(_box_mesh(Vector3(0.06, 3.2, 0.06)), plank, Transform3D(lb, foot + lb * Vector3(0, 1.6, s)))
-		for k in 9:
-			_mesh(_box_mesh(Vector3(0.04, 0.04, 0.44)), plank, Transform3D(lb, foot + lb * Vector3(0, 0.3 + k * 0.33, 0)))
-	# a sawhorse with a log on it, or a barrow
-	if _free(sz.x * 0.5 + 1.5, sz.y * 0.5 + 1.0):
-		var w := _at(sz.x * 0.5 + 1.5, sz.y * 0.5 + 1.0)
-		var hb := b * Basis(Vector3.UP, _rng.randf_range(-0.5, 0.5))
-		if _rng.randf() < 0.5:
-			for s: float in [-0.45, 0.45]:
-				for t: float in [-1.0, 1.0]:
-					_mesh(_box_mesh(Vector3(0.05, 0.8, 0.05)), dark, Transform3D(hb * Basis(Vector3.RIGHT, t * 0.35), w + hb * Vector3(s, 0.38, t * 0.1)))
-			_mesh(_cyl(0.12, 0.13, 1.6, 8), Building.material("log"), Transform3D(hb * Basis(Vector3.FORWARD, PI * 0.5), w + Vector3.UP * 0.82))
-		else:
-			_mesh(_box_mesh(Vector3(0.6, 0.25, 0.8)), plank, Transform3D(hb * Basis(Vector3.RIGHT, -0.1), w + hb * Vector3(0, 0.45, 0)))
-			_mesh(_cyl(0.2, 0.2, 0.05, 10), dark, Transform3D(hb * Basis(Vector3.BACK, PI * 0.5), w + hb * Vector3(0, 0.2, -0.5)))
-			for s: float in [-0.25, 0.25]:
-				_mesh(_box_mesh(Vector3(0.04, 0.04, 1.3)), plank, Transform3D(hb * Basis(Vector3.RIGHT, 0.25), w + hb * Vector3(s, 0.4, 0.2)))
+	var w := _at(sz.x * 0.5 + 0.45, sz.y * 0.5 - 0.4)
+	_mesh(_cyl(0.3, 0.3, 0.85, 12), plank, Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.43))
+	for hy: float in [0.2, 0.68]:
+		_mesh(_cyl(0.31, 0.31, 0.04, 12), dark, Transform3D(Basis.IDENTITY, w + Vector3.UP * hy))
+	_mesh(_cyl(0.27, 0.27, 0.01, 12), Building.material("water"), Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.8))
 
 
-static func _cyl(top: float, bottom: float, height: float, sides: int) -> CylinderMesh:
-	var m := CylinderMesh.new()
-	m.top_radius = top
-	m.bottom_radius = bottom
-	m.height = height
-	m.radial_segments = sides
-	return m
+## A bucket by the door.
+func _bucket() -> void:
+	var sz: Vector2 = house.def.size
+	var w := _at(1.0 + _rng.randf() * 0.4, sz.y * 0.5 + 0.55)
+	_mesh(_cyl(0.15, 0.12, 0.28, 10), Building.material("plank"), Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.14))
 
 
-## What's left about a yard where people live: a cart, a hay stack, a trough, a bench by the fence,
-## a sledge leant against it.
-func _clutter() -> void:
+## A ladder against the side wall.
+func _ladder() -> void:
+	var sz: Vector2 = house.def.size
+	if not _free(-sz.x * 0.5 - 0.5, 0.0):
+		return
+	var plank := Building.material("plank")
+	var lb := Basis(Vector3.UP, house.global_rotation.y) * Basis(Vector3.FORWARD, -0.28)
+	var foot := _at(-sz.x * 0.5 - 0.75, _rng.randf_range(-1.0, 1.0))
+	for s: float in [-0.22, 0.22]:
+		_mesh(_box_mesh(Vector3(0.06, 3.2, 0.06)), plank, Transform3D(lb, foot + lb * Vector3(0, 1.6, s)))
+	for k in 9:
+		_mesh(_box_mesh(Vector3(0.04, 0.04, 0.44)), plank, Transform3D(lb, foot + lb * Vector3(0, 0.3 + k * 0.33, 0)))
+
+
+## A sawhorse with a log on it, by the front corner.
+func _sawhorse() -> void:
+	var sz: Vector2 = house.def.size
+	if not _free(sz.x * 0.5 + 1.5, sz.y * 0.5 + 1.0):
+		return
+	var dark := Building.material("dark")
+	var w := _at(sz.x * 0.5 + 1.5, sz.y * 0.5 + 1.0)
+	var hb := Basis(Vector3.UP, house.global_rotation.y + _rng.randf_range(-0.5, 0.5))
+	for s: float in [-0.45, 0.45]:
+		for t: float in [-1.0, 1.0]:
+			_mesh(_box_mesh(Vector3(0.05, 0.8, 0.05)), dark, Transform3D(hb * Basis(Vector3.RIGHT, t * 0.35), w + hb * Vector3(s, 0.38, t * 0.1)))
+	_mesh(_cyl(0.12, 0.13, 1.6, 8), Building.material("log"), Transform3D(hb * Basis(Vector3.FORWARD, PI * 0.5), w + Vector3.UP * 0.82))
+
+
+## A barrow by the other front corner.
+func _barrow() -> void:
+	var sz: Vector2 = house.def.size
+	if not _free(-sz.x * 0.5 - 1.4, sz.y * 0.5 + 1.0):
+		return
+	var plank := Building.material("plank")
+	var w := _at(-sz.x * 0.5 - 1.4, sz.y * 0.5 + 1.0)
+	var hb := Basis(Vector3.UP, house.global_rotation.y + _rng.randf_range(-0.5, 0.5))
+	_mesh(_box_mesh(Vector3(0.6, 0.25, 0.8)), plank, Transform3D(hb * Basis(Vector3.RIGHT, -0.1), w + hb * Vector3(0, 0.45, 0)))
+	_mesh(_cyl(0.2, 0.2, 0.05, 10), Building.material("dark"), Transform3D(hb * Basis(Vector3.BACK, PI * 0.5), w + hb * Vector3(0, 0.2, -0.5)))
+	for s: float in [-0.25, 0.25]:
+		_mesh(_box_mesh(Vector3(0.04, 0.04, 1.3)), plank, Transform3D(hb * Basis(Vector3.RIGHT, 0.25), w + hb * Vector3(s, 0.4, 0.2)))
+
+
+## In the next free corner of the yard: a cart, a hay stack, a trough, a bench by the fence, a
+## sledge leant against it.
+func _corner(kind: String) -> void:
 	var r := rect
 	var plank := Building.material("plank")
 	var dark := Building.material("dark")
-	var yaw := house.global_rotation.y
 	var spots := [Vector2(r.position.x + 1.0, r.end.y - 1.0), Vector2(r.end.x - 1.0, r.end.y - 1.2), Vector2(r.end.x - 1.0, r.position.y + 3.0),
 		Vector2(r.position.x + 1.0, r.position.y + 3.2)]
-	var kinds := ["cart", "hay", "trough", "bench", "sledge"]
-	for spot: Vector2 in spots:
-		if _rng.randf() < 0.3 or not _free(spot.x, spot.y):
+	while _corners < spots.size():
+		var spot: Vector2 = spots[_corners]
+		_corners += 1
+		if not _free(spot.x, spot.y):
 			continue
 		var w := _at(spot.x, spot.y)
-		var b := Basis(Vector3.UP, yaw + _rng.randf_range(-0.6, 0.6))
-		match kinds[_rng.randi() % kinds.size()]:
+		var b := Basis(Vector3.UP, house.global_rotation.y + _rng.randf_range(-0.6, 0.6))
+		match kind:
 			"cart":
 				_mesh(_box_mesh(Vector3(1.0, 0.1, 1.6)), plank, Transform3D(b, w + Vector3.UP * 0.55))
 				for s in [-1.0, 1.0]:
 					_mesh(_box_mesh(Vector3(0.05, 0.3, 1.6)), plank, Transform3D(b, w + b * Vector3(s * 0.5, 0.75, 0)))
-					var wheel := CylinderMesh.new()
-					wheel.top_radius = 0.4
-					wheel.bottom_radius = 0.4
-					wheel.height = 0.06
-					wheel.radial_segments = 12
-					_mesh(wheel, dark, Transform3D(b * Basis(Vector3.BACK, PI * 0.5), w + b * Vector3(s * 0.6, 0.4, 0.1)))
+					_mesh(_cyl(0.4, 0.4, 0.06, 12), dark, Transform3D(b * Basis(Vector3.BACK, PI * 0.5), w + b * Vector3(s * 0.6, 0.4, 0.1)))
 				_mesh(_box_mesh(Vector3(0.06, 0.06, 1.2)), dark, Transform3D(b * Basis(Vector3.RIGHT, 0.3), w + b * Vector3(0, 0.35, -1.3)))
 			"hay":
-				var hay := CylinderMesh.new()
-				hay.top_radius = 0.15
-				hay.bottom_radius = 0.9
-				hay.height = 1.6
-				hay.radial_segments = 10
 				var m := StandardMaterial3D.new()
 				m.albedo_color = Color(0.68, 0.58, 0.3)
 				m.roughness = 1.0
-				_mesh(hay, m, Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.75))
+				_mesh(_cyl(0.15, 0.9, 1.6, 10), m, Transform3D(Basis.IDENTITY, w + Vector3.UP * 0.75))
 				_mesh(_box_mesh(Vector3(0.06, 2.2, 0.06)), dark, Transform3D(Basis.IDENTITY, w + Vector3.UP * 1.0))
 			"trough":
 				_mesh(_box_mesh(Vector3(1.4, 0.35, 0.45)), plank, Transform3D(b, w + Vector3.UP * 0.25))
@@ -479,3 +575,4 @@ func _clutter() -> void:
 				_mesh(_box_mesh(Vector3(0.6, 0.06, 1.8)), plank, Transform3D(b * Basis(Vector3.RIGHT, 1.1), w + Vector3.UP * 0.8))
 				for s in [-1.0, 1.0]:
 					_mesh(_box_mesh(Vector3(0.05, 0.08, 1.9)), dark, Transform3D(b * Basis(Vector3.RIGHT, 1.1), w + b * Vector3(s * 0.28, 0.75, 0.08)))
+		return

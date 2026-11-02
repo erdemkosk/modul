@@ -35,7 +35,7 @@ static func save(game: Node) -> bool:
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
+			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -185,6 +185,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 				b.level = int(bd.get("level", 1))
 				v._close_annex(b)
 			b.apply_damage(bd.alive, bd.charred)
+			for f: String in bd.get("yard", []):
+				b.yard_has.append(f)
 			if st == "ruin":
 				b.state = "ruin"
 			elif st == "repair":
@@ -241,6 +243,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 			vl.home = made[h]
 			made[h].residents.append(vl)
 	v._house_people()
+	for b in made:
+		if b.def.role == "house" and b.state == "done":
+			v.add_yard(b)
 	var raw: PackedByteArray = (d.wear as PackedByteArray).decompress(int(d.wear_size), FileAccess.COMPRESSION_ZSTD)
 	nav.restore(raw.to_float32_array(), d.scorch)
 	var c: Array = d.cam

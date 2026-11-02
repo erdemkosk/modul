@@ -87,6 +87,7 @@ var level := 1 ## a house: 2 once its back room's up (BuildingDefs.annex)
 var annex := Rect2() ## a house's back room, in its space (the yard keeps off it)
 var upgrading := false ## the back room going up (a mending, of pieces not there before)
 var upgraded_now := false ## (its last finish put the back room up)
+var yard_has: Array[String] = [] ## a house: what its people have brought to its yard (Yard), in order
 var crop: Crop ## a field's
 var heat_acc := 0.0 ## a house: the firewood burnt toward the next log
 var warm := true ## a house: its hearth lit (or no need of it)
