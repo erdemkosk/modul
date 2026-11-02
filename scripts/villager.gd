@@ -114,6 +114,23 @@ const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık",
 var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
 var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
+var traits: Array[String] = [] ## who it is (TRAITS): none, one or two, each for better and for worse
+
+## What it can be, each as good as it's bad, by how it changes: its work's pace, how quick it
+## learns, what it carries, its walk, its hit points, what it eats, its aim; and the cold, the raids.
+const TRAITS := {
+	"caliskan": {"name": "Çalışkan", "plus": "iş hızı +%20", "minus": "%30 daha çok yer", "work": 1.2, "eat": 1.3},
+	"tembel": {"name": "Tembel", "plus": "%30 daha az yer", "minus": "iş hızı −%20", "work": 0.8, "eat": 0.7},
+	"pehlivan": {"name": "Pehlivan", "plus": "1,5 kat taşır, can +30", "minus": "%30 yavaş öğrenir", "carry": 1.5, "hp": 30, "learn": 0.7},
+	"zeki": {"name": "Zeki", "plus": "%50 hızlı öğrenir", "minus": "narin: can −20", "learn": 1.5, "hp": -20},
+	"cevik": {"name": "Çevik", "plus": "%20 hızlı yürür", "minus": "can −10", "walk": 1.2, "hp": -10},
+	"sibir": {"name": "Sibiryalı", "plus": "soğuk evde üşümez", "minus": "%15 daha çok yer", "cold": true, "eat": 1.15},
+	"gozukara": {"name": "Gözü kara", "plus": "nişan +%20, baskında kaçmaz", "minus": "haydut yakına gelirse eli boş da dalar", "aim": 1.2, "brave": true},
+	"korkak": {"name": "Korkak", "plus": "iş hızı +%10 (dikkatli)", "minus": "milis olmaz, baskında hemen saklanır", "work": 1.1, "coward": true},
+	"obur": {"name": "Obur", "plus": "sağlam: can +20", "minus": "%50 daha çok yer", "hp": 20, "eat": 1.5},
+	"kanaatkar": {"name": "Kanaatkâr", "plus": "%40 daha az yer", "minus": "zayıf: can −15", "eat": 0.6, "hp": -15},
+}
+const TRAIT_CLASH := [["caliskan", "tembel"], ["obur", "kanaatkar"], ["gozukara", "korkak"], ["obur", "tembel"]]
 var family := "" ## the surname's stem ("Ivanov"): a family shares a house
 var female := false
 
@@ -126,12 +143,66 @@ func roll_skills(rng: RandomNumberGenerator) -> void:
 		skills[k] = 0.0 if is_child else rng.randf_range(1.0, 3.5)
 		prio[k] = 1
 	roll_keen(rng)
+	roll_traits(rng)
+	apply_traits()
 	if is_child:
 		return
 	keys.shuffle()
 	skills[keys[0]] = rng.randf_range(5.5, 7.5)
 	skills[keys[1]] = rng.randf_range(4.0, 6.0)
 	skills[keys[keys.size() - 1]] = rng.randf_range(0.0, 0.8)
+
+
+## A settler to choose on the title screen (TitleMenu): a name, `family` (a new one if ""), what
+## they're good at and keen on, their traits and their face's seed, as spawn_villager takes them.
+static func candidate(rng: RandomNumberGenerator, female: bool, family: String) -> Dictionary:
+	var base := preload("res://scripts/village_base.gd")
+	var v := Villager.new()
+	v.female = female
+	v.roll_skills(rng)
+	var fam := family if family != "" else str(base.SURNAMES[rng.randi() % base.SURNAMES.size()])
+	var first: String = base.NAMES[(12 + rng.randi() % 12) if female else rng.randi() % 12]
+	var out := {"name": "%s %s%s" % [first, fam, "a" if female else ""], "family": fam, "female": female,
+		"skills": v.skills.duplicate(), "keen": v.keen.duplicate(), "traits": v.traits.duplicate(), "look_seed": (rng.randi() % 2147483646) + 1}
+	v.free()
+	return out
+
+
+## None, one or (now and then) two traits, never two that clash.
+func roll_traits(rng: RandomNumberGenerator) -> void:
+	traits.clear()
+	var n := 0 if rng.randf() < 0.2 else (2 if rng.randf() < 0.35 else 1)
+	var keys := TRAITS.keys()
+	var tries := 0
+	while traits.size() < n and tries < 20:
+		tries += 1
+		var t: String = keys[rng.randi() % keys.size()]
+		if t in traits or TRAIT_CLASH.any(func(c: Array) -> bool: return t in c and traits.any(func(o: String) -> bool: return o in c)):
+			continue
+		traits.append(t)
+
+
+## Its traits' say in `what` ("work", "learn", "carry", "walk", "eat", "aim"): their factors multiplied.
+func trait_mul(what: String) -> float:
+	var f := 1.0
+	for t in traits:
+		f *= float(TRAITS[t].get(what, 1.0))
+	return f
+
+
+## Whether any of its traits has `what` ("cold", "brave", "coward").
+func has_trait(what: String) -> bool:
+	return traits.any(func(t: String) -> bool: return bool(TRAITS[t].get(what, false)))
+
+
+## Its traits put on its body: its hit points, its walk.
+func apply_traits() -> void:
+	var add := 0
+	for t in traits:
+		add += int(TRAITS[t].get("hp", 0))
+	max_hp = maxf(20.0, 50.0 + add)
+	hp = max_hp
+	speed_mul = trait_mul("walk")
 
 
 ## One kind of work it's keen on, now and then two.
@@ -150,14 +221,14 @@ func skill(k: String) -> float:
 
 ## How quick at `k` it is: 0.7 at nothing, 1 at middling (5), 1.3 at the best (10).
 func knack(k: String) -> float:
-	return 0.7 + skill(k) * 0.06 if k != "" else 1.0
+	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work")
 
 
 ## Better at `k` for `secs` s of doing it (slower the better it already is).
 func learn(k: String, secs: float) -> void:
 	if k == "" or is_child:
 		return
-	skills[k] = minf(skill(k) + secs * 0.004 * (2.0 if k in keen else 1.0) * (1.0 - skill(k) / 12.0), 10.0)
+	skills[k] = minf(skill(k) + secs * 0.004 * (2.0 if k in keen else 1.0) * trait_mul("learn") * (1.0 - skill(k) / 12.0), 10.0)
 
 
 ## What its work just now draws on.
@@ -197,7 +268,7 @@ static func skill_of(b: Building) -> String:
 func aim() -> float:
 	if team != 0:
 		return 1.0
-	return 0.75 + skill("okcu" if held == "bow" else "nisan") * 0.05
+	return (0.75 + skill("okcu" if held == "bow" else "nisan") * 0.05) * trait_mul("aim")
 var _speed_now := 0.0 ## m/s over the ground this frame
 var _rifle := false
 
@@ -241,8 +312,9 @@ static func _parts(variant: String) -> Dictionary:
 func _build_look() -> void:
 	if Townsfolk.available():
 		var rng := RandomNumberGenerator.new()
-		rng.randomize()
-		look_seed = rng.seed if rng.seed != 0 else 1
+		if look_seed == 0: # (else it was chosen: a settler picked on the title screen keeps their face)
+			rng.randomize()
+			look_seed = rng.seed if rng.seed != 0 else 1
 		rng.seed = look_seed
 		look_kind = "outlaw" if team == 1 else ("child" if is_child else "man")
 		_body = Townsfolk.new()
@@ -476,7 +548,7 @@ func capacity(res: String) -> int:
 			return 30
 		"hand":
 			return 12
-	return {"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}.get(res, 5)
+	return roundi({"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}.get(res, 5) * trait_mul("carry"))
 
 
 func _drop_vehicle() -> void:

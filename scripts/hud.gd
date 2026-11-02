@@ -1037,6 +1037,8 @@ var _folk_box: VBoxContainer
 var _folk_face: TextureRect
 var _folk_job: Label
 var _folk_state: Label
+var _folk_traits: VBoxContainer ## a line a trait: its name, its good, its bad
+var _folk_traits_of: Villager
 var _folk_hp: ProgressBar
 var _folk_rows: Array = [] ## [name Label, ProgressBar, number Label, marks Label] a skill each, best first
 
@@ -1079,6 +1081,9 @@ func _make_folk_box(col: VBoxContainer) -> void:
 	_folk_job.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_folk_job.custom_minimum_size = Vector2(230, 0)
 	_folk_state = Ui.label(side, "", 13, Ui.DIM, "head")
+	_folk_traits = VBoxContainer.new()
+	_folk_traits.add_theme_constant_override("separation", 0)
+	side.add_child(_folk_traits)
 	_folk_hp = _bar(Color(0.55, 0.78, 0.4), 230, 8)
 	side.add_child(_folk_hp)
 	Ui.label(_folk_box, "BECERİLER  ·  ♥ hevesli  ·  ▲ önce  ·  – hiç", 12, Ui.ACCENT, "head")
@@ -1117,6 +1122,15 @@ func _fill_folk_box(v: Villager) -> void:
 		state = "yaralı"
 	var age := "çocuk, %d günlük" % (game.village.day - v.born_day) if v.is_child else ("kadın" if v.female else "erkek")
 	_folk_state.text = "%s · %s · can %d/%d" % [age, state, int(v.hp), int(v.max_hp)]
+	if _folk_traits_of != v:
+		_folk_traits_of = v
+		for ch in _folk_traits.get_children():
+			ch.queue_free()
+		for t: String in v.traits:
+			var tr: Dictionary = Villager.TRAITS[t]
+			var line := Ui.label(_folk_traits, "%s: + %s · − %s" % [tr.name, tr.plus, tr.minus], 12, Ui.ACCENT, "head")
+			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			line.custom_minimum_size = Vector2(230, 0)
 	_folk_hp.max_value = v.max_hp
 	_folk_hp.value = v.hp
 	(_folk_hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.BAD if v.hp < v.max_hp * 0.4 else (Color(0.9, 0.7, 0.3) if v.hp < v.max_hp * 0.8 else Color(0.55, 0.78, 0.4))

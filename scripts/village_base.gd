@@ -97,6 +97,7 @@ var rail := PackedVector3Array() ## the railway, from the valley's edge to the s
 var train: Train
 var seed := 0
 var start_people := 6 ## how many come on the train
+var start_crew: Array = [] ## the settlers chosen on the title screen (Villager.candidate), in the order they step down
 var arriving := false ## the first train in and its load not yet in the station
 var supplies := 1.0 ## how much of START_STOCK it brings
 
@@ -209,7 +210,7 @@ func _start_old(at: Vector3) -> void:
 	var door := store.door() if store else at
 	for k in start_people:
 		var p := door + Vector3(randf_range(-4, 4), 0, randf_range(1, 5))
-		spawn_villager(p, false, villagers[villagers.size() - 1].family if k % 2 == 1 else "", k % 2)
+		spawn_villager(p, false, villagers[villagers.size() - 1].family if k % 2 == 1 else "", k % 2, start_crew[k] if k < start_crew.size() else {})
 	_house_people()
 
 
@@ -543,7 +544,7 @@ func _train_arrived(station: Building) -> void:
 			var fam := ""
 			if k % 2 == 1:
 				fam = villagers[villagers.size() - 1].family
-			var v := spawn_villager(p, false, fam, k % 2)
+			var v := spawn_villager(p, false, fam, k % 2, start_crew[k] if k < start_crew.size() else {})
 			_unload_trip(v, station, sd))
 
 
@@ -616,16 +617,30 @@ const SURNAMES := ["Ivanov", "Petrov", "Smirnov", "Kuznetsov", "Popov", "Sokolov
 
 ## A newcomer at `p`: a child or not, of `fam` (a new family if ""), a woman or a man (`woman`: -1
 ## either), named and given its knacks.
-func spawn_villager(p: Vector3, child := false, fam := "", woman := -1) -> Villager:
+func spawn_villager(p: Vector3, child := false, fam := "", woman := -1, data := {}) -> Villager:
 	var v := Villager.new()
 	v.is_child = child
 	v.born_day = day
-	v.female = randf() < 0.5 if woman < 0 else woman == 1
-	v.family = fam if fam != "" else _new_family()
-	v.display_name = full_name(v, NAMES[(12 + randi() % 12) if v.female else randi() % 12])
-	var rng := RandomNumberGenerator.new()
-	rng.seed = randi() # (not randomize(): those spawned in the same tick would come out alike)
-	v.roll_skills(rng)
+	if not data.is_empty(): # (a settler chosen on the title screen: as they were chosen)
+		v.female = bool(data.female)
+		v.family = str(data.family)
+		v.display_name = str(data.name)
+		for k: String in data.skills:
+			v.skills[k] = float(data.skills[k])
+			v.prio[k] = 1
+		for k: String in data.keen:
+			v.keen.append(k)
+		for t: String in data.traits:
+			v.traits.append(t)
+		v.look_seed = int(data.look_seed)
+		v.apply_traits()
+	else:
+		v.female = randf() < 0.5 if woman < 0 else woman == 1
+		v.family = fam if fam != "" else _new_family()
+		v.display_name = full_name(v, NAMES[(12 + randi() % 12) if v.female else randi() % 12])
+		var rng := RandomNumberGenerator.new()
+		rng.seed = randi() # (not randomize(): those spawned in the same tick would come out alike)
+		v.roll_skills(rng)
 	v.village = self
 	v.nav = nav
 	add_child(v)

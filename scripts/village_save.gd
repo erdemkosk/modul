@@ -56,7 +56,7 @@ static func save(game: Node) -> bool:
 		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
 			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon,
-			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate(), "keen": vl.keen.duplicate()})
+			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate(), "keen": vl.keen.duplicate(), "traits": vl.traits.duplicate(), "look": vl.look_seed})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
@@ -232,7 +232,11 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.crop.cleared = float(cr[4]) if cr.size() >= 5 else (0.0 if str(cr[0]) == "wild" else 1.0)
 			b.crop._draw()
 	for pd: Dictionary in d.people:
-		var vl := v.spawn_villager(Vector3(float(pd.x), 0, float(pd.z)), bool(pd.get("child", false)))
+		var data := {} # (a newer save: as they were, face and all)
+		if pd.has("look") and pd.has("family"):
+			data = {"name": pd.name, "family": pd.family, "female": pd.female, "skills": pd.skills, "keen": pd.get("keen", []),
+				"traits": pd.get("traits", []), "look_seed": int(pd.look)}
+		var vl := v.spawn_villager(Vector3(float(pd.x), 0, float(pd.z)), bool(pd.get("child", false)), "", -1, data)
 		vl.born_day = int(pd.get("born", v.day))
 		vl.hp = float(pd.hp)
 		vl.militia = bool(pd.get("militia", false))
@@ -249,6 +253,13 @@ static func restore(game: Node, d: Dictionary) -> void:
 				vl.keen.clear()
 				for k: String in pd.keen:
 					vl.keen.append(k)
+			if pd.has("traits"):
+				vl.traits.clear()
+				for t: String in pd.traits:
+					vl.traits.append(t)
+				var hp := vl.hp
+				vl.apply_traits()
+				vl.hp = minf(hp, vl.max_hp)
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":
 			v.employ(vl, made[w])

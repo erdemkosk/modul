@@ -48,7 +48,10 @@ func _eat(dt: float) -> void:
 	if villagers.is_empty() or arriving:
 		return # (none eaten off the train till its load's in the station)
 	_eat_t += dt
-	var every := EAT_EVERY / (villagers.size() + oxen())
+	var mouths := 0.0 # (each by its traits: a glutton eats half again, a frugal one less)
+	for v in villagers:
+		mouths += v.trait_mul("eat")
+	var every := EAT_EVERY / maxf(mouths + oxen(), 0.1)
 	while _eat_t >= every:
 		_eat_t -= every
 		var s := store_with("yiyecek", Vector3.ZERO)
@@ -200,7 +203,7 @@ func _morning() -> void:
 		if b.def.role == "house" and b.cold_night:
 			b.cold_night = false
 			for v in b.residents:
-				if is_instance_valid(v) and not v.dead:
+				if is_instance_valid(v) and not v.dead and not v.has_trait("cold"):
 					v.hurt(18.0)
 					cold += 1
 	if cold > 0:

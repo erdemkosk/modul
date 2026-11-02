@@ -32,7 +32,16 @@ func _plan_raid(v: Villager) -> bool:
 		return v.perched != null or not v.plan.is_empty()
 	if v.job == "Saklanıyor" and not v.plan.is_empty():
 		return true
-	var near := raids.nearest_raider(v.position, 600.0 if not bells().is_empty() else 35.0)
+	if v.has_trait("brave") and not v.is_child:
+		# (it won't run: it goes on working, and goes for any outlaw who comes close, bare-handed)
+		var close := raids.nearest_raider(v.position, 18.0)
+		if close == null:
+			return false
+		if v.plan.is_empty() or str(v.plan[0].t) != "fight":
+			v.abort()
+			v.give([{"t": "fight", "foe": close, "give_up": 30.0}], "Haydutla boğuşuyor")
+		return true
+	var near := raids.nearest_raider(v.position, 600.0 if not bells().is_empty() else (90.0 if v.has_trait("coward") else 35.0))
 	if near == null:
 		return false
 	var shelters: Array[Building] = []

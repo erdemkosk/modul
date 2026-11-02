@@ -13,8 +13,8 @@ static var _me: Portraits
 var _vp: SubViewport
 var _cam: Camera3D
 var _stage: Node3D
-var _taken := {} ## villager instance id -> ImageTexture
-var _line: Array[Villager] = []
+var _taken := {} ## "<seed>:<kind>" -> ImageTexture
+var _line: Array = [] ## [seed, kind] still to be taken
 var _busy := false
 
 
@@ -56,31 +56,38 @@ func _ready() -> void:
 
 ## `v`'s face, or null while it's still to be taken.
 static func of(v: Villager) -> Texture2D:
-	if _me == null or v == null or not is_instance_valid(v) or v.look_seed == 0:
+	if v == null or not is_instance_valid(v):
 		return null
-	var id := v.get_instance_id()
-	if _me._taken.has(id):
-		return _me._taken[id]
-	if not v in _me._line:
-		_me._line.append(v)
+	return of_look(v.look_seed, v.look_kind)
+
+
+## The face a body dressed from `seed` (`kind`: "man", "child", "outlaw") has: a settler not yet in
+## the valley too (the title screen's choosing).
+static func of_look(seed: int, kind := "man") -> Texture2D:
+	if _me == null or seed == 0:
+		return null
+	var key := "%d:%s" % [seed, kind]
+	if _me._taken.has(key):
+		return _me._taken[key]
+	if not _me._line.any(func(e: Array) -> bool: return e[0] == seed and e[1] == kind):
+		_me._line.append([seed, kind])
 	return null
 
 
 func _process(_dt: float) -> void:
 	if _busy or _line.is_empty():
 		return
-	var v: Villager = _line.pop_front()
-	if is_instance_valid(v) and not v.dead:
-		_take(v)
+	var e: Array = _line.pop_front()
+	_take(int(e[0]), str(e[1]))
 
 
-func _take(v: Villager) -> void:
+func _take(seed: int, kind: String) -> void:
 	_busy = true
 	var body := Townsfolk.new()
 	_stage.add_child(body)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = v.look_seed
-	body.build(v.look_kind, rng)
+	rng.seed = seed
+	body.build(kind, rng)
 	body.player.seek(0.0, true) # (stood square to the camera, not mid-step)
 	await get_tree().process_frame # (the skeleton posed)
 	var face := _head(body)
@@ -89,7 +96,7 @@ func _take(v: Villager) -> void:
 	await RenderingServer.frame_post_draw
 	var img := _vp.get_texture().get_image()
 	if img and not img.is_empty():
-		_taken[v.get_instance_id()] = ImageTexture.create_from_image(img)
+		_taken["%d:%s" % [seed, kind]] = ImageTexture.create_from_image(img)
 	body.queue_free()
 	_busy = false
 

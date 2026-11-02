@@ -106,6 +106,7 @@ func _ready() -> void:
 	village.seed = WorldTerrain.seed
 	if saved.is_empty():
 		village.start_people = int(start_with.people)
+		village.start_crew = start_with.get("crew", [])
 		village.supplies = float(start_with.supplies)
 		raids.level = int(start_with.raids)
 		raids.next_day = [10, 8, 6][raids.level] # (a week or so to settle in before anyone comes)
@@ -657,6 +658,9 @@ func toggle_militia() -> void:
 	var n := 0
 	for v in list:
 		if v.is_child:
+			continue
+		if on and v.has_trait("coward"):
+			hud.toast("%s korkak: milis olmaz" % v.display_name, "info")
 			continue
 		if v.workplace and v.workplace.def.role in ["barracks", "tower"]:
 			hud.toast("%s bekçi: zaten tüfekli" % v.display_name, "info")
