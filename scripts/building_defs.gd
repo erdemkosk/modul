@@ -24,6 +24,8 @@ const DEFS := {
 		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar. Akşamları ateş yakılır, kasabalılar başında toplanıp oturur, konuşur; çocuklar orada oynar."},
 	"cankulesi": {"name": "Çan kulesi", "size": Vector2(4, 4), "cost": {"odun": 20, "tas": 8}, "time": 36.0, "role": "bell",
 		"desc": "Çan sabah işbaşını, akşam paydosu çalar. Baskında tehlike çanı çalınca kasabanın her yerindeki herkes saklanır."},
+	"istasyon": {"name": "İstasyon", "size": Vector2(7, 5), "cost": {"odun": 30, "tas": 6}, "time": 30.0, "role": "store",
+		"desc": "Demiryolunun ucu, kasabanın ilk deposu. Trenle gelenler burada indi; mallar burada durur."},
 	"sur": {"name": "Kazık sur", "size": Vector2(1, 1), "cost": {"odun": 1}, "time": 0.0, "role": "wall",
 		"desc": "Sivri kütüklerden çit: nokta nokta çiz, kasabalılar parça parça diker (4 kazığa bir odun). Yolu kestiği yere kendiliğinden kapı konur. Haydutlar ancak kırarak geçer."},
 	"kapi": {"name": "Sur kapısı", "size": Vector2(3, 1), "cost": {"odun": 6}, "time": 0.0, "role": "gate",

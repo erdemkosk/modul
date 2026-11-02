@@ -104,6 +104,84 @@ var bleed := 0.0 ## s left
 var carried_by: Villager
 var recovering := false ## abed till it's mended
 var role := "" ## an outlaw's: "shooter", "torch", "looter"
+# --- who it is
+## What the town's work asks of hands and eyes, and the name each goes by.
+const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık", "tarim": "Tarım", "toplama": "Toplayıcılık",
+	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk"}
+var skills := {} ## skill -> 0..10, growing as it's done
+var prio := {} ## skill -> 0 never, 1 as needed, 2 first
+var family := "" ## the surname's stem ("Ivanov"): a family shares a house
+var female := false
+
+
+## Two things it's good at, one it's poor at, the rest middling (a child: nothing yet).
+func roll_skills(rng: RandomNumberGenerator) -> void:
+	var keys := SKILLS.keys()
+	for k: String in keys:
+		skills[k] = 0.0 if is_child else rng.randf_range(1.0, 3.5)
+		prio[k] = 1
+	if is_child:
+		return
+	keys.shuffle()
+	skills[keys[0]] = rng.randf_range(5.5, 7.5)
+	skills[keys[1]] = rng.randf_range(4.0, 6.0)
+	skills[keys[keys.size() - 1]] = rng.randf_range(0.0, 0.8)
+
+
+func skill(k: String) -> float:
+	return float(skills.get(k, 2.0))
+
+
+## How quick at `k` it is: 0.7 at nothing, 1 at middling (5), 1.3 at the best (10).
+func knack(k: String) -> float:
+	return 0.7 + skill(k) * 0.06 if k != "" else 1.0
+
+
+## Better at `k` for `secs` s of doing it (slower the better it already is).
+func learn(k: String, secs: float) -> void:
+	if k == "" or is_child:
+		return
+	skills[k] = minf(skill(k) + secs * 0.004 * (1.0 - skill(k) / 12.0), 10.0)
+
+
+## What its work just now draws on.
+func work_skill() -> String:
+	var j := str(job)
+	if j.begins_with("İnşa") or j.begins_with("Sur") or j.begins_with("Onarıyor"):
+		return "insa"
+	if j.begins_with("Taşıyor") or j.begins_with("Yakacak") or j.begins_with("Trenden yük"):
+		return "tasima"
+	if workplace:
+		return Villager.skill_of(workplace)
+	return ""
+
+
+static func skill_of(b: Building) -> String:
+	match b.kind:
+		"oduncu", "ormanci":
+			return "odun"
+		"tasci":
+			return "tas"
+		"tarla":
+			return "tarim"
+		"toplayici":
+			return "toplama"
+		"arabaci", "ahir":
+			return "tasima"
+		"yayci":
+			return "zanaat"
+		"insaatci":
+			return "insa"
+		"kisla", "kule":
+			return "nisan"
+	return ""
+
+
+## Its aim with what it holds (a rifle: nişancılık, a bow: okçuluk).
+func aim() -> float:
+	if team != 0:
+		return 1.0
+	return 0.75 + skill("okcu" if held == "bow" else "nisan") * 0.05
 var _speed_now := 0.0 ## m/s over the ground this frame
 var _rifle := false
 
@@ -903,10 +981,13 @@ func _process(dt: float) -> void:
 					Ambience.knock(global_position + Vector3.UP * 1.0 - global_basis.z * 0.6, pitch)
 			if step.has("face"):
 				_face(step.face, dt)
-			_elapsed += dt
+			var sk := work_skill()
+			var pace := knack(sk)
+			learn(sk, dt)
+			_elapsed += dt * pace
 			var over := false
 			if step.has("tick"):
-				over = not bool((step.tick as Callable).call(dt * _rate()))
+				over = not bool((step.tick as Callable).call(dt * _rate() * pace))
 			elif _elapsed * _rate() >= float(step.time):
 				over = true
 			if over:

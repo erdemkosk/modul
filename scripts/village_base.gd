@@ -90,6 +90,12 @@ var yards: Array = [] ## Yard, one to a house
 
 var roads: Array = [] ## the plank roads laid: each a polyline [x0, z0, x1, z1, ...]
 var walls: Array[Wall] = [] ## the palisades
+var rail := PackedVector3Array() ## the railway, from the valley's edge to the station (on the ground)
+var train: Train
+var seed := 0
+var start_people := 6 ## how many come on the train
+var arriving := false ## the first train in and its load not yet in the station
+var supplies := 1.0 ## how much of START_STOCK it brings
 
 
 const BILLET_WOOD := 3 ## wood a log gives sawn up
@@ -150,6 +156,36 @@ func _ready() -> void:
 
 
 func start(at: Vector3) -> void:
+	# The railway in from the edge of the valley, the station at its end; the first of the town come
+	# by train, and what they bring is unloaded there.
+	var line := _rail_line(at)
+	var station: Building = null
+	var at_k := -1
+	if line.size() > 20:
+		rail = line
+		_rail_mesh(rail)
+		at_k = _nearest_k(rail, at)
+		station = _place_station(rail, at_k)
+	if station == null:
+		_start_old(at)
+		return
+	station.complete_now()
+	# the station's place along the line (by the line's own length, its rises and falls and all):
+	# the coach stops level with it
+	train = Train.new()
+	train.nav = nav
+	train.setup(rail, 0.0, 0.0)
+	var s_station := train.s_of(station.global_position)
+	train.stop_at = s_station
+	train._s = maxf(s_station - 200.0, 0.0)
+	add_child(train)
+	train.arrived.connect(_train_arrived.bind(station))
+	arriving = true
+	message.emit("Tren geliyor: ilk yerleşimciler ve yükleri istasyona iniyor.", "info")
+
+
+## The old start, with no railway: a store and a house put down at once.
+func _start_old(at: Vector3) -> void:
 	var store := _place_near("ambar", at, 0.0)
 	# The first house beside the store, square to it, the fronts in line, room left between for its
 	# yard (Yard.SIDE) and a lane.
@@ -164,14 +200,394 @@ func start(at: Vector3) -> void:
 	if store:
 		store.complete_now()
 		for k: String in START_STOCK:
-			store.add_goods(k, int(START_STOCK[k]))
+			store.add_goods(k, roundi(int(START_STOCK[k]) * supplies))
 	if house:
 		house.complete_now()
 	var door := store.door() if store else at
-	for k in 6:
+	for k in start_people:
 		var p := door + Vector3(randf_range(-4, 4), 0, randf_range(1, 5))
-		spawn_villager(p)
+		spawn_villager(p, false, villagers[villagers.size() - 1].family if k % 2 == 1 else "", k % 2)
 	_house_people()
+
+
+## The railway's line: in from a place on the valley's edge (picked by the seed) to `at` and on out
+## to another edge across the valley, the walkable way each time, smoothed into long easy curves, a
+## point every 0.3 m on the ground.
+func _rail_line(at: Vector3) -> PackedVector3Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed if seed != 0 else 1
+	var a0 := rng.randf() * TAU
+	var from := _edge_point(a0)
+	var to := _edge_point(a0 + PI + rng.randf_range(-0.6, 0.6))
+	if from == Vector3.INF or to == Vector3.INF:
+		return PackedVector3Array()
+	var way_in := nav.find_path(from, at)
+	var way_out := nav.find_path(at, to)
+	if way_in.size() < 4 or way_out.size() < 4:
+		return PackedVector3Array()
+	# (every so many points of the walk, then a smooth curve through them: a railway bends gently)
+	# (a point every 40 m or so of the walk, none too near the station: long, even bends)
+	var pts: Array = []
+	for k in range(0, way_in.size() - 10, 20):
+		pts.append(way_in[k])
+	pts.append(at)
+	for k in range(20, way_out.size() - 10, 20):
+		pts.append(way_out[k])
+	pts.append(way_out[way_out.size() - 1])
+	# (eased twice: each point drawn toward its neighbours' middle, the ends left)
+	for pass_ in 2:
+		var eased: Array = [pts[0]]
+		for k in range(1, pts.size() - 1):
+			var p: Vector3 = pts[k]
+			if (p - at).length() < 1.0:
+				eased.append(p)
+			else:
+				eased.append(p.lerp(((pts[k - 1] as Vector3) + (pts[k + 1] as Vector3)) * 0.5, 0.5))
+		eased.append(pts[pts.size() - 1])
+		pts = eased
+	# (out to the very edge of the map at both ends: it comes from somewhere and goes somewhere)
+	pts.push_front(_to_edge(pts[0], pts[0] - pts[1]))
+	pts.append(_to_edge(pts[pts.size() - 1], pts[pts.size() - 1] - pts[pts.size() - 2]))
+	return _bridged(road_curve(pts))
+
+
+## The water's surface at `p` (the lake, or the river where its channel is), or -INF.
+func water_at(p: Vector3) -> float:
+	var w := terrain.water_height_at(p.x, p.z)
+	if _river.is_empty():
+		var hw := float(terrain.meta.river.get("half_width", 9.0))
+		for q: Variant in terrain.meta.river.points:
+			if q is Array and (q as Array).size() > 2:
+				_river.append(Vector4(float(q[0]), float(q[1]), float(q[2]), hw))
+	for q in _river:
+		if Vector2(q.x - p.x, q.z - p.z).length() < q.w + 2.0:
+			w = maxf(w, q.y)
+	return w
+
+
+var _river: Array[Vector4] = [] ## the river's line: x, surface y, z, half its width
+
+
+## Where the line crosses water, a bridge: the rails carried 1.6 m over the water on a trestle, eased
+## up to it and down again over 24 m either side. (The points' heights become the rails' bed's.)
+func _bridged(line: PackedVector3Array) -> PackedVector3Array:
+	var n := line.size()
+	var wet := PackedFloat32Array()
+	wet.resize(n)
+	var any := false
+	for k in n:
+		wet[k] = water_at(line[k])
+		any = any or wet[k] > -INF
+	if not any:
+		return line
+	var lift := PackedFloat32Array()
+	lift.resize(n)
+	for k in n:
+		lift[k] = -INF
+	var k := 0
+	while k < n:
+		if wet[k] == -INF:
+			k += 1
+			continue
+		var a := k
+		var top := -INF
+		while k < n and wet[k] > -INF:
+			top = maxf(top, wet[k])
+			k += 1
+		var deck := top + 1.6
+		var ramp := 80 # (points: 24 m)
+		for j in range(maxi(a - ramp, 0), mini(k + ramp, n)):
+			var u := 1.0
+			if j < a:
+				u = smoothstep(0.0, 1.0, float(j - (a - ramp)) / ramp)
+			elif j >= k:
+				u = smoothstep(0.0, 1.0, 1.0 - float(j - k) / ramp)
+			lift[j] = maxf(lift[j], lerpf(line[j].y, deck, u))
+	for j in n:
+		if lift[j] > line[j].y:
+			line[j].y = lift[j]
+	return line
+
+
+## From `p` on along `dir` to the edge of the map.
+func _to_edge(p: Vector3, dir: Vector3) -> Vector3:
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.01 else p.normalized()
+	var lim := float(terrain.half) - 2.0
+	var t := INF
+	if absf(dir.x) > 0.001:
+		t = minf(t, ((lim if dir.x > 0.0 else -lim) - p.x) / dir.x)
+	if absf(dir.z) > 0.001:
+		t = minf(t, ((lim if dir.z > 0.0 else -lim) - p.z) / dir.z)
+	return p + dir * maxf(t, 0.0)
+
+
+## A walkable point on the valley's edge round from angle `a`.
+func _edge_point(a: float) -> Vector3:
+	var half := float(terrain.half) - 60.0
+	for k in 24:
+		var p := Vector3(cos(a + k * 0.26), 0, sin(a + k * 0.26)) * half
+		if nav.is_open(p):
+			return p
+	return Vector3.INF
+
+
+func _nearest_k(line: PackedVector3Array, p: Vector3) -> int:
+	var best := 0
+	var bd := INF
+	for k in line.size():
+		var d := Vector2(line[k].x - p.x, line[k].z - p.z).length_squared()
+		if d < bd:
+			bd = d
+			best = k
+	return best
+
+
+## How far along `line` the point nearest `p` is (m).
+func _rail_s(line: PackedVector3Array, p: Vector3) -> float:
+	return _nearest_k(line, p) * ROAD_STEP
+
+
+## Where the station stands (INF with none): the camera starts there.
+func station_at() -> Vector3:
+	for b in buildings:
+		if b.kind == "istasyon":
+			return b.global_position
+	return Vector3.INF
+
+
+func _rail_len(line: PackedVector3Array) -> float:
+	return (line.size() - 1) * ROAD_STEP
+
+
+## The track: a ballast bed, sleepers across every 0.66 m, two rails, all on the ground as it lies;
+## the trees in the way felled.
+func _rail_mesh(line: PackedVector3Array) -> void:
+	var lines := line
+	for k in range(0, lines.size(), 8):
+		for i in _props_in(lines[k], 4.0):
+			var info := props.prop_info(i)
+			if str(info.kind) != "cliff" and Vector2(info.origin.x - lines[k].x, info.origin.z - lines[k].z).length() < 3.6:
+				props.cut_tree(i)
+				reserved.erase(i)
+	var bed := SurfaceTool.new()
+	bed.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rails := SurfaceTool.new()
+	rails.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var prev_l := Vector3.ZERO
+	var prev_r := Vector3.ZERO
+	var prev_rails: Array = []
+	for k in lines.size():
+		var c := lines[k]
+		var dir := lines[mini(k + 1, lines.size() - 1)] - lines[maxi(k - 1, 0)]
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		var side := dir.cross(Vector3.UP)
+		var g := maxf(nav.height(c.x, c.z), c.y) # (up on a bridge: the line's own height)
+		var up := c.y - nav.height(c.x, c.z) > 0.3
+		var l := Vector3(c.x, g, c.z) - side * 1.6 + Vector3.UP * 0.02
+		var rr := Vector3(c.x, g, c.z) + side * 1.6 + Vector3.UP * 0.02
+		l.y = (g - 0.1) if up else nav.height(l.x, l.z) + 0.03
+		rr.y = (g - 0.1) if up else nav.height(rr.x, rr.z) + 0.03
+		var top := Vector3(c.x, g + 0.14, c.z)
+		var rl := [top - side * 0.76 + Vector3.UP * 0.18, top + side * 0.76 + Vector3.UP * 0.18]
+		if k > 0 and not up:
+			# the bed: two slopes up to its crown
+			_quad(bed, prev_l, l, top, (prev_l + prev_r) * 0.5 + Vector3.UP * 0.12)
+			_quad(bed, (prev_l + prev_r) * 0.5 + Vector3.UP * 0.12, top, rr, prev_r)
+		if k > 0:
+			for j in 2:
+				var a: Vector3 = prev_rails[j]
+				var b: Vector3 = rl[j]
+				_quad(rails, a + side * 0.04, b + side * 0.04, b - side * 0.04, a - side * 0.04)
+				_quad(rails, a - side * 0.04, b - side * 0.04, b - side * 0.04 - Vector3.UP * 0.12, a - side * 0.04 - Vector3.UP * 0.12)
+				_quad(rails, a + side * 0.04 - Vector3.UP * 0.12, b + side * 0.04 - Vector3.UP * 0.12, b + side * 0.04, a + side * 0.04)
+		prev_l = l
+		prev_r = rr
+		prev_rails = rl
+	bed.generate_normals()
+	rails.generate_normals()
+	var bm := StandardMaterial3D.new()
+	bm.albedo_color = Color(0.36, 0.33, 0.29)
+	bm.roughness = 1.0
+	var bmi := MeshInstance3D.new()
+	bmi.mesh = bed.commit()
+	bmi.material_override = bm
+	add_child(bmi)
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color(0.28, 0.27, 0.26)
+	rm.metallic = 0.7
+	rm.roughness = 0.45
+	var rmi := MeshInstance3D.new()
+	rmi.mesh = rails.commit()
+	rmi.material_override = rm
+	add_child(rmi)
+	# the sleepers
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var sl := BoxMesh.new()
+	sl.size = Vector3(2.5, 0.14, 0.24)
+	var sm := StandardMaterial3D.new()
+	sm.vertex_color_use_as_albedo = true
+	sm.roughness = 0.95
+	sl.material = sm
+	mm.mesh = sl
+	var every := 2
+	mm.instance_count = lines.size() / every
+	for j in mm.instance_count:
+		var k := j * every
+		var c := lines[k]
+		var dir := lines[mini(k + 1, lines.size() - 1)] - lines[maxi(k - 1, 0)]
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), Vector3(c.x, maxf(nav.height(c.x, c.z), c.y) + 0.2, c.z)))
+		var shade := randf_range(0.26, 0.38)
+		mm.set_instance_color(j, Color(shade, shade * 0.8, shade * 0.6))
+	var smi := MultiMeshInstance3D.new()
+	smi.multimesh = mm
+	add_child(smi)
+	# the trestle under it where it's up off the ground: a bent of two piles every 3 m, braced
+	var piles: Array[Transform3D] = []
+	for k in range(0, lines.size(), 10):
+		var c := lines[k]
+		var g := nav.height(c.x, c.z)
+		if c.y - g < 0.6:
+			continue
+		var dir := lines[mini(k + 1, lines.size() - 1)] - lines[maxi(k - 1, 0)]
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		var side := dir.cross(Vector3.UP)
+		var bottom := minf(g, water_at(c) if water_at(c) > -INF else g) - 1.5 # (driven into the bed)
+		var h := c.y + 0.1 - bottom
+		for sx in [-1.1, 1.1]:
+			var at: Vector3 = Vector3(c.x, bottom + h * 0.5, c.z) + side * sx
+			piles.append(Transform3D(Basis.IDENTITY.scaled(Vector3(1, h, 1)), at))
+		# the cap across them, and a brace
+		piles.append(Transform3D(Basis.looking_at(side, Vector3.UP).scaled(Vector3(1, 1, 2.8)) * Basis(Vector3.RIGHT, PI * 0.5), Vector3(c.x, c.y, c.z)))
+	if not piles.is_empty():
+		var pm := MultiMesh.new()
+		pm.transform_format = MultiMesh.TRANSFORM_3D
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.16
+		cyl.bottom_radius = 0.18
+		cyl.height = 1.0
+		cyl.radial_segments = 7
+		var wm := StandardMaterial3D.new()
+		wm.albedo_color = Color(0.32, 0.24, 0.17)
+		wm.roughness = 0.95
+		cyl.material = wm
+		pm.mesh = cyl
+		pm.instance_count = piles.size()
+		for j in piles.size():
+			pm.set_instance_transform(j, piles[j])
+		var pmi := MultiMeshInstance3D.new()
+		pmi.multimesh = pm
+		add_child(pmi)
+	# (the line's cells: walked along like a road, never built on)
+	var cells: Array[Vector2i] = []
+	for k in range(0, lines.size(), 3):
+		var cc := Nav.cell_of(lines[k])
+		if not cc in cells:
+			cells.append(cc)
+	nav.set_road(cells)
+
+
+static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	for v in [a, b, c, a, c, d]:
+		st.add_vertex(v)
+
+
+## The station beside the line at point `k` (or a little along it), its platform to the track, on
+## whichever side is open.
+func _place_station(line: PackedVector3Array, k: int) -> Building:
+	var n := line.size()
+	var dir := (line[mini(k + 20, n - 1)] - line[maxi(k - 20, 0)])
+	dir.y = 0.0
+	dir = dir.normalized()
+	var ss: Vector2 = BuildingDefs.def("istasyon").size
+	for sgn in [1.0, -1.0]:
+		var side: Vector3 = dir.cross(Vector3.UP) * sgn
+		for back in [0.0, 6.0, -6.0, 12.0, -12.0]:
+			var p: Vector3 = line[k] - dir * back + side * (ss.y * 0.5 + 3.4 + 2.6)
+			var face := -side # (its front, the platform, toward the track)
+			var yaw := atan2(face.x, face.z)
+			if check("istasyon", p, yaw) == "":
+				return place("istasyon", p, yaw)
+	return null
+
+
+## The train in: the settlers step down from the coach one by one, then unload the boxcar by hand,
+## carrying what it brought onto the platform and into the station (the food first). With it empty
+## the train steams on, out of the valley the other way.
+var _cargo := {} ## what's still in the boxcar
+
+
+func _train_arrived(station: Building) -> void:
+	if not is_instance_valid(station) or not is_instance_valid(train):
+		return
+	var to_station := station.global_position - train.door(Vector3.ZERO)
+	to_station.y = 0.0
+	var sd := to_station.normalized()
+	_cargo = {"yiyecek": roundi(int(START_STOCK.yiyecek) * supplies), "odun": roundi(int(START_STOCK.odun) * supplies), "tas": roundi(int(START_STOCK.tas) * supplies)}
+	for k in start_people:
+		get_tree().create_timer(0.8 + k * 0.7, false).timeout.connect(func() -> void:
+			if not is_instance_valid(train):
+				return
+			var p := train.door(sd)
+			p.y = ground_at(p)
+			# (they come as couples, a man and his wife; an odd one out alone)
+			var fam := ""
+			if k % 2 == 1:
+				fam = villagers[villagers.size() - 1].family
+			var v := spawn_villager(p, false, fam, k % 2)
+			_unload_trip(v, station, sd))
+
+
+## One more load out of the boxcar for `v` (another after it, till it's empty).
+func _unload_trip(v: Villager, station: Building, sd: Vector3) -> void:
+	if not is_instance_valid(v) or v.dead or not is_instance_valid(station):
+		return
+	var res := ""
+	for r: String in ["yiyecek", "odun", "tas"]:
+		if int(_cargo.get(r, 0)) > 0:
+			res = r
+			break
+	if res == "" or not is_instance_valid(train):
+		_cargo_done(station)
+		v.give([{"t": "go", "to": station.door() + Vector3(randf_range(-3, 3), 0, randf_range(0.5, 2.0))},
+			{"t": "work", "time": randf_range(3.0, 6.0), "anim": "look"}], "Trenden indi", null, true)
+		return
+	var n := mini(v.capacity(res), int(_cargo[res]))
+	_cargo[res] = int(_cargo[res]) - n
+	var at := train.cargo_door(sd)
+	at.y = ground_at(at)
+	v.give([{"t": "go", "to": at},
+		{"t": "work", "time": 0.7, "anim": "gather", "face": train.cargo_door(sd)},
+		{"t": "do", "f": func() -> bool:
+			v.set_carry(res, n)
+			return true},
+		{"t": "go", "to": station.door()},
+		{"t": "do", "f": func() -> bool:
+			v.set_carry("", 0)
+			if is_instance_valid(station):
+				station.add_goods(res, n)
+			_unload_trip(v, station, sd)
+			return true}], "Trenden yük indiriyor", station)
+
+
+func _cargo_done(station: Building) -> void:
+	if not is_instance_valid(train) or train.has_meta("leaving"):
+		return
+	for r: String in _cargo:
+		if int(_cargo[r]) > 0:
+			return
+	train.set_meta("leaving", true)
+	arriving = false
+	message.emit("Yük indi. Tren yoluna devam ediyor. Ev kurun; o zamana dek kamp ateşinde yatarlar.", "good")
+	get_tree().create_timer(3.0, false).timeout.connect(func() -> void:
+		if is_instance_valid(train):
+			train.leave())
 
 
 ## Puts a building straight down at or near `at` (the first ones: searched outward till it fits).
@@ -191,11 +607,22 @@ const NAMES := ["Anton", "Pyotr", "Mikhail", "Ivan", "Fyodor", "Nikolai", "Grigo
 	"Marya", "Anna", "Olga", "Vera", "Darya", "Sofia", "Nadia", "Irina", "Agafya", "Polina", "Lidia", "Yelena"]
 
 
-func spawn_villager(p: Vector3, child := false) -> Villager:
+const SURNAMES := ["Ivanov", "Petrov", "Smirnov", "Kuznetsov", "Popov", "Sokolov", "Lebedev", "Kozlov", "Novikov",
+	"Morozov", "Volkov", "Orlov", "Zaitsev", "Belov", "Medvedev", "Yegorov", "Fedorov", "Gusev"]
+
+
+## A newcomer at `p`: a child or not, of `fam` (a new family if ""), a woman or a man (`woman`: -1
+## either), named and given its knacks.
+func spawn_villager(p: Vector3, child := false, fam := "", woman := -1) -> Villager:
 	var v := Villager.new()
 	v.is_child = child
 	v.born_day = day
-	v.display_name = NAMES[randi() % NAMES.size()]
+	v.female = randf() < 0.5 if woman < 0 else woman == 1
+	v.family = fam if fam != "" else _new_family()
+	v.display_name = full_name(v, NAMES[(12 + randi() % 12) if v.female else randi() % 12])
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	v.roll_skills(rng)
 	v.village = self
 	v.nav = nav
 	add_child(v)
@@ -204,6 +631,28 @@ func spawn_villager(p: Vector3, child := false) -> Villager:
 	villagers.append(v)
 	v.died.connect(_on_villager_died)
 	return v
+
+
+## "Ivan Petrov", "Marya Petrova".
+func full_name(v: Villager, first: String) -> String:
+	return "%s %s%s" % [first, v.family, "a" if v.female else ""]
+
+
+func _new_family() -> String:
+	var used := {}
+	for o in villagers:
+		used[o.family] = true
+	var free: Array = SURNAMES.filter(func(s: String) -> bool: return not used.has(s))
+	return free[randi() % free.size()] if not free.is_empty() else SURNAMES[randi() % SURNAMES.size()]
+
+
+## Everyone of family `f`.
+func family_of(f: String) -> Array[Villager]:
+	var out: Array[Villager] = []
+	for o in villagers:
+		if o.family == f and not o.dead:
+			out.append(o)
+	return out
 
 
 func _on_villager_died(v: Villager) -> void:
@@ -319,10 +768,13 @@ func ground_at(p: Vector3) -> float:
 		if b.state == "ghost" or b.state == "gone" or b.def.role in ["farm", "light"]:
 			continue
 		var d := Vector2(p.x - b.global_position.x, p.z - b.global_position.z)
-		if d.length() > b.radius + 3.0:
+		if d.length() > b.radius + (10.0 if b.kind == "istasyon" else 3.0):
 			continue
 		var l := b.global_transform.affine_inverse() * Vector3(p.x, b.global_position.y, p.z)
 		var sz: Vector2 = b.def.size
+		if b.kind == "istasyon" and absf(l.x) <= sz.x * 0.5 + 3.0 and l.z > sz.y * 0.5 and l.z <= sz.y * 0.5 + 3.4:
+			g = maxf(g, b.global_position.y + 0.96) # (on the platform's boards)
+			continue
 		var deck := 1.7 if b.kind in ["ev", "ambar"] else 0.0
 		if absf(l.x) <= sz.x * 0.5 and l.z >= -sz.y * 0.5 and l.z <= sz.y * 0.5 + deck:
 			g = maxf(g, b.global_position.y + (0.47 if l.z <= sz.y * 0.5 else 0.45))
@@ -781,16 +1233,41 @@ func free_count() -> int:
 	return n
 
 
+## The homeless housed: a family together in one house if one has the beds, else wherever's room.
 func _house_people() -> void:
 	for v in villagers:
 		if is_instance_valid(v.home) and v.home.state == "done":
 			continue
 		v.home = null
+	var done := {}
+	for v in villagers:
+		if v.home != null or done.has(v.family):
+			continue
+		done[v.family] = true
+		var fam: Array[Villager] = []
+		for o in villagers:
+			if o.family == v.family and o.home == null:
+				fam.append(o)
+		# (a house the family's already in first, then one with room for them all, then any room)
+		var best: Building = null
 		for b in buildings:
-			if b.state == "done" and b.def.role == "house" and b.residents.size() < int(b.def.beds):
-				b.residents.append(v)
-				v.home = b
+			if b.state != "done" or b.def.role != "house":
+				continue
+			var free := int(b.def.beds) - b.residents.size()
+			if free <= 0:
+				continue
+			var theirs := b.residents.any(func(o: Variant) -> bool: return is_instance_valid(o) and (o as Villager).family == v.family)
+			if theirs or free >= fam.size():
+				best = b
 				break
+			if best == null:
+				best = b
+		if best == null:
+			continue
+		for o in fam:
+			if best.residents.size() < int(best.def.beds):
+				best.residents.append(o)
+				o.home = best
 
 
 func stores() -> Array[Building]:

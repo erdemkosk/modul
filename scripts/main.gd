@@ -8,6 +8,11 @@ extends Node3D
 ## and it saves itself every morning.
 
 static var _load_next := true ## (the next start: from the save if there is one)
+static var next_seed := 0 ## the seed the next new valley is made with (0: a random one)
+static var title := true ## the title screen first (at launch, and from the menu's YENİ OYUN)
+var _titled := false ## this one's only the title screen (no valley made)
+var _cam_free := false ## the player's taken the view (it stops riding with the train)
+static var start_with := {"people": 6, "supplies": 1.0, "raids": 1, "season": 0} ## the new town's settings
 
 var weather: Weather
 var terrain: WorldTerrain
@@ -43,11 +48,22 @@ var _saved_day := -1
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if title:
+		_titled = true
+		var menu := TitleMenu.new()
+		menu.game = self
+		add_child(menu)
+		return
 	SaveGame.save_file = "user://village.save"
 	var saved := VillageSave.read() if _load_next else {}
 	_load_next = true
 	if saved.is_empty():
 		RutStore.clear() # (a fresh valley)
+		if next_seed == 0:
+			randomize()
+			next_seed = randi_range(1, 999999)
+		WorldTerrain.seed = next_seed
+		next_seed = 0
 	else:
 		VillageSave.before_world(saved)
 	weather = Weather.new()
@@ -82,8 +98,17 @@ func _ready() -> void:
 	village.seasons = seasons
 	add_child(seasons)
 	var start := terrain.spawn.origin
+	village.seed = WorldTerrain.seed
 	if saved.is_empty():
+		village.start_people = int(start_with.people)
+		village.supplies = float(start_with.supplies)
+		raids.level = int(start_with.raids)
+		raids.next_day = [10, 8, 6][raids.level] # (a week or so to settle in before anyone comes)
+		if int(start_with.season) != 0:
+			seasons.force(int(start_with.season))
 		village.start(start)
+		if village.station_at() != Vector3.INF:
+			start = village.station_at()
 	for n: Node in [weather, terrain, decor, nav, village, raids, seasons]:
 		n.process_mode = Node.PROCESS_MODE_PAUSABLE # (this node runs while paused, for the keys: the world doesn't)
 	cam = RtsCamera.new()
@@ -140,6 +165,10 @@ func _ready() -> void:
 # --- Input ------------------------------------------------------------------------------------------
 
 func _unhandled_input(e: InputEvent) -> void:
+	if _titled:
+		return
+	if e is InputEventMouseButton and (e as InputEventMouseButton).button_index in [MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_LEFT]:
+		_cam_free = true
 	if e is InputEventMouseButton and e.pressed:
 		var mb := e as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -177,6 +206,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_ESCAPE:
 				if hud.help_open():
 					hud.toggle_help()
+				elif hud.people_open():
+					hud.toggle_people()
 				elif _placing != "":
 					stop_placing()
 				elif selected or selected_villager:
@@ -212,6 +243,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				repair_selected()
 			KEY_B:
 				test_raid()
+			KEY_K:
+				hud.toggle_people()
 			KEY_M:
 				toggle_militia()
 			KEY_G:
@@ -245,7 +278,27 @@ func set_menu(on: bool) -> void:
 	get_tree().paused = on
 
 
+## A town begun with the title screen's settings.
+func begin_new(settings: Dictionary) -> void:
+	title = false
+	_load_next = false
+	next_seed = int(settings.seed)
+	start_with = settings
+	get_tree().paused = false
+	Engine.time_scale = 1.0
+	get_tree().reload_current_scene()
+
+
+func continue_game() -> void:
+	title = false
+	_load_next = true
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+## Back to the title screen, to set a new town going.
 func new_game() -> void:
+	title = true
 	_load_next = false
 	get_tree().paused = false
 	Engine.time_scale = 1.0
@@ -755,6 +808,11 @@ func ignite_selected() -> void:
 
 
 func _process(_dt: float) -> void:
+	if _titled:
+		return
+	# The first train in: the view rides with it till it stops at the platform.
+	if village.arriving and is_instance_valid(village.train) and not village.train.is_standing() and not _cam_free:
+		cam.focus = cam.focus.lerp(village.train.engine_at(), 0.08)
 	if village.day != _saved_day and weather.hour > 6.0 and not raids.active:
 		_saved_day = village.day
 		VillageSave.save(self) # (every morning)

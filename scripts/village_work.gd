@@ -84,12 +84,16 @@ func _staff() -> void:
 			v.abort()
 		while b.workers.size() < b.wanted:
 			var pick: Villager = null
-			var bd := INF
+			var bd := -INF
+			var sk := Villager.skill_of(b)
 			for v in villagers:
 				if v.workplace == null and (v.plan.is_empty() or v.idle) and not v.sleeping and not v.is_child:
-					var d := v.position.distance_squared_to(b.global_position)
-					if d < bd:
-						bd = d
+					var pr := int(v.prio.get(sk, 1))
+					if sk != "" and pr == 0:
+						continue
+					var score := pr * 100.0 + v.skill(sk) * 8.0 - sqrt(v.position.distance_to(b.global_position))
+					if score > bd:
+						bd = score
 						pick = v
 			if pick == null:
 				break

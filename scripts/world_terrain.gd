@@ -21,6 +21,9 @@ var size := 0 ## Samples per side.
 var half := 0 ## Index of the origin sample.
 var lake_level := 0.0
 var spawn := Transform3D.IDENTITY
+## The game's seed: where the town begins is picked by it (0: the valley's own spawn, as old saves had).
+static var seed := 0
+var _start := Vector2.ZERO
 
 var height_texture: ImageTexture
 var splat_texture: ImageTexture
@@ -54,9 +57,15 @@ func _init() -> void:
 		_surfaces[id] = Surface.preset(id)
 	var s: Dictionary = meta.spawn
 	var at := Vector3(s.x, 0.0, s.z)
+	var heading := deg_to_rad(float(s.heading))
+	if seed != 0:
+		var site := _pick_site(seed)
+		at = Vector3(site.x, 0.0, site.y)
+		heading = 0.0
+	_start = Vector2(at.x, at.z)
 	_flatten_start(at.x, at.z)
 	at.y = height_at(at.x, at.z)
-	spawn = Transform3D(Basis(Vector3.UP, deg_to_rad(float(s.heading))), at)
+	spawn = Transform3D(Basis(Vector3.UP, heading), at)
 	_build_soft()
 	if not RutStore.loaded:
 		RutStore.load_marks()
@@ -152,8 +161,55 @@ func lift_at(x: float, z: float) -> float:
 
 ## How much of a start's ease there is at (x, z): 1 in the middle, 0 past START_R.
 func start_ease(x: float, z: float) -> float:
-	var s: Dictionary = meta.spawn
-	return smoothstep(START_R * 1.1, START_R * 0.5, Vector2(x - float(s.x), z - float(s.z)).length())
+	return smoothstep(START_R * 1.1, START_R * 0.5, Vector2(x - _start.x, z - _start.y).length())
+
+
+## Where a town given `s` begins: of a few hundred places tried across the valley (by the seed),
+## one of the best: fairly level ground, well in from the edge, dry, near the river or the lake but
+## not in it.
+func _pick_site(s: int) -> Vector2:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = s
+	var river: Array[Vector2] = []
+	for q: Variant in meta.river.points:
+		if q is Dictionary:
+			river.append(Vector2(float(q.x), float(q.z)))
+		elif q is Array:
+			river.append(Vector2(float(q[0]), float(q[2]) if (q as Array).size() > 2 else float(q[1]))) # ([x, y, z])
+	var lake := Vector2(float(meta.lake.x), float(meta.lake.z))
+	var lake_r := Vector2(float(meta.lake.rx), float(meta.lake.rz))
+	var scored: Array = []
+	for k in 500:
+		var p := Vector2(rng.randf_range(-half + 300.0, half - 300.0), rng.randf_range(-half + 300.0, half - 300.0))
+		var h := height_at(p.x, p.y)
+		if h < lake_level + 2.0:
+			continue
+		var lo := h
+		var hi := h
+		for r in [30.0, 60.0]:
+			for a in 8:
+				var q: Vector2 = p + Vector2(cos(a * TAU / 8.0), sin(a * TAU / 8.0)) * r
+				var hq := height_at(q.x, q.y)
+				lo = minf(lo, hq)
+				hi = maxf(hi, hq)
+		if hi - lo > 9.0:
+			continue
+		var wet := INF
+		for q in river:
+			wet = minf(wet, q.distance_to(p))
+		var in_lake := ((p - lake) / lake_r).length()
+		if in_lake < 1.25:
+			wet = minf(wet, 0.0) if in_lake < 1.05 else minf(wet, 60.0)
+		if wet < 45.0:
+			continue
+		# level, and water within a walk (but not a long one)
+		var score := (hi - lo) + absf(wet - 110.0) * 0.06 + rng.randf() * 2.0
+		scored.append([score, p])
+	if scored.is_empty():
+		var sp: Dictionary = meta.spawn
+		return Vector2(float(sp.x), float(sp.z))
+	scored.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	return scored[rng.randi() % mini(6, scored.size())][1]
 
 
 func _read_gz(file: String, raw_size: int) -> PackedByteArray:

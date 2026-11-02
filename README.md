@@ -101,6 +101,37 @@ runs a plank walkway: the militia climb onto it and shoot over the points, in co
 palisade to choose it: its card counts the stakes up and to come, its gates, what's burning; YIK
 pulls it down (half its wood back). The first house is set square beside the store, the fronts in line, room left for its yard.
 
+The townsfolk are people: each has a name and a family (surnames, the wives' with -a), the first
+come as couples, a family's housed together, and now and then a couple with room in their house and
+food in the store has a child. Each has a knack (0-10) for each kind of work (Odunculuk, İnşaat,
+Taşçılık, Tarım, Toplayıcılık, Taşıma, Zanaat, Nişancılık, Okçuluk): two strong, one poor at the
+start, growing as they do it. A knack sets how quick they are at it (0.7 to 1.3 times) and how
+true they shoot. The townsfolk table (K, or KASABALILAR at the top) shows them all; click one's
+knack to put them to that work first (▲), as needed, or never (–). A workplace takes those put
+first for its work, then the most skilled, then the nearest; the armoury trains the best eye.
+The cards show a person's family and knacks, a workplace's workers with theirs, a house's families.
+No outlaws come for the first week or so (day 10 / 8 / 6 by the raids' setting), nor wolves before
+the fifth night. Where the railway crosses water it goes over on a wooden trestle, eased up to it.
+
+The game opens on a title screen (`scripts/title_menu.gd`): carry on with the saved town, or start a
+new one, choosing its seed (typed, or thrown at random), how many come on the train (4-12), how much
+they bring (little, the usual, plenty), how hard the raids are (easy: later, seldomer, fewer; hard:
+sooner and more), and the season they arrive in. The raids' setting is saved with the town. The
+view rides in with the train; nothing's eaten till its load is in the station. The menu's YENİ OYUN
+goes back to the title screen.
+
+Every new valley has a seed (picked at random; the same seed gives the same start). It picks where
+the town begins: level ground well in from the edge, dry, near the river or the lake. A railway runs
+across the valley through it, in from one edge and out to another, laid along the easiest way and
+smoothed into long curves (a ballast bed, sleepers, two rails; the trees in its way felled), and a
+station stands beside it there: the town's first store, its platform walked on. The game opens with
+the train coming in, a black engine with a diamond stack, its tender, a coach and a boxcar
+(`scripts/train.gd`, models in `tools/blender/build_buildings.py`): it slows to a stop with the coach
+at the platform, the six settlers step down, unload the boxcar by hand (food first, then wood, then
+stone) into the station, and with it empty the train steams on out of the valley the other way,
+whistling. Until they've houses the settlers sleep by the camp fire at the station. The seed and the
+railway are saved.
+
 The night has its watch. The guards of a post split it: half have the evening till two, half from
 two till morning; the one on watch walks a round from light to light with a lantern, the other
 sleeps in the guardhouse's bunks, and a lantern burns by its door all night. A lookout tower takes

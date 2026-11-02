@@ -27,7 +27,7 @@ extends Node3D
 
 signal message(text: String, kind: String)
 
-const FIRST_DAY := 3
+const FIRST_DAY := 8
 const EVERY := 2 ## days between raids
 const ARRIVE_HOUR := 0.5
 const OUTLAW_TUNIC := Color(0.17, 0.12, 0.11)
@@ -40,6 +40,7 @@ var weather: Weather
 var raiders: Array[Villager] = []
 var wolves: Array[Villager] = []
 var next_day := FIRST_DAY
+var level := 1 ## 0 easy, 1 the usual, 2 hard: how soon, how often, how many
 var active := false
 
 var _origin := Vector3.ZERO
@@ -60,7 +61,13 @@ func _ready() -> void:
 
 ## The band's size: a couple at first, more as the town grows.
 func band_size() -> int:
-	return clampi(2 + village.villagers.size() / 4 + (village.day - FIRST_DAY) / 2, 2, 14)
+	var n := 2 + village.villagers.size() / 4 + (village.day - FIRST_DAY) / 2
+	return clampi(roundi(n * [0.6, 1.0, 1.4][level]), 2, 18)
+
+
+## Days between raids.
+func every() -> int:
+	return [3, 2, 2][level]
 
 
 ## Anything out there now (a band, a pack).
@@ -77,7 +84,7 @@ func _process(dt: float) -> void:
 	var h := weather.hour
 	if not active and village.day >= next_day and h >= ARRIVE_HOUR and h < 3.5:
 		start(band_size())
-	if _wolf_night != village.day and (h > 21.5 or h < 3.0) and village.day >= 2:
+	if _wolf_night != village.day and (h > 21.5 or h < 3.0) and village.day >= 5:
 		_wolf_night = village.day
 		if randf() < 0.5:
 			_wolves_come()
@@ -305,7 +312,7 @@ func _think() -> void:
 	if leaving and raiders.all(func(r: Villager) -> bool: return r.dead or r.job == "Kaçıyor"):
 		message.emit("Haydutlar ormana çekiliyor.", "info")
 		active = false # (the rest only walk off)
-		next_day = village.day + EVERY
+		next_day = village.day + every()
 		_finish_quietly()
 
 
@@ -441,7 +448,7 @@ func _plunder(store: Building) -> Dictionary:
 
 func _end(text: String, kind: String) -> void:
 	active = false
-	next_day = village.day + EVERY
+	next_day = village.day + every()
 	message.emit(text, kind)
 	_finish_quietly()
 
@@ -556,6 +563,8 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	var to := foe.position + Vector3.UP * 1.0 + Vector3(randf_range(-0.4, 0.4), randf_range(-0.3, 0.3), randf_range(-0.4, 0.4))
 	if by:
 		by.revealed = 2.5
+		chance *= by.aim()
+		by.learn("nisan", 12.0)
 	if foe.in_cover:
 		chance *= 0.5
 	_flash(from)
@@ -581,6 +590,9 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 ## An arrow loosed from `from` at `foe` (by `by`): no flash, hardly a sound, so the archer isn't
 ## shown; the shaft flies, and `dmg` if it hits (`chance`, halved behind cover).
 func arrow(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null) -> void:
+	if by:
+		chance *= by.aim()
+		by.learn("okcu", 12.0)
 	if foe.in_cover:
 		chance *= 0.5
 	var to := foe.position + Vector3.UP * 1.1 + Vector3(randf_range(-0.5, 0.5), randf_range(-0.3, 0.3), randf_range(-0.5, 0.5))

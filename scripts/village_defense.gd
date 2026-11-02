@@ -212,7 +212,11 @@ func _training() -> void:
 				continue
 			if not (v.plan.is_empty() or v.idle):
 				continue
-			var d := v.position.distance_to(a.global_position) * (0.5 if v.workplace == null else 1.0)
+			var key := "nisan" if kind == "rifle" else "okcu"
+			if int(v.prio.get(key, 1)) == 0:
+				continue
+			# (the best eye for it first, those put first for it before the rest)
+			var d := v.position.distance_to(a.global_position) * (0.5 if v.workplace == null else 1.0) * 0.02 - v.skill(key) - int(v.prio.get(key, 1)) * 10.0
 			if d < bd:
 				bd = d
 				best = v

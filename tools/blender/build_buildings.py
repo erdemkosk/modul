@@ -1561,9 +1561,223 @@ def cankulesi():
     k.finish()
 
 
+# --- the train and its station ----------------------------------------------------------------------
+# Rolling stock: each car its own GLB (assets/buildings/tren_*.glb), the rail top at z 0, the car
+# running along y (its front at -y, Godot +z). Its wheels are pieces of their own tagged "wheel", each
+# with its origin on its axle, so the game turns them as it rolls. Gauge: five feet (rails at +-0.76).
+
+INK = (0.06, 0.06, 0.065)
+IRON = (0.16, 0.16, 0.17)
+BRASS = (0.72, 0.56, 0.26)
+BEAM_RED = (0.5, 0.11, 0.08)
+COACH = (0.12, 0.24, 0.17)
+BOXCAR = (0.42, 0.18, 0.11)
+RAIL_X = 0.76
+
+
+def cyl(p, a, b, r, color, segs=16, taper=0.0):
+    p.log(a, b, r, color=color, end=color, segs=segs, jitter=0.0, taper=taper, bow=0.0)
+
+
+def wheelset(k, y, r, color=INK, rim=IRON):
+    """An axle's two wheels, each a piece of its own (the game turns them)."""
+    for sx in (-1, 1):
+        p = k.piece("dark", "wheel")
+        x = sx * RAIL_X
+        cyl(p, (x - 0.07, y, r), (x + 0.07, y, r), r, color, segs=18)
+        cyl(p, (x - 0.08, y, r), (x - 0.02, y, r), r * 1.06, rim, segs=18) # (the flange)
+        cyl(p, (x - 0.12, y, r), (x + 0.12, y, r), r * 0.18, IRON, segs=8) # (the hub)
+        k.add(p)
+
+
+def bogie(k, y):
+    p = k.piece("dark")
+    p.box((0, y, 0.55), (1.9, 2.3, 0.22), IRON)
+    for sx in (-1, 1):
+        p.box((sx * 0.95, y, 0.45), (0.12, 2.2, 0.35), INK)
+    k.add(p)
+    wheelset(k, y - 0.85, 0.45)
+    wheelset(k, y + 0.85, 0.45)
+
+
+def lokomotif():
+    """The engine: black, a diamond stack, a big boiler banded in brass, three pairs of tall driving
+    wheels, a cowcatcher and a lamp in front, the cab behind."""
+    k = Kit("tren_lokomotif")
+    p = k.piece("dark", "frame")
+    p.box((0, 0, 1.05), (1.5, 10.2, 0.35), INK)
+    p.box((0, -5.05, 1.0), (2.3, 0.22, 0.4), BEAM_RED) # (the buffer beam)
+    for sx in (-1, 1):
+        p.box((sx * 0.55, -5.25, 1.05), (0.18, 0.25, 0.18), IRON) # (the buffers)
+    k.add(p)
+    p = k.piece("dark", "boiler")
+    cyl(p, (0, -4.3, 2.35), (0, 2.0, 2.35), 0.78, INK, segs=20)
+    cyl(p, (0, -5.0, 2.35), (0, -4.25, 2.35), 0.84, INK, segs=20) # (the smokebox)
+    cyl(p, (0, -5.05, 2.35), (0, -4.98, 2.35), 0.7, IRON, segs=20) # (its door)
+    for y in (-3.4, -2.0, -0.6, 0.8):
+        cyl(p, (0, y, 2.35), (0, y + 0.08, 2.35), 0.8, BRASS, segs=20)
+    k.add(p)
+    p = k.piece("dark", "stack")
+    cyl(p, (0, -4.6, 3.0), (0, -4.6, 3.75), 0.24, INK, segs=14)
+    cyl(p, (0, -4.6, 4.55), (0, -4.6, 3.7), 0.55, INK, segs=14, taper=0.6) # (the diamond's wide top, narrowing down)
+    cyl(p, (0, -4.6, 4.5), (0, -4.6, 4.62), 0.56, IRON, segs=14)
+    k.add(p)
+    p = k.piece("stone", "domes")
+    cyl(p, (0, -1.4, 2.95), (0, -1.4, 3.45), 0.36, BRASS, segs=14)
+    cyl(p, (0, 0.5, 2.95), (0, 0.5, 3.35), 0.32, INK, segs=14)
+    cyl(p, (0, 1.4, 3.05), (0, 1.4, 3.45), 0.12, BRASS, segs=10) # (the bell)
+    cyl(p, (0.3, 1.0, 3.05), (0.3, 1.0, 3.6), 0.05, BRASS, segs=8) # (the whistle)
+    k.add(p)
+    p = k.piece("window", "lamp")
+    p.box((0, -5.05, 3.35), (0.32, 0.06, 0.32), (1.0, 0.85, 0.5))
+    k.add(p)
+    p = k.piece("dark", "lampbox")
+    p.box((0, -4.85, 3.35), (0.55, 0.42, 0.6), INK)
+    p.box((0, -4.85, 3.72), (0.65, 0.5, 0.1), INK)
+    k.add(p)
+    p = k.piece("dark", "cylinders")
+    for sx in (-1, 1):
+        cyl(p, (sx * 1.0, -4.2, 1.35), (sx * 1.0, -3.0, 1.35), 0.32, INK, segs=14)
+        p.box((sx * 0.92, 0.6, 0.85), (0.08, 4.0, 0.14), IRON) # (the coupling rods)
+        p.box((sx * 0.92, -1.8, 1.1), (0.08, 2.6, 0.12), IRON) # (the main rod)
+    k.add(p)
+    p = k.piece("dark", "pilot")
+    for i in range(9):
+        x = -0.95 + i * 0.24
+        p.obox(((x, -5.55, 0.62)), (1, 0, 0), (0, 0.75, 0.65), (0, -0.65, 0.75), (0.06, 1.0, 0.05), BEAM_RED)
+    k.add(p)
+    p = k.piece("dark", "cab")
+    p.box((0, 3.3, 2.55), (2.5, 2.4, 2.6), INK)
+    p.box((0, 3.3, 3.95), (2.8, 2.9, 0.12), IRON)
+    k.add(p)
+    p = k.piece("window", "cab")
+    for sx in (-1, 1):
+        p.box((sx * 0.62, 2.08, 3.0), (0.55, 0.05, 0.55), GLASS)
+        p.box((sx * 1.26, 3.6, 3.0), (0.05, 0.9, 0.6), GLASS)
+    k.add(p)
+    for y in (-1.3, 0.6, 2.5):
+        wheelset(k, y, 0.82, color=INK)
+    wheelset(k, -3.9, 0.45)
+    k.finish()
+
+
+def tender():
+    """The coal and the water behind the engine."""
+    k = Kit("tren_tender")
+    p = k.piece("dark", "frame")
+    p.box((0, 0, 1.0), (2.4, 6.0, 0.3), INK)
+    p.box((0, 0.4, 1.95), (2.6, 5.0, 1.6), INK)
+    for sx in (-1, 1):
+        p.box((sx * 1.3, 0.4, 2.78), (0.08, 5.1, 0.08), BRASS) # (a brass rim round the top)
+        p.box((0, 0.4 + sx * 2.52, 2.78), (2.6, 0.08, 0.08), BRASS)
+    p.box((0, 0.4, 2.62), (2.5, 4.9, 0.1), INK)
+    k.add(p)
+    p = k.piece("stone", "coal")
+    rng = k.rng
+    for i in range(26):
+        p.stone((rng.uniform(-0.9, 0.9), rng.uniform(-1.9, 0.5), 2.85 + rng.uniform(0, 0.25)), (0.5, 0.45, 0.3), color=(0.05, 0.05, 0.05), rng=rng)
+    k.add(p)
+    bogie(k, -1.7)
+    bogie(k, 1.9)
+    k.finish()
+
+
+def vagon():
+    """A coach: green planked sides, a row of windows, a clerestory roof, open platforms at the ends."""
+    k = Kit("tren_vagon")
+    p = k.piece("dark", "frame")
+    p.box((0, 0, 1.0), (2.4, 10.0, 0.25), INK)
+    k.add(p)
+    p = k.piece("plank", "body")
+    p.box((0, 0, 2.2), (2.75, 8.8, 2.3), COACH)
+    for y in [x * 0.55 - 4.1 for x in range(16)]:
+        for sx in (-1, 1):
+            p.box((sx * 1.385, y, 1.55), (0.02, 0.04, 0.9), jit(COACH, 0.03, k.rng)) # (the matchboard lines)
+    p.box((0, 0, 3.42), (2.95, 9.3, 0.14), IRON)
+    p.box((0, 0, 3.66), (1.3, 8.4, 0.34), IRON)
+    k.add(p)
+    p = k.piece("window", "side")
+    for i in range(7):
+        y = -3.3 + i * 1.1
+        for sx in (-1, 1):
+            p.box((sx * 1.39, y, 2.55), (0.04, 0.65, 0.75), GLASS)
+    k.add(p)
+    p = k.piece("dark", "ends")
+    for sy in (-1, 1):
+        p.box((0, sy * 4.75, 1.18), (2.4, 0.7, 0.08), PLANK)
+        for sx in (-1, 1):
+            p.box((sx * 1.1, sy * 5.05, 1.7), (0.05, 0.05, 1.0), IRON)
+            p.box((sx * 0.75, sy * 5.05, 2.15), (0.7, 0.04, 0.05), IRON)
+        p.box((0, sy * 4.42, 2.0), (0.75, 0.05, 1.8), (0.2, 0.14, 0.09)) # (the door)
+    k.add(p)
+    bogie(k, -3.4)
+    bogie(k, 3.4)
+    k.finish()
+
+
+def yuk():
+    """A boxcar: red-brown boards, a sliding door each side, a low roof."""
+    k = Kit("tren_yuk")
+    p = k.piece("dark", "frame")
+    p.box((0, 0, 1.0), (2.4, 8.2, 0.25), INK)
+    k.add(p)
+    p = k.piece("plank", "body")
+    p.box((0, 0, 2.15), (2.75, 7.6, 2.2), BOXCAR)
+    for y in [x * 0.45 - 3.6 for x in range(17)]:
+        for sx in (-1, 1):
+            p.box((sx * 1.385, y, 2.15), (0.02, 0.04, 2.1), jit(BOXCAR, 0.04, k.rng))
+    p.box((0, 0, 3.3), (2.95, 7.9, 0.12), IRON)
+    for sx in (-1, 1):
+        p.box((sx * 1.41, 0.0, 2.05), (0.05, 1.6, 1.95), jit(BOXCAR, 0.06, k.rng)) # (the door)
+        p.box((sx * 1.43, 0.0, 3.05), (0.04, 3.4, 0.06), IRON) # (its rail)
+        for dz in (-0.7, 0.0, 0.7):
+            p.box((sx * 1.44, 0.0, 2.05 + dz), (0.03, 1.55, 0.06), IRON)
+    k.add(p)
+    bogie(k, -2.7)
+    bogie(k, 2.7)
+    k.finish()
+
+
+def _station_extra(k, w, d):
+    # the platform along the front, a canopy over it on posts, a bench, the name board, a water butt
+    p = k.piece("plank", "platform")
+    for i in range(13):
+        y = -d * 0.5 - 0.25 - i * 0.26
+        p.box((0, y, 0.92), (w + 6.0, 0.25, 0.08), jit(PLANK, 0.07, k.rng))
+    p.box((0, -d * 0.5 - 1.8, 0.45), (w + 6.0, 3.3, 0.8), jit(STONE, 0.04, k.rng))
+    k.add(p)
+    for x in (-w * 0.5 - 2.0, -w * 0.25, w * 0.25, w * 0.5 + 2.0):
+        p = k.piece("log")
+        p.log((x, -d * 0.5 - 2.6, 0.95), (x, -d * 0.5 - 2.6, 3.6), 0.09, rng=k.rng)
+        k.add(p)
+    p = k.piece("shingle", "canopy")
+    p.obox((0, -d * 0.5 - 1.6, 3.85), (1, 0, 0), (0, 0.97, -0.25), (0, 0.25, 0.97), (w + 5.0, 3.4, 0.08), jit(PLANK, 0.05, k.rng))
+    k.add(p)
+    p = k.piece("dark", "sign")
+    p.box((0, -d * 0.5 - 2.6, 3.25), (2.6, 0.08, 0.45), (0.92, 0.9, 0.82))
+    for i in range(7):
+        p.box((-0.9 + i * 0.3, -d * 0.5 - 2.65, 3.25), (0.18, 0.02, 0.22), INK)
+    k.add(p)
+    p = k.piece("plank", "bench")
+    p.box((-w * 0.25, -d * 0.5 - 0.6, 1.4), (1.8, 0.4, 0.06), jit(PLANK, 0.06, k.rng))
+    p.box((-w * 0.25, -d * 0.5 - 0.42, 1.75), (1.8, 0.05, 0.4), jit(PLANK, 0.06, k.rng))
+    for sx in (-0.8, 0.8):
+        p.box((-w * 0.25 + sx, -d * 0.5 - 0.6, 1.15), (0.08, 0.36, 0.45), DARK)
+    k.add(p)
+    barrel(k, w * 0.5 + 0.5, -d * 0.5 + 0.4)
+    woodpile(k, -w * 0.5 - 0.7, 0.4, length=2.2)
+
+
+def istasyon():
+    cabin("istasyon", 7.0, 5.0, 8, 1.8, 1.0, windows=[("front", -1.9), ("front", 1.9), ("left", 0.0), ("right", 0.0)],
+          chimney_at=(-3.5 - 0.85, 1.0), extra=_station_extra, porch_on=False)
+
+
+
 BUILDERS = {
     "ev": ev, "ambar": ambar, "kisla": kisla, "fener": fener, "kuyu": kuyu, "kule": kule, "ahir": ahir,
-    "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik,
+    "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik, "istasyon": istasyon,
+    "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
     "yayci": lambda: shed("yayci", 5.0, 4.0, _bowyer_props),

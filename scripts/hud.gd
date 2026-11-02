@@ -24,6 +24,7 @@ const KEYS := [
 	["Bina", "Tab: bina grubu · 1-6: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç · tahta yol: sürükle"],
 	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
 	["Kart", "Seçtiğin şeyin yapabileceği her şey kartında düğme: onar, yık, işçi ekle, milis yap, topla, fener, tüfekçi / okçu yetiştir..."],
+	["Kasabalılar", "K ya da üstteki KASABALILAR: herkesin becerileri; bir beceriye tıkla: o işe önce verilsin (▲), normal, hiç verilmesin (–)"],
 	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
 	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
@@ -52,7 +53,15 @@ var _card_acts: HBoxContainer
 var _card_folk: HBoxContainer
 var _btn := {} ## the card's buttons by name, shown and labelled for what's selected
 var _placing_plate: PanelContainer
+var _people_plate: PanelContainer ## the townsfolk table
+var _people_grid: GridContainer
+var _people_rows: Array = [] ## the villagers the table's rows are for
+var _people_t := 0.0
 var _card_train: HBoxContainer
+var _card_pick: VBoxContainer ## a workplace's card: who's best at its work, to put on or take off it
+var _pick_title: Label
+var _pick_rows: Array = [] ## [HBoxContainer, name Label, knack Label, where Label, Button]
+var _pick_for: Array = [] ## the villager each row is showing
 var _guns: Label
 var _bows: Label
 var _pause: PanelContainer
@@ -83,6 +92,7 @@ func _ready() -> void:
 	help.offset_bottom = -10
 	add_child(help)
 	_make_placing()
+	_make_people()
 	_test_plate()
 	_make_help()
 	_make_pause()
@@ -118,6 +128,9 @@ func _stores_plate() -> void:
 		_res[id] = _stat(row, Ui.upper(BuildingDefs.RES_NAMES[id]), "Bütün depolardakinin toplamı")
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
+	var who := _small_button("KASABALILAR", func() -> void: toggle_people())
+	who.tooltip_text = "Herkesin becerileri ve hangi işe öncelikle verileceği (K)"
+	row.add_child(who)
 	_guns = _stat(row, "TÜFEK", "Silahlıklardaki ve eldeki Mosin tüfekleri · fişek")
 	_bows = _stat(row, "YAY", "Silahlıklardaki ve eldeki yaylar · ok")
 
@@ -279,6 +292,28 @@ func _make_card() -> void:
 	_card_workers.add_child(_small_button("−", func() -> void: game.change_workers(-1)))
 	_card_count = Ui.label(_card_workers, "0/3", 20, Ui.INK, "display")
 	_card_workers.add_child(_small_button("+", func() -> void: game.change_workers(1)))
+	_card_pick = VBoxContainer.new()
+	_card_pick.add_theme_constant_override("separation", 3)
+	col.add_child(_card_pick)
+	_pick_title = Ui.label(_card_pick, "", 13, Ui.ACCENT, "head")
+	for i in 10:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		_card_pick.add_child(row)
+		var nm := Ui.label(row, "", 14, Ui.INK)
+		nm.custom_minimum_size = Vector2(140, 0)
+		nm.clip_text = true
+		var kn := Ui.label(row, "", 16, Ui.INK, "display")
+		kn.custom_minimum_size = Vector2(26, 0)
+		kn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var wh := Ui.label(row, "", 12, Ui.DIM)
+		wh.custom_minimum_size = Vector2(110, 0)
+		wh.clip_text = true
+		var idx := i
+		var bt := _small_button("ATA", func() -> void: _pick(idx))
+		bt.custom_minimum_size = Vector2(96, 26)
+		row.add_child(bt)
+		_pick_rows.append([row, nm, kn, wh, bt])
 	_card_acts = HBoxContainer.new()
 	_card_acts.add_theme_constant_override("separation", 8)
 	col.add_child(_card_acts)
@@ -299,6 +334,55 @@ func _make_card() -> void:
 	_btn.draft = _add(_card_folk, "TOPLA", func() -> void: game.toggle_draft(), "Emrine al: sağ tık mevzi, hayduda sağ tık hedef (G)")
 	_btn.lantern = _add(_card_folk, "FENERİ SÖNDÜR", func() -> void: game.toggle_lantern(), "Karanlıkta görünmez olur ama az görür (L)")
 	_btn.folk_look = _add(_card_folk, "ODAKLAN", func() -> void: game.focus_selected(), "Kamerayı ona götür")
+
+
+## The workplace card's list: everyone grown, best at the work first; those working here marked.
+func _fill_pick(b: Building) -> void:
+	var sk := Villager.skill_of(b)
+	var folk: Array = game.village.villagers.filter(func(v: Villager) -> bool: return not v.dead and not v.is_child)
+	folk.sort_custom(func(a: Villager, c: Villager) -> bool: return a.skill(sk) > c.skill(sk))
+	_pick_title.text = "EN UYGUN: %s · %d / %d kişi" % [Ui.upper(str(Villager.SKILLS.get(sk, "iş"))), b.workers.size(), int(b.def.slots)]
+	_pick_for = folk.slice(0, _pick_rows.size())
+	var full := b.workers.size() >= int(b.def.slots)
+	for i in _pick_rows.size():
+		var row: Array = _pick_rows[i]
+		(row[0] as Control).visible = i < _pick_for.size()
+		if i >= _pick_for.size():
+			continue
+		var v: Villager = _pick_for[i]
+		var here := v.workplace == b
+		(row[1] as Label).text = v.display_name
+		(row[1] as Label).add_theme_color_override("font_color", Ui.ACCENT if here else Ui.INK)
+		(row[2] as Label).text = str(int(v.skill(sk)))
+		(row[2] as Label).add_theme_color_override("font_color", Ui.GOOD if v.skill(sk) >= 6.0 else (Ui.DIM if v.skill(sk) < 2.0 else Ui.INK))
+		var pr := int(v.prio.get(sk, 1))
+		(row[3] as Label).text = ("burada" if here else (v.workplace.display_name() if is_instance_valid(v.workplace) else "boşta")) + (" · ▲" if pr == 2 else (" · –" if pr == 0 else ""))
+		(row[4] as Button).text = "ÇIKAR" if here else ("DEĞİŞTİR" if full else "ATA")
+		(row[4] as Button).tooltip_text = "İşten al" if here else ("Buradaki en beceriksizin yerine koy" if full else "Bu işe ver")
+
+
+func _pick(i: int) -> void:
+	var b: Building = game.selected
+	if b == null or not is_instance_valid(b) or i >= _pick_for.size():
+		return
+	var v: Villager = _pick_for[i]
+	if not is_instance_valid(v) or v.dead:
+		return
+	if v.workplace == b:
+		game.village.free_from_work(v)
+		toast("%s işten alındı" % v.display_name, "info")
+		return
+	if b.workers.size() >= int(b.def.slots):
+		# (full: the one here who's worst at it makes room)
+		var sk := Villager.skill_of(b)
+		var worst: Villager = null
+		for w in b.workers:
+			if is_instance_valid(w) and (worst == null or (w as Villager).skill(sk) < worst.skill(sk)):
+				worst = w
+		if worst:
+			game.village.free_from_work(worst)
+	var why: String = game.village.assign(v, b)
+	toast(why if why != "" else "%s artık %s'de çalışıyor" % [v.display_name, b.display_name()], "info" if why != "" else "good")
 
 
 func _add(row: HBoxContainer, text: String, f: Callable, tip := "") -> Button:
@@ -361,6 +445,93 @@ func _make_placing() -> void:
 	_add(row, "↺ ÇEVİR", func() -> void: game.rotate_ghost(-15.0), "Sola çevir (Shift+R)")
 	_add(row, "ÇEVİR ↻", func() -> void: game.rotate_ghost(15.0), "Sağa çevir (R)")
 	_add(row, "VAZGEÇ", func() -> void: game.stop_placing(), "Koymaktan vazgeç (sağ tık / Esc)")
+
+
+## The townsfolk table: a row each, their knack at each kind of work (0-10, growing as they do it),
+## and, clicked, whether they're put to it first (▲), as needed, or never (–).
+func _make_people() -> void:
+	_people_plate = _plate(false)
+	_people_plate.set_anchors_preset(Control.PRESET_CENTER)
+	_people_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_people_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_people_plate.visible = false
+	add_child(_people_plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	_people_plate.add_child(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	Ui.label(head, "KASABALILAR", 26, Ui.INK, "display")
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	head.add_child(_small_button("KAPAT", func() -> void: toggle_people()))
+	Ui.rule(col)
+	Ui.label(col, "Sayı: beceri (iş yaptıkça artar). Tıkla: ▲ önce bu işe verilir · normal · – bu işe hiç verilmez.", 14, Ui.DIM)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(980, 420)
+	col.add_child(scroll)
+	_people_grid = GridContainer.new()
+	_people_grid.columns = 2 + Villager.SKILLS.size()
+	_people_grid.add_theme_constant_override("h_separation", 6)
+	_people_grid.add_theme_constant_override("v_separation", 4)
+	scroll.add_child(_people_grid)
+
+
+func toggle_people() -> void:
+	_people_plate.visible = not _people_plate.visible
+	_people_rows = []
+	_refresh_people()
+
+
+func _refresh_people() -> void:
+	if not _people_plate.visible:
+		return
+	var folk: Array = game.village.villagers.filter(func(v: Villager) -> bool: return not v.dead)
+	folk.sort_custom(func(a: Villager, b: Villager) -> bool: return a.family + a.display_name < b.family + b.display_name)
+	if folk != _people_rows:
+		_people_rows = folk
+		for c in _people_grid.get_children():
+			c.queue_free()
+		Ui.label(_people_grid, "KİŞİ", 13, Ui.ACCENT, "head").custom_minimum_size = Vector2(170, 0)
+		Ui.label(_people_grid, "NE YAPIYOR", 13, Ui.ACCENT, "head").custom_minimum_size = Vector2(170, 0)
+		for k: String in Villager.SKILLS:
+			var h := Ui.label(_people_grid, Ui.upper(str(Villager.SKILLS[k])).substr(0, 6), 12, Ui.ACCENT, "head")
+			h.custom_minimum_size = Vector2(64, 0)
+			h.tooltip_text = str(Villager.SKILLS[k])
+			h.mouse_filter = Control.MOUSE_FILTER_PASS
+		for v: Villager in folk:
+			var n := Ui.label(_people_grid, v.display_name + (" (çocuk)" if v.is_child else ""), 14, Ui.INK)
+			n.custom_minimum_size = Vector2(170, 0)
+			var j := Ui.label(_people_grid, "", 13, Ui.DIM)
+			j.custom_minimum_size = Vector2(170, 0)
+			j.clip_text = true
+			for k: String in Villager.SKILLS:
+				var who := v
+				var key := k
+				var b := _small_button("", func() -> void:
+					who.prio[key] = [2, 0, 1][int(who.prio.get(key, 1))] # (normal -> first -> never -> normal)
+					_refresh_people())
+				b.custom_minimum_size = Vector2(64, 28)
+				b.tooltip_text = "%s · %s" % [v.display_name, Villager.SKILLS[k]]
+				b.disabled = v.is_child
+				_people_grid.add_child(b)
+	var cols := 2 + Villager.SKILLS.size()
+	for i in folk.size():
+		var v: Villager = folk[i]
+		var base := cols * (i + 1)
+		(_people_grid.get_child(base + 1) as Label).text = v.job
+		var c := 0
+		for k: String in Villager.SKILLS:
+			var b := _people_grid.get_child(base + 2 + c) as Button
+			var pr := int(v.prio.get(k, 1))
+			b.text = ("%d%s" % [int(v.skill(k)), " ▲" if pr == 2 else ""]) if pr != 0 else "–"
+			b.add_theme_color_override("font_color", Ui.ACCENT if pr == 2 else (Ui.DIM if pr == 0 else (Ui.GOOD if v.skill(k) >= 6.0 else Ui.INK)))
+			c += 1
+
+
+func people_open() -> bool:
+	return _people_plate.visible
 
 
 func toggle_help() -> bool:
@@ -478,6 +649,13 @@ func _process(dt: float) -> void:
 
 
 func _update_card() -> void:
+	_people_t += 0.016
+	if _people_t > 0.5:
+		_people_t = 0.0
+		_refresh_people()
+	if _people_plate.visible:
+		_card.visible = false # (the table's over where the card stands)
+		return
 	_placing_plate.visible = game._placing != "" and not game._placing in ["yol", "sur", "kapi"]
 	var folk: Villager = game.selected_villager
 	if folk and is_instance_valid(folk) and not folk.dead:
@@ -495,6 +673,9 @@ func _update_card() -> void:
 	_card_folk.visible = false
 	_card_acts.visible = true
 	_card_train.visible = b.state == "done" and b.def.role == "armory"
+	_card_pick.visible = b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]
+	if _card_pick.visible:
+		_fill_pick(b)
 	(_btn.repair as Button).visible = b.state == "ruin" or (b.state == "done" and b.can_repair())
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
@@ -518,11 +699,17 @@ func _update_card() -> void:
 	if b.is_burning():
 		lines.append("YANIYOR! (%d parça)" % b.burning_count())
 	if b.state == "done" and b.def.role == "house":
-		var names: Array[String] = []
+		var fams := {}
 		for x in b.residents:
 			if is_instance_valid(x):
-				names.append(x.display_name)
-		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), int(b.def.beds), ", ".join(names) if not names.is_empty() else "kimse"])
+				var fx := x as Villager
+				if not fams.has(fx.family):
+					fams[fx.family] = []
+				(fams[fx.family] as Array).append(fx.display_name.split(" ")[0] + (" (çocuk)" if fx.is_child else ""))
+		var parts: Array[String] = []
+		for f: String in fams:
+			parts.append("%s ailesi: %s" % [f, ", ".join(fams[f])])
+		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), int(b.def.beds), " · ".join(parts) if not parts.is_empty() else "kimse"])
 		if not b.warm:
 			lines.append("SOĞUK: yakacak bitti!")
 		else:
@@ -573,10 +760,12 @@ func _update_card() -> void:
 	if _card_workers.visible:
 		_card_count.text = "%d / %d" % [b.wanted, int(b.def.slots)]
 		var names: Array[String] = []
+		var sk := Villager.skill_of(b)
 		for x in b.workers:
 			if is_instance_valid(x):
-				names.append(x.display_name)
-		lines.append("Çalışanlar: " + (", ".join(names) if not names.is_empty() else "kimse"))
+				names.append(x.display_name + ((" (%d)" % int(x.skill(sk))) if sk != "" else ""))
+		if names.is_empty():
+			lines.append("Çalışan yok: aşağıdan birini ata")
 		if b.workers.size() < b.wanted:
 			lines.append("Boşta kasabalı yok: %d işçi eksik" % (b.wanted - b.workers.size()))
 	_card_lines.text = "\n".join(lines)
@@ -586,6 +775,7 @@ func _wall_card(w: Wall) -> void:
 	_card.visible = true
 	_card_workers.visible = false
 	_card_train.visible = false
+	_card_pick.visible = false
 	_card_folk.visible = false
 	_card_acts.visible = true
 	(_btn.repair as Button).visible = false
@@ -616,6 +806,7 @@ func _folk_card(v: Villager) -> void:
 	_card_workers.visible = false
 	_card_acts.visible = false
 	_card_train.visible = false
+	_card_pick.visible = false
 	_card_folk.visible = true
 	var many: Array = game._chosen()
 	var guard: bool = v.workplace != null and v.workplace.def.role in ["barracks", "tower"]
@@ -629,6 +820,16 @@ func _folk_card(v: Villager) -> void:
 	_card_title.text = Ui.upper(v.display_name) if many.size() <= 1 else "%d KİŞİ SEÇİLİ" % many.size()
 	var lines: Array[String] = []
 	lines.append("Ne yapıyor: " + v.job)
+	var kin: Array[String] = []
+	for o in game.village.family_of(v.family):
+		if o != v:
+			kin.append(o.display_name.split(" ")[0] + (" (çocuk)" if o.is_child else ""))
+	lines.append("%s ailesi%s" % [v.family, (": " + ", ".join(kin)) if not kin.is_empty() else " (tek)"])
+	if not v.is_child:
+		var ks: Array = Villager.SKILLS.keys()
+		ks.sort_custom(func(a: String, b: String) -> bool: return v.skill(a) > v.skill(b))
+		lines.append("Usta: %s %d, %s %d · zayıf: %s %d" % [Villager.SKILLS[ks[0]], int(v.skill(ks[0])), Villager.SKILLS[ks[1]], int(v.skill(ks[1])),
+			Villager.SKILLS[ks[ks.size() - 1]], int(v.skill(ks[ks.size() - 1]))])
 	lines.append("İşyeri: " + (v.workplace.display_name() if is_instance_valid(v.workplace) else "yok (taşır, inşa eder)"))
 	lines.append("Evi: " + (v.home.display_name() if is_instance_valid(v.home) else "yok"))
 	lines.append("Can: %d / %d" % [int(v.hp), int(v.max_hp)])

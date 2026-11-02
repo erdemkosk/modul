@@ -45,8 +45,8 @@ func _evenings() -> void:
 
 
 func _eat(dt: float) -> void:
-	if villagers.is_empty():
-		return
+	if villagers.is_empty() or arriving:
+		return # (none eaten off the train till its load's in the station)
 	_eat_t += dt
 	var every := EAT_EVERY / (villagers.size() + oxen())
 	while _eat_t >= every:
@@ -149,7 +149,30 @@ func _hearths(t: float) -> void:
 				message.emit("Ocaktan sıçrayan kıvılcım %s damını tutuşturdu!" % b.display_name(), "bad")
 
 
+## Of a morning, now and then, a child born to a couple who've a house with room in it, while the
+## store's got food to spare.
+func _births() -> void:
+	if int(stock.get("yiyecek", 0)) < 25:
+		return
+	for b in buildings:
+		if b.state != "done" or b.def.role != "house" or b.residents.size() >= int(b.def.beds):
+			continue
+		var fams := {}
+		for o in b.residents:
+			if is_instance_valid(o) and not (o as Villager).is_child and not (o as Villager).dead:
+				var fv := o as Villager
+				fams[fv.family] = int(fams.get(fv.family, 0)) | (2 if fv.female else 1)
+		for f: String in fams:
+			if int(fams[f]) == 3 and randf() < 0.18:
+				var kid := spawn_villager(b.door(), true, f)
+				b.residents.append(kid)
+				kid.home = b
+				message.emit("%s ailesinin bir çocuğu oldu: %s" % [f, kid.display_name.split(" ")[0]], "good")
+				return
+
+
 func _morning() -> void:
+	_births()
 	for v in villagers:
 		if v.is_child and day - v.born_day >= 4:
 			v.grow_up()

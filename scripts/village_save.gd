@@ -54,7 +54,8 @@ static func save(game: Node) -> bool:
 			p = vl.inside.door()
 		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
-			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon})
+			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon,
+			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate()})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
@@ -68,6 +69,8 @@ static func save(game: Node) -> bool:
 	var d := {
 		"saplings": young,
 		"roads": v.roads.duplicate(true),
+		"seed": v.seed,
+		"rail": Array(v.rail).filter(func(q: Vector3) -> bool: return true).map(func(q: Vector3) -> Array: return [snappedf(q.x, 0.01), snappedf(q.y, 0.01), snappedf(q.z, 0.01)]),
 		"walls": v.walls.filter(func(w: Wall) -> bool: return is_instance_valid(w)).map(func(w: Wall) -> Dictionary:
 			var pts: Array = []
 			for k in w.line.size():
@@ -78,7 +81,7 @@ static func save(game: Node) -> bool:
 				if is_instance_valid(g):
 					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken])
 			return {"line": pts, "built": Array(w.built), "gates": gs}),
-		"version": VERSION, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
+		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
 		"bush": bush, "stumps": stumps, "buildings": bl, "people": people,
@@ -105,6 +108,7 @@ static func read() -> Dictionary:
 
 ## Before the world's built: the trees that were down.
 static func before_world(d: Dictionary) -> void:
+	WorldTerrain.seed = int(d.get("seed", 0))
 	RutStore.ruts = (d.get("ruts", {}) as Dictionary).duplicate()
 	RutStore.churned = (d.get("churned", {}) as Dictionary).duplicate()
 	RutStore.trail = {}
@@ -115,6 +119,7 @@ static func before_world(d: Dictionary) -> void:
 
 ## Once the world's built: the village as it was.
 static func restore(game: Node, d: Dictionary) -> void:
+	game.raids.level = int(d.get("raid_level", 1))
 	var v: Village = game.village
 	var nav: Nav = game.nav
 	v.loading = true
@@ -128,6 +133,13 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.bush_rest[i] = v.clock + float(d.bush[i])
 	for s: Array in d.stumps:
 		v.add_stump(Vector3(s[0], s[1], s[2]), float(s[3]), int(s[4]) if s.size() > 4 else -1)
+	var rl: Array = d.get("rail", [])
+	if rl.size() > 1:
+		var line := PackedVector3Array()
+		for q: Array in rl:
+			line.append(Vector3(float(q[0]), float(q[1]), float(q[2])))
+		v.rail = line
+		v._rail_mesh(line)
 	for wd: Dictionary in d.get("walls", []):
 		var line := PackedVector3Array()
 		var lp: Array = wd.line
@@ -204,6 +216,14 @@ static func restore(game: Node, d: Dictionary) -> void:
 		vl.hp = float(pd.hp)
 		vl.militia = bool(pd.get("militia", false))
 		vl.weapon = str(pd.get("weapon", ""))
+		if pd.has("family"):
+			vl.family = str(pd.family)
+			vl.female = bool(pd.female)
+			vl.display_name = str(pd.name)
+			for k: String in (pd.skills as Dictionary):
+				vl.skills[k] = float(pd.skills[k])
+			for k: String in (pd.prio as Dictionary):
+				vl.prio[k] = int(pd.prio[k])
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":
 			v.employ(vl, made[w])
