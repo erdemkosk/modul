@@ -134,6 +134,9 @@ const WORKSHOP := {
 }
 
 
+const WORKSHOP_KINDS := ["oduncu", "tasci", "camur", "toplayici"]
+
+
 ## What a workshop's set to make just now ("" if `b` isn't one).
 static func workshop_of(b: Building) -> String:
 	for what: String in WORKSHOP:

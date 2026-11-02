@@ -80,6 +80,8 @@ var _tech_note: Label
 var _card_train: HBoxContainer
 var _card_make: HBoxContainer ## a workshop's card: what it's set to make
 var _make_btns := {} ## what -> its button
+var _place_make: HBoxContainer ## while placing a workshop: what it's to make
+var _place_btns := {} ## what -> its button
 var _card_pick: VBoxContainer ## a workplace's card: who's best at its work, to put on or take off it
 var _pick_title: Label
 var _pick_rows: Array = [] ## [HBoxContainer, name Label, knack Label, where Label, Button, face TextureRect]
@@ -710,6 +712,15 @@ func _make_placing() -> void:
 	_add(row, "↺ ÇEVİR", func() -> void: game.rotate_ghost(-15.0), "Sola çevir (Shift+R)")
 	_add(row, "ÇEVİR ↻", func() -> void: game.rotate_ghost(15.0), "Sağa çevir (R)")
 	_add(row, "VAZGEÇ", func() -> void: game.stop_placing(), "Koymaktan vazgeç (sağ tık / Esc)")
+	_place_make = HBoxContainer.new()
+	_place_make.add_theme_constant_override("separation", 4)
+	row.add_child(_place_make)
+	Ui.label(_place_make, "  ÜRET:", 12, Ui.ACCENT, "head")
+	for what: String in BuildingDefs.WORKSHOP:
+		var mb := _small_button(str(BuildingDefs.WORKSHOP[what].name), func() -> void: game.place_workshop_as(what))
+		mb.tooltip_text = "Atölye %s için kurulsun" % BuildingDefs.RES_NAMES[what].to_lower()
+		_place_make.add_child(mb)
+		_place_btns[what] = mb
 
 
 ## The townsfolk table: a row each, their knack at each kind of work (0-10, growing as they do it),
@@ -1046,6 +1057,14 @@ func _update_card() -> void:
 		_card.visible = false # (the table's over where the card stands)
 		return
 	_placing_plate.visible = game._placing != "" and not game._placing in ["yol", "sur", "kapi"]
+	_place_make.visible = game._placing in BuildingDefs.WORKSHOP_KINDS
+	if _place_make.visible:
+		for what: String in _place_btns:
+			var w: Dictionary = BuildingDefs.WORKSHOP[what]
+			var pb: Button = _place_btns[what]
+			pb.visible = game.village.knows(str(w.get("needs", "")))
+			var on: bool = w.kind == game._placing and str(w.get("mode", "")) == game._placing_mode
+			pb.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
 	var folk: Villager = game.selected_villager
 	if folk and is_instance_valid(folk) and not folk.dead:
 		_folk_card(folk)
@@ -1086,7 +1105,7 @@ func _update_card() -> void:
 	(_btn.area as Button).visible = b.def.role in ["work", "forest"] and b.kind != "camur" and b.state == "done"
 	(_btn.no_area as Button).visible = (_btn.area as Button).visible and b.work_area.has_area()
 	(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
-	var making := BuildingDefs.workshop_of(b) if b.state == "done" else ""
+	var making := BuildingDefs.workshop_of(b) if b.state in ["done", "site"] else ""
 	_card_make.visible = making != ""
 	for what: String in _make_btns:
 		var mb: Button = _make_btns[what]

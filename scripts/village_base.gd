@@ -1317,6 +1317,16 @@ func refit(b: Building, what: String, why: Array) -> Building:
 	if kind == "camur" and not mud_near(pos):
 		why.append("Yakında çamur yok: çamur ıslak zeminde, kıyıda olur")
 		return null
+	if b.state == "site":
+		# (not built yet: the site's laid out again for the other, what was brought for it back in store)
+		for r: String in b.delivered:
+			add_anywhere(r, int(b.delivered[r]), pos)
+		_unplace(b)
+		b.state = "gone"
+		b.queue_free()
+		var ns := place(kind, pos, yaw)
+		ns.mode = mode
+		return ns
 	var crew := b.workers.duplicate()
 	var wanted := b.wanted
 	var area := b.work_area

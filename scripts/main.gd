@@ -33,6 +33,7 @@ var group: Array[Villager] = [] ## the townsfolk chosen together (Shift+click), 
 var _rings: Array[MeshInstance3D] = []
 
 var _placing := ""
+var _placing_mode := "" ## a workshop being placed: the mode it's to have (iron, coal)
 var _ghost: Building
 var _ghost_yaw := 0.0
 var _ghost_pos := Vector3.ZERO
@@ -369,6 +370,7 @@ var _area_for: Building ## (ALAN ÇİZ: the workplace it's for)
 func start_placing(kind: String) -> void:
 	var was := selected
 	stop_placing()
+	_placing_mode = ""
 	select(null)
 	_placing = kind
 	_yaw_manual = false
@@ -415,6 +417,8 @@ func _place_here(keep: bool) -> void:
 		return
 	var kind := _placing
 	var b := village.place(kind, _ghost_pos, _ghost_yaw)
+	if kind in BuildingDefs.WORKSHOP_KINDS:
+		b.mode = _placing_mode
 	hud.toast("%s için yer açıldı: köylüler malzeme taşıyacak" % b.display_name(), "info")
 	if not keep:
 		stop_placing()
@@ -1035,7 +1039,7 @@ func toggle_mode_selected() -> void:
 ## The selected workshop set to make `what`.
 func refit_selected(what: String) -> void:
 	var b := selected
-	if b == null or not is_instance_valid(b) or BuildingDefs.workshop_of(b) == "" or b.state != "done":
+	if b == null or not is_instance_valid(b) or BuildingDefs.workshop_of(b) == "" or not b.state in ["done", "site"]:
 		return
 	var why: Array = []
 	var nb := village.refit(b, what, why)
@@ -1043,7 +1047,29 @@ func refit_selected(what: String) -> void:
 		hud.toast(str(why[0]), "bad")
 		return
 	select(nb)
-	hud.toast("%s kuruldu" % nb.display_name(), "good")
+	hud.toast("%s %s" % [nb.display_name(), "kuruldu" if nb.state == "done" else "olarak kurulacak"], "good")
+
+
+## While a workshop's being placed: what it'll be set to make (its ghost the one for that).
+func place_workshop_as(what: String) -> void:
+	if not _placing in BuildingDefs.WORKSHOP_KINDS:
+		return
+	var w: Dictionary = BuildingDefs.WORKSHOP[what]
+	var needs := str(w.get("needs", ""))
+	if not village.knows(needs):
+		hud.toast("Önce okuma odasında %s araştırılmalı" % BuildingDefs.TECHS[needs].name, "bad")
+		return
+	_placing_mode = str(w.get("mode", ""))
+	if _placing == str(w.kind):
+		return
+	_placing = str(w.kind)
+	if _ghost:
+		_ghost.queue_free()
+	_ghost = Building.new()
+	_ghost.setup(_placing)
+	add_child(_ghost)
+	_ghost_reason = "x"
+	hud.set_hint("Atölye (%s): %s · R çevir · Sağ tık iptal" % [BuildingDefs.RES_NAMES[what].to_lower(), BuildingDefs.cost_text(_placing)])
 
 
 ## The selected logging camp's men set to planting the stumps when they've nothing to fell (or not).
