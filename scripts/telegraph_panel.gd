@@ -3,8 +3,9 @@ extends HBoxContainer
 ## The telegraph office (the station card's TELGRAF): on the left the key, a brass lever on a
 ## wooden base that's keyed as a message goes out (each stroke a click of the sounder), and the
 ## paper tape running under it, the dots and dashes printed on it and the words read off beneath
-## them; the line's answer comes back the same way in red ink. On the right what's sent for: the
-## train called, goods sent for, goods marked to be sold; the purse and the repute.
+## them; the line's answer comes back the same way in red ink. On the right what's wired: the town's
+## founding announced to the mainland (the settlers come by train since), the train called, goods
+## marked to be sold; the purse and the repute.
 
 const DOT := 0.07 ## s a dot's held down (a dash three times as long)
 const MORSE := {"A": ".-", "B": "-...", "C": "-.-.", "D": "-..", "E": ".", "F": "..-.", "G": "--.", "H": "....",
@@ -24,7 +25,7 @@ var _click_up: AudioStreamWAV
 var _sounder: AudioStreamPlayer
 var _status: Label
 var _train_btn: Button
-var _order_btns := {}
+var _announce: Button
 var _sell_btns := {}
 
 
@@ -62,19 +63,15 @@ func _ready() -> void:
 			return
 		send("TREN ISTIYORUZ STOP ACELE STOP", "ALINDI STOP TREN YARIN GELIR STOP"))
 	_train_btn.tooltip_text = "Hatta telgraf çekilir: tren yarın gelir, gecikmez"
-	Ui.label(right, "SİPARİŞ", 13, Ui.ACCENT, "head")
-	for what: String in Village.OFFERS:
-		var o: Dictionary = Village.OFFERS[what]
-		var row := HBoxContainer.new()
-		right.add_child(row)
-		var l := Ui.label(row, "%s · %d ruble" % [o.name, int(o.price)], 13, Ui.INK)
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_order_btns[what] = _button(row, "ISMARLA", func() -> void:
-			var why: String = game.village.order(what)
-			if why != "":
-				game.hud.toast(why, "bad")
-				return
-			send("SIPARIS %s STOP" % _plain(str(o.name)), "ALINDI STOP ILK TRENLE STOP"))
+	Ui.label(right, "ANA KARA", 13, Ui.ACCENT, "head")
+	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu ana karaya haber ver", func() -> void:
+		var why: String = game.village.announce()
+		if why != "":
+			game.hud.toast(why, "bad")
+			return
+		send("YENI KOY KURULDU STOP %d CAN STOP GOCMEN BEKLIYORUZ STOP" % game.village.villagers.size(), "TEBRIKLER STOP GOCMENLER TRENLE YOLA CIKIYOR STOP")
+		refresh())
+	_announce.tooltip_text = "Bir kez: bundan böyle göçmenler yürüyerek değil, her trenle gelir (boş yatak kadar)"
 	Ui.label(right, "TRENE SAT  (her maldan %d'u kalır)" % Village.KEEP, 13, Ui.ACCENT, "head")
 	var sell := HBoxContainer.new()
 	sell.add_theme_constant_override("separation", 4)
@@ -180,11 +177,11 @@ func refresh() -> void:
 	var line := "Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Sonraki tren ~%d gün sonra (gecikebilir)" % due)
 	if v.express:
 		line = "Tren çağrıldı: yarın gelir"
-	_status.text = "%s\nKasa %d ruble · İtibar %d / %d (dolunca trenle bir aile gelir)%s" % [line, v.rubles, v.repute, Village.REPUTE_FAMILY,
-		("\nIsmarlanan: " + ", ".join(v.orders.map(func(o: String) -> String: return str(Village.OFFERS[o].name)))) if not v.orders.is_empty() else ""]
+	_status.text = "%s\nKasa %d ruble · İtibar %d%s" % [line, v.rubles, v.repute,
+		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
 	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1
-	for what: String in _order_btns:
-		(_order_btns[what] as Button).disabled = v.orders.size() >= Village.ORDERS_MAX or v.rubles < int(Village.OFFERS[what].price)
+	_announce.disabled = v.announced
+	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu ana karaya haber ver"
 	for r: String in _sell_btns:
 		var on := r in v.selling
 		(_sell_btns[r] as Button).add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))

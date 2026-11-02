@@ -98,9 +98,9 @@ var walls: Array[Wall] = [] ## the palisades
 var rail := PackedVector3Array() ## the railway, from the valley's edge to the station (on the ground)
 var train: Train
 var next_train := 4 ## the day the next train's due up the line (it may be late)
-var orders: Array[String] = [] ## what's been sent for on it (OFFERS), paid for already
+var announced := false ## the town's founding wired to the mainland: settlers come out by train since
 var rubles := 40 ## the town's purse: what the train paid, spent on what's sent for
-var repute := 0 ## how well the town's thought of up the line (families come at REPUTE_FAMILY)
+var repute := 0 ## how well the town's thought of up the line (more settlers on each train)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
@@ -208,23 +208,16 @@ func start(at: Vector3) -> void:
 
 # --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
 
-## What can be sent for, and what it costs (rubles).
-const OFFERS := {
-	"tufek": {"name": "Tüfek ve 10 fişek", "price": 60},
-	"fisek": {"name": "20 fişek", "price": 25},
-	"ot": {"name": "10 şifalı ot", "price": 20},
-	"erzak": {"name": "60 yiyecek", "price": 40},
-}
-const ORDERS_MAX := 3 ## on one train
 const CALL_PRICE := 30 ## rubles to wire for a train tomorrow (TREN ÇAĞIR)
 
 ## What the train buys, a ruble or a few each; of what's marked to be sold, KEEP of each stays
-## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line, and
-## at REPUTE_FAMILY a family takes the train out to the town (if there are beds for them).
+## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line: the
+## better the town's thought of, the more settlers each train brings out to it (once it's announced).
 const PRICES := {"odun": 1, "tas": 1, "kerpic": 2, "komur": 3, "demir": 4}
 const KEEP := 30
 const LOAD := 150
-const REPUTE_FAMILY := 100
+const SETTLERS_PER := 50 ## repute for each settler more a train brings (two at the least)
+const SETTLERS_MAX := 8
 const LOAD_HOURS := 2.0 ## how long the train stands at the platform (game hours): what's to be sold must be there by then
 const SPUR_MAX := 160.0 ## how far a side line runs from the main line, at most (m)
 const SPUR_GAUGE := 0.55 ## a side line's narrow gauge, of the main line's
@@ -285,20 +278,21 @@ func depot() -> Building:
 	return null
 
 
-## `what` sent for on the next train, its price taken out of the stores now. "" or why not.
-func order(what: String) -> String:
-	if depot() == null or rail.size() < 2:
-		return "İstasyon yok"
+## The town's founding wired to the mainland: from now on the settlers come by train. "" or why not.
+func announce() -> String:
 	if not knows("telgraf"):
-		return "Önce telgraf araştırılmalı (okuma odası)"
-	if orders.size() >= ORDERS_MAX:
-		return "Bir trene en fazla %d sipariş" % ORDERS_MAX
-	var price := int(OFFERS[what].price)
-	if rubles < price:
-		return "Kasada %d ruble gerek (%d var): trene mal sat" % [price, rubles]
-	rubles -= price
-	orders.append(what)
+		return "Önce telgraf araştırılmalı"
+	if announced:
+		return "Köy zaten bildirildi"
+	announced = true
+	repute += SETTLERS_PER
+	message.emit("Köyün kuruluşu ana karaya bildirildi: göçmenler bundan böyle trenle gelecek.", "good")
 	return ""
+
+
+## How many a train brings, the town's name being what it is (beds aside).
+func settlers_due() -> int:
+	return clampi(2 + repute / SETTLERS_PER, 2, SETTLERS_MAX)
 
 
 ## A train wired for (CALL_PRICE): it comes tomorrow and isn't late. "" or why not.
@@ -335,36 +329,12 @@ func _train_morning() -> void:
 	train._s = maxf(train.stop_at - 200.0, 0.0)
 	add_child(train)
 	train.arrived.connect(_train_in.bind(st))
-	message.emit("Tren düdüğü: tren istasyona geliyor%s." % (" (%d sipariş)" % orders.size() if not orders.is_empty() else ""), "info")
+	message.emit("Tren düdüğü: tren istasyona geliyor.", "info")
 
 
-## In at the station: what was sent for handed down (the arms to the armoury), and on it goes.
+## In at the station: the settlers step down, and it stands a while before it goes on.
 func _train_in(st: Building) -> void:
-	var arms: Building = null
-	for b in buildings:
-		if b.kind == "silahlik" and b.state == "done":
-			arms = b
-			break
-	var got: Array[String] = []
-	for what in orders:
-		got.append(str(OFFERS[what].name))
-		match what:
-			"tufek":
-				if arms:
-					arms.arms += 1
-					arms.ammo += 10
-				else:
-					message.emit("Tüfek geldi ama silahlık yok: tren geri götürdü.", "bad")
-			"fisek":
-				if arms:
-					arms.ammo += 20
-			"ot":
-				st.add_goods("ot", 10)
-			"erzak":
-				st.add_goods("yiyecek", 60)
-	if not got.is_empty():
-		message.emit("Trenden indi: %s." % ", ".join(got), "good")
-	orders.clear()
+	_settlers_off(st)
 	next_train = day + 3 + randi() % 4
 	# It stands a while: what's to be sold is carried to the platform meanwhile, and goes on as it leaves.
 	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * LOAD_HOURS / 24.0
@@ -376,7 +346,6 @@ func _train_in(st: Building) -> void:
 		loading_until = -1.0
 		if is_instance_valid(st):
 			_sell(st)
-			_family_off(st)
 		if is_instance_valid(tr):
 			tr.leave())
 
@@ -463,21 +432,32 @@ func lay_spur(b: Building) -> String:
 	return ""
 
 
-## The town well enough thought of: a family off the train (a couple), if there are beds for them.
-func _family_off(st: Building) -> void:
-	if repute < REPUTE_FAMILY:
+## The town announced: settlers off the train, as many as it brings and there are beds for, in
+## couples where they can be, stepping down one by one.
+func _settlers_off(st: Building) -> void:
+	if not announced:
 		return
 	var free := beds() - villagers.filter(func(o: Villager) -> bool: return not o.dead).size()
-	if free < 2:
-		message.emit("Kasabanın adı yayıldı: bir aile gelmek istiyor ama boş yatak yok.", "info")
+	var n := mini(settlers_due(), free)
+	if n <= 0:
+		message.emit("Trende göçmenler var ama kasabada boş yatak yok: ev kurun.", "info")
 		return
-	repute -= REPUTE_FAMILY
-	var at := train.door(Vector3.ZERO) if is_instance_valid(train) else st.door()
-	at.y = ground_at(at)
-	var first := spawn_villager(at, false, "", 0)
-	var second := spawn_villager(at + Vector3(0.6, 0, 0.4), false, first.family, 1)
-	_house_people()
-	message.emit("Trenden yeni bir aile indi: %s ve %s. Kasabanın adı yayılıyor." % [first.display_name, second.display_name], "good")
+	var tr := train
+	var sd := Vector3.ZERO
+	if is_instance_valid(tr):
+		sd = st.global_position - tr.door(Vector3.ZERO)
+		sd.y = 0.0
+		sd = sd.normalized()
+	var fam := ""
+	for k in n:
+		get_tree().create_timer(0.8 + k * 0.7, false).timeout.connect(func() -> void:
+			var at := tr.door(sd) if is_instance_valid(tr) else st.door()
+			at.y = ground_at(at)
+			var v := spawn_villager(at, false, fam if k % 2 == 1 else "", k % 2)
+			fam = v.family
+			v.give([{"t": "go", "to": st.door() + Vector3(randf_range(-3, 3), 0, randf_range(1, 4))}], "Trenden indi")
+			_house_people())
+	message.emit("Trenden %d göçmen iniyor: ana karadan yeni bir hayat için geldiler." % n, "good")
 
 
 ## The old start, with no railway: a store and a house put down at once.

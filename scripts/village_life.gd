@@ -73,8 +73,8 @@ func _arrive(dt: float) -> void:
 	if _arrive_t < ARRIVE_EVERY:
 		return
 	_arrive_t = 0.0
-	if beds() <= villagers.size() or int(stock.yiyecek) < 8:
-		return
+	if announced or beds() <= villagers.size() or int(stock.yiyecek) < 8:
+		return # (once the town's announced, the settlers come by train)
 	var home := _nearest(stores(), Vector3.ZERO) if stores().size() > 0 else null
 	if home == null:
 		return

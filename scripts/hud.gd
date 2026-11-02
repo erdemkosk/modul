@@ -287,7 +287,7 @@ func _stores_plate() -> void:
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
-	_purse = _stat(row, "KASA", "Rubleler: trene mal satınca gelir, istasyondan sipariş verince gider")
+	_purse = _stat(row, "KASA", "Rubleler: trene mal satınca gelir, telgrafla tren çağırınca gider")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 
 
@@ -826,7 +826,7 @@ func toggle_telegraph() -> void:
 		_people_plate.visible = false
 		_tech_plate.visible = false
 		_tele.refresh()
-		if game.village.orders.is_empty() and _tele._tape._lines.is_empty():
+		if _tele._tape._lines.is_empty():
 			_tele.send("HAT ACIK STOP", "BURASI MERKEZ STOP DINLIYORUZ STOP")
 
 
@@ -1493,7 +1493,7 @@ func _fill_extra(b: Building) -> void:
 	if kind == "":
 		_extra_sig = ""
 		return
-	var sig := "%s|%s|%s|%s|%s|%d" % [b.get_instance_id(), v.known, v.studying, v.orders, v.selling, v.rubles]
+	var sig := "%s|%s|%s|%s|%s|%d" % [b.get_instance_id(), v.known, v.studying, v.announced, v.selling, v.rubles]
 	if sig != _extra_sig:
 		_extra_sig = sig
 		for ch in _card_extra.get_children():
@@ -1501,11 +1501,11 @@ func _fill_extra(b: Building) -> void:
 		if kind == "istasyon":
 			Ui.label(_card_extra, "TRENLE SİPARİŞ", 12, Ui.ACCENT, "head")
 			if not v.knows("telgraf"):
-				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor, sipariş verilemiyor. Okuma odasında Telgraf araştır.", 13, Ui.DIM)
+				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor, köy ana karaya bildirilemiyor. Okuma odasında Telgraf araştır.", 13, Ui.DIM)
 				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				l.custom_minimum_size = Vector2(300, 0)
 			else:
-				var tb := _small_button("TELGRAF ▸  sipariş · satış · tren çağır", func() -> void: toggle_telegraph())
+				var tb := _small_button("TELGRAF ▸  köyü bildir · satış · tren çağır", func() -> void: toggle_telegraph())
 				tb.tooltip_text = "Telgrafhaneyi aç"
 				_card_extra.add_child(tb)
 		else:
@@ -1546,8 +1546,8 @@ func _fill_extra(b: Building) -> void:
 						n += int(pb.goods.get(r, 0))
 					on.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
-			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d / %d: dolunca trenle yeni bir aile gelir (boş yatak gerek)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
-				"  ·  Ismarlanan: " + ", ".join(v.orders.map(func(o: String) -> String: return str(Village.OFFERS[o].name))) if not v.orders.is_empty() else "", v.rubles, v.repute, Village.REPUTE_FAMILY]
+			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d: her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
+				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.repute, v.settlers_due()]
 	else:
 		if v.studying == "":
 			_extra_status.text = "Bir konu seç: okuyanlar onu araştırır." if v.known.size() < BuildingDefs.TECHS.size() else "Her şey araştırıldı."

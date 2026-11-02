@@ -78,7 +78,7 @@ const DEFS := {
 ## What's found out in a reading room, one at a time: what it takes (points of work at the desk),
 ## what it must come after, what it opens.
 const TECHS := {
-	"telgraf": {"name": "Telgraf", "pts": 40.0, "desc": "İstasyona telgraf teli: trenle mal ısmarlanır, tren gelmeye başlar."},
+	"telgraf": {"name": "Telgraf", "pts": 40.0, "desc": "İstasyona telgraf teli: köyün kuruluşu ana karaya bildirilir, göçmenler trenle gelir; trene mal satılır, tren çağrılır."},
 	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Atölye demir ve kömür damarlarından da çıkarabilir (kartında ÜRET: DEMİR, KÖMÜR)."},
 	"dekovil": {"name": "Dekovil", "pts": 70.0, "after": "telgraf", "desc": "Dar hatlı yan hat: atölyelere ve depolara ray döşenir (demir ve odun ister). Tren yükünü oradan doğrudan alır, perona taşımak gerekmez."},
 	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: demir ve kömürden tüfek ve fişek döver."},

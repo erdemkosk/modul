@@ -90,7 +90,7 @@ static func save(game: Node) -> bool:
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "orders": v.orders.duplicate(), "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -306,8 +306,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 			vl.home = made[h]
 			made[h].residents.append(vl)
 	v.next_train = int(d.get("next_train", v.day + 3))
-	for o: String in d.get("orders", []):
-		v.orders.append(o)
+	v.announced = bool(d.get("announced", false))
 	for t: String in d.get("known", []):
 		v.known.append(t)
 	v.studying = str(d.get("studying", ""))

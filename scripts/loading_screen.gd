@@ -25,7 +25,7 @@ const TIPS := [
 	"Tahta yollar çamura batmaz ve taşımayı hızlandırır.",
 	"Kartından ODA EKLE ile bir eve iki yatak daha eklenir.",
 	"K: kasabalıların becerileri ve hangi işe öncelikle verileceği.",
-	"T: araştırma ağacı. Telgraf trenle sipariş vermeyi, madencilik taş ocağında demiri açar.",
+	"T: araştırma ağacı. Telgrafla köyü ana karaya bildirirsin, göçmenler trenle gelir; madencilik demir ve kömürü açar.",
 	"Sol alttaki portrelere tıkla: o köylü seçilir, iki kez tıklayınca kamera ona gider.",
 ]
 const BG := "res://assets/ui/title_bg.jpg"
