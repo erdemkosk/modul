@@ -810,6 +810,7 @@ func repair_selected() -> void:
 ## The window resized (or made full screen): the 3D drawn at the share the new size asks.
 func _on_resized() -> void:
 	if is_inside_tree():
+		Settings.apply_ui(get_tree())
 		Graphics.apply(get_tree(), weather if is_instance_valid(weather) else null)
 
 

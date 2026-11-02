@@ -75,8 +75,8 @@ func _graphics_page(page: VBoxContainer) -> void:
 	_choices(page, "KALİTE", Graphics.QUALITIES, Graphics.QUALITIES.map(func(q: String) -> String: return str(Graphics.QUALITY_NAMES[q])),
 		"Sis, gölge, yansıma, ortam gölgesi ve ağaçların ayrıntı mesafesi. OTOMATİK: bu bilgisayara göre",
 		func() -> Variant: return Graphics.quality, gset.call("quality"))
-	_choices(page, "ÇÖZÜNÜRLÜK", Graphics.SCALES, Graphics.SCALES.map(func(s: float) -> String: return "OTOMATİK" if s <= 0.0 else "%%%d" % roundi(s * 100.0)),
-		"3D'nin ekranın kaçta kaçında çizilip büyütüleceği (menüler hep keskin). Büyük ekranda en çok bu kazandırır",
+	_choices(page, "3D ÇİZİM", Graphics.SCALES, Graphics.SCALES.map(func(s: float) -> String: return "OTOMATİK" if s <= 0.0 else "%%%d" % roundi(s * 100.0)),
+		"3D'nin pencerenin kaçta kaçı piksel çizilip büyütüleceği: düşükse daha hızlı ama daha bulanık. Yazıları ve pencereyi büyütmez (onlar ARAYÜZ ve PENCERE)",
 		func() -> Variant: return Graphics.scale, gset.call("scale"))
 	_choices(page, "KENAR", Graphics.AAS, Graphics.AAS.map(func(a: String) -> String: return str(Graphics.AA_NAMES[a])),
 		"Kenar yumuşatma. FXAA ucuz, MSAA keskin ama pahalı, FSR 2 en temizi ama sallanan yapraklarda iz bırakabilir",
@@ -88,6 +88,21 @@ func _graphics_page(page: VBoxContainer) -> void:
 	_choices(page, "EKRAN", [true, false], ["TAM EKRAN", "PENCERE"], "Tam ekran ya da pencere",
 		func() -> Variant: return Settings.fullscreen, func(v: Variant) -> void:
 			Settings.fullscreen = bool(v)
+			Settings.window_changed()
+			_settings_changed())
+	var sizes: Array = [Vector2i.ZERO]
+	sizes.append_array(Settings.windows())
+	_choices(page, "PENCERE", sizes, sizes.map(func(w: Vector2i) -> String: return "OTOMATİK" if w == Vector2i.ZERO else "%d×%d" % [w.x, w.y]),
+		"Pencerenin boyutu (ekranın kendi pikseli; tam ekranda geçmez). OTOMATİK: ekranın çoğu",
+		func() -> Variant: return Settings.window, func(v: Variant) -> void:
+			Settings.window = v
+			Settings.fullscreen = false
+			Settings.window_changed()
+			_settings_changed())
+	_choices(page, "ARAYÜZ", Settings.UI_SCALES, Settings.UI_SCALES.map(func(f: float) -> String: return "OTOMATİK" if f <= 0.0 else "%%%d" % roundi(f * 100.0)),
+		"Menülerin, kartların, yazıların boyutu. OTOMATİK: ekrana göre (Retina ekranda iki kat)",
+		func() -> Variant: return Settings.ui_scale, func(v: Variant) -> void:
+			Settings.ui_scale = float(v)
 			_settings_changed())
 
 
@@ -168,9 +183,10 @@ func _refresh() -> void:
 			_mark(r[2][i] as Button, r[1][i] == now)
 	var h := get_tree().root.size.y
 	var s := Graphics.render_scale(h)
-	_info.text = "Ekran kartı: %s · bu bilgisayar için önerilen: %s\nŞu an: %s, 3D %d satırda çiziliyor (ekran %d, %%%d), kenar %s" % [
+	var win := DisplayServer.window_get_size()
+	_info.text = "Ekran kartı: %s · bu bilgisayar için önerilen: %s\nŞu an: %s, 3D %d satırda çiziliyor (pencere %d×%d, %%%d), kenar %s, arayüz %%%d" % [
 		Graphics.card(), Graphics.QUALITY_NAMES[Graphics.detect()], Graphics.QUALITY_NAMES[Graphics.level()],
-		roundi(h * s), h, roundi(s * 100.0), Graphics.AA_NAMES[Graphics.smoothing()]]
+		roundi(h * s), win.x, win.y, roundi(s * 100.0), Graphics.AA_NAMES[Graphics.smoothing()], roundi(Settings.ui_factor(h) * 100.0)]
 	_volume_label.text = "KAPALI" if Settings.volume <= 0.001 else "%%%d" % roundi(Settings.volume * 100.0)
 
 
