@@ -249,6 +249,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				repair_selected()
 			KEY_B:
 				test_raid()
+			KEY_N:
+				test_build()
 			KEY_K:
 				hud.toggle_people()
 			KEY_M:
@@ -742,6 +744,26 @@ func _assign_to(b: Building) -> void:
 		hud.toast(why, "info")
 	else:
 		hud.toast("%s artık %s'de çalışıyor" % [v.display_name, b.display_name()], "good")
+
+
+## (A test, to come out later: N, DENEME's İNŞAATI BİTİR) every building site and mending
+## finished at once, whatever's been carried to it.
+func test_build() -> void:
+	var n := 0
+	for b in village.buildings.duplicate():
+		if b.state == "site":
+			b.complete_now()
+		elif b.state == "repair":
+			for r: String in b.cost:
+				b.delivered[r] = b.cost[r]
+			b.work = b._time()
+			b._raise()
+			b._finish()
+		else:
+			continue
+		village._let_go(b)
+		n += 1
+	hud.toast("%d inşaat bitirildi" % n if n > 0 else "Yapımda bir şey yok", "good" if n > 0 else "info")
 
 
 func test_raid() -> void:

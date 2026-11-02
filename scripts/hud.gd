@@ -28,7 +28,7 @@ const KEYS := [
 	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
 	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
-	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını"],
+	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını · N: inşaatları bitir"],
 ]
 
 var game: Node
@@ -272,6 +272,9 @@ func _test_plate() -> void:
 	var raid := _small_button("BASKIN", func() -> void: game.test_raid())
 	raid.tooltip_text = "Hemen bir haydut baskını (B)"
 	row2.add_child(raid)
+	var build := _small_button("İNŞAATI BİTİR", func() -> void: game.test_build()) # (a test, to come out later)
+	build.tooltip_text = "Yapımdaki ve onarılan her şeyi hemen bitir (N)"
+	row2.add_child(build)
 	var fire := _small_button("TUTUŞTUR", func() -> void: game.ignite_selected())
 	fire.tooltip_text = "Seçili binayı ateşe ver (F)"
 	row2.add_child(fire)
@@ -319,21 +322,54 @@ func show_category(i: int) -> void:
 		c.queue_free()
 	var kinds: Array = CATS[category][1]
 	for k in kinds.size():
-		var kind: String = kinds[k]
-		var b := Button.new()
-		b.text = "%d  %s\n%s" % [k + 1, Ui.upper(str(BuildingDefs.DEFS[kind].name)), BuildingDefs.cost_text(kind)]
-		b.tooltip_text = str(BuildingDefs.DEFS[kind].desc)
-		b.custom_minimum_size = Vector2(134, 54)
-		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_override("font", Ui.font("head"))
-		b.add_theme_font_size_override("font_size", 13)
-		b.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1, 1, 1, 0.05)))
-		var hover := Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.25), Ui.ACCENT)
-		b.add_theme_stylebox_override("hover", hover)
-		b.add_theme_stylebox_override("pressed", hover)
-		b.set_meta("kind", kind)
-		b.pressed.connect(func() -> void: game.start_placing(kind))
-		_build_row.add_child(b)
+		_build_row.add_child(_build_button(kinds[k], k))
+
+
+## A build bar button: the building's picture (assets/ui/icons, made by tools/building_icons.gd),
+## its key and name, what it brings (and how many work there), what it costs (red while the stores
+## can't cover it).
+func _build_button(kind: String, k: int) -> Button:
+	var def: Dictionary = BuildingDefs.DEFS[kind]
+	var b := Button.new()
+	b.tooltip_text = str(def.desc)
+	b.custom_minimum_size = Vector2(134, 124)
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1, 1, 1, 0.05)))
+	var hover := Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.25), Ui.ACCENT)
+	b.add_theme_stylebox_override("hover", hover)
+	b.add_theme_stylebox_override("pressed", hover)
+	b.set_meta("kind", kind)
+	b.pressed.connect(func() -> void: game.start_placing(kind))
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_FULL_RECT)
+	col.offset_left = 4
+	col.offset_right = -4
+	col.offset_top = 3
+	col.offset_bottom = -3
+	col.add_theme_constant_override("separation", 0)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(col)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(0, 62)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var path := "res://assets/ui/icons/%s.png" % kind
+	if ResourceLoader.exists(path):
+		icon.texture = load(path)
+	col.add_child(icon)
+	var name := Ui.label(col, "%d  %s" % [k + 1, Ui.upper(str(def.name))], 13, Ui.INK, "head")
+	var gives := str(BuildingDefs.GIVES.get(kind, ""))
+	if int(def.get("slots", 0)) > 0:
+		gives += " · %d kişi" % int(def.slots)
+	var give := Ui.label(col, gives, 11, Ui.GOOD, "head")
+	var cost := Ui.label(col, BuildingDefs.cost_text(kind), 11, Ui.DIM, "head")
+	for l: Label in [name, give, cost]:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.clip_text = true
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.set_meta("cost_label", cost)
+	return b
 
 
 ## The kind under key `n` (0-based) in the shown group, or "".
@@ -781,7 +817,8 @@ func _process(dt: float) -> void:
 			for r: String in cost:
 				if int(stock.get(r, 0)) < int(cost[r]):
 					can = false
-			(b as Button).add_theme_color_override("font_color", Ui.INK if can else Ui.DIM)
+			(b.get_meta("cost_label") as Label).add_theme_color_override("font_color", Ui.DIM if can else Ui.BAD)
+			(b as Control).modulate.a = 1.0 if can else 0.75
 	_update_card()
 
 

@@ -12,7 +12,7 @@ const UI_SCALES := [0.0, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] ## (0: as the screen a
 const WINDOWS := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3200, 1800), Vector2i(3840, 2160)]
 
 static var volume := 0.8 ## 0..1, all the sound
-static var fullscreen := false
+static var fullscreen := true ## (full screen by default; AYARLAR can make it a window)
 static var window := Vector2i.ZERO ## the window's size (zero: most of the screen)
 static var ui_scale := 0.0
 static var edge_pan := true

@@ -11,6 +11,13 @@ extends RefCounted
 ## its pieces are that model's objects instead: {shape "mesh", mesh, xf, mat, tag}, each object's
 ## name "<stuff>-<n>" or "<stuff>-<tag>-<n>".
 
+## What each brings, in a few words (the build bar's buttons).
+const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına kova", "fener": "geceye ışık",
+	"meydan": "akşam ateşi", "cankulesi": "baskın alarmı", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
+	"oduncu": "odun", "tasci": "taş", "camur": "çamur · kerpiç", "toplayici": "yemiş (yiyecek)", "ormanci": "fidan diker",
+	"insaatci": "inşaat ekibi", "yol": "hızlı, çamursuz yol", "arabaci": "el arabasıyla taşır", "ahir": "öküz arabası",
+	"sur": "kazık duvar", "kapi": "sur kapısı", "kule": "gözcü", "kisla": "bekçiler", "silahlik": "tüfek · milis", "yayci": "yay ve ok"}
+
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
