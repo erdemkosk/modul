@@ -446,7 +446,7 @@ func _plan_work(v: Villager) -> void:
 	if b.def.role == "healer":
 		_plan_healer(v, b)
 		return
-	var res := "demir" if b.kind == "tasci" and b.mode == "demir" else str(b.def.res)
+	var res := b.mode if b.kind == "tasci" and b.mode in ["demir", "komur"] else str(b.def.res)
 	if stores().is_empty():
 		b.idle_note = "Depo yok"
 		_plan_idle(v)
@@ -499,13 +499,13 @@ func _plan_work(v: Villager) -> void:
 					Ambience.log_drop(v.position)
 					return true}] + _work_at(b, v, res), "%s: tomruk taşıyor" % b.display_name(), b)
 			return
-	var kind: String = {"odun": "tree", "tas": "rock", "demir": "rock", "yiyecek": "bush"}[res]
+	var kind: String = {"odun": "tree", "tas": "rock", "demir": "iron", "komur": "coal", "yiyecek": "bush"}[res]
 	# (trees marked to be felled first: a little further than the camp would go for its own)
 	var i := marked_tree(b.global_position, float(b.def.reach) * 1.6, b.work_area) if res == "odun" else -1
 	if i < 0:
 		i = find_prop(b.global_position, float(b.def.reach), kind, b.work_area)
 	if i < 0:
-		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "demir": "Yakında kaya kalmadı", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
+		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "demir": "Yakında demir damarı yok (pas renkli kayalar)", "komur": "Yakında kömür damarı yok (kara kayalar)", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
 		_plan_idle(v)
 		return
 	b.idle_note = ""
@@ -559,17 +559,17 @@ func _plan_work(v: Villager) -> void:
 					props.cut_tree(i)
 				v.set_carry("tas", 3)
 				return true})
-		"demir": # (ore picked out of the rock: slower than stone, and it wears the rock away too)
+		"demir", "komur": # (dug out of a seam: slower than stone; a seam lasts longer than a rock)
 			steps.append({"t": "work", "time": 11.0, "anim": "mine", "face": o})
 			steps.append({"t": "do", "f": func() -> bool:
 				reserved.erase(i)
 				if props.cut.has(i):
 					return false
-				var left := int(rock_left.get(i, 15)) - 2
+				var left := int(rock_left.get(i, SEAM)) - 2
 				rock_left[i] = left
 				if left <= 0:
 					props.cut_tree(i)
-				v.set_carry("demir", 2)
+				v.set_carry(res, 2)
 				return true})
 		"yiyecek":
 			steps.append({"t": "work", "time": 5.0, "anim": "gather", "face": o})
@@ -580,7 +580,7 @@ func _plan_work(v: Villager) -> void:
 				return true})
 	# What's gathered is brought to the yard and worked there: sawn, dressed, sorted; it's piled there.
 	steps.append_array(_work_at(b, v, res))
-	v.give(steps, "%s: %s" % [b.display_name(), {"odun": "ağaç kesiyor", "tas": "taş kırıyor", "demir": "demir söküyor", "yiyecek": "yemiş topluyor"}[res]], b)
+	v.give(steps, "%s: %s" % [b.display_name(), {"odun": "ağaç kesiyor", "tas": "taş kırıyor", "demir": "demir söküyor", "komur": "kömür kazıyor", "yiyecek": "yemiş topluyor"}[res]], b)
 
 
 ## A reader: a while at the table over the books, and the town knows a little more of what it's on.
@@ -598,36 +598,9 @@ func _plan_research(v: Villager, b: Building) -> void:
 		{"t": "step", "to": b.door()}], "%s: %s okuyor" % [b.display_name(), str(BuildingDefs.TECHS[studying].name).to_lower()], b)
 
 
-## The smith's charcoal: wood out of the store, burnt in the forge's pit, two of charcoal for three
-## of wood carried back.
-func _plan_charcoal(v: Villager, b: Building, store: Building) -> void:
-	var takes: Dictionary = BuildingDefs.CHARCOAL
-	v.give([{"t": "go", "to": store.door()},
-		{"t": "do", "f": func() -> bool:
-			if not is_instance_valid(store) or int(store.goods.get("odun", 0)) < int(takes.odun):
-				return false
-			store.take_goods("odun", int(takes.odun))
-			v.set_carry("odun", int(takes.odun))
-			return true},
-		{"t": "go", "to": b.door()}, {"t": "step", "to": b.station()},
-		{"t": "do", "f": func() -> bool:
-			v.set_carry("", 0)
-			return true},
-		{"t": "work", "time": 20.0, "anim": "gather", "face": b.station_face()},
-		{"t": "do", "f": func() -> bool:
-			v.set_carry("komur", 2)
-			return true},
-		{"t": "step", "to": b.door()}, {"t": "go", "to": store.door()},
-		{"t": "do", "f": func() -> bool:
-			if is_instance_valid(store) and store.state == "done":
-				store.add_goods("komur", v.carry_n)
-			else:
-				add_anywhere("komur", v.carry_n, v.position)
-			v.set_carry("", 0)
-			return true}], "Demirci: kömür yakıyor", b)
 
 
-## The smith: charcoal burnt when there's none, then iron and coal out of the store, a rifle or a lot of cartridges beaten out at the anvil,
+## The smith: iron and coal out of the store, a rifle or a lot of cartridges beaten out at the anvil,
 ## taken to the armoury (a rifle while there's none, or cartridges enough for those there are).
 func _plan_smith(v: Villager, b: Building) -> void:
 	var a := _nearest(armories(), b.global_position)
@@ -641,10 +614,6 @@ func _plan_smith(v: Villager, b: Building) -> void:
 	if store == null:
 		b.idle_note = "Depo yok"
 		_plan_idle(v)
-		return
-	if int(store.goods.get("komur", 0)) < int(need.komur) and int(store.goods.get("odun", 0)) >= int(BuildingDefs.CHARCOAL.odun):
-		b.idle_note = ""
-		_plan_charcoal(v, b, store)
 		return
 	if int(store.goods.get("demir", 0)) < int(need.demir) or int(store.goods.get("komur", 0)) < int(need.komur):
 		b.idle_note = "Depoda %s yok" % BuildingDefs.cost_text_of(need)
@@ -679,6 +648,9 @@ func _plan_smith(v: Villager, b: Building) -> void:
 				else:
 					a.ammo += 10
 			return true}], "Demirci: %s dövüyor" % ("tüfek" if rifle else "fişek"), b)
+
+
+const SEAM := 40 ## what an iron or coal seam gives before it's dug out (a rock: 15)
 
 
 ## Whether anyone needs a healer just now (and there's a herb for it).

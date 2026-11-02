@@ -1226,6 +1226,13 @@ func remove_building(b: Building) -> void:
 	for r: String in b.goods: # (what was in it, or piled by it)
 		add_anywhere(r, int(b.goods[r]), b.global_position)
 	b.goods.clear()
+	_unplace(b)
+	b.demolish()
+	message.emit("%s yıkıldı" % b.display_name(), "info")
+
+
+## `b` taken off the ground: its people let go, its yard and footprint cleared (not yet gone).
+func _unplace(b: Building) -> void:
 	_let_go(b)
 	buildings.erase(b)
 	var y := _yard_of(b)
@@ -1236,8 +1243,53 @@ func remove_building(b: Building) -> void:
 		nav.set_field(b.cells, false)
 	else:
 		nav.set_building(b.cells, false)
-	b.demolish()
-	message.emit("%s yıkıldı" % b.display_name(), "info")
+	if b.has_meta("litter") and is_instance_valid(b.get_meta("litter")):
+		(b.get_meta("litter") as Node).queue_free()
+
+
+## Workshop `b` set to make `what` (BuildingDefs.WORKSHOP): fitted out anew where it stands (its
+## yard and gear those of the new work), its pile and workers kept. The new one, or null with why
+## not in `why`.
+func refit(b: Building, what: String, why: Array) -> Building:
+	var w: Dictionary = BuildingDefs.WORKSHOP[what]
+	var needs := str(w.get("needs", ""))
+	if not knows(needs):
+		why.append("Önce okuma odasında %s araştırılmalı" % BuildingDefs.TECHS[needs].name)
+		return null
+	var kind := str(w.kind)
+	var mode := str(w.get("mode", ""))
+	if b.kind == kind:
+		if kind != "camur":
+			b.mode = mode
+		return b
+	var pos := b.global_position
+	var yaw := b.global_basis.get_euler().y
+	if kind == "camur" and not mud_near(pos):
+		why.append("Yakında çamur yok: çamur ıslak zeminde, kıyıda olur")
+		return null
+	var crew := b.workers.duplicate()
+	var wanted := b.wanted
+	var area := b.work_area
+	var pile := b.goods.duplicate()
+	b.goods.clear()
+	_unplace(b)
+	b.state = "gone"
+	b.queue_free()
+	loading = true # (no "done" said for it, no more than for a loaded one)
+	var nb := place(kind, pos, yaw)
+	nb.complete_now()
+	loading = false
+	add_litter(nb)
+	nb.mode = mode
+	nb.wanted = wanted
+	nb.work_area = area
+	for r: String in pile:
+		nb.add_goods(r, int(pile[r]))
+	for v: Villager in crew:
+		if is_instance_valid(v) and not v.dead:
+			v.abort()
+			call("employ", v, nb) # (village_work.gd)
+	return nb
 
 
 ## Everyone working at, living in or headed for `b` is let go of it.

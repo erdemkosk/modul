@@ -14,7 +14,7 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "sifaci"]],
+const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
 	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
@@ -45,7 +45,7 @@ const GOOD_TIPS := {"odun": "Kesim kampından: inşaat ve evlerin, fenerlerin ya
 	"tas": "Taş ocağından: temeller, bacalar, kuyu, meydan", "yiyecek": "Tarladan ve toplayıcıdan: herkes yer, öküzler de",
 	"camur": "Çamur ocağından: evleri sıvamak için", "kerpic": "Çamur ocağında kerpiç yaptırınca: soba için",
 	"ot": "Şifacının ormandan topladığı: her yara sarışta bir tane gider",
-	"komur": "Kömür ocağında odundan yakılır: demircinin ocağı için", "demir": "Demir madeninden: demirci tüfek ve fişek döver"}
+	"komur": "Atölyede kara kayalardan (kömür damarı) kazılır: demircinin ocağı için", "demir": "Atölyede pas renkli kayalardan (demir damarı) sökülür: demirci tüfek ve fişek döver"}
 var _seen := {} ## goods once had: shown from then on
 var _goods_head: Button
 var _folds: Array = [] ## [header, body, seconds since the mouse left both]
@@ -77,6 +77,8 @@ var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
 var _tech_note: Label
 var _card_train: HBoxContainer
+var _card_make: HBoxContainer ## a workshop's card: what it's set to make
+var _make_btns := {} ## what -> its button
 var _card_pick: VBoxContainer ## a workplace's card: who's best at its work, to put on or take off it
 var _pick_title: Label
 var _pick_rows: Array = [] ## [HBoxContainer, name Label, knack Label, where Label, Button, face TextureRect]
@@ -554,6 +556,15 @@ func _make_card() -> void:
 	_btn.strong = _add(_card_acts, "GÜÇLENDİR", func() -> void: game.strengthen_wall(), "Kalın kütük ve taş temel: kazıklar üç kat dayanıklı olur, zor kesilir, zor yanar")
 	_btn.area = _add(_card_acts, "ALAN ÇİZ", func() -> void: game.start_placing("alan"), "İşçiler yalnızca sürükleyeceğin alanda çalışsın")
 	_btn.no_area = _add(_card_acts, "ALANI KALDIR", func() -> void: game.clear_work_area(), "İşçiler yine her yerde çalışsın")
+	_card_make = HBoxContainer.new()
+	_card_make.add_theme_constant_override("separation", 4)
+	col.add_child(_card_make)
+	Ui.label(_card_make, "ÜRET:", 12, Ui.ACCENT, "head")
+	for what: String in BuildingDefs.WORKSHOP:
+		var mb := _small_button(str(BuildingDefs.WORKSHOP[what].name), func() -> void: game.refit_selected(what))
+		mb.tooltip_text = "Atölye %s için kurulsun: içi ona göre değişir, işçiler kalır" % BuildingDefs.RES_NAMES[what].to_lower()
+		_card_make.add_child(mb)
+		_make_btns[what] = mb
 	_card_train = HBoxContainer.new()
 	_card_train.add_theme_constant_override("separation", 8)
 	col.add_child(_card_train)
@@ -1049,6 +1060,7 @@ func _update_card() -> void:
 	_folk_box.visible = false
 	_card_jail.visible = false
 	_card_extra.visible = false
+	_card_make.visible = false
 	_card_acts.visible = true
 	_card_train.visible = b.state == "done" and b.kind == "silahlik"
 	if _card_train.visible:
@@ -1063,17 +1075,21 @@ func _update_card() -> void:
 	_fill_extra(b)
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
-	(_btn.mode as Button).visible = b.state == "done" and (b.kind == "camur" or (b.kind == "tasci" and game.village.knows("madencilik")))
+	(_btn.mode as Button).visible = b.state == "done" and b.kind == "camur"
 	(_btn.plant as Button).visible = b.kind == "oduncu" and b.state == "done"
 	(_btn.plant as Button).text = "FİDAN DİKMEYİ BIRAK" if b.planting else "FİDAN DİK"
 	(_btn.ox as Button).visible = b.kind == "arabaci" and b.state == "done" and not b.ox
 	(_btn.strong as Button).visible = false
 	(_btn.area as Button).visible = b.def.role in ["work", "forest"] and b.kind != "camur" and b.state == "done"
 	(_btn.no_area as Button).visible = (_btn.area as Button).visible and b.work_area.has_area()
-	if b.kind == "tasci":
-		(_btn.mode as Button).text = "TAŞ KIR" if b.mode == "demir" else "DEMİR ÇIKAR"
-	else:
-		(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
+	(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
+	var making := BuildingDefs.workshop_of(b) if b.state == "done" else ""
+	_card_make.visible = making != ""
+	for what: String in _make_btns:
+		var mb: Button = _make_btns[what]
+		mb.visible = game.village.knows(str(BuildingDefs.WORKSHOP[what].get("needs", "")))
+		var on := what == making
+		mb.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
 	match b.state:
@@ -1196,6 +1212,7 @@ func _wall_card(w: Wall) -> void:
 	_folk_box.visible = false
 	_card_jail.visible = false
 	_card_extra.visible = false
+	_card_make.visible = false
 	_card_acts.visible = true
 	(_btn.repair as Button).visible = false
 	for what: String in BuildingDefs.UPGRADES:
@@ -1523,6 +1540,7 @@ func _folk_card(v: Villager) -> void:
 	_card_folk.visible = true
 	_card_jail.visible = false
 	_card_extra.visible = false
+	_card_make.visible = false
 	var many: Array = game._chosen()
 	var guard: bool = v.workplace != null and v.workplace.def.role in ["barracks", "tower"]
 	(_btn.release as Button).visible = v.workplace != null and many.size() <= 1

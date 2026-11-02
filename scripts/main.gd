@@ -1029,9 +1029,21 @@ func toggle_mode_selected() -> void:
 	if selected and is_instance_valid(selected) and selected.kind == "camur":
 		selected.mode = "" if selected.mode == "kerpic" else "kerpic"
 		hud.toast("%s: %s" % [selected.display_name(), "kerpiç dökülecek" if selected.mode == "kerpic" else "çamur kazılacak"], "info")
-	elif selected and is_instance_valid(selected) and selected.kind == "tasci" and village.knows("madencilik"):
-		selected.mode = "" if selected.mode == "demir" else "demir"
-		hud.toast("%s: %s" % [selected.display_name(), "kayalardan demir sökülecek" if selected.mode == "demir" else "taş kırılacak"], "info")
+
+
+
+## The selected workshop set to make `what`.
+func refit_selected(what: String) -> void:
+	var b := selected
+	if b == null or not is_instance_valid(b) or BuildingDefs.workshop_of(b) == "" or b.state != "done":
+		return
+	var why: Array = []
+	var nb := village.refit(b, what, why)
+	if nb == null:
+		hud.toast(str(why[0]), "bad")
+		return
+	select(nb)
+	hud.toast("%s kuruldu" % nb.display_name(), "good")
 
 
 ## The selected logging camp's men set to planting the stumps when they've nothing to fell (or not).

@@ -26,12 +26,14 @@ const PAD := 8.0 ## The near set reaches this far past the near range, so it sti
 const FOLIAGE := ["Needles", "Leaves", "LeavesAutumn", "FernLeaf"]
 ## The LOD1 copies of the kinds seen from far off go in bigger chunks: each chunk is a draw call
 ## in every pass, and 128 m ones made thousands of them for trees seen across the whole basin.
-const FAR_CHUNK := {"tree": 384.0, "cliff": 512.0, "rock": 256.0}
+const FAR_CHUNK := {"tree": 384.0, "cliff": 512.0, "rock": 256.0, "iron": 256.0, "coal": 256.0}
 
 ## Per model kind: near (LOD0) range, far (LOD1) range (0 = no LOD1 at all), shadows of LOD1.
 const RANGES := {
 	"tree": [130.0, 2000.0, true],
 	"rock": [110.0, 900.0, true],
+	"iron": [110.0, 900.0, true],
+	"coal": [110.0, 900.0, true],
 	"cliff": [260.0, 2500.0, true],
 	"bush": [85.0, 380.0, false],
 	"fern": [70.0, 0.0, false],
@@ -73,6 +75,10 @@ func _ready() -> void:
 		info = JSON.parse_string(FileAccess.get_file_as_string(NATURE_DIR + "nature.json"))
 	for id: String in terrain.meta.props:
 		_models.append(_load_model(id, info.get(id, {})))
+	for ore: String in ORES:
+		var m := _ore_model(ore, ORES[ore].colour)
+		if not m.is_empty():
+			_models.append(m)
 	_load_props()
 	_build_far()
 	_build_near_nodes()
@@ -174,7 +180,7 @@ func _with_nature_materials(mesh: Mesh, kind: String, height: float, lod_role :=
 		mat.set_shader_parameter("model_height", maxf(height, 0.5))
 		mat.set_shader_parameter("lod_role", lod_role)
 		mat.set_shader_parameter("lod_near", lod_near)
-		mat.set_shader_parameter("stone", 1.0 if kind in ["rock", "cliff"] and not foliage else 0.0)
+		mat.set_shader_parameter("stone", 1.0 if kind in ["rock", "cliff", "iron", "coal"] and not foliage else 0.0)
 		var sway := 0.0
 		match kind:
 			"tree": sway = 1.0
@@ -277,6 +283,7 @@ func _load_props() -> void:
 			_grid[cell] = []
 		(_grid[cell] as Array).append(i)
 	_add_grove()
+	_add_ores()
 	for m in _models:
 		_max_near = maxf(_max_near, m.near)
 
@@ -338,6 +345,78 @@ func _add_grove() -> void:
 			_grid[cell] = []
 		(_grid[cell] as Array).append(_xf.size() - 1)
 		put += 1
+
+
+## Seams in the ground: iron (rust-red stone) and coal (black), like rocks but worth digging, in
+## veins of a few together. Seeded, after the grove, so a dug-out one's index stays its own.
+const ORES := {
+	"iron": {"colour": Color(0.52, 0.27, 0.17), "veins": 6},
+	"coal": {"colour": Color(0.1, 0.1, 0.11), "veins": 5},
+}
+const ORE_R := Vector2(80.0, 420.0) ## how far from where you begin the veins lie
+
+
+## A rock's model in a seam's colour, as kind `ore`.
+func _ore_model(ore: String, colour: Color) -> Dictionary:
+	for rock in _models:
+		if rock.kind != "rock":
+			continue
+		var m: Dictionary = rock.duplicate()
+		m.id = "ore_" + ore
+		m.kind = ore
+		m.lod0 = _recoloured(rock.lod0, colour)
+		m.lod1 = _recoloured(rock.lod1, colour)
+		return m
+	return {}
+
+
+static func _recoloured(mesh: Mesh, colour: Color) -> Mesh:
+	var out := mesh.duplicate() as Mesh
+	for s in out.get_surface_count():
+		var mat := out.surface_get_material(s)
+		if mat is ShaderMaterial and out is ArrayMesh:
+			var m2 := (mat as ShaderMaterial).duplicate() as ShaderMaterial
+			m2.set_shader_parameter("albedo", colour)
+			(out as ArrayMesh).surface_set_material(s, m2)
+	return out
+
+
+func _add_ores() -> void:
+	var sp: Variant = terrain.get("spawn")
+	if sp == null:
+		return
+	var at := (sp as Transform3D).origin
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4711
+	for ore: String in ORES:
+		var k := -1
+		for j in _models.size():
+			if _models[j].kind == ore:
+				k = j
+		if k < 0:
+			continue
+		for vein in int(ORES[ore].veins):
+			# (the first of each near enough to find early on)
+			var r := rng.randf_range(ORE_R.x, ORE_R.x + 80.0) if vein == 0 else rng.randf_range(ORE_R.x + 40.0, ORE_R.y)
+			var c := Vector2(at.x, at.z)
+			for tries in 12:
+				var a := rng.randf() * TAU
+				c = Vector2(at.x, at.z) + Vector2(cos(a), sin(a)) * r
+				if not terrain.is_water(c.x, c.y) and float(terrain.ground_at(c.x, c.y).road) < 0.1:
+					break
+			for n in rng.randi_range(6, 9):
+				var q := c + Vector2(rng.randfn(0.0, 4.5), rng.randfn(0.0, 4.5))
+				if terrain.is_water(q.x, q.y) or float(terrain.ground_at(q.x, q.y).road) > 0.15:
+					continue
+				var s := rng.randf_range(1.0, 1.5)
+				var low := minf(minf(terrain.height_at(q.x + 0.7 * s, q.y), terrain.height_at(q.x - 0.7 * s, q.y)), minf(terrain.height_at(q.x, q.y + 0.7 * s), terrain.height_at(q.x, q.y - 0.7 * s)))
+				_xf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(q.x, low - 0.25 * s, q.y)))
+				_kind.append(k)
+				_tint.append(rng.randf())
+				var cell := Vector2i(floori(q.x / CELL), floori(q.y / CELL))
+				if not _grid.has(cell):
+					_grid[cell] = []
+				(_grid[cell] as Array).append(_xf.size() - 1)
 
 
 func _build_far() -> void:
@@ -530,8 +609,8 @@ func _build_collision_and_anchors() -> void:
 			"log":
 				shape = _cylinder(snappedf(float(info.get("radius", 0.2)) * s, 0.02), float(info.get("length", 6.0)) * s)
 				local = Transform3D(Basis(Vector3.BACK, PI / 2), Vector3(0, float(info.get("radius", 0.2)) * s, 0))
-			"rock", "cliff":
-				var size: Array = info.get("size", [1.6, 1.2, 1.6] if m.kind == "rock" else [8.0, 5.0, 6.0])
+			"rock", "cliff", "iron", "coal":
+				var size: Array = info.get("size", [8.0, 5.0, 6.0] if m.kind == "cliff" else [1.6, 1.2, 1.6])
 				var center: Array = info.get("center", [0.0, size[1] * 0.5, 0.0])
 				var key := "box_%s_%.2f" % [m.id, s]
 				if not _shapes.has(key):

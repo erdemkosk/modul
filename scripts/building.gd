@@ -1528,6 +1528,9 @@ func center() -> Vector3:
 
 
 func display_name() -> String:
+	var what := BuildingDefs.workshop_of(self)
+	if what != "":
+		return "Atölye (%s)" % BuildingDefs.RES_NAMES[what].to_lower().replace("yiyecek", "yemiş")
 	return str(def.name)
 
 
