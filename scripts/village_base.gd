@@ -1700,13 +1700,49 @@ func _close_annex(b: Building) -> void:
 # --- Goods ----------------------------------------------------------------------------------------
 
 
-## Puts `n` of `r` in the store nearest `p` (lost if there's none).
+## Puts `n` of `r` in the store nearest `p` with room (the nearest at all, if they're all full;
+## lost if there's none).
 func add_anywhere(r: String, n: int, p: Vector3) -> void:
 	if n <= 0:
 		return
-	var s := _nearest(stores(), p)
+	var s := store_room(p)
+	if s == null:
+		s = _nearest(stores(), p)
 	if s:
 		s.add_goods(r, n)
+
+
+## The store nearest `p` with room left, or null (none, or all full).
+func store_room(p: Vector3) -> Building:
+	var best: Building = null
+	var bd := INF
+	for b in stores():
+		if b.room() <= 0:
+			continue
+		var d := b.global_position.distance_squared_to(p)
+		if d < bd:
+			bd = d
+			best = b
+	return best
+
+
+## What all the stores hold, and how much they could: [held, room for].
+func store_fill() -> Vector2i:
+	var held := 0
+	var cap := 0
+	for b in stores():
+		held += b.goods_total()
+		cap += b.holds()
+	return Vector2i(held, cap)
+
+
+## The workplaces whose piles are full (their work stopped till someone carries it off).
+func full_yards() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role in ["work", "farm"] and b.room() <= 0:
+			out.append(b)
+	return out
 
 
 ## The store nearest `p` that has some `r`.

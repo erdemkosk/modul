@@ -447,13 +447,19 @@ func _plan_work(v: Villager) -> void:
 		_plan_healer(v, b)
 		return
 	var res := "demir" if b.kind == "tasci" and b.mode == "demir" else str(b.def.res)
-	var store := _nearest(stores(), b.global_position)
-	if store == null:
+	if stores().is_empty():
 		b.idle_note = "Depo yok"
 		_plan_idle(v)
 		return
-	# The pile's grown and nobody fetches it: a load of it to the store first.
-	if not carters_about() and b.goods_total() >= 9:
+	var store := store_room(b.global_position)
+	# The pile's full: the work stops. Nowhere to take it, or carters to come for it, they wait;
+	# with none, they carry it off on their backs, a load each, before they go back to work.
+	if b.room() <= 0 and (store == null or carters_about()):
+		b.idle_note = "Yığın dolu, depolar da dolu: yeni depo kur" if store == null else "Yığın dolu: arabacı bekleniyor"
+		_plan_idle(v)
+		return
+	if b.room() <= 0:
+		b.idle_note = "Yığın dolu: arabacı yok, sırtlarında taşıyorlar"
 		res = b.biggest_good()
 		var n := b.take_goods(res, v.capacity(res))
 		if n > 0:
@@ -1026,8 +1032,12 @@ func _plan_farm(v: Villager, b: Building) -> void:
 					c.tend()}], "Tarla: çapalıyor", b, true)
 		"ripe":
 			b.idle_note = "Hasat: %d yiyecek kaldı" % c.left()
-			var store := _nearest(stores(), b.global_position)
+			var store := store_room(b.global_position)
 			var pile := store == null or (carters_about() and b.global_position.distance_to(store.global_position) > PILE_FROM)
+			if pile and b.room() <= 0:
+				b.idle_note = "Hasat yığını dolu: %s" % ("depolar dolu, yeni depo kur" if store == null else "arabacı bekleniyor")
+				_plan_idle(v)
+				return
 			var drop_at: Building = b if pile else store
 			v.give([
 				{"t": "go", "to": c.spot()},
@@ -1071,9 +1081,10 @@ func _plan_cart(v: Villager) -> void:
 		_plan_idle(v)
 		v.job = "Arabacı: bekliyor" if v.vehicle == "hand" else "Öküz arabası: bekliyor"
 		return
-	var store := _nearest(stores(), best.global_position)
+	var store := store_room(best.global_position)
 	if store == null:
 		_plan_idle(v)
+		v.job = "Arabacı: depolar dolu" if v.vehicle == "hand" else "Öküz arabası: depolar dolu"
 		return
 	best.pile_claim = v
 	var from := best

@@ -72,6 +72,7 @@ var _people_plate: PanelContainer ## the townsfolk table
 var _people_grid: GridContainer
 var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
+var _store_line: Label ## under the goods: how full the stores are, and what's stopped
 var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
 var _tech_note: Label
@@ -220,6 +221,22 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 		(parts[2] as Label).text = ("+%d" % d) if d > 0 else (str(d) if d < 0 else "")
 		(parts[2] as Label).add_theme_color_override("font_color", Ui.GOOD if d > 0 else Ui.BAD)
 	_goods_head.add_theme_color_override("font_color", Ui.BAD if int(stock.get("yiyecek", 0)) <= 5 else Ui.INK) # (short of food: it says so, folded or not)
+	# how full the stores are, and a warning when work's stopped for want of room or carters
+	var fill := v.store_fill()
+	var full := v.full_yards()
+	var line := "DEPO  %d / %d" % [fill.x, fill.y]
+	var bad := false
+	if fill.y > 0 and fill.x >= fill.y:
+		line += "   ·   DEPOLAR DOLU: yeni depo kur, üretim duruyor"
+		bad = true
+	elif not full.is_empty():
+		line += "   ·   %d işyerinin yığını dolu: %s" % [full.size(), "arabacılar yetişemiyor" if v.carters_about() else "arabacı kur"]
+		bad = true
+	elif fill.y > 0 and fill.x >= fill.y * 0.85:
+		line += "   ·   depolar dolmak üzere"
+	_store_line.text = line
+	_store_line.add_theme_color_override("font_color", Ui.BAD if bad else (Ui.ACCENT if fill.x >= fill.y * 0.85 else Color(Ui.INK, 0.75)))
+	_store_line.tooltip_text = "Bütün depoların aldığı ve içindeki yük.\n" + ("\n".join(full.map(func(b: Building) -> String: return "%s: yığın dolu" % b.display_name())) if not full.is_empty() else "")
 
 
 func _stores_plate() -> void:
@@ -228,6 +245,14 @@ func _stores_plate() -> void:
 	p.offset_left = 12
 	p.offset_top = 10
 	add_child(p)
+	_store_line = Ui.label(self, "", 14, Ui.INK, "head")
+	_store_line.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_store_line.offset_left = 22
+	_store_line.offset_top = 92
+	_store_line.mouse_filter = Control.MOUSE_FILTER_PASS
+	_store_line.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_store_line.add_theme_constant_override("shadow_offset_x", 1)
+	_store_line.add_theme_constant_override("shadow_offset_y", 1)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
@@ -1146,7 +1171,7 @@ func _update_card() -> void:
 		for r: String in b.goods:
 			if int(b.goods[r]) > 0:
 				g.append("%d %s" % [int(b.goods[r]), BuildingDefs.RES_NAMES[r].to_lower()])
-		lines.append(("İçinde: " if b.def.role == "store" else "Yığın: ") + ", ".join(g))
+		lines.append(("İçinde (%d / %d): " if b.def.role == "store" else "Yığın (%d / %d): ") % [b.goods_total(), b.holds()] + ", ".join(g))
 	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"] and b.state == "done"
 	if _card_workers.visible:
 		_card_count.text = "%d / %d" % [b.wanted, int(b.def.slots)]

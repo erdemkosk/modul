@@ -1269,6 +1269,19 @@ func light_reach() -> float:
 
 # --- Goods ----------------------------------------------------------------------------------------
 
+const PILE_MAX := 24 ## what a workplace's yard holds piled, unless its kind says ("holds")
+
+
+## How much it holds: a store all told, a workplace in its pile.
+func holds() -> int:
+	return int(def.get("holds", PILE_MAX))
+
+
+## Room left in it.
+func room() -> int:
+	return holds() - goods_total()
+
+
 func goods_total() -> int:
 	var n := 0
 	for r: String in goods:

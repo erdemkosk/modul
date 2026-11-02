@@ -697,7 +697,7 @@ func capacity(res: String) -> int:
 		"ox":
 			return 30
 		"hand":
-			return 12
+			return 15
 	return roundi({"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}.get(res, 5) * trait_mul("carry"))
 
 
@@ -1357,7 +1357,7 @@ func _walk(dt: float) -> bool:
 	var mud := 0.0
 	if has_cart:
 		# Quick on a hard path, slow off it; in the wet the path is mud, and soft ground is worse.
-		speed = 2.4 * (1.0 + 1.2 * worn * (1.0 - 0.8 * Weather.wet_now))
+		speed = 3.0 * (1.0 + 1.2 * worn * (1.0 - 0.8 * Weather.wet_now))
 		mud = 0.0 if planks else clampf(Weather.wet_now * (0.4 + worn * 0.6) + nav.terrain.soft_at(position.x, position.z).x * 1.5 + Weather.snow_cover_now * 0.5, 0.0, 1.0)
 		speed *= 1.0 - 0.6 * mud
 		if _stuck > 0.0:
