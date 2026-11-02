@@ -36,7 +36,7 @@ static func save(game: Node) -> bool:
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
 			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "plastered": b.plastered, "stove": b.stove,
-			"mode": b.mode, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
+			"mode": b.mode, "casting": b.casting, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
 				return {"name": o.display_name, "family": o.family, "skills": o.skills.duplicate(), "traits": o.traits.duplicate(), "keen": o.keen.duplicate(),
 					"look": o.look_seed, "mode": o.held_mode, "won": o.won}), "area": [b.work_area.position.x, b.work_area.position.y, b.work_area.size.x, b.work_area.size.y], "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
@@ -86,11 +86,11 @@ static func save(game: Node) -> bool:
 			for g in w.gates:
 				if is_instance_valid(g):
 					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken])
-			return {"line": pts, "built": Array(w.built), "gates": gs}),
+			return {"line": pts, "built": Array(w.built), "gates": gs, "level": w.level}),
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "orders": v.orders.duplicate(), "known": v.known.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -159,6 +159,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 		w.setup(line, v, v.nav)
 		v.add_child(w)
 		v.walls.append(w)
+		w.level = int(wd.get("level", 1))
 		for gd: Array in wd.get("gates", []):
 			var g := w.add_gate(int(w.nearest(Vector3(float(gd[0]), 0, float(gd[1]))).k))
 			g.hp = float(gd[2])
@@ -169,8 +170,10 @@ static func restore(game: Node, d: Dictionary) -> void:
 		for k in mini(bl.size(), w.built.size()):
 			if int(bl[k]) == 1 and not w.in_gap(k):
 				w.built[k] = 1
+				w.hp[k] = w.stake_hp()
 				cells.append(Nav.cell_of(w.line[k]))
 		v.nav.set_wall(cells, true)
+		w._footing()
 		w.redraw()
 	for rd: Array in d.get("roads", []):
 		var pts: Array = []
@@ -202,6 +205,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 			if bool(bd.get("plastered", false)):
 				b.plaster()
 			b.mode = str(bd.get("mode", ""))
+			b.casting = bool(bd.get("casting", false))
 			for pd2: Dictionary in bd.get("prisoners", []):
 				v.call("spawn_prisoner", pd2, b) # (village_defense.gd)
 			var ar: Array = bd.get("area", [0, 0, 0, 0])
@@ -290,6 +294,17 @@ static func restore(game: Node, d: Dictionary) -> void:
 		if h >= 0 and h < made.size() and made[h].state == "done" and made[h].def.role == "house":
 			vl.home = made[h]
 			made[h].residents.append(vl)
+	v.next_train = int(d.get("next_train", v.day + 3))
+	for o: String in d.get("orders", []):
+		v.orders.append(o)
+	for t: String in d.get("known", []):
+		v.known.append(t)
+	v.studying = str(d.get("studying", ""))
+	v.study_pts = float(d.get("study_pts", 0.0))
+	for t: Array in d.get("traps", []):
+		var tr := {"at": Vector3(float(t[0]), float(t[1]), float(t[2])), "armed": bool(t[3]), "node": null}
+		v.traps.append(tr)
+		v._show_trap(tr)
 	for i in d.get("cut_marks", []):
 		v.cut_marks[int(i)] = 1
 	for i in d.get("cut_urgent", []):

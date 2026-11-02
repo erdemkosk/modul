@@ -83,6 +83,7 @@ var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 
 
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
+var traps: Array = [] ## stake pits: {at: Vector3, armed: bool, node: Node3D}
 var downed_outlaws: Array[Villager] = [] ## outlaws lying wounded after a fight: to be taken to a jail, or to bleed out
 var cut_marks := {} ## prop index -> 1: marked to be felled (KES), 2: urgently (ACİL KES: everyone drops their work for it)
 var _marks_mm: MultiMeshInstance3D ## an orange band round each marked trunk
@@ -96,6 +97,11 @@ var roads: Array = [] ## the plank roads laid: each a polyline [x0, z0, x1, z1, 
 var walls: Array[Wall] = [] ## the palisades
 var rail := PackedVector3Array() ## the railway, from the valley's edge to the station (on the ground)
 var train: Train
+var next_train := 4 ## the day the next train's due up the line (it may be late)
+var orders: Array[String] = [] ## what's been sent for on it (OFFERS), paid for already
+var known: Array[String] = [] ## what's been found out in a reading room (BuildingDefs.TECHS)
+var studying := "" ## what the reading rooms are on just now ("" nothing chosen)
+var study_pts := 0.0 ## how far into it
 var seed := 0
 var start_people := 6 ## how many come on the train
 var start_crew: Array = [] ## the settlers chosen on the title screen (Villager.candidate), in the order they step down
@@ -187,6 +193,135 @@ func start(at: Vector3) -> void:
 	train.arrived.connect(_train_arrived.bind(station))
 	arriving = true
 	message.emit("Tren geliyor: ilk yerleşimciler ve yükleri istasyona iniyor.", "info")
+
+
+# --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
+
+## What can be sent for: what comes, and what it's paid with.
+const OFFERS := {
+	"tufek": {"name": "Tüfek ve 10 fişek", "pay": {"odun": 30, "tas": 10}},
+	"fisek": {"name": "20 fişek", "pay": {"odun": 14, "tas": 6}},
+	"ot": {"name": "10 şifalı ot", "pay": {"odun": 12, "yiyecek": 8}},
+	"erzak": {"name": "60 yiyecek", "pay": {"odun": 25, "tas": 10}},
+}
+const ORDERS_MAX := 3 ## on one train
+
+
+# --- What's found out: a reading room works at one thing at a time -------------------------------
+
+func knows(tech: String) -> bool:
+	return tech == "" or tech in known
+
+
+## Whether `tech` can be taken up now (not known, and what it comes after is).
+func can_study(tech: String) -> bool:
+	return not knows(tech) and knows(str(BuildingDefs.TECHS[tech].get("after", "")))
+
+
+## The reading rooms set to `tech` (what's been put into another is kept for it no longer).
+func study(tech: String) -> void:
+	if tech == studying or not can_study(tech):
+		return
+	studying = tech
+	study_pts = 0.0
+
+
+## `pts` more on what's being studied; found out when it's enough.
+func add_study(pts: float) -> void:
+	if studying == "":
+		return
+	study_pts += pts
+	var t: Dictionary = BuildingDefs.TECHS[studying]
+	if study_pts >= float(t.pts):
+		known.append(studying)
+		message.emit("Araştırma tamam: %s. %s" % [t.name, t.desc], "good")
+		studying = ""
+		study_pts = 0.0
+
+
+## The station (the railway's end), or null.
+func depot() -> Building:
+	for b in buildings:
+		if b.kind == "istasyon" and b.state == "done":
+			return b
+	return null
+
+
+## `what` sent for on the next train, its price taken out of the stores now. "" or why not.
+func order(what: String) -> String:
+	if depot() == null or rail.size() < 2:
+		return "İstasyon yok"
+	if not knows("telgraf"):
+		return "Önce telgraf araştırılmalı (okuma odası)"
+	if orders.size() >= ORDERS_MAX:
+		return "Bir trene en fazla %d sipariş" % ORDERS_MAX
+	var pay: Dictionary = OFFERS[what].pay
+	for r: String in pay:
+		if int(stock.get(r, 0)) < int(pay[r]):
+			return "Karşılığında %s gerek" % BuildingDefs.cost_text_of(pay)
+	for r: String in pay:
+		var left := int(pay[r])
+		while left > 0:
+			var s := store_with(r, depot().global_position)
+			if s == null:
+				break
+			left -= s.take_goods(r, left)
+	orders.append(what)
+	return ""
+
+
+## Of a morning: the train, if it's due (now and then it's late a day or two).
+func _train_morning() -> void:
+	if not knows("telgraf") or depot() == null or rail.size() < 2 or is_instance_valid(train) or day < next_train:
+		return
+	if randf() < 0.25:
+		var late := 1 + randi() % 2
+		next_train = day + late
+		message.emit("Tren gecikti: %d gün daha bekleniyor." % late, "info")
+		return
+	var st := depot()
+	train = Train.new()
+	train.nav = nav
+	train.setup(rail, 0.0, 0.0)
+	train.stop_at = train.s_of(st.global_position)
+	train._s = maxf(train.stop_at - 200.0, 0.0)
+	add_child(train)
+	train.arrived.connect(_train_in.bind(st))
+	message.emit("Tren düdüğü: tren istasyona geliyor%s." % (" (%d sipariş)" % orders.size() if not orders.is_empty() else ""), "info")
+
+
+## In at the station: what was sent for handed down (the arms to the armoury), and on it goes.
+func _train_in(st: Building) -> void:
+	var arms: Building = null
+	for b in buildings:
+		if b.def.role == "armory" and b.state == "done":
+			arms = b
+			break
+	var got: Array[String] = []
+	for what in orders:
+		got.append(str(OFFERS[what].name))
+		match what:
+			"tufek":
+				if arms:
+					arms.arms += 1
+					arms.ammo += 10
+				else:
+					message.emit("Tüfek geldi ama silahlık yok: tren geri götürdü.", "bad")
+			"fisek":
+				if arms:
+					arms.ammo += 20
+			"ot":
+				st.add_goods("ot", 10)
+			"erzak":
+				st.add_goods("yiyecek", 60)
+	if not got.is_empty():
+		message.emit("Trenden indi: %s." % ", ".join(got), "good")
+	orders.clear()
+	next_train = day + 3 + randi() % 4
+	var tr := train
+	get_tree().create_timer(10.0, false).timeout.connect(func() -> void:
+		if is_instance_valid(tr):
+			tr.leave())
 
 
 ## The old start, with no railway: a store and a house put down at once.
@@ -790,7 +925,7 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 ## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
 ## there leaving their stumps: a settlement is a clearing, not houses stood in the forest.
 const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, "forest": 3.0,
-	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0, "healer": 5.0}
+	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "research": 5.0, "craft": 6.0, "smith": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0, "healer": 5.0}
 
 
 func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:
@@ -948,6 +1083,106 @@ func marked_tree(p: Vector3, reach: float, area := Rect2(), urgent := false) -> 
 			bd = d
 			best = i
 	return best
+
+
+# --- Stake pits (TUZAK) ----------------------------------------------------------------------------
+
+const TRAP_COST := 2 ## odun a pit
+const TRAP_GAP := 2.5 ## m between pits laid in a box
+
+
+## Pits dug and staked across `area` (a pit every TRAP_GAP), or at its middle if it's a click; a
+## sprung one there set again. Each costs TRAP_COST odun from the stores. How many were set.
+func lay_traps(area: Rect2) -> int:
+	var spots: Array[Vector3] = []
+	if area.size.x < 1.5 and area.size.y < 1.5:
+		spots.append(Vector3(area.get_center().x, 0, area.get_center().y))
+	else:
+		var x := area.position.x + TRAP_GAP * 0.5
+		while x < area.end.x:
+			var z := area.position.y + TRAP_GAP * 0.5
+			while z < area.end.y:
+				spots.append(Vector3(x, 0, z))
+				z += TRAP_GAP
+			x += TRAP_GAP
+	var n := 0
+	for p in spots:
+		if int(stock.get("odun", 0)) < TRAP_COST:
+			break
+		var near: Dictionary = {}
+		for t: Dictionary in traps:
+			if Vector2(t.at.x - p.x, t.at.z - p.z).length() < TRAP_GAP * 0.6:
+				near = t
+				break
+		if not near.is_empty() and near.armed:
+			continue
+		if near.is_empty() and (not nav.is_open(p) or nav.on_road(p)):
+			continue
+		var left := TRAP_COST
+		while left > 0:
+			var s := store_with("odun", p)
+			if s == null:
+				break
+			left -= s.take_goods("odun", left)
+		if near.is_empty():
+			p.y = nav.height(p.x, p.z)
+			near = {"at": p, "armed": true, "node": null}
+			traps.append(near)
+		near.armed = true
+		_show_trap(near)
+		n += 1
+	return n
+
+
+## A pit as it looks: a patch of turned earth with sharpened stakes in it (set), or the stakes
+## broken and askew (sprung).
+func _show_trap(t: Dictionary) -> void:
+	if is_instance_valid(t.node):
+		(t.node as Node).queue_free()
+	var n := Node3D.new()
+	add_child(n)
+	n.position = t.at
+	var earth := StandardMaterial3D.new()
+	earth.albedo_color = Color(0.24, 0.18, 0.12)
+	var pit := CylinderMesh.new()
+	pit.top_radius = 0.75
+	pit.bottom_radius = 0.75
+	pit.height = 0.04
+	var mi := MeshInstance3D.new()
+	mi.mesh = pit
+	mi.material_override = earth
+	mi.position.y = 0.02
+	n.add_child(mi)
+	var wood := Building.material("dark")
+	for k in 7:
+		var a := k * TAU / 7.0 + 0.3
+		var r := 0.15 + (k % 3) * 0.2
+		var stake := CylinderMesh.new()
+		stake.top_radius = 0.0
+		stake.bottom_radius = 0.04
+		stake.height = 0.45 if t.armed else 0.25
+		stake.radial_segments = 5
+		var s := MeshInstance3D.new()
+		s.mesh = stake
+		s.material_override = wood
+		s.position = Vector3(cos(a) * r, 0.2 if t.armed else 0.08, sin(a) * r)
+		s.rotation = Vector3(0.15 if t.armed else 1.1, a, 0.0) # (sprung: knocked flat)
+		n.add_child(s)
+	t.node = n
+
+
+## An outlaw at `p`: a set pit it's stepped into springs on it (hurt, and slowed for good: it limps).
+func spring_trap(r: Villager) -> void:
+	for t: Dictionary in traps:
+		if not t.armed:
+			continue
+		if Vector2(t.at.x - r.position.x, t.at.z - r.position.z).length() < 0.8:
+			t.armed = false
+			_show_trap(t)
+			r.speed_mul = minf(r.speed_mul, 0.6)
+			r.hurt(30.0)
+			message.emit("Bir haydut kazık tuzağına düştü!", "good")
+			return
 
 
 ## How many trees are marked urgently and not yet felled.

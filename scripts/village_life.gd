@@ -196,6 +196,8 @@ func _dry_bricks(t: float) -> void:
 func _morning() -> void:
 	_births()
 	call("_prison_morning") # (village_defense.gd)
+	call("_armoury_morning")
+	_train_morning()
 	for y in yards:
 		if is_instance_valid(y):
 			y.grow()

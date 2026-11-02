@@ -110,7 +110,7 @@ var role := "" ## an outlaw's: "shooter", "torch", "looter"
 # --- who it is
 ## What the town's work asks of hands and eyes, and the name each goes by.
 const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık", "tarim": "Tarım", "toplama": "Toplayıcılık",
-	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk"}
+	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk", "bilgi": "Okuryazarlık"}
 var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
 var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
@@ -151,6 +151,7 @@ var held_in: Building ## (an outlaw) the jail it's held in
 var held_mode := "" ## (a prisoner) "": kept, "kazan": being won over, "calistir": put to work
 var won := 0 ## (a prisoner being won over) mornings of it
 var sulk_cd := 0.0 ## s before it can go off on its own again
+var _trap_t := 0.0
 var mood: float:
 	get:
 		var m := 50.0
@@ -385,8 +386,12 @@ static func skill_of(b: Building) -> String:
 	match b.kind:
 		"oduncu", "ormanci":
 			return "odun"
-		"tasci", "camur":
+		"tasci", "camur", "maden":
 			return "tas"
+		"okuma":
+			return "bilgi"
+		"komurcu", "demirci":
+			return "zanaat"
 		"sifaci":
 			return "toplama"
 		"tarla":
@@ -1217,6 +1222,11 @@ func die() -> void:
 func _process(dt: float) -> void:
 	if dead:
 		return
+	if team == 1 and not down and not village.traps.is_empty():
+		_trap_t -= dt
+		if _trap_t <= 0.0:
+			_trap_t = 0.15
+			village.spring_trap(self)
 	if team == 0:
 		var g := dt * _rate()
 		_fade_thoughts(g)

@@ -353,6 +353,7 @@ func load_game() -> void:
 
 ## The orders drawn on the ground as a box dragged out with the mouse (not buildings).
 const AREA_ORDERS := {"kes": "KES: bir alan sürükle ya da bir ağaca tıkla: herkes işini bırakıp önce bunları keser · sağ tık / Esc: bitir",
+	"tuzak": "TUZAK: bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları (çukur başı 2 odun; bozulanı yeniden kurar) · sağ tık / Esc: bitir",
 	"kesme": "KESME: bir alan sürükle, içindeki ağaçların kesim işareti kalksın · sağ tık / Esc: bitir",
 	"alan": "ALAN ÇİZ: bu işyerinin işçileri yalnızca sürüklediğin alanda çalışsın · sağ tık / Esc: vazgeç"}
 var _drag_from: Variant = null ## where a box being dragged out began (the ground), or null
@@ -376,6 +377,11 @@ func start_placing(kind: String) -> void:
 		return
 	if kind == "kapi":
 		hud.set_hint("Sur kapısı: bir surun üstüne tıkla (6 odun) · sağ tık / Esc: vazgeç")
+		return
+	var needs := str(BuildingDefs.DEFS[kind].get("needs", ""))
+	if not village.knows(needs):
+		_placing = ""
+		hud.toast("Kilitli: önce okuma odasında %s araştırılmalı" % BuildingDefs.TECHS[needs].name, "bad")
 		return
 	_ghost = Building.new()
 	_ghost.setup(kind)
@@ -855,6 +861,27 @@ func change_workers(d: int) -> void:
 		village.set_wanted(selected, selected.wanted + d)
 
 
+## The selected palisade made stronger, if the stores can cover it.
+func strengthen_wall() -> void:
+	var w := selected_wall
+	if w == null or not is_instance_valid(w) or w.level >= 2:
+		return
+	var cost := w.strengthen_cost()
+	for r: String in cost:
+		if int(village.stock.get(r, 0)) < int(cost[r]):
+			hud.toast("Güçlendirmek için %s gerek" % BuildingDefs.cost_text_of(cost), "info")
+			return
+	for r: String in cost:
+		var left := int(cost[r])
+		while left > 0:
+			var s := village.store_with(r, w.line[0])
+			if s == null:
+				break
+			left -= s.take_goods(r, left)
+	w.strengthen()
+	hud.toast("Sur güçlendirildi: kalın kütükler, taş temel", "good")
+
+
 func demolish_selected() -> void:
 	if selected_wall and is_instance_valid(selected_wall):
 		var up := 0
@@ -929,7 +956,7 @@ func _update_drag() -> void:
 	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
 	if to == null:
 		return
-	var color: Color = {"kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
+	var color: Color = {"tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
 	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
 
 
@@ -942,7 +969,9 @@ func _area_done(to: Variant) -> void:
 		return
 	var rect := _rect(from, to)
 	if rect.size.x < 1.0 or rect.size.y < 1.0:
-		if _placing in ["kes", "kesme"]: # (a click, not a drag: the one tree there)
+		if _placing == "tuzak": # (a click: one pit there)
+			rect = Rect2(Vector2(to.x - 0.3, to.z - 0.3), Vector2(0.6, 0.6))
+		elif _placing in ["kes", "kesme"]: # (a click, not a drag: the one tree there)
 			var i := village.find_prop(to, 4.0, "tree")
 			if i < 0:
 				return
@@ -954,6 +983,9 @@ func _area_done(to: Variant) -> void:
 		"kes": # (marked to be felled first: everyone drops their work for it)
 			var n := village.mark_trees(rect, true, true)
 			hud.toast("%d ağaç kesilecek: herkes işini bırakıp gidiyor" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
+		"tuzak":
+			var n := village.lay_traps(rect)
+			hud.toast("%d kazık tuzağı kuruldu" % n if n > 0 else "Tuzak kurulamadı (odun yok ya da yer uygun değil)", "good" if n > 0 else "info")
 		"kesme":
 			var n := village.mark_trees(rect, false)
 			hud.toast("%d ağacın işareti kalktı" % n, "info")

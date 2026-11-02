@@ -19,7 +19,7 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
 			only = a.trim_prefix("--only=").split(",")
-	for k: String in BuildingDefs.DEFS.keys() + ["kes", "kesme"]:
+	for k: String in BuildingDefs.DEFS.keys() + ["kes", "kesme", "tuzak"]:
 		if only.is_empty() or k in only:
 			_kinds.append(k)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
@@ -130,6 +130,29 @@ func _take_line(kind: String) -> void:
 					leaf.position = Vector3(s * 0.45, 1.0, 0.25)
 					leaf.rotation.y = s * 0.5
 					n.add_child(leaf)
+		"tuzak": # (a pit of turned earth, sharpened stakes in it)
+			var earth := StandardMaterial3D.new()
+			earth.albedo_color = Color(0.3, 0.22, 0.15)
+			var pit := MeshInstance3D.new()
+			var pm := CylinderMesh.new()
+			pm.top_radius = 1.0
+			pm.bottom_radius = 1.0
+			pm.height = 0.05
+			pit.mesh = pm
+			pit.material_override = earth
+			n.add_child(pit)
+			for k in 9:
+				var a := k * TAU / 9.0
+				var st := MeshInstance3D.new()
+				var sm := CylinderMesh.new()
+				sm.top_radius = 0.0
+				sm.bottom_radius = 0.06
+				sm.height = 0.7
+				st.mesh = sm
+				st.material_override = wood
+				st.position = Vector3(cos(a) * (0.2 + (k % 3) * 0.25), 0.3, sin(a) * (0.2 + (k % 3) * 0.25))
+				st.rotation = Vector3(0.15, a, 0)
+				n.add_child(st)
 		"yol":
 			for k in 7:
 				var pl := MeshInstance3D.new()
@@ -163,7 +186,7 @@ func _take(kind: String) -> void:
 	if kind in ["kes", "kesme"]:
 		await _take_order(kind)
 		return
-	if kind in ["sur", "kapi", "yol"]:
+	if kind in ["sur", "kapi", "yol", "tuzak"]:
 		await _take_line(kind)
 		return
 	var b := Building.new()
@@ -174,7 +197,7 @@ func _take(kind: String) -> void:
 	var box := AABB()
 	var first := true
 	for p in b.pieces:
-		if p.tag == "plinth":
+		if p.tag == "plinth" or p.aabb.position.y < -1.0: # (a drawn-up building's plinth: sunk deep)
 			if is_instance_valid(p.mesh):
 				p.mesh.visible = false
 			continue

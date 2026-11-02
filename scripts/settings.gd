@@ -16,7 +16,7 @@ static var fullscreen := true ## (full screen by default; AYARLAR can make it a 
 static var window := Vector2i.ZERO ## the window's size (zero: most of the screen)
 static var ui_scale := 0.0
 static var edge_pan := true
-static var folk_open := true ## the townsfolk strip unfolded
+static var folk_open := false ## the townsfolk strip unfolded (folded at each start)
 static var _loaded := false
 static var _window_done := false ## (the window's sized once a run, and when it's chosen: not again on every new town)
 
@@ -33,7 +33,6 @@ static func load_settings() -> void:
 	window = cf.get_value("s", "window", window)
 	ui_scale = float(cf.get_value("s", "ui_scale", ui_scale))
 	edge_pan = bool(cf.get_value("s", "edge_pan", edge_pan))
-	folk_open = bool(cf.get_value("s", "folk_open", folk_open))
 
 
 static func save_settings() -> void:

@@ -26,6 +26,8 @@ var gates: Array[Gate] = []
 var claims := {} ## stretch index -> who's raising it
 var burning := {} ## stake index -> its flames (GPUParticles3D)
 var inward := 1.0 ## which side of the line the town's on (+1: its left, looking along it)
+var level := 1 ## 2: made stronger (GÜÇLENDİR): thick logs on a stone footing, three times as hard to hack or burn through
+const STRONG := 3.0
 const BURN := 0.55 ## a stake's hp burnt away a second
 const WALK_H := 1.45 ## m the walkway stands off the ground
 
@@ -120,7 +122,7 @@ func _stakes(which: Array[int], ghost: bool) -> MultiMesh:
 			mm.set_instance_color(j, Color(1.0, 0.95, 0.8, 0.22))
 		else:
 			var h := fposmod(sin(k * 12.9898) * 43758.5453, 1.0)
-			var shade := 0.36 + h * 0.14
+			var shade := (0.28 if level >= 2 else 0.36) + h * 0.14
 			mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.55))
 	(_marks if ghost else _solid).material_override = m
 	return mm
@@ -196,7 +198,7 @@ func _burn(dt: float) -> void:
 			burning.erase(k)
 			f.queue_free()
 			continue
-		hp[k] -= BURN * dt
+		hp[k] -= BURN * dt / (STRONG if level >= 2 else 1.0)
 		if hp[k] <= 0.0:
 			burning.erase(k)
 			f.queue_free()
@@ -217,7 +219,8 @@ func stake_xf(at: Vector3, k: int, ghost := false) -> Transform3D:
 	var b := Basis(Vector3.UP, h * TAU).rotated(Vector3.RIGHT, (h - 0.5) * 0.06)
 	if ghost:
 		return Transform3D(b.scaled(Vector3(0.7, 0.25, 0.7)), g + Vector3.UP * 0.25)
-	return Transform3D(b.scaled(Vector3(1.0, 0.9 + h * 0.2, 1.0)), g)
+	var thick := 1.45 if level >= 2 else 1.0 # (a strengthened wall: logs half again as thick)
+	return Transform3D(b.scaled(Vector3(thick, 0.9 + h * 0.2 + (0.12 if level >= 2 else 0.0), thick)), g)
 
 
 func in_gap(k: int) -> bool:
@@ -271,12 +274,66 @@ func done() -> bool:
 
 
 ## Stretch `s` stood up.
+## A stake's hit points: three times as many on a strengthened wall.
+func stake_hp() -> float:
+	return STAKE_HP * (STRONG if level >= 2 else 1.0)
+
+
+## What strengthening it would take: half an odun a standing stake, a stone for every eight.
+func strengthen_cost() -> Dictionary:
+	var up := 0
+	for k in built:
+		if k == 1:
+			up += 1
+	return {"odun": ceili(up / 2.0), "tas": ceili(up / 8.0)}
+
+
+## Strengthened: every standing stake's hit points (and any raised after) three times over, the
+## stones of its footing laid along it.
+func strengthen() -> void:
+	level = 2
+	for k in line.size():
+		if built[k] == 1:
+			hp[k] = maxf(hp[k], 0.0) / STAKE_HP * stake_hp()
+	_footing()
+	redraw()
+
+
+var _foot: MultiMeshInstance3D
+
+
+## A strengthened wall's footing: fieldstones along its foot, a stone to every few stakes.
+func _footing() -> void:
+	if level < 2:
+		return
+	if _foot == null:
+		_foot = MultiMeshInstance3D.new()
+		add_child(_foot)
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.46, 0.45, 0.42)
+		m.roughness = 0.97
+		_foot.material_override = m
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = Building.rock(1)
+	var spots: Array[int] = []
+	for k in range(0, line.size(), 2):
+		if built[k] != 2:
+			spots.append(k)
+	mm.instance_count = spots.size()
+	for j in spots.size():
+		var p := line[spots[j]]
+		p.y = nav.height(p.x, p.z) + 0.05
+		mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, spots[j] * 1.7).scaled(Vector3(0.62, 0.38, 0.55)), p))
+	_foot.multimesh = mm
+
+
 func raise(s: int) -> void:
 	var cells: Array[Vector2i] = []
 	for k in range(s * RAISE, mini((s + 1) * RAISE, line.size())):
 		if built[k] == 0 and not in_gap(k):
 			built[k] = 1
-			hp[k] = STAKE_HP
+			hp[k] = stake_hp()
 			var c := Nav.cell_of(line[k])
 			if not c in cells:
 				cells.append(c)

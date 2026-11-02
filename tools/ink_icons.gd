@@ -10,7 +10,7 @@ extends SceneTree
 const OUT := "res://assets/ui/ink/"
 const INK := preload("res://shaders/ink.gdshader")
 const OUTLINE := preload("res://shaders/ink_outline.gdshader")
-const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot"]
+const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot", "komur", "demir"]
 const TRIAL := [] ## (buildings and heads drawn the same way: "ev", "oduncu", "camur_ocagi", "portre")
 
 var _vp: SubViewport
@@ -200,6 +200,20 @@ func _make(id: String) -> Node3D:
 				leaf.height = 0.42
 				n.add_child(_mesh(leaf, Color(0.38, 0.58, 0.28).lerp(Color(0.5, 0.62, 0.3), k / 7.0), Transform3D(Basis(Vector3.FORWARD, a), Vector3(sin(a) * 0.9, 0.95 - absf(a) * 0.3, 0))))
 			n.add_child(_mesh(_cyl(0.09, 0.12), Color(0.6, 0.45, 0.3), Transform3D(Basis.IDENTITY, Vector3(0, 0.15, 0))))
+		"komur": # (a heap of charcoal lumps)
+			for k in 7:
+				var m := _mesh(Building.rock(k % 4), Color(0.16, 0.15, 0.15))
+				m.position = Vector3([-0.35, 0.3, 0.0, -0.05, 0.2, -0.25, 0.05][k], [0.0, 0.0, 0.0, 0.3, 0.28, 0.25, 0.5][k], [0.1, 0.05, -0.3, -0.05, -0.1, 0.0, -0.05][k])
+				m.scale = Vector3.ONE * 0.45
+				n.add_child(m)
+		"demir": # (iron bars stacked crosswise)
+			var bar := BoxMesh.new()
+			bar.size = Vector3(1.0, 0.16, 0.22)
+			for c in 3:
+				for i in 2:
+					var along := c % 2 == 0
+					var p := Vector3(0, 0.08 + c * 0.16, (i - 0.5) * 0.4) if along else Vector3((i - 0.5) * 0.4, 0.08 + c * 0.16, 0)
+					n.add_child(_mesh(bar, Color(0.42, 0.42, 0.45), Transform3D(Basis(Vector3.UP, 0.0 if along else PI * 0.5), p)))
 		"ev", "oduncu", "camur_ocagi":
 			var b := Building.new()
 			b.setup("camur" if id == "camur_ocagi" else id)

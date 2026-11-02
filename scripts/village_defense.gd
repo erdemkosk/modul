@@ -431,6 +431,31 @@ func imprison(o: Villager, jail: Building) -> void:
 	jail.prisoners.append(o)
 
 
+## The armouries' mornings: cartridges cast where it's been asked (six for two stone and an odun).
+const CAST := {"tas": 2, "odun": 1}
+const CAST_N := 6
+
+
+func _armoury_morning() -> void:
+	for a in armories():
+		if a.casting:
+			var ok := true
+			for r: String in CAST:
+				if int(stock.get(r, 0)) < int(CAST[r]):
+					ok = false
+			if ok:
+				for r: String in CAST:
+					var left := int(CAST[r])
+					while left > 0:
+						var s := store_with(r, a.global_position)
+						if s == null:
+							break
+						left -= s.take_goods(r, left)
+				a.ammo += CAST_N
+			else:
+				message.emit("Silahlıkta fişek dökülemedi: %s gerek" % BuildingDefs.cost_text_of(CAST), "info")
+
+
 ## The jail's mornings: those held fed (or, the town hungry, trying their luck), those being won
 ## over a morning nearer, those put to work a day's stone and wood, the town uneasy at it.
 func _prison_morning() -> void:
@@ -445,7 +470,7 @@ func _prison_morning() -> void:
 				continue
 			if _hungry and randf() < 0.35:
 				message.emit("Aç kalan bir esir, %s, hapisten kaçtı!" % o.display_name.split(" ")[0], "bad")
-				release(o, false)
+				let_go(o, false)
 				continue
 			match o.held_mode:
 				"kazan":
@@ -490,7 +515,7 @@ func recruit(o: Villager) -> void:
 
 ## A prisoner let go (or escaped, `freed` false): out of the jail and off into the woods. Let go,
 ## the outlaws are a day slower to come again.
-func release(o: Villager, freed := true) -> void:
+func let_go(o: Villager, freed := true) -> void:
 	var at := o.position
 	if is_instance_valid(o.held_in):
 		o.held_in.prisoners.erase(o)
