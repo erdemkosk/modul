@@ -76,7 +76,7 @@ func _ready() -> void:
 	for id: String in terrain.meta.props:
 		_models.append(_load_model(id, info.get(id, {})))
 	for ore: String in ORES:
-		var m := _ore_model(ore, ORES[ore].colour)
+		var m := _ore_model(ore, ORES[ore].colour, str(ORES[ore].get("kind", ore)))
 		if not m.is_empty():
 			_models.append(m)
 	_load_props()
@@ -347,23 +347,25 @@ func _add_grove() -> void:
 		put += 1
 
 
-## Seams in the ground: iron (rust-red stone) and coal (black), like rocks but worth digging, in
-## veins of a few together. Seeded, after the grove, so a dug-out one's index stays its own.
+## Seams in the ground: good building stone (pale, a rock to the workshop's quarrymen), iron
+## (rust-red) and coal (black), in veins of a few together, the first of each near enough to find
+## early. Seeded, after the grove, so a dug-out one's index stays its own.
 const ORES := {
+	"stone": {"colour": Color(0.72, 0.7, 0.64), "veins": 6, "kind": "rock"},
 	"iron": {"colour": Color(0.52, 0.27, 0.17), "veins": 6},
 	"coal": {"colour": Color(0.1, 0.1, 0.11), "veins": 5},
 }
 const ORE_R := Vector2(80.0, 420.0) ## how far from where you begin the veins lie
 
 
-## A rock's model in a seam's colour, as kind `ore`.
-func _ore_model(ore: String, colour: Color) -> Dictionary:
+## A rock's model in a seam's colour, as kind `kind`.
+func _ore_model(ore: String, colour: Color, kind: String) -> Dictionary:
 	for rock in _models:
 		if rock.kind != "rock":
 			continue
 		var m: Dictionary = rock.duplicate()
 		m.id = "ore_" + ore
-		m.kind = ore
+		m.kind = kind
 		m.lod0 = _recoloured(rock.lod0, colour)
 		m.lod1 = _recoloured(rock.lod1, colour)
 		return m
@@ -391,7 +393,7 @@ func _add_ores() -> void:
 	for ore: String in ORES:
 		var k := -1
 		for j in _models.size():
-			if _models[j].kind == ore:
+			if _models[j].id == "ore_" + ore:
 				k = j
 		if k < 0:
 			continue
