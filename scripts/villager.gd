@@ -88,6 +88,8 @@ var _lantern: Node3D
 var _tool: Node3D
 var _tool_kind := ""
 var _body: Townsfolk ## the rigged townsman (null: the old jointed figure)
+var look_seed := 0 ## what its body was dressed from (Portraits builds it again from this)
+var look_kind := "man"
 # --- the defence
 var militia := false ## takes a rifle from the armoury when the alarm goes
 var drafted := false ## under the player's orders (skipped by Village._assign)
@@ -226,9 +228,12 @@ func _build_look() -> void:
 	if Townsfolk.available():
 		var rng := RandomNumberGenerator.new()
 		rng.randomize()
+		look_seed = rng.seed if rng.seed != 0 else 1
+		rng.seed = look_seed
+		look_kind = "outlaw" if team == 1 else ("child" if is_child else "man")
 		_body = Townsfolk.new()
 		add_child(_body)
-		_body.build("outlaw" if team == 1 else ("child" if is_child else "man"), rng)
+		_body.build(look_kind, rng)
 		_tunic = _body.coat_material
 		return
 	var parts := _parts("outlaw" if team == 1 else FOLK[randi() % FOLK.size()])

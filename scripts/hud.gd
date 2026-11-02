@@ -60,8 +60,10 @@ var _people_t := 0.0
 var _card_train: HBoxContainer
 var _card_pick: VBoxContainer ## a workplace's card: who's best at its work, to put on or take off it
 var _pick_title: Label
-var _pick_rows: Array = [] ## [HBoxContainer, name Label, knack Label, where Label, Button]
+var _pick_rows: Array = [] ## [HBoxContainer, name Label, knack Label, where Label, Button, face TextureRect]
 var _pick_for: Array = [] ## the villager each row is showing
+var _pick_open: Building ## the workplace whose list is open (ATA); another picked, it shuts
+var _pick_btn: Button
 var _guns: Label
 var _bows: Label
 var _pause: PanelContainer
@@ -75,6 +77,7 @@ func _ready() -> void:
 	_stores_plate()
 	_clock_plate()
 	_build_bar()
+	add_child(Portraits.new())
 	_make_card()
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -292,6 +295,8 @@ func _make_card() -> void:
 	_card_workers.add_child(_small_button("−", func() -> void: game.change_workers(-1)))
 	_card_count = Ui.label(_card_workers, "0/3", 20, Ui.INK, "display")
 	_card_workers.add_child(_small_button("+", func() -> void: game.change_workers(1)))
+	_pick_btn = _add(_card_workers, "ATA ▾", func() -> void: _pick_open = null if _pick_open == game.selected else game.selected,
+		"Kimin bu işe en yatkın olduğunu gör ve ata")
 	_card_pick = VBoxContainer.new()
 	_card_pick.add_theme_constant_override("separation", 3)
 	col.add_child(_card_pick)
@@ -300,6 +305,11 @@ func _make_card() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		_card_pick.add_child(row)
+		var face := TextureRect.new()
+		face.custom_minimum_size = Vector2(40, 40)
+		face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		row.add_child(face)
 		var nm := Ui.label(row, "", 14, Ui.INK)
 		nm.custom_minimum_size = Vector2(140, 0)
 		nm.clip_text = true
@@ -313,7 +323,7 @@ func _make_card() -> void:
 		var bt := _small_button("ATA", func() -> void: _pick(idx))
 		bt.custom_minimum_size = Vector2(96, 26)
 		row.add_child(bt)
-		_pick_rows.append([row, nm, kn, wh, bt])
+		_pick_rows.append([row, nm, kn, wh, bt, face])
 	_card_acts = HBoxContainer.new()
 	_card_acts.add_theme_constant_override("separation", 8)
 	col.add_child(_card_acts)
@@ -351,6 +361,7 @@ func _fill_pick(b: Building) -> void:
 			continue
 		var v: Villager = _pick_for[i]
 		var here := v.workplace == b
+		(row[5] as TextureRect).texture = Portraits.of(v)
 		(row[1] as Label).text = v.display_name
 		(row[1] as Label).add_theme_color_override("font_color", Ui.ACCENT if here else Ui.INK)
 		(row[2] as Label).text = str(int(v.skill(sk)))
@@ -673,7 +684,8 @@ func _update_card() -> void:
 	_card_folk.visible = false
 	_card_acts.visible = true
 	_card_train.visible = b.state == "done" and b.def.role == "armory"
-	_card_pick.visible = b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]
+	_card_pick.visible = _pick_open == b and b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]
+	_pick_btn.text = "ATA ▴" if _card_pick.visible else "ATA ▾"
 	if _card_pick.visible:
 		_fill_pick(b)
 	(_btn.repair as Button).visible = b.state == "ruin" or (b.state == "done" and b.can_repair())
