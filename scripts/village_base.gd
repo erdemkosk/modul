@@ -621,7 +621,7 @@ func spawn_villager(p: Vector3, child := false, fam := "", woman := -1) -> Villa
 	v.family = fam if fam != "" else _new_family()
 	v.display_name = full_name(v, NAMES[(12 + randi() % 12) if v.female else randi() % 12])
 	var rng := RandomNumberGenerator.new()
-	rng.randomize()
+	rng.seed = randi() # (not randomize(): those spawned in the same tick would come out alike)
 	v.roll_skills(rng)
 	v.village = self
 	v.nav = nav

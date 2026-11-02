@@ -55,7 +55,7 @@ static func save(game: Node) -> bool:
 		people.append({"x": p.x, "z": p.z, "hp": vl.hp, "child": vl.is_child, "born": vl.born_day,
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
 			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon,
-			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate()})
+			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate(), "keen": vl.keen.duplicate()})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1))])
@@ -229,6 +229,10 @@ static func restore(game: Node, d: Dictionary) -> void:
 				vl.skills[k] = float(pd.skills[k])
 			for k: String in (pd.prio as Dictionary):
 				vl.prio[k] = int(pd.prio[k])
+			if pd.has("keen"): # (an older save: the keenness rolled at the spawn stays)
+				vl.keen.clear()
+				for k: String in pd.keen:
+					vl.keen.append(k)
 		var w := int(pd.work)
 		if w >= 0 and w < made.size() and made[w].state == "done":
 			v.employ(vl, made[w])

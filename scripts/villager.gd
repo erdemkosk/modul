@@ -112,22 +112,35 @@ const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık",
 	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk"}
 var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
+var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
 var family := "" ## the surname's stem ("Ivanov"): a family shares a house
 var female := false
 
 
-## Two things it's good at, one it's poor at, the rest middling (a child: nothing yet).
+## Two things it's good at, one it's poor at, the rest middling (a child: nothing yet); keen on
+## one or two, whatever it's good at.
 func roll_skills(rng: RandomNumberGenerator) -> void:
 	var keys := SKILLS.keys()
 	for k: String in keys:
 		skills[k] = 0.0 if is_child else rng.randf_range(1.0, 3.5)
 		prio[k] = 1
+	roll_keen(rng)
 	if is_child:
 		return
 	keys.shuffle()
 	skills[keys[0]] = rng.randf_range(5.5, 7.5)
 	skills[keys[1]] = rng.randf_range(4.0, 6.0)
 	skills[keys[keys.size() - 1]] = rng.randf_range(0.0, 0.8)
+
+
+## One kind of work it's keen on, now and then two.
+func roll_keen(rng: RandomNumberGenerator) -> void:
+	var keys := SKILLS.keys()
+	keen.clear()
+	for i in (2 if rng.randf() < 0.4 else 1):
+		var k: String = keys[rng.randi() % keys.size()]
+		if not k in keen:
+			keen.append(k)
 
 
 func skill(k: String) -> float:
@@ -143,7 +156,7 @@ func knack(k: String) -> float:
 func learn(k: String, secs: float) -> void:
 	if k == "" or is_child:
 		return
-	skills[k] = minf(skill(k) + secs * 0.004 * (1.0 - skill(k) / 12.0), 10.0)
+	skills[k] = minf(skill(k) + secs * 0.004 * (2.0 if k in keen else 1.0) * (1.0 - skill(k) / 12.0), 10.0)
 
 
 ## What its work just now draws on.

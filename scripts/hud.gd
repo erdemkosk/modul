@@ -314,7 +314,7 @@ func _make_card() -> void:
 		nm.custom_minimum_size = Vector2(140, 0)
 		nm.clip_text = true
 		var kn := Ui.label(row, "", 16, Ui.INK, "display")
-		kn.custom_minimum_size = Vector2(26, 0)
+		kn.custom_minimum_size = Vector2(44, 0)
 		kn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		var wh := Ui.label(row, "", 12, Ui.DIM)
 		wh.custom_minimum_size = Vector2(110, 0)
@@ -366,7 +366,9 @@ func _fill_pick(b: Building) -> void:
 		(row[5] as TextureRect).texture = Portraits.of(v)
 		(row[1] as Label).text = v.display_name
 		(row[1] as Label).add_theme_color_override("font_color", Ui.ACCENT if here else Ui.INK)
-		(row[2] as Label).text = str(int(v.skill(sk)))
+		(row[2] as Label).text = str(int(v.skill(sk))) + (" ♥" if sk in v.keen else "")
+		(row[2] as Label).tooltip_text = "Bu işe hevesli: iki kat hızlı öğrenir" if sk in v.keen else ""
+		(row[2] as Label).mouse_filter = Control.MOUSE_FILTER_PASS
 		(row[2] as Label).add_theme_color_override("font_color", Ui.GOOD if v.skill(sk) >= 6.0 else (Ui.DIM if v.skill(sk) < 2.0 else Ui.INK))
 		var pr := int(v.prio.get(sk, 1))
 		(row[3] as Label).text = ("burada" if here else (v.workplace.display_name() if is_instance_valid(v.workplace) else "boşta")) + (" · ▲" if pr == 2 else (" · –" if pr == 0 else ""))
@@ -480,7 +482,7 @@ func _make_people() -> void:
 	head.add_child(gap)
 	head.add_child(_small_button("KAPAT", func() -> void: toggle_people()))
 	Ui.rule(col)
-	Ui.label(col, "Sayı: beceri (iş yaptıkça artar). Tıkla: ▲ önce bu işe verilir · normal · – bu işe hiç verilmez.", 14, Ui.DIM)
+	Ui.label(col, "Sayı: beceri (iş yaptıkça artar). ♥ hevesli: iki kat hızlı öğrenir. Tıkla: ▲ önce bu işe verilir · normal · – bu işe hiç verilmez.", 14, Ui.DIM)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(980, 420)
 	col.add_child(scroll)
@@ -538,7 +540,7 @@ func _refresh_people() -> void:
 		for k: String in Villager.SKILLS:
 			var b := _people_grid.get_child(base + 2 + c) as Button
 			var pr := int(v.prio.get(k, 1))
-			b.text = ("%d%s" % [int(v.skill(k)), " ▲" if pr == 2 else ""]) if pr != 0 else "–"
+			b.text = ("%d%s%s" % [int(v.skill(k)), "♥" if k in v.keen else "", " ▲" if pr == 2 else ""]) if pr != 0 else "–"
 			b.add_theme_color_override("font_color", Ui.ACCENT if pr == 2 else (Ui.DIM if pr == 0 else (Ui.GOOD if v.skill(k) >= 6.0 else Ui.INK)))
 			c += 1
 
@@ -846,6 +848,8 @@ func _folk_card(v: Villager) -> void:
 		ks.sort_custom(func(a: String, b: String) -> bool: return v.skill(a) > v.skill(b))
 		lines.append("Usta: %s %d, %s %d · zayıf: %s %d" % [Villager.SKILLS[ks[0]], int(v.skill(ks[0])), Villager.SKILLS[ks[1]], int(v.skill(ks[1])),
 			Villager.SKILLS[ks[ks.size() - 1]], int(v.skill(ks[ks.size() - 1]))])
+	if not v.keen.is_empty():
+		lines.append("Hevesli ♥: %s (iki kat hızlı öğrenir)" % ", ".join(v.keen.map(func(k: String) -> String: return str(Villager.SKILLS[k]))))
 	lines.append("İşyeri: " + (v.workplace.display_name() if is_instance_valid(v.workplace) else "yok (taşır, inşa eder)"))
 	lines.append("Evi: " + (v.home.display_name() if is_instance_valid(v.home) else "yok"))
 	lines.append("Can: %d / %d" % [int(v.hp), int(v.max_hp)])
