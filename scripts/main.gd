@@ -46,6 +46,9 @@ var _menu := false
 var _saved_day := -1
 
 
+var _loading := false ## (the world being made under the loading screen)
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Graphics.apply(get_tree()) # (before the world's made: the trees' detail is read as it's built)
@@ -58,6 +61,10 @@ func _ready() -> void:
 		menu.game = self
 		add_child(menu)
 		return
+	_loading = true # (the world's made a step at a time under the loading screen; nothing runs on it till it's done)
+	var screen := LoadingScreen.new()
+	add_child(screen)
+	await screen.step("Yolculuk başlıyor", 0.02)
 	SaveGame.save_file = "user://village.save"
 	var saved := VillageSave.read() if _load_next else {}
 	_load_next = true
@@ -76,11 +83,14 @@ func _ready() -> void:
 	weather.preset = "clear"
 	add_child(weather)
 	Graphics.apply(get_tree(), weather)
+	await screen.step("Vadi çiziliyor: dağlar, nehir, göl", 0.08)
 	terrain = WorldTerrain.new()
 	add_child(terrain)
+	await screen.step("Orman dikiliyor", 0.4)
 	decor = WorldDecor.new()
 	decor.terrain = terrain
 	add_child(decor)
+	await screen.step("Patikalar açılıyor", 0.75)
 	nav = Nav.new()
 	nav.terrain = terrain
 	add_child(nav)
@@ -102,6 +112,7 @@ func _ready() -> void:
 	seasons.village = village
 	village.seasons = seasons
 	add_child(seasons)
+	await screen.step("Kasaba kuruluyor" if saved.is_empty() else "Kasaba yükleniyor", 0.85)
 	var start := terrain.spawn.origin
 	village.seed = WorldTerrain.seed
 	if saved.is_empty():
@@ -163,16 +174,19 @@ func _ready() -> void:
 	if saved.is_empty():
 		hud.toast("Kasaba kuruldu. Önce bir Kesim kampı ve bir Toplayıcı kur (ÜRETİM). F1: tuşlar", "info")
 	else:
+		await screen.step("Kasabalılar yerine dönüyor", 0.93)
 		VillageSave.restore(self, saved)
 		cam._dist_to = cam.dist
 		hud.toast("Kayıt yüklendi: gün %d" % village.day, "good")
 	_saved_day = village.day
+	_loading = false
+	screen.finish()
 
 
 # --- Input ------------------------------------------------------------------------------------------
 
 func _unhandled_input(e: InputEvent) -> void:
-	if _titled:
+	if _titled or _loading:
 		return
 	if e is InputEventMouseButton and (e as InputEventMouseButton).button_index in [MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_LEFT]:
 		_cam_free = true
@@ -857,7 +871,7 @@ func repair_selected() -> void:
 
 ## The window resized (or made full screen): the 3D drawn at the share the new size asks.
 func _on_resized() -> void:
-	if is_inside_tree():
+	if is_inside_tree() and not _loading:
 		Settings.apply_ui(get_tree())
 		Graphics.apply(get_tree(), weather if is_instance_valid(weather) else null)
 
@@ -968,7 +982,7 @@ func ignite_selected() -> void:
 
 
 func _process(_dt: float) -> void:
-	if _titled:
+	if _titled or _loading:
 		return
 	# The first train in: the view rides with it till it stops at the platform.
 	if village.arriving and is_instance_valid(village.train) and not village.train.is_standing() and not _cam_free:

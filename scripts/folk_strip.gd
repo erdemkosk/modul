@@ -3,13 +3,16 @@ extends PanelContainer
 ## The townsfolk down the left, always on screen: a little card each, their face, first name and a
 ## line of health, and a mark when something's wrong (down and bleeding, hurt, cold in the night,
 ## hungry), the troubled ones first. A click picks them (a second one takes the view to them);
-## Shift adds them to those chosen.
+## Shift adds them to those chosen. Its heading folds it away to just the heading (and back); kept
+## as it was left (Settings.folk_open).
 
 const MAX := 14 ## cards shown at most (the rest in KASABALILAR)
 
 var game: Node
 var _cards: Array = [] ## [Button, face TextureRect, name Label, hp ProgressBar, mark Label] each
 var _shown: Array = [] ## the villager each card is showing
+var _head: Button
+var _cards_box: VBoxContainer
 
 
 func _ready() -> void:
@@ -17,9 +20,32 @@ func _ready() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
 	add_child(col)
-	Ui.label(col, "KASABALILAR", 12, Ui.ACCENT, "head")
+	_head = Button.new()
+	_head.flat = true
+	_head.focus_mode = Control.FOCUS_NONE
+	_head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_head.add_theme_font_override("font", Ui.font("head"))
+	_head.add_theme_font_size_override("font_size", 12)
+	_head.add_theme_color_override("font_color", Ui.ACCENT)
+	_head.add_theme_color_override("font_hover_color", Ui.INK)
+	_head.tooltip_text = "Tıkla: listeyi aç / kapa"
+	_head.pressed.connect(func() -> void:
+		Settings.folk_open = not Settings.folk_open
+		Settings.save_settings()
+		_fold())
+	col.add_child(_head)
+	_cards_box = VBoxContainer.new()
+	_cards_box.add_theme_constant_override("separation", 3)
+	col.add_child(_cards_box)
 	for i in MAX:
-		col.add_child(_card(i))
+		_cards_box.add_child(_card(i))
+	_fold()
+
+
+func _fold() -> void:
+	_cards_box.visible = Settings.folk_open
+	var n: int = game.village.villagers.size() if game and game.village else 0
+	_head.text = ("KASABALILAR ▾" if Settings.folk_open else "KASABALILAR (%d) ▸" % n)
 
 
 func _card(i: int) -> Button:
@@ -96,6 +122,12 @@ func refresh() -> void:
 		var tb: int = _trouble(b)[1]
 		return ta > tb if ta != tb else a.family + a.display_name < b.family + b.display_name)
 	_shown = folk.slice(0, MAX)
+	if not Settings.folk_open:
+		var hurt := folk.filter(func(v: Villager) -> bool: return _trouble(v)[1] >= 2).size()
+		_head.text = "KASABALILAR (%d)%s ▸" % [folk.size(), "  · %d sorunlu" % hurt if hurt > 0 else ""]
+		_head.add_theme_color_override("font_color", Ui.BAD if hurt > 0 else Ui.ACCENT)
+		return
+	_head.add_theme_color_override("font_color", Ui.ACCENT)
 	var chosen: Array = game._chosen()
 	for i in MAX:
 		var parts: Array = _cards[i]
