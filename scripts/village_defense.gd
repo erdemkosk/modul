@@ -39,7 +39,7 @@ func _plan_raid(v: Villager) -> bool:
 			return false
 		if v.plan.is_empty() or str(v.plan[0].t) != "fight":
 			v.abort()
-			v.give([{"t": "fight", "foe": close, "give_up": 30.0}], "Haydutla boğuşuyor")
+			v.give([{"t": "fight", "foe": close, "give_up": 30.0}], "Firariyle boğuşuyor")
 		return true
 	var near := raids.nearest_raider(v.position, 600.0 if not bells().is_empty() else (90.0 if v.has_trait("coward") else 35.0))
 	if near == null:
@@ -334,7 +334,7 @@ func _captures() -> void:
 		if jails.is_empty():
 			if not o.has_meta("said"):
 				o.set_meta("said", true)
-				message.emit("Yaralı bir haydut yerde: bir Hapishane olsaydı yakalanabilirdi.", "info")
+				message.emit("Yaralı bir firari yerde: bir Hapishane olsaydı yakalanabilirdi.", "info")
 			continue
 		var to := _nearest(jails, o.position)
 		var best: Villager = null
@@ -364,7 +364,7 @@ func _captures() -> void:
 				v.set_carry("", 0)
 				if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.state == "done" and to.prisoners.size() < int(to.def.cells):
 					imprison(o, to)
-					message.emit("%s bir haydudu yakalayıp hapse kapattı." % v.display_name, "good")
+					message.emit("%s bir firariyi yakalayıp hapse kapattı." % v.display_name, "good")
 				return true}], "Haydudu hapse taşıyor", o)
 
 
@@ -500,7 +500,7 @@ func let_go(o: Villager, freed := true) -> void:
 	if freed:
 		if raids:
 			raids.next_day += 1
-		message.emit("%s serbest bırakıldı; haydutlar bunu unutmaz, bir süre gelmezler." % o.display_name.split(" ")[0], "info")
+		message.emit("%s serbest bırakıldı; firariler bunu unutmaz, bir süre gelmezler." % o.display_name.split(" ")[0], "info")
 
 
 ## A prisoner put to death: gone, and the outlaws frightened off a while (three days more before
@@ -517,7 +517,7 @@ func execute(o: Villager) -> void:
 	for v in villagers:
 		var k := 0.4 if v.has_trait("brave") else (1.6 if v.has_trait("coward") else 1.0)
 		v.think("execution", "Köyde idam yapıldı", -12.0 * k, day_s * 2.0)
-	message.emit("%s idam edildi. Haydutlar bir süre gelmeye cesaret edemez, ama kasaba sarsıldı." % name, "bad")
+	message.emit("%s idam edildi. Firariler bir süre gelmeye cesaret edemez, ama kasaba sarsıldı." % name, "bad")
 
 
 ## A prisoner put back in a jail on a loaded game: an outlaw again, as it was.

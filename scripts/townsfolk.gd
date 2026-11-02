@@ -1,9 +1,10 @@
 class_name Townsfolk
 extends Node3D
 ## A townsman's body: a skinned, rigged man (assets/townsfolk/townsman.glb, the Mud Run survivor
-## with a MakeHuman head; the army kit hidden) dressed as the 1880s taiga dressed: a wool coat or a
-## canvas smock, canvas trousers, boots, a knit cap, a slouch hat or a fur hat, a beard more often
-## than not. It moves by motion-captured clips (walking, carrying, picking up, eating, talking,
+## with a MakeHuman head; the army kit hidden) dressed as the taiga dressed in the years of the war
+## and after: a wool coat or a canvas smock, or an old army greatcoat (khaki, or the prisoners'
+## blue-grey), canvas trousers, boots, a knit cap, a slouch hat or a fur hat, a beard more often than
+## not. The deserters who come raiding wear what's left of their uniforms. It moves by motion-captured clips (walking, carrying, picking up, eating, talking,
 ## a torch, pushing; Quaternius' UAL, CC0) and, for the work no clip has (felling, the pick, the
 ## sickle, the saw, the hammer...), by Villager._animate's numbers turned onto the bones over the
 ## standing clip (TownsfolkPose).
@@ -21,6 +22,9 @@ const ALWAYS := ["Survivor_Body", "Survivor_Trousers", "Survivor_Boots"]
 
 const WOOL := [Color("#5a4632"), Color("#3e4440"), Color("#6b2e26"), Color("#4a4f3a"), Color("#2f3646"),
 	Color("#7a6a4f"), Color("#5d5a52"), Color("#3b2f28"), Color("#55402e")]
+## Army cloth: Russian khaki and the prisoners' (Austro-Hungarian) blue-grey, worn thin, the
+## greatcoats a good many brought with them out of the war.
+const SURPLUS := [Color("#5b5a3c"), Color("#4e4d34"), Color("#66634a"), Color("#5a6470"), Color("#4c5560")]
 const CANVAS := [Color("#4a3d30"), Color("#3a3a38"), Color("#5b5444"), Color("#2e3340"), Color("#6a5a44")]
 const KNIT := [Color("#7a2f25"), Color("#4a4a46"), Color("#6b5a3e"), Color("#2f3a4a"), Color("#8a7a5c")]
 const FELT := [Color("#4b3a2a"), Color("#3a332c"), Color("#5e4e3a"), Color("#2c2826")]
@@ -161,9 +165,9 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var coat: String = COATS[rng.randi() % COATS.size()]
 	var hat: String = HATS[rng.randi() % HATS.size()]
 	if outlaw:
-		coat = "Survivor_JacketSmock" if rng.randf() < 0.6 else coat
-		mask = rng.randf() < 0.35
-		hat = "" if mask else ("Survivor_Boonie" if rng.randf() < 0.8 else "Survivor_Ushanka")
+		coat = "Survivor_Jacket" if rng.randf() < 0.7 else "Survivor_JacketSmock"
+		mask = rng.randf() < 0.12
+		hat = "" if mask else ("Survivor_Ushanka" if rng.randf() < 0.6 else "Survivor_Headwear")
 	if mask:
 		hat = ""
 		beard = false
@@ -171,7 +175,9 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var gloves := not child and rng.randf() < 0.2
 	var wool: Color = WOOL[rng.randi() % WOOL.size()]
 	if outlaw:
-		wool = Color("#2a2622").lerp(Color("#3a3028"), rng.randf())
+		wool = SURPLUS[rng.randi() % 3].darkened(rng.randf_range(0.05, 0.25)) # (khaki gone dark with the woods)
+	elif not child and rng.randf() < 0.3:
+		wool = SURPLUS[rng.randi() % SURPLUS.size()]
 	var hair: Color = HAIR[rng.randi() % HAIR.size()]
 	var grey := hair.lerp(Color(0.62, 0.6, 0.58), smoothstep(0.55, 1.0, age) * 0.7)
 	var skin: Color = SKINS[rng.randi() % SKINS.size()]
@@ -181,8 +187,8 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var scarf_c: Color = SCARF[rng.randi() % SCARF.size()]
 	if outlaw:
 		scarf_c = [Color("#6e1c16"), Color("#1c1a18"), Color("#3a2e24")][rng.randi() % 3]
-		trousers = trousers.darkened(0.35)
-		hat_c = Color("#1e1a17").lerp(Color("#3a2c20"), rng.randf())
+		trousers = SURPLUS[rng.randi() % 3].darkened(0.3)
+		hat_c = SURPLUS[rng.randi() % 3].darkened(0.2)
 	var colours := {
 		"Jacket": wool, "JacketDark": wool.darkened(0.2), "Patch": wool.darkened(0.06),
 		"Trousers": trousers, "TrouserPatch": trousers.darkened(0.17),

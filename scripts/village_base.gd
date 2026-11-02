@@ -832,6 +832,7 @@ func spawn_villager(p: Vector3, child := false, fam := "", woman := -1, data := 
 			v.keen.append(k)
 		for t: String in data.traits:
 			v.traits.append(t)
+		v.origin = str(data.get("origin", ""))
 		v.look_seed = int(data.look_seed)
 		v.apply_traits()
 	else:
@@ -1238,7 +1239,7 @@ func spring_trap(r: Villager) -> void:
 			_show_trap(t)
 			r.speed_mul = minf(r.speed_mul, 0.6)
 			r.hurt(30.0)
-			message.emit("Bir haydut kazık tuzağına düştü!", "good")
+			message.emit("Bir firari kazık tuzağına düştü!", "good")
 			return
 
 

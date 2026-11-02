@@ -836,7 +836,7 @@ func test_build() -> void:
 func test_raid() -> void:
 	if not raids.active:
 		raids.start(raids.band_size())
-		hud.toast("Haydutlar yola çıktı: %d kişi" % raids.raiders.size(), "bad")
+		hud.toast("Firariler yola çıktı: %d kişi" % raids.raiders.size(), "bad")
 
 
 func release_selected() -> void:

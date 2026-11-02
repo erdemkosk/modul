@@ -135,7 +135,7 @@ func hit(dmg: float) -> void:
 			var tw := _leaves[i].create_tween()
 			tw.tween_property(_leaves[i], "rotation", Vector3(_inward * 0.4 * (1 + i), (-1.0 if i == 0 else 1.0) * -_inward * 1.2, 0.3 * (i * 2 - 1)), 0.5)
 		if wall and wall.village:
-			wall.village.message.emit("Haydutlar sur kapısını kırdı!", "bad")
+			wall.village.message.emit("Firariler sur kapısını kırdı!", "bad")
 
 
 ## Mended (a builder's hands): whole again.

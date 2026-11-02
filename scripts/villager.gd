@@ -114,11 +114,34 @@ const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık",
 var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
 var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
+var origin := "" ## where it came from, before the valley (ORIGINS): a knack it brought with it
 var traits: Array[String] = [] ## who it is (TRAITS): none, one or two, each for better and for worse
 var scars: Array[String] = [] ## what a bad wound left it with for good (SCARS)
 var bleeding := false ## wounded and on its feet, losing blood till it's bound up (a healer)
 var treated := false ## its wound seen to by a healer: mends quicker, seldom leaves a scar
 var wounded_badly := false ## it went down: its mending may leave a scar
+
+## Who they were before they came to the valley, out of the war and the turmoil: each brings a
+## knack with it (`skill`, that much better to begin with).
+const ORIGINS := {
+	"esir": {"name": "Savaş esiri", "desc": "Kamptan çıkmış eski bir esir; esirken demiryolu inşaatında çalıştı.", "skill": "insa", "by": 2.0},
+	"surgun": {"name": "Sürgün", "desc": "Okumuş biri, siyasi sürgün; kitapla, kalemle arası iyi.", "skill": "bilgi", "by": 3.0},
+	"demiryolcu": {"name": "Demiryolcu", "desc": "Hatta, istasyonlarda yük taşıdı.", "skill": "tasima", "by": 2.0},
+	"asker": {"name": "Terhis asker", "desc": "Cepheden döndü; tüfeği iyi tanır.", "skill": "nisan", "by": 2.0},
+	"koylu": {"name": "Köylü", "desc": "Toprağı bilir, kaçarken tarlasını bıraktı.", "skill": "tarim", "by": 2.0},
+	"makinist": {"name": "Makinist", "desc": "Fabrikada, atölyede makine başında çalıştı.", "skill": "zanaat", "by": 2.0},
+	"felcer": {"name": "Felçer", "desc": "Sahra hastanesinde sağlık eriydi; otu, sargıyı bilir.", "skill": "toplama", "by": 2.0},
+	"oduncu": {"name": "Ormancı", "desc": "Taygada büyüdü; baltayı herkesten iyi tutar.", "skill": "odun", "by": 2.0},
+}
+
+
+## Where it came from: one at random, its knack added.
+func roll_origin(rng: RandomNumberGenerator) -> void:
+	var keys := ORIGINS.keys()
+	origin = keys[rng.randi() % keys.size()]
+	var o: Dictionary = ORIGINS[origin]
+	skills[o.skill] = minf(skill(o.skill) + float(o.by), 10.0)
+
 
 ## What a bad wound can leave, for good: like a trait, but only the worse.
 const SCARS := {
@@ -138,7 +161,7 @@ const TRAITS := {
 	"zeki": {"name": "Zeki", "plus": "%50 hızlı öğrenir", "minus": "narin: can −20", "learn": 1.5, "hp": -20},
 	"cevik": {"name": "Çevik", "plus": "%20 hızlı yürür", "minus": "can −10", "walk": 1.2, "hp": -10},
 	"sibir": {"name": "Sibiryalı", "plus": "soğuk evde üşümez", "minus": "%15 daha çok yer", "cold": true, "eat": 1.15},
-	"gozukara": {"name": "Gözü kara", "plus": "nişan +%20, baskında kaçmaz", "minus": "haydut yakına gelirse eli boş da dalar", "aim": 1.2, "brave": true},
+	"gozukara": {"name": "Gözü kara", "plus": "nişan +%20, baskında kaçmaz", "minus": "firari yakına gelirse eli boş da dalar", "aim": 1.2, "brave": true},
 	"korkak": {"name": "Korkak", "plus": "iş hızı +%10 (dikkatli)", "minus": "milis olmaz, baskında hemen saklanır", "work": 1.1, "coward": true},
 	"obur": {"name": "Obur", "plus": "sağlam: can +20", "minus": "%50 daha çok yer", "hp": 20, "eat": 1.5},
 	"kanaatkar": {"name": "Kanaatkâr", "plus": "%40 daha az yer", "minus": "zayıf: can −15", "eat": 0.6, "hp": -15},
@@ -181,6 +204,7 @@ func roll_skills(rng: RandomNumberGenerator) -> void:
 	keys.shuffle()
 	skills[keys[0]] = rng.randf_range(5.5, 7.5)
 	skills[keys[1]] = rng.randf_range(4.0, 6.0)
+	roll_origin(rng)
 	skills[keys[keys.size() - 1]] = rng.randf_range(0.0, 0.8)
 
 
@@ -194,7 +218,7 @@ static func candidate(rng: RandomNumberGenerator, female: bool, family: String) 
 	var fam := family if family != "" else str(base.SURNAMES[rng.randi() % base.SURNAMES.size()])
 	var first: String = base.NAMES[(12 + rng.randi() % 12) if female else rng.randi() % 12]
 	var out := {"name": "%s %s%s" % [first, fam, "a" if female else ""], "family": fam, "female": female,
-		"skills": v.skills.duplicate(), "keen": v.keen.duplicate(), "traits": v.traits.duplicate(), "look_seed": (rng.randi() % 2147483646) + 1}
+		"skills": v.skills.duplicate(), "keen": v.keen.duplicate(), "traits": v.traits.duplicate(), "origin": v.origin, "look_seed": (rng.randi() % 2147483646) + 1}
 	v.free()
 	return out
 
@@ -1183,7 +1207,7 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		if team == 1 and _body and randf() < 0.6: # (an outlaw too: lying there to be taken, if there's a jail)
 			_go_down()
 			bleed = 200.0
-			job = "Yaralı haydut"
+			job = "Yaralı firari"
 			if not self in village.downed_outlaws:
 				village.downed_outlaws.append(self)
 			return

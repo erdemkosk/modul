@@ -59,7 +59,7 @@ func _ready() -> void:
 	col.add_theme_constant_override("separation", 6)
 	root.add_child(col)
 	Ui.label(col, "İNŞA", 120, Ui.LIGHT, "display")
-	var sub := Ui.label(col, "TAYGADA BİR KERESTE KASABASI · 1880'LER", 18, Color(Ui.LIGHT, 0.7), "head")
+	var sub := Ui.label(col, "SAVAŞTAN KAÇANLARIN TAYGADA KURDUĞU KASABA · 1918", 18, Color(Ui.LIGHT, 0.7), "head")
 	sub.add_theme_constant_override("outline_size", 0)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
@@ -243,7 +243,7 @@ func _new_game_plate(root: Control) -> void:
 	_people_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	row.add_child(_button("+", func() -> void: _set_people(_people + 1), 40))
 	_choices(col, "MALZEME", "supplies", ["AZ", "NORMAL", "BOL"], "Trenin getirdiği odun, taş, yiyecek (kişi sayısıyla birlikte artar)")
-	_choices(col, "BASKINLAR", "raids", ["KOLAY", "NORMAL", "ZOR"], "Haydutların ne zaman, ne sıklıkla, kaç kişi geldiği")
+	_choices(col, "BASKINLAR", "raids", ["KOLAY", "NORMAL", "ZOR"], "Firarilerin ne zaman, ne sıklıkla, kaç kişi geldiği")
 	_choices(col, "MEVSİM", "season", ["İLKBAHAR", "YAZ", "SONBAHAR", "KIŞ"], "Trenin geldiği mevsim")
 	# the crew, on the right
 	var cplate := PanelContainer.new()
@@ -351,6 +351,11 @@ func _settler_card(k: int) -> Control:
 		_crew[k] = Villager.candidate(_rng, bool(_crew[k].female), fam) # (the family's name kept: a couple stays one)
 		_show_crew(), 0))
 	Ui.label(col, "%s · %s ailesi" % ["kadın" if c.female else "erkek", c.family], 13, Ui.DIM)
+	var from := str(c.get("origin", ""))
+	if from != "":
+		var o: Dictionary = Villager.ORIGINS[from]
+		Ui.label(col, Ui.upper(str(o.name)), 13, Ui.ACCENT, "head")
+		_wrap(Ui.label(col, "%s (%s +%d)" % [o.desc, Villager.SKILLS[o.skill], int(o.by)], 12, Ui.DIM))
 	var ks: Array = (c.skills as Dictionary).keys()
 	ks.sort_custom(func(a: String, b: String) -> bool: return float(c.skills[a]) > float(c.skills[b]))
 	var best: Array[String] = []

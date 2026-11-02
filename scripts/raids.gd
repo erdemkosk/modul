@@ -218,7 +218,7 @@ func _on_raider_down(r: Villager) -> void:
 			mi.material_override = part[2]
 			node.add_child(mi)
 		loot.append({"at": r.position, "node": node, "ammo": randi_range(3, 12), "claimed": false})
-		message.emit("Bir haydut nişancı düştü: tüfeği yerde kaldı.", "good")
+		message.emit("Bir firari nişancı düştü: tüfeği yerde kaldı.", "good")
 	if r.has_meta("haul"):
 		var store := _main_store()
 		var haul: Dictionary = r.get_meta("haul")
@@ -242,7 +242,7 @@ func _think() -> void:
 		if not r.dead:
 			live += 1
 	if live == 0:
-		_end("Baskın püskürtüldü! Haydutların hepsi düştü.", "good")
+		_end("Baskın püskürtüldü! Firarilerin hepsi düştü.", "good")
 		return
 	var dawn := weather.hour > 5.0 and weather.hour < 12.0
 	var leaving := _burnt >= _size + 2 or village.clock - _started > 300.0 or live * 3 < _size or dawn
@@ -313,7 +313,7 @@ func _think() -> void:
 				return true},
 		], "Yakıyor", b)
 	if leaving and raiders.all(func(r: Villager) -> bool: return r.dead or r.job == "Kaçıyor"):
-		message.emit("Haydutlar ormana çekiliyor.", "info")
+		message.emit("Firariler ormana çekiliyor.", "info")
 		active = false # (the rest only walk off)
 		next_day = village.day + every()
 		_finish_quietly()
@@ -385,7 +385,7 @@ func _shoot_lamp(r: Villager) -> void:
 			b.set_lit(false)
 			if not _lamp_said:
 				_lamp_said = true
-				message.emit("Haydutlar %s vurup söndürdü!" % b.display_name().to_lower(), "bad")
+				message.emit("Firariler %s vurup söndürdü!" % b.display_name().to_lower(), "bad")
 			return
 
 
@@ -445,7 +445,7 @@ func _plunder(store: Building) -> Dictionary:
 			haul[r] = n
 			took.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 	if not took.is_empty():
-		message.emit("Haydutlar depoyu yağmaladı: " + ", ".join(took), "bad")
+		message.emit("Firariler depoyu yağmaladı: " + ", ".join(took), "bad")
 	return haul
 
 

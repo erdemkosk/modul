@@ -6,6 +6,9 @@ extends CanvasLayer
 ## fades away.
 
 const TIPS := [
+	"1918. Savaş bitmedi, ülke karışık. Esirler, sürgünler, kaçaklar: taygada, hattın ucunda yeni bir hayat kuruyorlar.",
+	"Kasabalıların geçmişi bir beceri getirir: savaş esirleri inşaatı, sürgünler okumayı, makinistler zanaatı bilir.",
+	"Firariler cepheden kaçmış askerlerdir: aç, silahlı, ormanda dolaşırlar. Sur, fener ve çan onları uzak tutar.",
 	"Kışa hazırlık: kış saati yiyecek ve yakacağın kaç gün yeteceğini gösterir. Kırmızıysa acele et.",
 	"Bir evi çamurla sıvamak yakacağı %30, kerpiç soba %40 azaltır.",
 	"Çamur ocağı yalnızca ıslak zemine, kıyıya kurulur. Kartından KERPİÇ YAP ile kerpiç döktürebilirsin.",
@@ -17,7 +20,7 @@ const TIPS := [
 	"Yaralı biri yerde kalırsa kan kaybeder: onu bir eve taşıyan olmazsa ölür.",
 	"Evin bahçesi, içinde oturanların işine göre her sabah biraz daha dolar.",
 	"Boş yatak ve depoda yiyecek varsa kasabaya zamanla yeni insanlar gelir.",
-	"Fenerler geceyi aydınlatır; haydutlar en karanlık yerden yaklaşır.",
+	"Fenerler geceyi aydınlatır; firariler en karanlık yerden yaklaşır.",
 	"Meydanın çanı baskında herkesi saklanmaya çağırır; akşam ateşinin başında oturmak morali yükseltir.",
 	"Tahta yollar çamura batmaz ve taşımayı hızlandırır.",
 	"Kartından ODA EKLE ile bir eve iki yatak daha eklenir.",

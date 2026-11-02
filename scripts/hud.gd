@@ -19,7 +19,7 @@ const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], 
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
-	"tuzak": {"name": "Tuzak", "gives": "haydutu yaralar, yavaşlatır", "desc": "Bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları kazılır (çukur başı 2 odun). Üstünden geçen haydut yaralanır, topallar; çukur bozulur. Aynı yere yeniden TUZAK verince bozulanlar kurulur. Köylüler yerini bilir, düşmez."}}
+	"tuzak": {"name": "Tuzak", "gives": "firariyi yaralar, yavaşlatır", "desc": "Bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları kazılır (çukur başı 2 odun). Üstünden geçen firari yaralanır, topallar; çukur bozulur. Aynı yere yeniden TUZAK verince bozulanlar kurulur. Köylüler yerini bilir, düşmez."}}
 const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
 ## is a button on its card, and the build bar, the speed and the menu have their own.
@@ -33,7 +33,7 @@ const KEYS := [
 	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
 	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
-	["Deneme", "F: seçili binayı tutuştur · B: haydut baskını · N: inşaatları bitir"],
+	["Deneme", "F: seçili binayı tutuştur · B: firari baskını · N: inşaatları bitir"],
 ]
 
 var game: Node
@@ -289,7 +289,7 @@ func _clock_plate() -> void:
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
 	_clock = _stat(row, "GÜN · SAAT · HAVA")
-	_raid = _stat(row, "BASKIN", "Haydutların gelmesi beklenen gece")
+	_raid = _stat(row, "BASKIN", "Firarilerin gelmesi beklenen gece")
 	var sp := VBoxContainer.new()
 	sp.add_theme_constant_override("separation", 2)
 	row.add_child(sp)
@@ -348,7 +348,7 @@ func _test_plate() -> void:
 	var day := _small_button("GÜNDÜZ", func() -> void: game.weather.hour = 10.0)
 	row2.add_child(day)
 	var raid := _small_button("BASKIN", func() -> void: game.test_raid())
-	raid.tooltip_text = "Hemen bir haydut baskını (B)"
+	raid.tooltip_text = "Hemen bir firari baskını (B)"
 	row2.add_child(raid)
 	var build := _small_button("İNŞAATI BİTİR", func() -> void: game.test_build()) # (a test, to come out later)
 	build.tooltip_text = "Yapımdaki ve onarılan her şeyi hemen bitir (N)"
@@ -1373,7 +1373,7 @@ func _fill_folk_box(v: Villager) -> void:
 	elif v.hp < v.max_hp * 0.999:
 		state = "yaralı"
 	var age := "çocuk, %d günlük" % (game.village.day - v.born_day) if v.is_child else ("kadın" if v.female else "erkek")
-	_folk_state.text = "%s · %s · can %d/%d" % [age, state, int(v.hp), int(v.max_hp)]
+	_folk_state.text = "%s%s · %s · can %d/%d" % [age, (" · " + str(Villager.ORIGINS[v.origin].name).to_lower()) if v.origin != "" else "", state, int(v.hp), int(v.max_hp)]
 	if _folk_traits_of != v or _folk_traits.get_child_count() != v.traits.size() + v.scars.size():
 		_folk_traits_of = v
 		for ch in _folk_traits.get_children():
@@ -1549,10 +1549,10 @@ func _fill_jail(b: Building) -> void:
 				bt.set_meta("mode", mode)
 				btns.add_child(bt)
 			var free := _small_button("BIRAK", func() -> void: game.village.let_go(o))
-			free.tooltip_text = "Serbest bırak: gider, haydutlar bir gün daha geç gelir"
+			free.tooltip_text = "Serbest bırak: gider, firariler bir gün daha geç gelir"
 			btns.add_child(free)
 			var kill := _small_button("İDAM", func() -> void: game.village.execute(o))
-			kill.tooltip_text = "İdam et: haydutlar üç gün daha geç gelir, ama bütün kasabanın morali ağır düşer"
+			kill.tooltip_text = "İdam et: firariler üç gün daha geç gelir, ama bütün kasabanın morali ağır düşer"
 			kill.add_theme_color_override("font_color", Ui.BAD)
 			btns.add_child(kill)
 	for n in _card_jail.find_children("*", "", true, false):
