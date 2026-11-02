@@ -26,6 +26,11 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
              block, rough blocks heaped, dressed ones stacked, rubble
   toplayici  the gatherers' hut: drying racks hung with berries, a sorting table, baskets
   ormanci    the forester's nursery: raised beds of seedlings, a water barrel, a lean-to
+  ev_oda     a house's back room (the game adds it to an "ev" when it's made bigger): log walls on
+             three sides against the house's back wall, a shuttered window, a shingled lean-to
+             roof running up under the house's eaves, boarded gable triangles
+  ev_soba    a house's brick stove flue (added with the stove): whitewashed brick courses up
+             through the roof, a corbelled head and a brick cap
   camur      the mud pit: a plank-framed pit of wet mud with a spade in it, a moulding table with
              brick moulds and fresh bricks, a thatched drying shelter over a straw-strewn floor,
              a heap of straw, a water barrel, puddles on the trodden mud
@@ -847,6 +852,125 @@ def _arms_extra(k, w, d):
 
 def silahlik():
     cabin("silahlik", 5.0, 4.0, 8, 1.6, 1.0, windows=[("left", 0.0)], porch_on=False, extra=_arms_extra)
+
+
+# The house these are made for: ev() below (6 x 5, 8 courses, a 1.9 m rise; its trim and shutters
+# came out light blue and white).
+EV_W, EV_D = 6.0, 5.0
+EV_PAINT = PAINTS[4]
+ODA_W, ODA_D = 3.3, 3.2 # (scripts/building_defs.gd ANNEX, give or take the logs' ends)
+ODA_X = -EV_W * 0.5 + ODA_W * 0.5 # its middle: flush with the house's left wall
+ODA_Y = EV_D * 0.5 + ODA_D * 0.5 # behind the house's back wall
+WHITEWASH = (0.9, 0.88, 0.82)
+
+
+def _shift(k, first, by):
+    """The objects added to `k` since `first` moved by `by` (built round the origin, put in place)."""
+    for ob in k.objects[first:]:
+        ob.location = Vector(ob.location) + Vector(by)
+
+
+def ev_oda():
+    """A house's back room, built round its own middle and then set behind the house: log walls on
+    the left, right and back (the house's back wall is its fourth), a shuttered window at the back,
+    a shingled lean-to roof from under the house's eaves down past its back wall, the triangles
+    between the side walls and the roof boarded."""
+    k = Kit("ev_oda")
+    k.paint = EV_PAINT
+    w, d = ODA_W, ODA_D
+    plinth(k, w, d)
+    floor(k, w, d)
+    # (the front's the house's wall: its logs cut away whole)
+    top = log_walls(k, w, d, 6, [("front", 0.0, w + 2.0, -1.0, 10.0), ("back", 0.2, 0.95, 0.85, 1.85)])
+    window(k, "back", 0.2, w, d)
+    # the roof: boards, then shingles in staggered courses, from the house's wall down past the back
+    y0, z0 = -d * 0.5, 2.98
+    y1, z1 = d * 0.5 + 0.4, 2.62
+    run = Vector((0, y1 - y0, z1 - z0))
+    length = run.length
+    down = run.normalized()
+    across = Vector((1, 0, 0))
+    normal = across.cross(down).normalized()
+    if normal.z < 0:
+        normal = -normal
+    start = Vector((0, y0, z0))
+    over = 0.35
+    p = k.piece("shingle")
+    p.obox(start + down * length * 0.5, across, down, normal, (w + over * 2, length, 0.05), jit(PLANK, 0.05, k.rng))
+    course = 0.22
+    rows = int(round(length / course))
+    for r in range(rows):
+        vv = (r + 0.5) * length / rows
+        x = -w * 0.5 - over + (0.15 if r % 2 else 0.0)
+        while x < w * 0.5 + over - 0.05:
+            sw = min(k.rng.uniform(0.22, 0.34), w * 0.5 + over - x)
+            sc = jit(SHINGLE, 0.12, k.rng)
+            if k.rng.random() < 0.12:
+                sc = (sc[0] * 0.7, sc[1] * 0.68, sc[2] * 0.66)
+            if vv > length * 0.6 and k.rng.random() < 0.25:
+                m = jit(MOSS, 0.15, k.rng)
+                sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+            tilt = Matrix.Rotation(-0.08, 3, across)
+            p.obox(start + down * vv + normal * 0.057 + across * (x + sw * 0.5), across, tilt @ down, tilt @ normal, (sw - 0.015, course * 1.6, 0.025), sc)
+            x += sw
+    k.add(p)
+    p = k.piece("dark")
+    p.obox(start + down * length - normal * 0.05, across, normal, down, (w + over * 2 + 0.05, 0.22, 0.05), jit(DARK, 0.05, k.rng))
+    k.add(p)
+    # the gable triangles: upright boards from the side walls' top up to the roof
+    for sx in (-1, 1):
+        x = sx * (w * 0.5 - 0.15)
+        p = k.piece("plank", "gable")
+        n = 9
+        for i in range(n):
+            y = -d * 0.5 + (i + 0.5) * d / n
+            roof_z = z0 + (y - y0) / (y1 - y0) * (z1 - z0) - 0.03
+            h = roof_z - top
+            if h > 0.04:
+                p.box((x, y, top + h * 0.5), (0.05, d / n - 0.015, h), jit(PLANK, 0.08, k.rng))
+        k.add(p)
+    _shift(k, 0, (ODA_X, ODA_Y, 0.0))
+    k.finish()
+
+
+def ev_soba():
+    """The brick stove's flue: up through the house's roof left of the ridge, whitewashed brick in
+    courses (the bricks showing under the wash), a corbelled head and a brick cap over the smoke."""
+    k = Kit("ev_soba")
+    x, y = -1.4, -0.35
+    base, head = 4.0, 5.9
+    size = 0.64
+    z = base
+    c = 0
+    while z < head:
+        p = k.piece("plaster", "flue")
+        p.box((x, y, z + 0.06), (size - 0.02, size - 0.02, 0.12), jit(WHITEWASH, 0.03, k.rng))
+        # (the bricks of this course, a little proud of the wash, laid on alternate sides)
+        for side in range(4):
+            along = Vector((1, 0, 0)) if side < 2 else Vector((0, 1, 0))
+            out = Vector((0, 1 if side == 0 else -1, 0)) if side < 2 else Vector((1 if side == 2 else -1, 0, 0))
+            off = 0.08 if (c + side) % 2 else -0.08
+            for b in (-1, 0, 1):
+                ctr = Vector((x, y, z + 0.06)) + out * (size * 0.5 - 0.005) + along * (b * 0.22 + off)
+                if abs(b * 0.22 + off) > size * 0.5 - 0.1:
+                    continue
+                col = jit(WHITEWASH, 0.05, k.rng)
+                if k.rng.random() < 0.18: # (where the wash has flaked: the brick under it)
+                    col = jit(CLAY, 0.08, k.rng)
+                p.obox(ctr, along, out, (0, 0, 1), (0.2, 0.012, 0.1), col)
+        k.add(p)
+        z += 0.12
+        c += 1
+    # the head: two courses stepped out, then the cap on four brick legs
+    p = k.piece("plaster", "chimneytop")
+    p.box((x, y, head + 0.06), (size + 0.12, size + 0.12, 0.12), jit(WHITEWASH, 0.03, k.rng))
+    p.box((x, y, head + 0.18), (size + 0.2, size + 0.2, 0.12), jit(WHITEWASH, 0.03, k.rng))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.box((x + sx * 0.22, y + sy * 0.22, head + 0.36), (0.14, 0.14, 0.24), jit(CLAY, 0.06, k.rng))
+    p.box((x, y, head + 0.52), (size + 0.1, size + 0.1, 0.08), jit((0.42, 0.4, 0.37), 0.05, k.rng))
+    k.add(p)
+    k.finish()
 
 
 def ev():
@@ -1879,6 +2003,7 @@ BUILDERS = {
     "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik, "istasyon": istasyon,
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci, "camur": camur_ocagi,
+    "ev_oda": ev_oda, "ev_soba": ev_soba,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
     "yayci": lambda: shed("yayci", 5.0, 4.0, _bowyer_props),
     "insaatci": lambda: shed("insaatci", 6.0, 5.0, _builders_props),

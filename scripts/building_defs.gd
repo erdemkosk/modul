@@ -110,14 +110,17 @@ const UPGRADES := {
 	"siva": {"name": "SIVA", "cost": {"camur": 8}, "time": 16.0, "tip": "Kütükleri çamurla sıvar: %30 daha az yakacak"},
 	"soba": {"name": "SOBA", "cost": {"kerpic": 12, "tas": 4}, "time": 20.0, "tip": "Kerpiç soba: %40 daha az yakacak, gece boyu sıcak"},
 }
-const ANNEX := Rect2(-2.6, -5.85, 4.0, 3.2) ## the back room's ground, in the house's space (x, z)
+const ANNEX := Rect2(-3.3, -6.1, 3.9, 3.6) ## the back room's ground, roof and logs' ends, in the house's space (x, z)
 const UPGRADE_BEDS := 6
 const SIVA_FUEL := 0.7 ## what a plastered house burns, of what it did
 const SOBA_FUEL := 0.6
 
 
-## The brick stove's flue: up through the roof, whitewashed, a stone cap on it.
+## The brick stove's flue: up through the roof, whitewashed, a cap on it (the model, ev_soba; plain
+## boxes if it hasn't been built).
 static func stove() -> Array[Dictionary]:
+	if ResourceLoader.exists(MODEL % "ev_soba"):
+		return _from_model("ev_soba").duplicate()
 	var out: Array[Dictionary] = []
 	_p(out, "box", Vector3(0.75, 3.2, 0.75), Vector3(-1.4, 4.7, 0.35), "plaster")
 	_p(out, "box", Vector3(0.9, 0.16, 0.9), Vector3(-1.4, 6.38, 0.35), "stone")
@@ -125,8 +128,11 @@ static func stove() -> Array[Dictionary]:
 
 
 ## The back room: a stone plinth, a plank floor, log walls on three sides (the fourth is the
-## house's), a shuttered window at the back and a lean-to roof running up under the house's eaves.
+## house's), a shuttered window at the back and a lean-to roof running up under the house's eaves
+## (the model, ev_oda; plain boxes if it hasn't been built).
 static func annex() -> Array[Dictionary]:
+	if ResourceLoader.exists(MODEL % "ev_oda"):
+		return _from_model("ev_oda").duplicate()
 	var out: Array[Dictionary] = []
 	var c := ANNEX.get_center()
 	var w := ANNEX.size.x
