@@ -508,7 +508,8 @@ func _plan_work(v: Villager) -> void:
 		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "demir": "Yakında demir damarı yok (pas renkli kayalar)", "komur": "Yakında kömür damarı yok (kara kayalar)", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
 		_plan_idle(v)
 		return
-	b.idle_note = ""
+	if b.room() > 6: # (a note that the pile's full stays while it's near full)
+		b.idle_note = ""
 	reserved[i] = v
 	var info := props.prop_info(i)
 	var o: Vector3 = info.origin

@@ -51,6 +51,7 @@ var _goods_head: Button
 var _folds: Array = [] ## [header, body, seconds since the mouse left both]
 var _history: Array = [] ## [clock, stock] every few seconds, the last minute's
 var _pop: Label
+var _purse: Label
 var _free: Label
 var _clock: Label
 var _raid: Label
@@ -271,6 +272,7 @@ func _stores_plate() -> void:
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
+	_purse = _stat(row, "KASA", "Rubleler: trene mal satınca gelir, istasyondan sipariş verince gider")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 
 
@@ -428,7 +430,7 @@ func _build_button(kind: String, k: int) -> Button:
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var path := "res://assets/ui/icons/%s.png" % kind
+	var path := "res://assets/ui/icons/%s.png" % ("atolye" if kind == "oduncu" else kind) # (the workshop: its four trades)
 	if ResourceLoader.exists(path):
 		icon.texture = load(path)
 	col.add_child(icon)
@@ -971,6 +973,7 @@ func _process(dt: float) -> void:
 	var stock := v.stock
 	_refresh_goods(v, stock)
 	_pop.text = "%d / %d" % [v.villagers.size(), v.beds()]
+	_purse.text = "%d r" % v.rubles
 	_free.text = str(v.free_count())
 	var guns := 0
 	var shots := 0
@@ -1406,7 +1409,7 @@ func _fill_extra(b: Building) -> void:
 	if kind == "":
 		_extra_sig = ""
 		return
-	var sig := "%s|%s|%s|%s" % [b.get_instance_id(), v.known, v.studying, v.orders]
+	var sig := "%s|%s|%s|%s|%s|%d" % [b.get_instance_id(), v.known, v.studying, v.orders, v.selling, v.rubles]
 	if sig != _extra_sig:
 		_extra_sig = sig
 		for ch in _card_extra.get_children():
@@ -1423,13 +1426,27 @@ func _fill_extra(b: Building) -> void:
 					var row := HBoxContainer.new()
 					row.add_theme_constant_override("separation", 8)
 					_card_extra.add_child(row)
-					var l := Ui.label(row, "%s  ←  %s" % [o.name, BuildingDefs.cost_text_of(o.pay)], 13, Ui.INK)
+					var l := Ui.label(row, "%s  ·  %d ruble" % [o.name, int(o.price)], 13, Ui.INK if v.rubles >= int(o.price) else Ui.DIM)
 					l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 					var bt := _small_button("ISMARLA", func() -> void:
 						var why := v.order(what)
 						toast(why if why != "" else "%s ısmarlandı: bir sonraki trenle gelecek" % o.name, "bad" if why != "" else "good"))
 					bt.disabled = v.orders.size() >= Village.ORDERS_MAX
 					row.add_child(bt)
+				Ui.label(_card_extra, "TRENE SAT  (her maldan %d'u kalır, trene en çok %d yük)" % [Village.KEEP, Village.LOAD], 12, Ui.ACCENT, "head")
+				var sell := HBoxContainer.new()
+				sell.add_theme_constant_override("separation", 4)
+				_card_extra.add_child(sell)
+				for r: String in Village.PRICES:
+					var on := r in v.selling
+					var sb := _small_button("%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])], func() -> void:
+						if r in v.selling:
+							v.selling.erase(r)
+						else:
+							v.selling.append(r))
+					sb.tooltip_text = "%s: tane başı %d ruble. İşaretliyse tren gelince fazlası satılır." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r])]
+					sb.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
+					sell.add_child(sb)
 		else:
 			Ui.label(_card_extra, "ARAŞTIRMA", 12, Ui.ACCENT, "head")
 			for t: String in BuildingDefs.TECHS:
@@ -1458,8 +1475,8 @@ func _fill_extra(b: Building) -> void:
 			_extra_status.text = ""
 		else:
 			var due := v.next_train - v.day
-			_extra_status.text = "%s%s" % ["Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
-				"  ·  Ismarlanan: " + ", ".join(v.orders.map(func(o: String) -> String: return str(Village.OFFERS[o].name))) if not v.orders.is_empty() else ""]
+			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d / %d: dolunca trenle yeni bir aile gelir (boş yatak gerek)" % ["Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
+				"  ·  Ismarlanan: " + ", ".join(v.orders.map(func(o: String) -> String: return str(Village.OFFERS[o].name))) if not v.orders.is_empty() else "", v.rubles, v.repute, Village.REPUTE_FAMILY]
 	else:
 		if v.studying == "":
 			_extra_status.text = "Bir konu seç: okuyanlar onu araştırır." if v.known.size() < BuildingDefs.TECHS.size() else "Her şey araştırıldı."

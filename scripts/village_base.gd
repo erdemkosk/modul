@@ -99,6 +99,9 @@ var rail := PackedVector3Array() ## the railway, from the valley's edge to the s
 var train: Train
 var next_train := 4 ## the day the next train's due up the line (it may be late)
 var orders: Array[String] = [] ## what's been sent for on it (OFFERS), paid for already
+var rubles := 40 ## the town's purse: what the train paid, spent on what's sent for
+var repute := 0 ## how well the town's thought of up the line (families come at REPUTE_FAMILY)
+var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var known: Array[String] = [] ## what's been found out in a reading room (BuildingDefs.TECHS)
 var studying := "" ## what the reading rooms are on just now ("" nothing chosen)
 var study_pts := 0.0 ## how far into it
@@ -197,14 +200,22 @@ func start(at: Vector3) -> void:
 
 # --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
 
-## What can be sent for: what comes, and what it's paid with.
+## What can be sent for, and what it costs (rubles).
 const OFFERS := {
-	"tufek": {"name": "Tüfek ve 10 fişek", "pay": {"odun": 30, "tas": 10}},
-	"fisek": {"name": "20 fişek", "pay": {"odun": 14, "tas": 6}},
-	"ot": {"name": "10 şifalı ot", "pay": {"odun": 12, "yiyecek": 8}},
-	"erzak": {"name": "60 yiyecek", "pay": {"odun": 25, "tas": 10}},
+	"tufek": {"name": "Tüfek ve 10 fişek", "price": 60},
+	"fisek": {"name": "20 fişek", "price": 25},
+	"ot": {"name": "10 şifalı ot", "price": 20},
+	"erzak": {"name": "60 yiyecek", "price": 40},
 }
 const ORDERS_MAX := 3 ## on one train
+
+## What the train buys, a ruble or a few each; of what's marked to be sold, KEEP of each stays
+## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line, and
+## at REPUTE_FAMILY a family takes the train out to the town (if there are beds for them).
+const PRICES := {"odun": 1, "tas": 1, "kerpic": 2, "komur": 3, "demir": 4}
+const KEEP := 30
+const LOAD := 150
+const REPUTE_FAMILY := 100
 
 
 # --- What's found out: a reading room works at one thing at a time -------------------------------
@@ -270,9 +281,10 @@ func order(what: String) -> String:
 		return "Önce telgraf araştırılmalı (okuma odası)"
 	if orders.size() >= ORDERS_MAX:
 		return "Bir trene en fazla %d sipariş" % ORDERS_MAX
-	var price: Dictionary = OFFERS[what].pay
-	if not pay(price, depot().global_position):
-		return "Karşılığında %s gerek" % BuildingDefs.cost_text_of(price)
+	var price := int(OFFERS[what].price)
+	if rubles < price:
+		return "Kasada %d ruble gerek (%d var): trene mal sat" % [price, rubles]
+	rubles -= price
 	orders.append(what)
 	return ""
 
@@ -324,11 +336,49 @@ func _train_in(st: Building) -> void:
 	if not got.is_empty():
 		message.emit("Trenden indi: %s." % ", ".join(got), "good")
 	orders.clear()
+	_sell(st)
+	_family_off(st)
 	next_train = day + 3 + randi() % 4
 	var tr := train
 	get_tree().create_timer(10.0, false).timeout.connect(func() -> void:
 		if is_instance_valid(tr):
 			tr.leave())
+
+
+## What's marked to be sold put on the train (what's over KEEP of each, LOAD at most), paid for.
+func _sell(st: Building) -> void:
+	var room := LOAD
+	var earned := 0
+	var sold: Array[String] = []
+	var have := stock
+	for r in selling:
+		var n := mini(int(have.get(r, 0)) - KEEP, room)
+		if n <= 0 or not pay({r: n}, st.global_position):
+			continue
+		room -= n
+		earned += n * int(PRICES[r])
+		sold.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
+	if earned > 0:
+		rubles += earned
+		repute += earned
+		message.emit("Trene yüklendi: %s. Kasaya %d ruble girdi." % [", ".join(sold), earned], "good")
+
+
+## The town well enough thought of: a family off the train (a couple), if there are beds for them.
+func _family_off(st: Building) -> void:
+	if repute < REPUTE_FAMILY:
+		return
+	var free := beds() - villagers.filter(func(o: Villager) -> bool: return not o.dead).size()
+	if free < 2:
+		message.emit("Kasabanın adı yayıldı: bir aile gelmek istiyor ama boş yatak yok.", "info")
+		return
+	repute -= REPUTE_FAMILY
+	var at := train.door(Vector3.ZERO) if is_instance_valid(train) else st.door()
+	at.y = ground_at(at)
+	var first := spawn_villager(at, false, "", 0)
+	var second := spawn_villager(at + Vector3(0.6, 0, 0.4), false, first.family, 1)
+	_house_people()
+	message.emit("Trenden yeni bir aile indi: %s ve %s. Kasabanın adı yayılıyor." % [first.display_name, second.display_name], "good")
 
 
 ## The old start, with no railway: a store and a house put down at once.
