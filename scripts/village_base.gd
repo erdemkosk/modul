@@ -1035,6 +1035,7 @@ func _on_finished(b: Building) -> void:
 		_house_people()
 		if not _yard_of(b):
 			add_yard(b)
+	add_litter(b)
 	if b.def.role == "light" and not b.repaired:
 		b.add_goods("odun", 2) # (it's put up with its first kindling)
 
@@ -1044,6 +1045,17 @@ func _on_ruined(b: Building) -> void:
 	if b.def.role == "store" and b.goods_total() > 0:
 		message.emit("Ambardakiler enkazın altında kaldı; onarılınca geri gelir.", "bad")
 	_let_go(b)
+
+
+## The things lying about round a finished building (TownLitter), once.
+func add_litter(b: Building) -> void:
+	if b.has_meta("litter") or not TownLitter.KINDS.has(str(b.def.role)):
+		return
+	var t := TownLitter.new()
+	t.building = b
+	t.village = self
+	b.set_meta("litter", t)
+	add_child(t)
 
 
 ## A house's yard laid out round it (what's in it from `Building.yard_has`).

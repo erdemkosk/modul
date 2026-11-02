@@ -285,6 +285,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 	for b in made:
 		if b.def.role == "house" and b.state == "done":
 			v.add_yard(b)
+	for b in made:
+		if b.state == "done":
+			v.add_litter(b)
 	var raw: PackedByteArray = (d.wear as PackedByteArray).decompress(int(d.wear_size), FileAccess.COMPRESSION_ZSTD)
 	nav.restore(raw.to_float32_array(), d.scorch)
 	var c: Array = d.cam

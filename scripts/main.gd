@@ -444,10 +444,20 @@ func _update_ghost() -> void:
 	_ghost_reason = reason
 
 
-## Which way a building at `p` would face by itself: its door toward the middle of the town (the
-## square, else a store, a well), and lined up square with its nearest neighbour when that's near
-## enough the same.
+## Which way a building at `p` would face by itself: beside a road, its door square onto the road
+## (a street of houses); else its door toward the middle of the town (the square, else a store, a
+## well), lined up square with its nearest neighbour when that's near enough the same.
 func _auto_yaw(kind: String, p: Vector3) -> float:
+	var depth: float = (BuildingDefs.DEFS[kind].size as Vector2).y
+	var road := village.road_snap(p, depth * 0.5 + 9.0)
+	if not road.is_empty() and not BuildingDefs.DEFS[kind].role in ["farm", "light"]:
+		var to: Vector3 = (road.at as Vector3) - p
+		to.y = 0.0
+		var dir: Vector3 = road.dir
+		var side := Vector3(-dir.z, 0.0, dir.x) # (square to the road, the side it stands on)
+		if side.dot(to) < 0.0:
+			side = -side
+		return atan2(side.x, side.z)
 	var target: Building = null
 	var best := 90.0
 	for b in village.buildings:
