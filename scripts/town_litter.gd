@@ -2,17 +2,21 @@ class_name TownLitter
 extends Node3D
 ## The things lying about a settlement's trodden ground, round a building but outside its fence: a
 ## stack of split wood, a barrel or two, crates, a chopping block with chips round it, a handcart, a
-## hay bale, boards stacked on bearers. A few to each building, put where there's room (not in a
+## hay bale, boards stacked on bearers; and the war's leavings: sandbags piled into a breastwork,
+## ammunition crates, oil drums, kerosene tins. A few to each building, put where there's room (not in a
 ## yard, a building or the water), each laid out from the building's place so it's the same on a
 ## loaded game; baked into a few meshes (MeshBake).
 
 const KINDS := {
 	"house": ["wood", "block", "barrel", "boards", "cart"],
-	"store": ["crates", "barrel", "barrel", "sacks", "cart", "boards"],
+	"store": ["crates", "barrel", "drum", "sacks", "cart", "tins", "drum"],
 	"square": ["barrel", "crates", "boards"],
 	"well": ["barrel", "trough"],
 	"work": ["wood", "boards", "block", "cart"],
-	"carts": ["cart", "cart", "hay"],
+	"carts": ["cart", "cart", "hay", "drum"],
+	"barracks": ["sandbags", "sandbags", "ammo", "drum", "ammo"],
+	"tower": ["sandbags", "ammo"],
+	"smith": ["drum", "tins", "crates"],
 }
 
 var building: Building
@@ -150,6 +154,51 @@ func _make(kind: String, p: Vector3, yaw: float) -> void:
 			hay.albedo_color = Color(0.72, 0.62, 0.34)
 			_box(Vector3(1.1, 0.5, 0.6), hay, Transform3D(b, p + Vector3.UP * 0.25))
 			_box(Vector3(1.1, 0.5, 0.6), hay, Transform3D(b * Basis(Vector3.UP, 0.15), p + b * Vector3(0.2, 0.75, 0)))
+		"sandbags": # (a breastwork: courses of filled sacks, laid in a shallow arc)
+			var sack := StandardMaterial3D.new()
+			sack.albedo_color = Color(0.5, 0.45, 0.33)
+			sack.roughness = 1.0
+			for row in 3:
+				for i in 5 - row:
+					var a := (i - (4 - row) * 0.5) * 0.24
+					var at := p + b * Vector3(sin(a) * 2.2, 0.13 + row * 0.24, cos(a) * 2.2 - 2.2)
+					var sm := SphereMesh.new()
+					sm.radius = 0.32
+					sm.height = 0.26
+					var mi := MeshInstance3D.new()
+					mi.mesh = sm
+					mi.material_override = sack
+					add_child(mi)
+					mi.global_transform = Transform3D((b * Basis(Vector3.UP, a)).scaled(Vector3(1.4, 1, 0.9)), at)
+		"ammo": # (stencilled ammunition boxes, olive, stacked)
+			var olive := StandardMaterial3D.new()
+			olive.albedo_color = Color(0.3, 0.32, 0.2)
+			for k in 4:
+				var off := Vector3((k % 2) * 0.62 - 0.31, 0.16 + (k / 2) * 0.32, 0)
+				var bb := b * Basis(Vector3.UP, _rng.randf_range(-0.1, 0.1))
+				_box(Vector3(0.6, 0.3, 0.36), olive, Transform3D(bb, p + b * off))
+				_box(Vector3(0.62, 0.04, 0.38), dark, Transform3D(bb, p + b * off + Vector3.UP * 0.1))
+		"drum": # (an oil drum, its paint gone, ribs round it)
+			var steel := StandardMaterial3D.new()
+			steel.albedo_color = [Color(0.22, 0.27, 0.2), Color(0.3, 0.16, 0.12), Color(0.2, 0.2, 0.22)][_rng.randi() % 3]
+			steel.metallic = 0.5
+			steel.roughness = 0.6
+			var lying := _rng.randf() < 0.3
+			var db := b * Basis(Vector3.RIGHT, PI * 0.5) if lying else Basis.IDENTITY
+			var dc := p + Vector3.UP * (0.29 if lying else 0.44)
+			_cyl(0.29, 0.88, steel, Transform3D(db, dc), 14)
+			for hy: float in [-0.22, 0.22]:
+				_cyl(0.3, 0.03, steel, Transform3D(db, dc + db * Vector3(0, hy, 0)), 14)
+		"tins": # (square kerosene tins, a pair and one on its side)
+			var tin := StandardMaterial3D.new()
+			tin.albedo_color = Color(0.55, 0.5, 0.36)
+			tin.metallic = 0.7
+			tin.roughness = 0.35
+			for k in 3:
+				var tb := b * Basis(Vector3.UP, k * 0.3)
+				if k == 2:
+					tb = tb * Basis(Vector3.BACK, PI * 0.5)
+				_box(Vector3(0.24, 0.36, 0.24), tin, Transform3D(tb, p + b * Vector3(k * 0.3 - 0.3, 0.18 if k < 2 else 0.12, 0)))
 		"trough":
 			_box(Vector3(1.5, 0.4, 0.5), plank, Transform3D(b, p + Vector3.UP * 0.2))
 			_box(Vector3(1.4, 0.02, 0.4), Building.material("water"), Transform3D(b, p + Vector3.UP * 0.38))
