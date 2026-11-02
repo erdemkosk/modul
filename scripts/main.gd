@@ -49,6 +49,7 @@ var _saved_day := -1
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Graphics.apply(get_tree()) # (before the world's made: the trees' detail is read as it's built)
+	Settings.apply()
 	if not get_tree().root.size_changed.is_connected(_on_resized):
 		get_tree().root.size_changed.connect(_on_resized)
 	if title:
@@ -121,6 +122,7 @@ func _ready() -> void:
 	cam.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(cam)
 	cam.make_current()
+	Settings.apply(cam)
 	atmosphere = Atmosphere.new()
 	atmosphere.weather = weather
 	atmosphere.cam = cam
