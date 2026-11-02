@@ -239,6 +239,21 @@ func add_study(pts: float) -> void:
 		study_pts = 0.0
 
 
+## `cost` taken out of the stores (the nearest `at` first), if they hold it all. Whether they did.
+func pay(cost: Dictionary, at: Vector3) -> bool:
+	for r: String in cost:
+		if int(stock.get(r, 0)) < int(cost[r]):
+			return false
+	for r: String in cost:
+		var left := int(cost[r])
+		while left > 0:
+			var s := store_with(r, at)
+			if s == null:
+				break
+			left -= s.take_goods(r, left)
+	return true
+
+
 ## The station (the railway's end), or null.
 func depot() -> Building:
 	for b in buildings:
@@ -255,17 +270,9 @@ func order(what: String) -> String:
 		return "Önce telgraf araştırılmalı (okuma odası)"
 	if orders.size() >= ORDERS_MAX:
 		return "Bir trene en fazla %d sipariş" % ORDERS_MAX
-	var pay: Dictionary = OFFERS[what].pay
-	for r: String in pay:
-		if int(stock.get(r, 0)) < int(pay[r]):
-			return "Karşılığında %s gerek" % BuildingDefs.cost_text_of(pay)
-	for r: String in pay:
-		var left := int(pay[r])
-		while left > 0:
-			var s := store_with(r, depot().global_position)
-			if s == null:
-				break
-			left -= s.take_goods(r, left)
+	var price: Dictionary = OFFERS[what].pay
+	if not pay(price, depot().global_position):
+		return "Karşılığında %s gerek" % BuildingDefs.cost_text_of(price)
 	orders.append(what)
 	return ""
 
@@ -294,7 +301,7 @@ func _train_morning() -> void:
 func _train_in(st: Building) -> void:
 	var arms: Building = null
 	for b in buildings:
-		if b.def.role == "armory" and b.state == "done":
+		if b.kind == "silahlik" and b.state == "done":
 			arms = b
 			break
 	var got: Array[String] = []
@@ -924,8 +931,8 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 
 ## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
 ## there leaving their stumps: a settlement is a clearing, not houses stood in the forest.
-const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, "forest": 3.0,
-	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "research": 5.0, "craft": 6.0, "smith": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0, "healer": 5.0}
+const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, 
+	"carts": 6.0, "research": 5.0, "smith": 5.0, "barracks": 7.0, "tower": 4.0, "jail": 5.0, "healer": 5.0}
 
 
 func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:
@@ -1262,7 +1269,7 @@ func _on_finished(b: Building) -> void:
 		_house_people()
 		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
-	if b.def.role == "armory" and not b.has_meta("stocked"):
+	if b.kind == "silahlik" and not b.has_meta("stocked"):
 		b.set_meta("stocked", true)
 		b.arms = 2
 		b.ammo = 40
@@ -1733,7 +1740,7 @@ func give_back(owed: Dictionary) -> void:
 
 func carters_about() -> bool:
 	for b in buildings:
-		if b.state == "done" and b.def.role in ["carts", "oxen"] and not b.workers.is_empty():
+		if b.state == "done" and b.def.role == "carts" and not b.workers.is_empty():
 			return true
 	return false
 

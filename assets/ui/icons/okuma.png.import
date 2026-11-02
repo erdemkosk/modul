@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d11xnata0pph5"
-path="res://.godot/imported/yayci.png-e7d3222e718fca9c7e5966b925fccda8.ctex"
+uid="uid://eb5s2cu8sf4u"
+path="res://.godot/imported/okuma.png-2e812bf654e6367c7b15af18005ef055.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/icons/yayci.png"
-dest_files=["res://.godot/imported/yayci.png-e7d3222e718fca9c7e5966b925fccda8.ctex"]
+source_file="res://assets/ui/icons/okuma.png"
+dest_files=["res://.godot/imported/okuma.png-2e812bf654e6367c7b15af18005ef055.ctex"]
 
 [params]
 

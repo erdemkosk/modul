@@ -16,7 +16,6 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   ev         a log cabin: saddle-notched log walls, log gables, purlins, a shingled roof, a fieldstone
              chimney, framed windows with shutters, a plank door, a porch, a woodpile
   ambar      the store: a big log building, wide double doors, a loading platform, crates, barrels, sacks
-  kisla      the watch house: a log house with a rifle rack, a bell on a post, a bench
   kule       the lookout: a timber tower on a stone base, braced, a ladder, a railed platform, a roof
   fener      a lamp post: a squared post, an iron arm, a glazed lantern
   kuyu       a well: a fieldstone ring, a windlass, a little shingled roof, a bucket
@@ -25,7 +24,6 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   tasci      the stone yard: a dressing bench with mallet and chisel, a tripod derrick lifting a
              block, rough blocks heaped, dressed ones stacked, rubble
   toplayici  the gatherers' hut: drying racks hung with berries, a sorting table, baskets
-  ormanci    the forester's nursery: raised beds of seedlings, a water barrel, a lean-to
   ev_oda     a house's back room (the game adds it to an "ev" when it's made bigger): log walls on
              three sides against the house's back wall, a shuttered window, a shingled lean-to
              roof running up under the house's eaves, boarded gable triangles
@@ -34,7 +32,7 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   camur      the mud pit: a plank-framed pit of wet mud with a spade in it, a moulding table with
              brick moulds and fresh bricks, a thatched drying shelter over a straw-strewn floor,
              a heap of straw, a water barrel, puddles on the trodden mud
-  arabaci    the cart shed (a work shed with a handcart and spare wheels); ahir, the barn
+  arabaci    the cart shed (a work shed with a handcart and spare wheels)
 """
 
 import math
@@ -981,9 +979,6 @@ def ambar():
     cabin("ambar", 9.0, 7.0, 10, 2.6, 2.4, windows=[("left", 0.0), ("right", -1.5)], porch_on=False, extra=_store_extra, double_door=True)
 
 
-def kisla():
-    cabin("kisla", 8.0, 6.0, 9, 2.2, 1.2, windows=[("front", -2.3), ("front", 2.3), ("left", 0.0), ("right", 0.0), ("back", 0.0)],
-          chimney_at=(-4.0 - 0.85, 1.2), extra=_watch_extra, porch_on=False)
 
 
 def fener():
@@ -1188,71 +1183,10 @@ def _cart_props(k, w, d):
         k.add(p)
 
 
-def _bowyer_props(k, w, d):
-    # the bench with a stave clamped on it, finished bows hung on the back wall, staves leaning to
-    # season, arrow shafts in a bundle, a block for fletching
-    p = k.piece("plank", "work")
-    p.box((0.0, 0.3, 0.95), (1.8, 0.6, 0.08), jit(PLANK, 0.06, k.rng))
-    for sx in (-0.75, 0.75):
-        for sy in (0.05, 0.55):
-            p.box((sx, sy, 0.7), (0.07, 0.07, 0.5), DARK)
-    k.add(p)
-    p = k.piece("wood", "bows")
-    for i in range(4):
-        x = -1.4 + i * 0.6
-        # a bow: a bent stave (three short sections) with its string
-        for (a, b) in (((x, 1.75, 1.2), (x + 0.12, 1.75, 1.75)), ((x + 0.12, 1.75, 1.75), (x + 0.12, 1.75, 2.15)), ((x + 0.12, 1.75, 2.15), (x, 1.75, 2.7))):
-            p.log(a, b, 0.022, color=(0.52, 0.34, 0.18), end=(0.6, 0.42, 0.24), segs=6, rng=k.rng, taper=0.0)
-        p.log((x, 1.72, 1.2), (x, 1.72, 2.7), 0.004, color=(0.85, 0.82, 0.72), end=(0.85, 0.82, 0.72), segs=4, rng=k.rng, taper=0.0)
-    p.log((0.4, 0.3, 1.02), (-0.5, 0.3, 1.02), 0.025, color=(0.6, 0.44, 0.26), end=(0.7, 0.55, 0.35), segs=6, rng=k.rng, taper=0.0)
-    for i in range(5):
-        p.log((w * 0.5 - 0.4 - i * 0.12, 1.4, 0.47), (w * 0.5 - 0.55 - i * 0.12, 1.25, 2.3), 0.03, color=(0.55, 0.4, 0.24), end=(0.7, 0.55, 0.35), segs=6, rng=k.rng, taper=0.0)
-    for i in range(14):
-        a = i / 14 * math.tau
-        p.log((-1.9 + math.cos(a) * 0.06, -0.2 + math.sin(a) * 0.06, 0.47), (-1.9 + math.cos(a) * 0.09, -0.2 + math.sin(a) * 0.09, 1.3), 0.006, color=(0.75, 0.62, 0.42), end=(0.85, 0.85, 0.82), segs=4, rng=k.rng, taper=0.0)
-    k.add(p)
 
 
-def _builders_props(k, w, d):
-    # the builders' yard: sawn planks stacked to season on bearers, ladders on the back wall, a
-    # sawhorse with a beam on it, a rack of axes and adzes, a barrow of pegs
-    p = k.piece("plank", "stack")
-    for row in range(5):
-        for i in range(5):
-            p.box((-w * 0.5 + 1.1 + i * 0.32, 0.2, FLOOR + 0.1 + row * 0.09), (0.28, 2.6, 0.06), jit(PLANK, 0.07, k.rng))
-        p.box((-w * 0.5 + 1.75, -0.9, FLOOR + 0.05 + row * 0.09), (1.7, 0.08, 0.03), DARK)
-        p.box((-w * 0.5 + 1.75, 1.3, FLOOR + 0.05 + row * 0.09), (1.7, 0.08, 0.03), DARK)
-    k.add(p)
-    p = k.piece("plank", "ladders")
-    for j, x in enumerate((0.6, 1.4)):
-        for sx in (-0.22, 0.22):
-            p.obox((x + sx, d * 0.5 - 0.55, FLOOR + 1.3), (1, 0, 0), (0, 0.2, 1), (0, 1, -0.2), (0.06, 2.6, 0.06), jit(PLANK, 0.06, k.rng))
-        for r in range(7):
-            p.box((x, d * 0.5 - 0.55 - (0.15 + r * 0.33) * 0.2, FLOOR + 0.2 + r * 0.33), (0.44, 0.04, 0.04), jit(PLANK, 0.06, k.rng))
-    k.add(p)
-    p = k.piece("log", "work")
-    for x in (w * 0.5 - 1.6, w * 0.5 - 0.6):
-        for sy in (-0.18, 0.18):
-            p.log((x, -0.6 + sy, FLOOR), (x, -0.6 - sy, FLOOR + 0.75), 0.05, rng=k.rng, taper=0.0)
-    p.log((w * 0.5 - 2.3, -0.6, FLOOR + 0.82), (w * 0.5 + 0.1, -0.6, FLOOR + 0.82), 0.14, rng=k.rng)
-    k.add(p)
-    p = k.piece("dark", "tools")
-    p.box((w * 0.5 - 0.25, 0.6, FLOOR + 1.45), (0.06, 1.3, 0.08), DARK)
-    for i in range(4):
-        y = 0.1 + i * 0.32
-        p.box((w * 0.5 - 0.3, y, FLOOR + 1.0), (0.04, 0.04, 0.85), (0.5, 0.36, 0.22))
-        p.box((w * 0.5 - 0.3, y, FLOOR + 0.6), (0.05, 0.16, 0.12), (0.22, 0.22, 0.23))
-    k.add(p)
 
 
-def ahir():
-    def extra(k, w, d):
-        p = k.piece("thatch", "hay")
-        for i in range(4):
-            p.box((w * 0.5 + 0.7, -1.6 + i * 1.0, 0.45 + (i % 2) * 0.0), (0.9, 0.9, 0.6), (0.7, 0.6, 0.33))
-        p.box((w * 0.5 + 0.7, -1.1, 1.05), (0.9, 0.9, 0.6), (0.7, 0.6, 0.33))
-        k.add(p)
-    cabin("ahir", 9.0, 6.0, 9, 2.5, 2.6, windows=[("left", 0.0), ("back", -2.0), ("back", 2.0)], porch_on=False, extra=extra, double_door=True)
 
 
 # --- work yards ------------------------------------------------------------------------------------
@@ -1523,32 +1457,6 @@ def toplayici():
     k.add(p)
     k.finish()
 
-
-def ormanci():
-    """The forester's nursery: raised beds of seedlings in rows, a water barrel, a tool shed."""
-    w, d = 6.0, 5.0
-    k = Kit("ormanci")
-    yard_pad(k, w, d)
-    for b in range(3):
-        y = -1.5 + b * 1.3
-        p = k.piece("plank", "bed")
-        p.box((-0.6, y, FLOOR + 0.12), (3.6, 0.9, 0.24), jit(PLANK, 0.05, k.rng))
-        p.box((-0.6, y, FLOOR + 0.25), (3.4, 0.75, 0.02), EARTH)
-        k.add(p)
-        p = k.piece("wood", "seedlings")
-        for i in range(9):
-            x = -2.2 + i * 0.4
-            for j in (-0.2, 0.2):
-                hgt = 0.2 + b * 0.12
-                p.log((x, y + j, FLOOR + 0.26), (x, y + j, FLOOR + 0.26 + hgt), 0.07 + b * 0.015, color=(0.16, 0.34, 0.14), end=(0.14, 0.3, 0.12), taper=0.9, segs=6)
-        k.add(p)
-    barrel(k, 2.3, -1.6)
-    lean_to(k, 1.6, 2.8, 0.6, 2.0, 2.2, 1.9)
-    p = k.piece("wood")
-    p.box((2.2, 1.95, FLOOR + 0.6), (0.04, 0.04, 1.1), PLANK)
-    p.box((2.2, 1.9, FLOOR + 0.12), (0.18, 0.03, 0.22), IRON)
-    k.add(p)
-    k.finish()
 
 
 
@@ -1999,14 +1907,12 @@ def istasyon():
 
 
 BUILDERS = {
-    "ev": ev, "ambar": ambar, "kisla": kisla, "fener": fener, "kuyu": kuyu, "kule": kule, "ahir": ahir,
+    "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
     "meydan": meydan, "cankulesi": cankulesi, "silahlik": silahlik, "istasyon": istasyon,
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
-    "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "ormanci": ormanci, "camur": camur_ocagi,
+    "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,
     "ev_oda": ev_oda, "ev_soba": ev_soba,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
-    "yayci": lambda: shed("yayci", 5.0, 4.0, _bowyer_props),
-    "insaatci": lambda: shed("insaatci", 6.0, 5.0, _builders_props),
 }
 
 

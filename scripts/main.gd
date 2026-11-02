@@ -669,7 +669,7 @@ func _chosen() -> Array[Villager]:
 
 ## One more to train at the selected armoury ("rifle", "bow"; "" empties the queue).
 func train(kind: String) -> void:
-	if selected == null or not is_instance_valid(selected) or selected.def.role != "armory":
+	if selected == null or not is_instance_valid(selected) or selected.kind != "silahlik":
 		return
 	if kind == "":
 		selected.training.clear()
@@ -1025,6 +1025,31 @@ func toggle_mode_selected() -> void:
 	if selected and is_instance_valid(selected) and selected.kind == "camur":
 		selected.mode = "" if selected.mode == "kerpic" else "kerpic"
 		hud.toast("%s: %s" % [selected.display_name(), "kerpiç dökülecek" if selected.mode == "kerpic" else "çamur kazılacak"], "info")
+	elif selected and is_instance_valid(selected) and selected.kind == "tasci" and village.knows("madencilik"):
+		selected.mode = "" if selected.mode == "demir" else "demir"
+		hud.toast("%s: %s" % [selected.display_name(), "kayalardan demir sökülecek" if selected.mode == "demir" else "taş kırılacak"], "info")
+
+
+## The selected logging camp's men set to planting the stumps when they've nothing to fell (or not).
+func toggle_planting() -> void:
+	if selected and is_instance_valid(selected) and selected.kind == "oduncu":
+		selected.planting = not selected.planting
+		hud.toast("%s: %s" % [selected.display_name(), "boş kaldıkça kütüklere fidan dikilecek" if selected.planting else "fidan dikilmeyecek"], "info")
+
+
+## Oxen bought for the selected carter's: its carts ox carts from now on.
+func buy_oxen() -> void:
+	var b := selected
+	if b == null or not is_instance_valid(b) or b.kind != "arabaci" or b.ox:
+		return
+	if not village.pay(BuildingDefs.OX_COST, b.global_position):
+		hud.toast("Öküz için %s gerek" % BuildingDefs.cost_text_of(BuildingDefs.OX_COST), "info")
+		return
+	b.ox = true
+	for w in b.workers:
+		if is_instance_valid(w):
+			w.give_ox(true)
+	hud.toast("%s: öküzler geldi, arabalar artık öküz arabası" % b.display_name(), "good")
 
 
 func ignite_selected() -> void:

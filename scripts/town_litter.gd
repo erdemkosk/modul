@@ -12,9 +12,7 @@ const KINDS := {
 	"square": ["barrel", "crates", "boards"],
 	"well": ["barrel", "trough"],
 	"work": ["wood", "boards", "block", "cart"],
-	"builders": ["boards", "boards", "wood", "crates"],
 	"carts": ["cart", "cart", "hay"],
-	"oxen": ["hay", "hay", "trough", "cart"],
 }
 
 var building: Building

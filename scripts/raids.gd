@@ -19,7 +19,7 @@ extends Node3D
 ## the store and carry off what they can. Hurt badly, one runs; a shooter who falls drops his
 ## rifle, and what a looter carried is got back.
 ##
-## The town's answer is light, and its few rifles. The watchmen (Bekçi karakolu) and the lookout up a
+## The town's answer is light, and its few rifles. The watchmen (at the armoury) and the lookout up a
 ## tower shoot what they can see: anything in the light, or close by, or that's just fired (its
 ## flash shows it); what stays in the dark they can't. The militia take the armoury's rifles to
 ## their posts. Everyone else runs for a house or the store and hides till it's over (if that

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://yam4y7c7ic3w"
-path="res://.godot/imported/ahir.png-145d7af1c9ca1addd88cfdfb7b52458d.ctex"
+uid="uid://dwmi48ssc658j"
+path="res://.godot/imported/demirci.png-d4a39d9039baa1bf0d8aa721eaeca57a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/icons/ahir.png"
-dest_files=["res://.godot/imported/ahir.png-145d7af1c9ca1addd88cfdfb7b52458d.ctex"]
+source_file="res://assets/ui/icons/demirci.png"
+dest_files=["res://.godot/imported/demirci.png-d4a39d9039baa1bf0d8aa721eaeca57a.ctex"]
 
 [params]
 

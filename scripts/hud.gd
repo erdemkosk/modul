@@ -14,8 +14,8 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "ormanci", "insaatci", "sifaci", "komurcu", "maden"]],
-	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
+const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "sifaci"]],
+	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
@@ -516,6 +516,8 @@ func _make_card() -> void:
 	_btn.mode = _add(_card_acts, "KERPİÇ YAP", func() -> void: game.toggle_mode_selected(), "Çamuru kalıba döküp kerpiç kurutsunlar / yalnızca çamur kazsınlar")
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
+	_btn.plant = _add(_card_acts, "FİDAN DİK", func() -> void: game.toggle_planting(), "Kesimciler boş kaldıkça kesilen ağaçların kütüklerine fidan diksin")
+	_btn.ox = _add(_card_acts, "ÖKÜZ AL", func() -> void: game.buy_oxen(), "Arabalar öküz arabası olsun: 30 yük, yavaş; her öküz bir kişi kadar yer (%s)" % BuildingDefs.cost_text_of(BuildingDefs.OX_COST))
 	_btn.strong = _add(_card_acts, "GÜÇLENDİR", func() -> void: game.strengthen_wall(), "Kalın kütük ve taş temel: kazıklar üç kat dayanıklı olur, zor kesilir, zor yanar")
 	_btn.area = _add(_card_acts, "ALAN ÇİZ", func() -> void: game.start_placing("alan"), "İşçiler yalnızca sürükleyeceğin alanda çalışsın")
 	_btn.no_area = _add(_card_acts, "ALANI KALDIR", func() -> void: game.clear_work_area(), "İşçiler yine her yerde çalışsın")
@@ -531,6 +533,12 @@ func _make_card() -> void:
 			a.casting = not a.casting)
 	_btn.cast.tooltip_text = "Her sabah 2 taş ve 1 odundan 6 fişek dökülür"
 	_card_train.add_child(_btn.cast)
+	_btn.bows = _small_button("YAY YAP", func() -> void:
+		var a: Building = game.selected
+		if a and is_instance_valid(a):
+			a.bowing = not a.bowing)
+	_btn.bows.tooltip_text = "Her sabah depodan odun alınıp bir yay (2 odun) ya da 12 ok (1 odun) yapılır"
+	_card_train.add_child(_btn.bows)
 
 	_card_folk = HBoxContainer.new()
 	_card_folk.add_theme_constant_override("separation", 8)
@@ -946,10 +954,11 @@ func _update_card() -> void:
 	_card_jail.visible = false
 	_card_extra.visible = false
 	_card_acts.visible = true
-	_card_train.visible = b.state == "done" and b.def.role == "armory"
+	_card_train.visible = b.state == "done" and b.kind == "silahlik"
 	if _card_train.visible:
 		(_btn.cast as Button).text = "FİŞEK DÖKÜMÜNÜ DURDUR" if b.casting else "FİŞEK DÖK"
-	_card_pick.visible = _pick_open == b and b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "research", "craft", "smith", "builders", "healer"]
+		(_btn.bows as Button).text = "YAY YAPMAYI DURDUR" if b.bowing else "YAY YAP"
+	_card_pick.visible = _pick_open == b and b.state == "done" and b.def.role in ["work", "farm", "carts", "barracks", "tower", "research", "smith", "healer"]
 	_pick_btn.text = "ATA ▴" if _card_pick.visible else "ATA ▾"
 	if _card_pick.visible:
 		_fill_pick(b)
@@ -958,11 +967,17 @@ func _update_card() -> void:
 	_fill_extra(b)
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
-	(_btn.mode as Button).visible = b.kind == "camur" and b.state == "done"
+	(_btn.mode as Button).visible = b.state == "done" and (b.kind == "camur" or (b.kind == "tasci" and game.village.knows("madencilik")))
+	(_btn.plant as Button).visible = b.kind == "oduncu" and b.state == "done"
+	(_btn.plant as Button).text = "FİDAN DİKMEYİ BIRAK" if b.planting else "FİDAN DİK"
+	(_btn.ox as Button).visible = b.kind == "arabaci" and b.state == "done" and not b.ox
 	(_btn.strong as Button).visible = false
 	(_btn.area as Button).visible = b.def.role in ["work", "forest"] and b.kind != "camur" and b.state == "done"
 	(_btn.no_area as Button).visible = (_btn.area as Button).visible and b.work_area.has_area()
-	(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
+	if b.kind == "tasci":
+		(_btn.mode as Button).text = "TAŞ KIR" if b.mode == "demir" else "DEMİR ÇIKAR"
+	else:
+		(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
 	match b.state:
@@ -1018,7 +1033,7 @@ func _update_card() -> void:
 			elif Weather.rain_now > 0.15:
 				why = " (yağmurda yavaş)"
 			lines.append("Rafta kuruyan: %d kerpiç%s" % [b.drying_count(), why])
-	if b.state == "done" and b.def.role in ["work", "farm", "forest", "bowyer", "research", "craft", "smith", "builders", "healer"] and b.idle_note != "":
+	if b.state == "done" and b.def.role in ["work", "farm", "research", "smith", "healer"] and b.idle_note != "":
 		lines.append(b.idle_note)
 	var standing := b.standing_share()
 	if standing < 0.999 and b.state != "ghost":
@@ -1029,7 +1044,7 @@ func _update_card() -> void:
 			for r: String in rc:
 				need.append("%d %s" % [rc[r], BuildingDefs.RES_NAMES[r].to_lower()])
 			lines.append("Onarım: %d parça · %s" % [b.fallen_count(), " · ".join(need)])
-	if b.state == "done" and b.def.role == "armory":
+	if b.state == "done" and b.kind == "silahlik":
 		var rifles := 0
 		var archers := 0
 		var any := 0
@@ -1061,7 +1076,7 @@ func _update_card() -> void:
 			if int(b.goods[r]) > 0:
 				g.append("%d %s" % [int(b.goods[r]), BuildingDefs.RES_NAMES[r].to_lower()])
 		lines.append(("İçinde: " if b.def.role == "store" else "Yığın: ") + ", ".join(g))
-	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest", "bowyer", "research", "craft", "smith", "builders", "healer"] and b.state == "done"
+	_card_workers.visible = b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"] and b.state == "done"
 	if _card_workers.visible:
 		_card_count.text = "%d / %d" % [b.wanted, int(b.def.slots)]
 		var names: Array[String] = []
@@ -1453,5 +1468,5 @@ func _folk_card(v: Villager) -> void:
 	if v.drafted:
 		lines.append("Toplandı: yere sağ tık mevzi (siper arar), hayduda sağ tık hedef.")
 	else:
-		lines.append("Bir işyerine, tarlaya ya da karakola sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç.")
+		lines.append("Bir işyerine, tarlaya ya da silahlığa sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç.")
 	_card_lines.text = "\n".join(lines)

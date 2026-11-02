@@ -76,6 +76,9 @@ var bows := 0 ## (an armoury) bows on the rack
 var arrows := 0 ## (an armoury) arrows
 var training: Array[String] = [] ## (an armoury) the militia to be trained, in turn: "rifle", "bow"
 var casting := false ## (an armoury) cartridges cast each morning, from stone and wood
+var bowing := false ## (an armoury) a bow or a sheaf of arrows made each morning, of wood
+var planting := false ## (a logging camp) its men planting the stumps when they've nothing to fell
+var ox := false ## (a carter's) its carts drawn by oxen
 var wanted := 0
 var residents: Array = []
 var cells: Array[Vector2i] = []
@@ -91,7 +94,7 @@ var upgrading := "" ## a house: what's being done to it ("oda", "siva", "soba": 
 var upgraded_now := "" ## (what its last finish did to it)
 var plastered := false ## a house: its logs plastered with mud
 var stove := false ## a house: a brick stove in it
-var mode := "" ## a mud pit: "" mud, "kerpic" bricks
+var mode := "" ## a mud pit: "" mud, "kerpic" bricks; a quarry: "" stone, "demir" iron
 var work_area := Rect2() ## a workplace: the ground (x, z) its workers keep to, if it's been drawn (ALAN ÇİZ)
 var drying: Array[Vector2] = [] ## a mud pit: bricks laid out on the racks: (seconds left, how many)
 var _racks: Node3D
@@ -144,7 +147,7 @@ func setup(k: String) -> void:
 		incoming[r] = 0
 	var sz: Vector2 = def.size
 	radius = sz.length() * 0.5
-	wanted = {"work": 1, "tower": 1, "barracks": 2, "bowyer": 1, "research": 1, "craft": 1, "smith": 1, "builders": 2, "carts": 1, "oxen": 1, "farm": 2, "forest": 1, "healer": 1}.get(str(def.role), 0)
+	wanted = {"work": 1, "tower": 1, "research": 1, "smith": 1, "carts": 1, "farm": 2, "healer": 1}.get(str(def.role), 0)
 	body = StaticBody3D.new()
 	body.collision_layer = 2
 	body.collision_mask = 0

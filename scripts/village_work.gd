@@ -74,7 +74,7 @@ func _plan_firewood(v: Villager, lamps_only := false) -> bool:
 ## Workplaces take free villagers up to what's asked, and give back the ones over it.
 func _staff() -> void:
 	for b in buildings:
-		if not b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest", "bowyer", "research", "craft", "smith", "builders", "healer"]:
+		if not b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"]:
 			continue
 		if b.state != "done":
 			continue
@@ -118,16 +118,17 @@ func employ(v: Villager, b: Building) -> void:
 		"tower":
 			pick.arm_with("rifle")
 		"carts":
-			pick.give_cart(true)
-		"oxen":
-			pick.give_ox(true)
+			if b.ox:
+				pick.give_ox(true)
+			else:
+				pick.give_cart(true)
 
 
 ## `v` put to work at `b` by hand (the player's choice). Why not, if it can't be ("" if done).
 func assign(v: Villager, b: Building) -> String:
 	if v.is_child:
 		return "%s daha çocuk" % v.display_name
-	if not b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "research", "craft", "smith", "builders", "healer"]:
+	if not b.def.role in ["work", "farm", "carts", "barracks", "tower", "research", "smith", "healer"]:
 		return "%s bir işyeri değil" % b.display_name()
 	if b.state != "done":
 		return "%s henüz bitmedi" % b.display_name()
@@ -312,8 +313,8 @@ func _plan_build(v: Villager) -> bool:
 		for o in villagers:
 			if o.target == b and o.job.begins_with("İnşa"):
 				n += 1
-		# (a site's full at six; the builders' own crew can always join, up to four more)
-		var builder: bool = v.workplace != null and v.workplace.def.role == "builders"
+		# (a site's full at six; those set to building first can always join, up to four more)
+		var builder := int(v.prio.get("insa", 1)) == 2
 		if n >= BUILDERS_PER_SITE + (4 if builder else 0):
 			continue
 		var d := b.global_position.distance_squared_to(v.position)
@@ -430,40 +431,22 @@ func _plan_work(v: Villager) -> void:
 		var p := b.door() + Vector3(randf_range(-7, 7), 0, randf_range(1, 8))
 		v.give([{"t": "go", "to": p}, {"t": "work", "time": randf_range(5.0, 12.0), "anim": "idle"}], "Nöbette", b, true)
 		return
-	if b.def.role in ["carts", "oxen"]:
+	if b.def.role == "carts":
 		_plan_cart(v)
-		return
-	if b.def.role == "bowyer":
-		_plan_bowyer(v, b)
 		return
 	if b.def.role == "research":
 		_plan_research(v, b)
 		return
-	if b.def.role == "craft":
-		_plan_craft(v, b)
-		return
 	if b.def.role == "smith":
 		_plan_smith(v, b)
-		return
-	if b.def.role == "builders":
-		# The builders: the sites first (building, mending), then their materials; with none, planks
-		# sawn at the bench.
-		if _plan_build(v) or _plan_wall(v) or _plan_haul(v):
-			b.idle_note = ""
-			return
-		b.idle_note = "Şantiye yok: tezgâhta bekliyor"
-		v.give([{"t": "go", "to": b.station()}, {"t": "work", "time": randf_range(6.0, 10.0), "anim": "saw", "face": b.station_face()}], "İnşaatçı: tahta biçiyor", b, true)
 		return
 	if b.def.role == "farm":
 		_plan_farm(v, b)
 		return
-	if b.def.role == "forest":
-		_plan_forest(v, b)
-		return
 	if b.def.role == "healer":
 		_plan_healer(v, b)
 		return
-	var res := str(b.def.res)
+	var res := "demir" if b.kind == "tasci" and b.mode == "demir" else str(b.def.res)
 	var store := _nearest(stores(), b.global_position)
 	if store == null:
 		b.idle_note = "Depo yok"
@@ -490,6 +473,9 @@ func _plan_work(v: Villager) -> void:
 			return
 	if b.kind == "camur":
 		_plan_mud(v, b)
+		return
+	# (now and then, if it's been told to, a stump planted instead)
+	if res == "odun" and b.planting and randf() < 0.3 and _plan_forest(v, b):
 		return
 	# Logs lying from a tree already down: one fetched and sawn.
 	if res == "odun":
@@ -606,53 +592,36 @@ func _plan_research(v: Villager, b: Building) -> void:
 		{"t": "step", "to": b.door()}], "%s: %s okuyor" % [b.display_name(), str(BuildingDefs.TECHS[studying].name).to_lower()], b)
 
 
-## A workshop that makes one thing of another (`takes` to `makes`): fetched from the store, worked
-## at the station, carried back.
-func _plan_craft(v: Villager, b: Building) -> void:
-	var takes: Dictionary = b.def.takes
-	var store := _nearest(stores(), b.global_position)
-	var short := store == null
-	if not short:
-		for r: String in takes:
-			if int(store.goods.get(r, 0)) < int(takes[r]):
-				short = true
-	if short:
-		b.idle_note = "Depoda %s yok" % BuildingDefs.cost_text_of(takes)
-		_plan_idle(v)
-		return
-	b.idle_note = ""
-	var makes := str(b.def.makes)
-	var first: String = takes.keys()[0]
+## The smith's charcoal: wood out of the store, burnt in the forge's pit, two of charcoal for three
+## of wood carried back.
+func _plan_charcoal(v: Villager, b: Building, store: Building) -> void:
+	var takes: Dictionary = BuildingDefs.CHARCOAL
 	v.give([{"t": "go", "to": store.door()},
 		{"t": "do", "f": func() -> bool:
-			if not is_instance_valid(store):
+			if not is_instance_valid(store) or int(store.goods.get("odun", 0)) < int(takes.odun):
 				return false
-			for r: String in takes:
-				if int(store.goods.get(r, 0)) < int(takes[r]):
-					return false
-			for r: String in takes:
-				store.take_goods(r, int(takes[r]))
-			v.set_carry(first, int(takes[first]))
+			store.take_goods("odun", int(takes.odun))
+			v.set_carry("odun", int(takes.odun))
 			return true},
 		{"t": "go", "to": b.door()}, {"t": "step", "to": b.station()},
 		{"t": "do", "f": func() -> bool:
 			v.set_carry("", 0)
 			return true},
-		{"t": "work", "time": float(b.def.craft), "anim": "gather", "face": b.station_face()},
+		{"t": "work", "time": 20.0, "anim": "gather", "face": b.station_face()},
 		{"t": "do", "f": func() -> bool:
-			v.set_carry(makes, int(b.def.n))
+			v.set_carry("komur", 2)
 			return true},
 		{"t": "step", "to": b.door()}, {"t": "go", "to": store.door()},
 		{"t": "do", "f": func() -> bool:
 			if is_instance_valid(store) and store.state == "done":
-				store.add_goods(makes, v.carry_n)
+				store.add_goods("komur", v.carry_n)
 			else:
-				add_anywhere(makes, v.carry_n, v.position)
+				add_anywhere("komur", v.carry_n, v.position)
 			v.set_carry("", 0)
-			return true}], "%s: %s yapıyor" % [b.display_name(), BuildingDefs.RES_NAMES[makes].to_lower()], b)
+			return true}], "Demirci: kömür yakıyor", b)
 
 
-## The smith: iron and coal out of the store, a rifle or a lot of cartridges beaten out at the anvil,
+## The smith: charcoal burnt when there's none, then iron and coal out of the store, a rifle or a lot of cartridges beaten out at the anvil,
 ## taken to the armoury (a rifle while there's none, or cartridges enough for those there are).
 func _plan_smith(v: Villager, b: Building) -> void:
 	var a := _nearest(armories(), b.global_position)
@@ -663,12 +632,15 @@ func _plan_smith(v: Villager, b: Building) -> void:
 	var rifle := a.arms == 0 or a.ammo >= a.arms * 15
 	var need := {"demir": 3, "komur": 2} if rifle else {"demir": 1, "komur": 1}
 	var store := _nearest(stores(), b.global_position)
-	var short := store == null
-	if not short:
-		for r: String in need:
-			if int(store.goods.get(r, 0)) < int(need[r]):
-				short = true
-	if short:
+	if store == null:
+		b.idle_note = "Depo yok"
+		_plan_idle(v)
+		return
+	if int(store.goods.get("komur", 0)) < int(need.komur) and int(store.goods.get("odun", 0)) >= int(BuildingDefs.CHARCOAL.odun):
+		b.idle_note = ""
+		_plan_charcoal(v, b, store)
+		return
+	if int(store.goods.get("demir", 0)) < int(need.demir) or int(store.goods.get("komur", 0)) < int(need.komur):
 		b.idle_note = "Depoda %s yok" % BuildingDefs.cost_text_of(need)
 		_plan_idle(v)
 		return
@@ -1275,7 +1247,8 @@ func _grow_saplings(dt: float) -> void:
 
 
 ## A forester's next stint: a sapling on the nearest stump in reach without one.
-func _plan_forest(v: Villager, b: Building) -> void:
+## A stump near `b` planted with a sapling, if there's one to plant (whether there was).
+func _plan_forest(v: Villager, b: Building) -> bool:
 	var best := -1
 	var bd := float(b.def.reach)
 	var at := Vector3.ZERO
@@ -1289,10 +1262,7 @@ func _plan_forest(v: Villager, b: Building) -> void:
 			best = i
 			at = st.position
 	if best < 0:
-		b.idle_note = "Yakında dikilecek kütük yok"
-		_plan_idle(v)
-		return
-	b.idle_note = ""
+		return false
 	reserved[best] = v
 	var i := best
 	var spot := at + (v.position - at).normalized() * 1.0
@@ -1303,4 +1273,5 @@ func _plan_forest(v: Villager, b: Building) -> void:
 			reserved.erase(i)
 			plant(i)
 			return true},
-	], "Ormancı: fidan dikiyor", b)
+	], "%s: fidan dikiyor" % b.display_name(), b)
+	return true

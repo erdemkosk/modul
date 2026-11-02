@@ -14,16 +14,16 @@ extends RefCounted
 ## What each brings, in a few words (the build bar's buttons).
 const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına kova", "fener": "geceye ışık",
 	"meydan": "akşam ateşi", "cankulesi": "baskın alarmı", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
-	"oduncu": "odun", "tasci": "taş", "camur": "çamur · kerpiç", "toplayici": "yemiş (yiyecek)", "ormanci": "fidan diker",
-	"insaatci": "inşaat ekibi", "yol": "hızlı, çamursuz yol", "arabaci": "el arabasıyla taşır", "ahir": "öküz arabası",
-	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yaraları sarar · ot", "kapi": "sur kapısı", "kule": "gözcü", "kisla": "bekçiler", "silahlik": "tüfek · milis", "yayci": "yay ve ok",
-	"okuma": "araştırma", "komurcu": "odundan kömür", "maden": "demir", "demirci": "tüfek · fişek"}
+	"oduncu": "odun", "tasci": "taş", "camur": "çamur · kerpiç", "toplayici": "yemiş (yiyecek)",
+	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
+	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yaraları sarar · ot", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
+	"okuma": "araştırma", "demirci": "tüfek · fişek"}
 
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Şifalı ot", "komur": "Kömür", "demir": "Demir"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
-const YARDS := ["oduncu", "tasci", "camur", "toplayici", "ormanci", "meydan"]
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "camur", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci", "hapishane", "sifaci", "okuma", "komurcu", "maden", "demirci"]
+const YARDS := ["oduncu", "tasci", "camur", "toplayici", "meydan"]
+const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "tasci", "camur", "toplayici", "ambar", "arabaci", "kuyu", "fener", "kule", "silahlik", "hapishane", "sifaci", "okuma", "demirci"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -44,12 +44,10 @@ const DEFS := {
 		"desc": "Çitle çevrili çavdar tarlası. Çiftçiler eker, ekin büyür (yağmurda hızlı, karda hiç), olgunlaşınca biçip 60 yiyecek getirirler. Olgun ekin yanar."},
 	"oduncu": {"name": "Kesim kampı", "size": Vector2(7, 6), "cost": {"odun": 8}, "time": 18.0, "role": "work", "slots": 3,
 		"res": "odun", "reach": 80.0, "station": Vector3(0, 0, 0.55), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "saw",
-		"desc": "Kesimciler ağacı devirir, budar, tomruklara böler; tomrukları omuzlayıp kampa getirir, sehpada testereyle biçerler. Biçilen odun kampta yığılır, depoya taşınır."},
-	"ormanci": {"name": "Ormancı", "size": Vector2(6, 5), "cost": {"odun": 8}, "time": 16.0, "role": "forest", "slots": 2, "reach": 90.0,
-		"desc": "Kesilen ağaçların kütüklerine fidan diker; fidan birkaç dakikada ağaç olur. Ormanı geri getirmek, çıplak yamaçların yağmurda kaymasını önler."},
+		"desc": "Kesimciler ağacı devirir, budar, tomruklara böler; tomrukları omuzlayıp kampa getirir, sehpada testereyle biçerler. Biçilen odun kampta yığılır, depoya taşınır. Kartından FİDAN DİK açılırsa kesimciler boş kaldıkça kesilen ağaçların kütüklerine fidan diker."},
 	"tasci": {"name": "Taş ocağı", "size": Vector2(7, 6), "cost": {"odun": 14}, "time": 24.0, "role": "work", "slots": 3,
 		"res": "tas", "reach": 130.0, "station": Vector3(0, 0, 0.45), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "chisel",
-		"desc": "Taşçılar kayadan blok kırar, bloğu ocağa taşır, tezgâhta keski ve tokmakla yontar. Yontulan taş ocakta yığılır, depoya taşınır."},
+		"desc": "Taşçılar kayadan blok kırar, bloğu ocağa taşır, tezgâhta keski ve tokmakla yontar. Yontulan taş ocakta yığılır, depoya taşınır. Madencilik araştırılınca kartından DEMİR ÇIKAR ile kayalardan demir söktürebilirsin."},
 	"camur": {"name": "Çamur ocağı", "size": Vector2(6, 5), "cost": {"odun": 10}, "time": 20.0, "role": "work", "slots": 3,
 		"res": "camur", "reach": 45.0, "station": Vector3(0, 0, 1.35), "face": Vector3(0, 0, 0.6), "pile": Vector3(2.4, 0, 1.8), "work": "gather",
 		"desc": "Islak zemine, kıyıya kurulur. Çamurcular yakındaki çamuru kürekle kazar, ocağa getirip yığar. Kerpiç yaptırılırsa çamuru kalıba döküp rafa dizerler; güneşte kurur (yağmurda yavaş, karda hiç)."},
@@ -59,9 +57,7 @@ const DEFS := {
 	"ambar": {"name": "Depo", "size": Vector2(9, 7), "cost": {"odun": 30, "tas": 6}, "time": 40.0, "role": "store",
 		"desc": "Her şey burada saklanır. İşçiler yüklerini en yakın depoya götürür."},
 	"arabaci": {"name": "Arabacı", "size": Vector2(6, 5), "cost": {"odun": 16}, "time": 22.0, "role": "carts", "slots": 3,
-		"desc": "İşçileri el arabasıyla çalışır, bir seferde 12 yük taşır. Arabacı varken uzaktaki işyerleri malını kapısının önüne yığar; arabacılar yığınları depoya taşır. Araba patikayı çok aşındırır, yağmurda ve çamurda yavaşlar, saplanır."},
-	"ahir": {"name": "Ahır", "size": Vector2(9, 6), "cost": {"odun": 26, "tas": 6}, "time": 34.0, "role": "oxen", "slots": 2,
-		"desc": "Her işçisi bir öküz arabası sürer: bir seferde 30 yük. Yavaştır, yolu en derin o aşındırır, çamura en sık o saplanır. Her öküz bir kişi kadar yer."},
+		"desc": "İşçileri el arabasıyla çalışır, bir seferde 12 yük taşır. Arabacı varken uzaktaki işyerleri malını kapısının önüne yığar; arabacılar yığınları depoya taşır. Araba patikayı çok aşındırır, yağmurda ve çamurda yavaşlar, saplanır. Kartından ÖKÜZ AL ile arabalar öküz arabası olur: bir seferde 30 yük, ama daha yavaş, yolu daha çok aşındırır; her öküz bir kişi kadar yer."},
 	"kuyu": {"name": "Kuyu", "size": Vector2(3, 3), "cost": {"tas": 8, "odun": 2}, "time": 14.0, "role": "well",
 		"desc": "Yangında kasabalılar buradan su taşır. Kuyu yoksa yangın söndürülemez."},
 	"fener": {"name": "Fener", "size": Vector2(1, 1), "cost": {"odun": 3, "tas": 1}, "time": 6.0, "role": "light", "light": 20.0,
@@ -73,33 +69,27 @@ const DEFS := {
 		"desc": "Kalın kütüklü, demir parmaklıklı küçük bir hücre: üç esir alır. Baskında yaralı düşen haydutları köylüler buraya taşır. Esirleri kazanabilir (köye katılırlar), çalıştırabilir ya da serbest bırakabilirsin. Esirler de yer; köy aç kalırsa kaçmaya çalışırlar."},
 	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 2,
 		"desc": "Tüfekli bir gözcü çıkar, 70 m içinde aydınlıkta gördüğü haydudu ve kurdu vurur. Yaklaşanları duyar, kasabayı uyarır."},
-	"kisla": {"name": "Bekçi karakolu", "size": Vector2(8, 6), "cost": {"odun": 24, "tas": 8}, "time": 34.0, "role": "barracks", "slots": 6,
-		"desc": "Buraya verilen kasabalılar tüfekli bekçi olur; gördükleri haydutla ve kurtla çarpışır. Karanlıktakini göremezler."},
-	"insaatci": {"name": "İnşaatçı", "size": Vector2(6, 5), "cost": {"odun": 14, "tas": 4}, "time": 24.0, "role": "builders", "slots": 4,
-		"desc": "Buraya verilen kasabalılar inşaatçı olur: işleri şantiyeler. Malzemeyi taşır, binayı parça parça kurar, onarır. Boştakiler de yine yardıma koşar; inşaat yokken inşaatçılar tezgâhta tahta biçer."},
-	"yayci": {"name": "Yayçı", "size": Vector2(5, 4), "cost": {"odun": 12}, "time": 22.0, "role": "bowyer", "slots": 2,
-		"desc": "Depodan odun alıp yay (2 odun) ve ok (1 odundan 12 ok) yapar, silahlığa taşır. Yay kasabanın kendi silahıdır: sessiz, kısa menzilli, atanı ele vermez."},
 	"okuma": {"name": "Okuma odası", "size": Vector2(6, 5), "cost": {"odun": 20, "tas": 6}, "time": 30.0, "role": "research", "slots": 2,
 		"desc": "Kitaplar, gazeteler, bir masa ve lamba. Buraya verilenler okur, yazar, hesap yapar: seçtiğin konu araştırılır. Okuryazarlığı yüksek olan çok daha çabuk ilerler. Telgraf, madencilik, demircilik buradan açılır."},
-	"komurcu": {"name": "Kömür ocağı", "size": Vector2(6, 5), "cost": {"odun": 12, "tas": 8}, "time": 24.0, "role": "craft", "slots": 2, "needs": "madencilik",
-		"takes": {"odun": 3}, "makes": "komur", "n": 2, "craft": 20.0,
-		"desc": "Odun toprakla örtülü yığınlarda havasız yakılır, kömür olur: 3 odundan 2 kömür. Kömür demircinin ocağını besler."},
-	"maden": {"name": "Demir madeni", "size": Vector2(6, 5), "cost": {"odun": 16, "tas": 4}, "time": 28.0, "role": "work", "slots": 3, "needs": "madencilik",
-		"res": "demir", "reach": 130.0, "station": Vector3(0, 0, 0.45), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "chisel",
-		"desc": "Madenciler kayalardaki demir damarını kazma ile söker, cevheri ocakta ayıklar. Taş ocağından yavaştır; kayayı da tüketir."},
 	"demirci": {"name": "Demirci", "size": Vector2(5, 4), "cost": {"odun": 14, "tas": 10}, "time": 30.0, "role": "smith", "slots": 1, "needs": "demircilik",
-		"desc": "Körük, örs, kömür ocağı. Demirci depodan demir ve kömür alıp tüfek (3 demir, 2 kömür) ve fişek (1 demir, 1 kömürden 10 fişek) döver, silahlığa taşır."},
-	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "armory",
-		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Kartından tüfekçi ya da okçu yetiştir: biri gelip yandaki hedefte talim eder, sonra o silahın milisi olur. Milis işaretli kasabalılar tehlike çanında buradan tüfek alıp mevziye geçer. Tüfek kasabada yapılamaz: haydutlardan düşeni toplanır, ya da satın alınır."},
+		"desc": "Körük, örs, ocak. Demirci odunu kendi ocağında kömüre çevirir (3 odundan 2 kömür), depodan demir alıp tüfek (3 demir, 2 kömür) ve fişek (1 demir, 1 kömürden 10 fişek) döver, silahlığa taşır."},
+	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "barracks", "slots": 6,
+		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Buraya verilenler tüfekli bekçi olur: gördükleri haydutla ve kurtla çarpışır (karanlıktakini göremezler). Kartından tüfekçi ya da okçu yetiştir; milis işaretli kasabalılar tehlike çanında buradan silah alıp mevziye geçer. FİŞEK DÖK ve YAY YAP açıksa her sabah depodan alınanla fişek, yay ve ok yapılır."},
 }
 
 ## What's found out in a reading room, one at a time: what it takes (points of work at the desk),
 ## what it must come after, what it opens.
 const TECHS := {
 	"telgraf": {"name": "Telgraf", "pts": 40.0, "desc": "İstasyona telgraf teli: trenle mal ısmarlanır, tren gelmeye başlar."},
-	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Kömür ocağı ve demir madeni kurulabilir."},
-	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: tüfek ve fişek kasabada dövülür."},
+	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Taş ocağında demir çıkarılabilir (kartında DEMİR ÇIKAR)."},
+	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: kendi kömürünü yakar, tüfek ve fişek döver."},
 }
+
+
+const OX_COST := {"odun": 20, "tas": 6} ## a carter's oxen bought (ÖKÜZ AL)
+const BOW := {"odun": 2} ## a bow, made at the armoury of a morning (YAY YAP)
+const ARROWS := {"odun": 1} ## twelve arrows
+const CHARCOAL := {"odun": 3} ## two of charcoal, burnt by the smith
 
 
 ## What each stuff is: its colour, hit points, whether it burns and how long it takes to burn through
@@ -209,16 +199,6 @@ static func recipe(kind: String) -> Array[Dictionary]:
 		"ev":
 			_hall(out, 6.0, 5.0, 2.3, 1.8, "log", "shingle", 1.0)
 			_p(out, "box", Vector3(0.6, 5.2, 0.6), Vector3(1.9, 3.0, -1.7), "stone")
-		"kisla":
-			_hall(out, 8.0, 6.0, 2.6, 2.2, "log", "shingle", 1.6)
-			_p(out, "box", Vector3(0.12, 1.8, 0.12), Vector3(-2.8, 1.3, 3.7), "wood")
-			_p(out, "box", Vector3(0.12, 1.8, 0.12), Vector3(-1.4, 1.3, 3.7), "wood")
-			_p(out, "box", Vector3(1.6, 0.1, 0.1), Vector3(-2.1, 1.9, 3.7), "dark")
-			for k in 4:
-				_p(out, "box", Vector3(0.04, 2.0, 0.04), Vector3(-2.65 + k * 0.33, 1.4, 3.6), "wood", Vector3(8, 0, 0))
-			_p(out, "box", Vector3(0.14, 1.9, 0.14), Vector3(2.6, 1.35, 3.8), "wood")
-			_p(out, "box", Vector3(1.1, 0.12, 0.12), Vector3(2.6, 1.9, 3.8), "wood")
-			_p(out, "box", Vector3(0.5, 0.7, 0.3), Vector3(2.6, 1.5, 3.8), "thatch")
 		"ambar":
 			_hall(out, 9.0, 7.0, 3.0, 2.6, "log", "shingle", 2.2)
 			for k in 3:
@@ -239,19 +219,6 @@ static func recipe(kind: String) -> Array[Dictionary]:
 			_p(out, "box", Vector3(2.0, 0.1, 0.8), Vector3(0.0, 0.9, 3.4), "plank")
 			for k in 3:
 				_p(out, "box", Vector3(0.3 + k * 0.05, 0.08, 0.22), Vector3(-0.5 + k * 0.4, 0.99 + k * 0.02, 3.4), "cloth")
-		"komurcu": # (charcoal clamps: domes of earth smoking, a woodpile, the shed)
-			_shed(out, 6.0, 5.0, "dark", "shingle")
-			for k in 2:
-				_p(out, "cone", Vector3(1.8, 1.1, 1.8), Vector3(-1.4 + k * 2.8, 0.55, 3.6), "dark")
-			for k in 6:
-				_p(out, "xcyl", Vector3(1.4, 0.24, 0.24), Vector3(0, 0.6 + (k / 3) * 0.24, -1.4 + (k % 3) * 0.26), "wood")
-		"maden": # (a timbered adit's head: a frame, a cart of ore, the shed)
-			_shed(out, 6.0, 5.0, "log", "shingle")
-			for sx in [-1.0, 1.0]:
-				_p(out, "box", Vector3(0.26, 2.4, 0.26), Vector3(sx * 0.9, 1.6, 3.5), "log")
-			_p(out, "box", Vector3(2.3, 0.3, 0.3), Vector3(0, 2.9, 3.5), "log")
-			_p(out, "box", Vector3(0.9, 0.5, 1.2), Vector3(2.0, 0.75, 3.2), "dark")
-			_p(out, "box", Vector3(0.8, 0.3, 1.0), Vector3(2.0, 1.1, 3.2), "stone")
 		"demirci": # (a smithy: a stone forge with its chimney, an anvil on a block, a quench tub)
 			_shed(out, 5.0, 4.0, "plank", "shingle")
 			_p(out, "box", Vector3(1.3, 1.0, 1.0), Vector3(-1.3, 0.95, -0.9), "stone")
@@ -271,11 +238,6 @@ static func recipe(kind: String) -> Array[Dictionary]:
 			for k in 4:
 				_p(out, "xcyl", Vector3(3.6, 0.42, 0.42), Vector3(-0.3, 0.56 + (k / 3) * 0.38, -1.4 + (k % 3) * 0.44 + (k / 3) * 0.22), "wood")
 			_p(out, "cyl", Vector3(0.7, 0.6, 0.7), Vector3(1.5, 0.65, 1.3), "wood")
-		"ormanci":
-			_shed(out, 5.0, 5.0, "plank", "thatch")
-			for k in 5:
-				_p(out, "cyl", Vector3(0.35, 0.3, 0.35), Vector3(-1.6 + k * 0.7, 0.6, -1.3), "plank")
-				_p(out, "cone", Vector3(0.45, 0.6, 0.45), Vector3(-1.6 + k * 0.7, 1.05, -1.3), "thatch")
 		"tasci":
 			_shed(out, 5.0, 5.0, "plank", "shingle")
 			_p(out, "box", Vector3(1.0, 0.6, 0.8), Vector3(-1.2, 0.65, -1.3), "stone")
@@ -306,15 +268,6 @@ static func recipe(kind: String) -> Array[Dictionary]:
 			_p(out, "xcyl", Vector3(0.08, 0.74, 0.74), Vector3(-0.62, 0.82, -0.6), "dark")
 			_p(out, "box", Vector3(0.08, 0.7, 0.7), Vector3(1.6, 0.85, -1.4), "dark", Vector3(0, 0, 12))
 			_p(out, "box", Vector3(0.08, 0.7, 0.7), Vector3(1.75, 0.85, -1.4), "dark", Vector3(0, 0, 12))
-		"ahir":
-			_hall(out, 9.0, 6.0, 2.6, 2.4, "plank", "thatch", 2.6)
-			for k in 3:
-				_p(out, "box", Vector3(1.0, 0.6, 0.6), Vector3(3.4, 0.75 + (k / 2) * 0.6, 3.6 + (k % 2) * 0.65 - 0.3), "thatch")
-			_p(out, "box", Vector3(0.12, 1.2, 0.12), Vector3(-4.3, 1.0, 3.6), "wood")
-			_p(out, "box", Vector3(0.12, 1.2, 0.12), Vector3(-2.3, 1.0, 3.6), "wood")
-			_p(out, "box", Vector3(2.1, 0.1, 0.08), Vector3(-3.3, 1.35, 3.6), "wood")
-			_p(out, "box", Vector3(2.1, 0.1, 0.08), Vector3(-3.3, 0.85, 3.6), "wood")
-			_p(out, "box", Vector3(1.4, 0.4, 0.5), Vector3(-3.3, 0.6, 3.1), "plank")
 		"tarla":
 			_fence(out, 14.0, 10.0)
 		"kuyu":

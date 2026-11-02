@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cj8p0w1ankshk"
-path="res://.godot/imported/kisla.png-cb0a78185a6eeca32cb83c1358a90307.ctex"
+uid="uid://dl1j6bjcg25jn"
+path="res://.godot/imported/tuzak.png-20c86940879d46f9f9a43ea245b15d39.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/icons/kisla.png"
-dest_files=["res://.godot/imported/kisla.png-cb0a78185a6eeca32cb83c1358a90307.ctex"]
+source_file="res://assets/ui/icons/tuzak.png"
+dest_files=["res://.godot/imported/tuzak.png-20c86940879d46f9f9a43ea245b15d39.ctex"]
 
 [params]
 

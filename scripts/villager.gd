@@ -384,13 +384,13 @@ func work_skill() -> String:
 
 static func skill_of(b: Building) -> String:
 	match b.kind:
-		"oduncu", "ormanci":
+		"oduncu":
 			return "odun"
-		"tasci", "camur", "maden":
+		"tasci", "camur":
 			return "tas"
 		"okuma":
 			return "bilgi"
-		"komurcu", "demirci":
+		"demirci":
 			return "zanaat"
 		"sifaci":
 			return "toplama"
@@ -398,13 +398,9 @@ static func skill_of(b: Building) -> String:
 			return "tarim"
 		"toplayici":
 			return "toplama"
-		"arabaci", "ahir":
+		"arabaci":
 			return "tasima"
-		"yayci":
-			return "zanaat"
-		"insaatci":
-			return "insa"
-		"kisla", "kule":
+		"silahlik", "kule":
 			return "nisan"
 	return ""
 

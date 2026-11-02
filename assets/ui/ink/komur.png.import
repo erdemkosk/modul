@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d3e7iwyw3pcxs"
-path="res://.godot/imported/ormanci.png-62fc5bd626e331d68eacf78c20b8dbb0.ctex"
+uid="uid://bsfe2ux8asp17"
+path="res://.godot/imported/komur.png-74c83a6fec9c4497009d41230c3ace93.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/icons/ormanci.png"
-dest_files=["res://.godot/imported/ormanci.png-62fc5bd626e331d68eacf78c20b8dbb0.ctex"]
+source_file="res://assets/ui/ink/komur.png"
+dest_files=["res://.godot/imported/komur.png-74c83a6fec9c4497009d41230c3ace93.ctex"]
 
 [params]
 

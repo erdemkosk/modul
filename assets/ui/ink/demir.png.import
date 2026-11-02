@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://nk3tnav2v8c1"
-path="res://.godot/imported/insaatci.png-755bcc3919d1cf9bbbd6920f2fc08614.ctex"
+uid="uid://dvbb38xh3kh4h"
+path="res://.godot/imported/demir.png-0039f89ab09dbca04ea81ad3d4861664.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/icons/insaatci.png"
-dest_files=["res://.godot/imported/insaatci.png-755bcc3919d1cf9bbbd6920f2fc08614.ctex"]
+source_file="res://assets/ui/ink/demir.png"
+dest_files=["res://.godot/imported/demir.png-0039f89ab09dbca04ea81ad3d4861664.ctex"]
 
 [params]
 

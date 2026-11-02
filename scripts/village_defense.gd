@@ -67,7 +67,7 @@ func _plan_raid(v: Villager) -> bool:
 func armories() -> Array[Building]:
 	var out: Array[Building] = []
 	for b in buildings:
-		if b.state == "done" and b.def.role == "armory":
+		if b.state == "done" and b.kind == "silahlik":
 			out.append(b)
 	return out
 
@@ -265,48 +265,6 @@ func _training() -> void:
 				return true}], "Talimde (%s)" % ("tüfek" if kind == "rifle" else "yay"), a)
 
 
-## The bowyer: odun from the store, worked at the bench into a bow or a bundle of arrows, carried
-## to the armoury: a bow, then arrows enough for the bows on the rack, then another bow.
-func _plan_bowyer(v: Villager, b: Building) -> void:
-	var a := _nearest(armories(), b.global_position)
-	if a == null:
-		b.idle_note = "Silahlık yok: yapılan yaylar konacak yer yok"
-		_plan_idle(v)
-		return
-	var store := _nearest(stores(), b.global_position)
-	if store == null or int(store.goods.get("odun", 0)) <= 0:
-		b.idle_note = "Depoda odun yok"
-		_plan_idle(v)
-		return
-	b.idle_note = ""
-	# (a bow first, then arrows enough to use it, then the next bow)
-	var bow := a.bows == 0 or (a.arrows >= 20 and a.arrows >= a.bows * 30)
-	var need := 2 if bow else 1
-	v.give([{"t": "go", "to": store.door()},
-		{"t": "do", "f": func() -> bool:
-			if not is_instance_valid(store) or store.take_goods("odun", need) < need:
-				return false
-			v.set_carry("odun", 1)
-			return true},
-		{"t": "go", "to": b.station()},
-		{"t": "do", "f": func() -> bool:
-			v.set_carry("", 0)
-			return true},
-		{"t": "work", "time": 30.0 if bow else 18.0, "anim": "chisel", "face": b.station_face()},
-		{"t": "do", "f": func() -> bool:
-			v.set_carry("tufek", 1)
-			return true},
-		{"t": "go", "to": a.door()},
-		{"t": "do", "f": func() -> bool:
-			v.set_carry("", 0)
-			if is_instance_valid(a):
-				if bow:
-					a.bows += 1
-				else:
-					a.arrows += 12
-			return true}], "Yayçı: %s yapıyor" % ("yay" if bow else "ok"), b)
-
-
 ## The raid over: the rifle and what's left of its cartridges back on the rack.
 func _plan_return_arms(v: Villager) -> void:
 	var a := _nearest(armories(), v.position)
@@ -454,6 +412,16 @@ func _armoury_morning() -> void:
 				a.ammo += CAST_N
 			else:
 				message.emit("Silahlıkta fişek dökülemedi: %s gerek" % BuildingDefs.cost_text_of(CAST), "info")
+		if a.bowing:
+			# (a bow first, then arrows enough to use it, then the next bow)
+			var bow := a.bows == 0 or (a.arrows >= 20 and a.arrows >= a.bows * 30)
+			if pay(BuildingDefs.BOW if bow else BuildingDefs.ARROWS, a.global_position):
+				if bow:
+					a.bows += 1
+				else:
+					a.arrows += 12
+			else:
+				message.emit("Silahlıkta yay yapılamadı: odun gerek", "info")
 
 
 ## The jail's mornings: those held fed (or, the town hungry, trying their luck), those being won
