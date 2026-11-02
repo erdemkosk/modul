@@ -269,6 +269,10 @@ static func restore(game: Node, d: Dictionary) -> void:
 			vl.low_for = float(pd.get("low", 0.0))
 			for t: String in pd.get("scars", []):
 				vl.scars.append(t)
+			var keep_hp := vl.hp
+			vl.apply_traits()
+			vl.hp = minf(keep_hp, vl.max_hp)
+			vl.show_scars()
 			vl.bleeding = bool(pd.get("bleeding", false))
 			vl.treated = bool(pd.get("treated", false))
 			vl.wounded_badly = bool(pd.get("wounded", false))

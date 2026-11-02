@@ -262,6 +262,52 @@ func has_trait(what: String) -> bool:
 		or scars.any(func(t: String) -> bool: return bool(SCARS[t].get(what, false)))
 
 
+var _crutch: Node3D
+
+
+## What it's lost shown on its body: a lost arm gone from the shoulder (the left: the right hand
+## holds the tools), a lost leg gone from the knee and a crutch under its arm.
+func show_scars() -> void:
+	if not _body or not _body.pose:
+		return
+	_body.pose.lost.clear()
+	if "tek_kol" in scars:
+		_body.pose.lost.append("LeftUpperArm")
+	if "tek_bacak" in scars:
+		_body.pose.lost.append("LeftLowerLeg")
+		if _crutch == null:
+			_crutch = Node3D.new()
+			add_child(_crutch)
+			var wood := Building.material("wood")
+			for part: Array in [[Vector3(0.05, 1.2, 0.05), Vector3(0, 0.6, 0)], [Vector3(0.22, 0.05, 0.08), Vector3(0, 1.22, 0)], [Vector3(0.14, 0.04, 0.05), Vector3(0, 0.75, 0)]]:
+				var m := BoxMesh.new()
+				m.size = part[0]
+				var mi := MeshInstance3D.new()
+				mi.mesh = m
+				mi.material_override = wood
+				mi.position = part[1]
+				_crutch.add_child(mi)
+			_crutch.position = Vector3(-0.32, 0.0, -0.05)
+			_crutch.rotation.z = 0.12
+
+
+## Struck hard enough to lose an arm or a leg there and then (`dmg` from a heavy blow or a shot): it
+## goes down with it.
+func _maim() -> void:
+	var can: Array[String] = []
+	for s in ["tek_kol", "tek_bacak"]:
+		if not s in scars:
+			can.append(s)
+	if can.is_empty():
+		return
+	var s: String = can[randi() % can.size()]
+	scars.append(s)
+	apply_traits()
+	show_scars()
+	think("scar", "%s" % ("Kolunu yitirdi" if s == "tek_kol" else "Bacağını yitirdi"), -15.0, maxf(village.weather.day_length_minutes * 60.0, 60.0) * 3.0)
+	village.message.emit("%s ağır yaralandı: %s!" % [display_name, "kolu koptu" if s == "tek_kol" else "bacağı koptu"], "bad")
+
+
 ## Mended from a bad wound: whether it's left anything, more likely if nobody saw to it; the worst
 ## (an arm or a leg lost) only then.
 func _roll_scar() -> void:
@@ -278,6 +324,7 @@ func _roll_scar() -> void:
 		return
 	scars.append(s)
 	apply_traits()
+	show_scars()
 	think("scar", "Kalıcı izi kaldı: %s" % SCARS[s].name, -8.0, maxf(village.weather.day_length_minutes * 60.0, 60.0) * 2.0)
 	village.message.emit("%s iyileşti ama yarası iz bıraktı: %s." % [display_name, str(SCARS[s].name).to_lower()], "bad")
 
@@ -1113,6 +1160,10 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		die() # (struck again where it lies)
 		return
 	hp -= dmg
+	if team == 0 and dmg >= 12.0 and randf() < 0.07 and _body:
+		_maim() # (a limb lost to the blow: down with it, where it'll bleed unless carried in)
+		_go_down()
+		return
 	if team == 0 and dmg >= 5.0:
 		think("hurt", "Yaralandı", -10.0, 600.0)
 		if dmg >= 10.0 and hp > 0.0 and hp < max_hp * 0.6 and randf() < 0.6:

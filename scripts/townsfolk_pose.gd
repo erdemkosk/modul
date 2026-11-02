@@ -14,6 +14,7 @@ var _want := {}
 var _now := {}
 var _ease := 1.0 ## the game's speed: the easing keeps up with it
 var _bones := {}
+var lost: Array[String] = [] ## bones gone (a lost arm or leg): shrunk to nothing, whatever the clip does
 
 
 func _ready() -> void:
@@ -39,6 +40,10 @@ func _process_modification_with_delta(delta: float) -> void:
 	var sk := get_skeleton()
 	if sk == null:
 		return
+	for b: String in lost:
+		var i := _bone(b)
+		if i >= 0:
+			sk.set_bone_pose_scale(i, Vector3.ONE * 0.001)
 	var k := 1.0 - exp(-10.0 * delta * _ease)
 	var any := false
 	for key: String in KEYS:
