@@ -15,7 +15,7 @@ const EAT_EVERY := 75.0 ## s a villager goes on one food
 const ARRIVE_EVERY := 24.0 ## s between newcomers, when there's room and food
 
 
-const HAUL := {"odun": 6, "tas": 4, "yiyecek": 6}
+const HAUL := {"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}
 
 
 const PILE_FROM := 20.0 ## m from a store past which, with carters about, a workplace piles its goods
@@ -45,7 +45,7 @@ var seasons: Seasons
 ## All the stores' goods together (read only: goods are put in and taken out of a store).
 var stock: Dictionary:
 	get:
-		var out := {"odun": 0, "tas": 0, "yiyecek": 0}
+		var out := {"odun": 0, "tas": 0, "yiyecek": 0, "camur": 0, "kerpic": 0}
 		for b in stores():
 			for k: String in b.goods:
 				out[k] = int(out.get(k, 0)) + int(b.goods[k])
@@ -703,6 +703,8 @@ func check(kind: String, pos: Vector3, yaw: float) -> String:
 		hi = maxf(hi, h)
 	if hi - lo > (3.6 if BuildingDefs.DEFS[kind].role == "farm" else 2.6):
 		return "Zemin çok eğimli"
+	if kind == "camur" and not mud_near(pos):
+		return "Yakında çamur yok: ıslak zemine, kıyıya kur"
 	for c in footprint(kind, pos, yaw, 1.0):
 		if not nav.is_ground_open(Nav.center_of(c)):
 			return "Su ya da uçurum"
@@ -840,9 +842,13 @@ func _let_go(b: Building) -> void:
 func _on_finished(b: Building) -> void:
 	if loading:
 		return
-	if b.upgraded_now:
-		b.upgraded_now = false
-		message.emit("%s büyütüldü: artık %d yatak" % [b.display_name(), b.beds()], "good")
+	if b.upgraded_now != "":
+		var what := b.upgraded_now
+		b.upgraded_now = ""
+		match what:
+			"oda": message.emit("%s büyütüldü: artık %d yatak" % [b.display_name(), b.beds()], "good")
+			"siva": message.emit("%s sıvandı: daha az yakacak yakar" % b.display_name(), "good")
+			"soba": message.emit("%s evine kerpiç soba yapıldı" % b.display_name(), "good")
 		_house_people()
 		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
@@ -1169,16 +1175,41 @@ func repair(b: Building) -> String:
 	return ""
 
 
-## A house made bigger: its back room staked out and to be built (Building.start_upgrade).
-func upgrade(b: Building) -> String:
+## How muddy the ground at `p` is, 0..1: mud in it, wet ground, a shore.
+func muddiness(p: Vector3) -> float:
+	var g := terrain.ground_at(p.x, p.z)
+	return maxf(terrain.soft_at(p.x, p.z).x, maxf(float(g.wet), float(g.shore) * 0.8))
+
+
+## Whether there's mud enough round `p` for a mud pit.
+func mud_near(p: Vector3) -> bool:
+	var n := 0
+	for gz in range(-3, 4):
+		for gx in range(-3, 4):
+			var q := p + Vector3(gx, 0, gz) * 9.0
+			if muddiness(q) > 0.35 and not terrain.is_water(q.x, q.z):
+				n += 1
+	return n >= 3
+
+
+## `what` done to a house (BuildingDefs.UPGRADES): its stuff to be carried in and built
+## (Building.start_upgrade); the back room's ground staked out first.
+func upgrade(b: Building, what := "oda") -> String:
 	if b.def.role != "house":
-		return "Yalnızca evler büyütülür"
-	if b.level >= 2 or b.upgrading:
-		return "Bu ev zaten büyük"
+		return "Yalnızca evlere yapılır"
+	if b.has_upgrade(what):
+		return "Bu evde zaten var"
+	if b.upgrading != "":
+		return "Bu evde zaten iş var"
 	if b.is_burning():
 		return "Önce yangın sönmeli"
 	if b.state != "done" or b.fallen_count() > 0:
 		return "Önce onarılmalı"
+	if what != "oda":
+		if not b.start_upgrade(what):
+			return "Şu an yapılamaz"
+		_let_go(b)
+		return ""
 	var y0 := b.global_position.y
 	for c: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
 		var l := BuildingDefs.ANNEX.position + BuildingDefs.ANNEX.size * c
@@ -1198,7 +1229,7 @@ func upgrade(b: Building) -> String:
 			var l := b.global_transform.affine_inverse() * (o.global_transform * Vector3(c.x * os.x, 0, c.y * os.y))
 			if room.has_point(Vector2(l.x, l.z)):
 				return "Evin arkasında %s var" % o.display_name()
-	if not b.start_upgrade():
+	if not b.start_upgrade("oda"):
 		return "Şu an büyütülemez"
 	_close_annex(b)
 	_let_go(b)

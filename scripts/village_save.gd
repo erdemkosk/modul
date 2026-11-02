@@ -35,7 +35,8 @@ static func save(game: Node) -> bool:
 		var x := b.global_transform
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
-			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
+			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "plastered": b.plastered, "stove": b.stove,
+			"mode": b.mode, "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -179,19 +180,30 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.restore_site(bd.delivered, bd.get("built", PackedByteArray()))
 		else:
 			b.complete_now()
-			var up := bool(bd.get("upgrading", false))
-			if int(bd.get("level", 1)) >= 2 or up:
+			var up_v: Variant = bd.get("upgrading", "")
+			var up := ("oda" if up_v else "") if typeof(up_v) == TYPE_BOOL else str(up_v) # (an older save: true was the back room)
+			if int(bd.get("level", 1)) >= 2 or up == "oda":
 				b.add_annex(true)
 				b.level = int(bd.get("level", 1))
 				v._close_annex(b)
+			b.stove = bool(bd.get("stove", false))
+			if b.stove or up == "soba":
+				b.add_stove(true)
 			b.apply_damage(bd.alive, bd.charred)
+			if bool(bd.get("plastered", false)):
+				b.plaster()
+			b.mode = str(bd.get("mode", ""))
+			for dr: Array in bd.get("drying", []):
+				b.drying.append(Vector2(float(dr[0]), float(dr[1])))
+			if not b.drying.is_empty():
+				b._show_racks()
 			for f: String in bd.get("yard", []):
 				b.yard_has.append(f)
 			if st == "ruin":
 				b.state = "ruin"
 			elif st == "repair":
-				b.state = "done" if up or b.standing_share() >= 0.45 else "ruin"
-				if b.start_upgrade(true) if up else b.start_repair():
+				b.state = "done" if up != "" or b.standing_share() >= 0.45 else "ruin"
+				if b.start_upgrade(up, true) if up != "" else b.start_repair():
 					for r: String in bd.delivered:
 						if b.delivered.has(r):
 							b.delivered[r] = mini(int(bd.delivered[r]), int(b.cost[r]))

@@ -801,10 +801,18 @@ func repair_selected() -> void:
 			hud.toast("%s onarılacak: köylüler malzeme taşıyacak" % selected.display_name(), "info")
 
 
-func upgrade_selected() -> void:
+func upgrade_selected(what := "oda") -> void:
 	if selected and is_instance_valid(selected):
-		var why := village.upgrade(selected)
-		hud.toast(why if why != "" else "%s büyütülecek: arkasına oda eklenecek" % selected.display_name(), "info")
+		var why := village.upgrade(selected, what)
+		var done := {"oda": "%s büyütülecek: arkasına oda eklenecek", "siva": "%s sıvanacak: çamur taşınacak", "soba": "%s evine soba yapılacak: kerpiç taşınacak"}
+		hud.toast(why if why != "" else str(done[what]) % selected.display_name(), "info")
+
+
+## A mud pit put to bricks, or back to mud.
+func toggle_mode_selected() -> void:
+	if selected and is_instance_valid(selected) and selected.kind == "camur":
+		selected.mode = "" if selected.mode == "kerpic" else "kerpic"
+		hud.toast("%s: %s" % [selected.display_name(), "kerpiç dökülecek" if selected.mode == "kerpic" else "çamur kazılacak"], "info")
 
 
 func ignite_selected() -> void:

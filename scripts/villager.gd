@@ -175,7 +175,7 @@ static func skill_of(b: Building) -> String:
 	match b.kind:
 		"oduncu", "ormanci":
 			return "odun"
-		"tasci":
+		"tasci", "camur":
 			return "tas"
 		"tarla":
 			return "tarim"
@@ -439,6 +439,21 @@ func set_carry(res: String, n: int) -> void:
 			mi.mesh = c
 			m.albedo_color = Color(0.55, 0.42, 0.22)
 			mi.position = Vector3(0, 1.0, -0.3)
+		"camur": # (a basket of it)
+			var c := CylinderMesh.new()
+			c.top_radius = 0.2
+			c.bottom_radius = 0.15
+			c.height = 0.26
+			c.radial_segments = 10
+			mi.mesh = c
+			m.albedo_color = Color(0.24, 0.17, 0.11)
+			mi.position = Vector3(0, 1.0, -0.3)
+		"kerpic":
+			var b := BoxMesh.new()
+			b.size = Vector3(0.34, 0.26, 0.3)
+			mi.mesh = b
+			m.albedo_color = Color(0.66, 0.55, 0.4)
+			mi.position = Vector3(0, 1.08, -0.3)
 		"su":
 			var c := CylinderMesh.new()
 			c.top_radius = 0.14
@@ -460,7 +475,7 @@ func capacity(res: String) -> int:
 			return 30
 		"hand":
 			return 12
-	return {"odun": 6, "tas": 4, "yiyecek": 6}.get(res, 5)
+	return {"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}.get(res, 5)
 
 
 func _drop_vehicle() -> void:
@@ -1597,7 +1612,7 @@ func _animate(dt: float, walking: bool) -> void:
 		er = 0.45
 	elif vehicle == "ox" and _anim == "walk":
 		arm_r = -0.9 # (a hand on the halter)
-	elif carry_n > 0 and carry_res in ["tas", "yiyecek", "su"] and _anim == "walk":
+	elif carry_n > 0 and carry_res in ["tas", "yiyecek", "su", "camur", "kerpic"] and _anim == "walk":
 		arm_l = -0.5
 		arm_r = -0.5
 		el = 1.0 # (the load held in both arms)

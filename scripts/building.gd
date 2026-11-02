@@ -49,6 +49,7 @@ class Piece:
 	var mesh_res: Mesh
 	var center := Vector3.ZERO ## its box's middle, in the piece (a model's mesh may sit off it)
 	var tag := ""
+	var daub := false ## plastered over with mud (a log of a house that's been)
 	var painted := false ## a model's: its own colours, in its vertices
 	var stage := 0 ## 0 the footing, 1 the walls, 2 the roof, 3 the fittings
 	var res := "odun" ## what it's built of, out of the site's stack
@@ -85,8 +86,13 @@ var pile_claim: Node ## the carter on its way for the pile
 var repaired := false ## (its last finish was a mending)
 var level := 1 ## a house: 2 once its back room's up (BuildingDefs.annex)
 var annex := Rect2() ## a house's back room, in its space (the yard keeps off it)
-var upgrading := false ## the back room going up (a mending, of pieces not there before)
-var upgraded_now := false ## (its last finish put the back room up)
+var upgrading := "" ## a house: what's being done to it ("oda", "siva", "soba": BuildingDefs.UPGRADES), as a mending
+var upgraded_now := "" ## (what its last finish did to it)
+var plastered := false ## a house: its logs plastered with mud
+var stove := false ## a house: a brick stove in it
+var mode := "" ## a mud pit: "" mud, "kerpic" bricks
+var drying: Array[Vector2] = [] ## a mud pit: bricks laid out on the racks: (seconds left, how many)
+var _racks: Node3D
 var yard_has: Array[String] = [] ## a house: what its people have brought to its yard (Yard), in order
 var crop: Crop ## a field's
 var heat_acc := 0.0 ## a house: the firewood burnt toward the next log
@@ -330,8 +336,13 @@ static func material(stuff: String) -> Material:
 					var sm := ShaderMaterial.new()
 					sm.shader = preload("res://shaders/building.gdshader")
 					sm.set_shader_parameter("roughness_base", 0.92 if base != "stone" else 0.97)
+					if base == "daub":
+						sm.set_shader_parameter("daub_k", 0.78) # (the logs' shape still shows through)
 					_mats[stuff] = sm
 					return sm
+				elif stuff == "daub":
+					m.albedo_color = Color(0.74, 0.65, 0.5)
+					m.roughness = 0.95
 				else:
 					m.albedo_color = BuildingDefs.STUFF[stuff].color
 					m.roughness = 0.92 if stuff != "stone" else 0.97
@@ -341,6 +352,8 @@ static func material(stuff: String) -> Material:
 
 ## A piece's own look: a model's piece in its own (vertex) colours, a plain one in its stuff's.
 static func _look(p: Piece) -> Material:
+	if p.daub:
+		return material("daub+" if p.painted else "daub")
 	return material(p.stuff + ("+" if p.painted else ""))
 
 
@@ -850,10 +863,10 @@ func _dust(at: Vector3) -> void:
 
 func _finish() -> void:
 	upgraded_now = upgrading
-	if upgrading:
-		upgrading = false
-		level = 2
-	repaired = state == "repair" and not upgraded_now
+	if upgrading != "":
+		upgrading = ""
+		_upgraded(upgraded_now)
+	repaired = state == "repair" and upgraded_now == ""
 	if state == "repair":
 		cost = (def.cost as Dictionary).duplicate()
 		for r: String in cost:
@@ -932,38 +945,83 @@ func _mend(what: Dictionary, secs: float) -> void:
 	_repair_done = 0
 	work = 0.0
 	state = "repair"
-	if not upgrading: # (the back room's low enough to build off the ground)
+	if upgrading == "": # (what's done to a house is done off the ground)
 		_make_scaffold()
 
 
-# --- Made bigger ------------------------------------------------------------------------------------
+# --- Made better ------------------------------------------------------------------------------------
 
 ## How many sleep here.
 func beds() -> int:
 	return BuildingDefs.UPGRADE_BEDS if level >= 2 else int(def.get("beds", 0))
 
 
-func can_upgrade() -> bool:
-	return def.role == "house" and level < 2 and not upgrading and state == "done" and not is_burning() and fallen_count() == 0
+## What it burns of a cold night, of what a plain house does.
+func fuel_mul() -> float:
+	return (BuildingDefs.SIVA_FUEL if plastered else 1.0) * (BuildingDefs.SOBA_FUEL if stove else 1.0)
 
 
-## The back room put up as a mending of pieces that were never there: its stuff carried in and
-## built on, a piece at a time. `resume`: (a loaded game) its pieces are already on.
-func start_upgrade(resume := false) -> bool:
-	if not resume and not can_upgrade():
+## Whether `what` (BuildingDefs.UPGRADES) has been done to it.
+func has_upgrade(what: String) -> bool:
+	match what:
+		"oda": return level >= 2
+		"siva": return plastered
+		"soba": return stove
+	return false
+
+
+func can_upgrade(what := "oda") -> bool:
+	return def.role == "house" and not has_upgrade(what) and upgrading == "" and state == "done" and not is_burning() and fallen_count() == 0
+
+
+## `what` done to the house as a mending: its stuff carried in and built on (the back room's or the
+## stove's pieces, which weren't there before, going up one at a time). `resume`: (a loaded game)
+## its pieces are already on.
+func start_upgrade(what := "oda", resume := false) -> bool:
+	if not resume and not can_upgrade(what):
 		return false
 	if not resume:
-		add_annex(false)
-	upgrading = true
-	_mend((BuildingDefs.UPGRADE_COST as Dictionary).duplicate(), 24.0)
+		match what:
+			"oda": add_annex(false)
+			"soba": add_stove(false)
+	upgrading = what
+	var up: Dictionary = BuildingDefs.UPGRADES[what]
+	_mend((up.cost as Dictionary).duplicate(), float(up.time))
 	return true
+
+
+## Done: what was being done to it taken on.
+func _upgraded(what: String) -> void:
+	match what:
+		"oda": level = 2
+		"siva": plaster()
+		"soba": stove = true
+
+
+## Its logs plastered over with mud (a lighter, earthen look; mended ones are plastered too).
+func plaster() -> void:
+	plastered = true
+	for p in pieces:
+		if p.stuff == "log":
+			p.daub = true
+			if p.alive and not p.charred and is_instance_valid(p.mesh):
+				p.mesh.material_override = _look(p)
 
 
 ## The back room's pieces on the building: standing (`up`), or not yet built.
 func add_annex(up: bool) -> void:
 	annex = BuildingDefs.ANNEX
+	_add_extra(BuildingDefs.annex(), up)
+
+
+## The stove's flue on the building: standing (`up`), or not yet built.
+func add_stove(up: bool) -> void:
+	_add_extra(BuildingDefs.stove(), up)
+
+
+func _add_extra(specs: Array[Dictionary], up: bool) -> void:
 	var first := pieces.size()
-	for spec in BuildingDefs.annex():
+	for spec in specs:
 		_add_piece(spec)
 	for k in range(first, pieces.size()):
 		var p := pieces[k]
@@ -1238,7 +1296,7 @@ func _show_pile() -> void:
 	var sz: Vector2 = def.size
 	_pile.position = def.get("pile", Vector3(sz.x * 0.5 + 1.0, 0.0, sz.y * 0.5 - 0.6)) + Vector3(0, 0.4, 0)
 	add_child(_pile)
-	var res := str(def.get("res", "odun"))
+	var res := biggest_good()
 	for k in n:
 		var mi := MeshInstance3D.new()
 		match res:
@@ -1258,6 +1316,22 @@ func _show_pile() -> void:
 				mi.scale = Vector3.ONE * randf_range(0.48, 0.62) * (1.0 - (k / 4) * 0.12)
 				mi.position = Vector3((k % 4) * 0.42 - 0.63 + (k / 4) * 0.2, 0.14 + (k / 4) * 0.24, randf_range(-0.15, 0.15))
 				mi.rotation = Vector3(randf_range(-0.3, 0.3), randf() * TAU, randf_range(-0.3, 0.3))
+			"camur": # (a wet heap, slumped)
+				var sph := SphereMesh.new()
+				sph.radius = 0.4
+				sph.height = 0.5
+				sph.radial_segments = 8
+				sph.rings = 4
+				mi.mesh = sph
+				mi.material_override = mud_material()
+				mi.position = Vector3((k % 4) * 0.45 - 0.68 + (k / 4) * 0.22, -0.25 + (k / 4) * 0.2, randf_range(-0.15, 0.15))
+				mi.scale = Vector3(1.0, 0.7, 1.0) * (1.0 - (k / 4) * 0.15)
+			"kerpic": # (stacked in courses, crosswise each course)
+				mi.mesh = _brick_mesh()
+				mi.material_override = material("plaster")
+				var course := k / 4
+				mi.position = Vector3((k % 4) * 0.3 - 0.45, -0.32 + course * 0.13, 0) if course % 2 == 0 else Vector3(0, -0.32 + course * 0.13, (k % 4) * 0.3 - 0.45)
+				mi.rotation.y = 0.0 if course % 2 == 0 else PI * 0.5
 			_:
 				var c := CylinderMesh.new()
 				c.top_radius = 0.22
@@ -1268,6 +1342,92 @@ func _show_pile() -> void:
 				mi.material_override = material("thatch")
 				mi.position = Vector3((k % 4) * 0.48 - 0.7, 0.15 + (k / 4) * 0.31, 0)
 		_pile.add_child(mi)
+
+
+## What there's most of in its pile (its own work's goods if none).
+func biggest_good() -> String:
+	var res := str(def.get("res", "odun"))
+	var top := 0
+	for k: String in goods:
+		if int(goods[k]) > top:
+			top = int(goods[k])
+			res = k
+	return res
+
+
+static var _mud_mat: StandardMaterial3D
+static var _brick: BoxMesh
+
+
+static func mud_material() -> StandardMaterial3D:
+	if _mud_mat == null:
+		_mud_mat = StandardMaterial3D.new()
+		_mud_mat.albedo_color = Color(0.24, 0.17, 0.11)
+		_mud_mat.roughness = 0.35 # (wet)
+	return _mud_mat
+
+
+static func _brick_mesh() -> BoxMesh:
+	if _brick == null:
+		_brick = BoxMesh.new()
+		_brick.size = Vector3(0.28, 0.12, 0.16)
+	return _brick
+
+
+# --- A mud pit's bricks ---------------------------------------------------------------------------
+
+const DRY_TIME := 90.0 ## s a brick takes to dry in the sun
+
+## `n` bricks pressed into moulds and laid out on the racks to dry.
+func lay_to_dry(n: int) -> void:
+	drying.append(Vector2(DRY_TIME, n))
+	_show_racks()
+
+
+## `t` s of drying at `rate` (1 in the sun, less in the rain, none under snow): those dry go on the pile.
+func dry(t: float, rate: float) -> int:
+	var done := 0
+	for i in range(drying.size() - 1, -1, -1):
+		drying[i].x -= t * rate
+		if drying[i].x <= 0.0:
+			done += int(drying[i].y)
+			drying.remove_at(i)
+	if done > 0:
+		add_goods("kerpic", done)
+		_show_racks()
+	return done
+
+
+func drying_count() -> int:
+	var n := 0
+	for d in drying:
+		n += int(d.y)
+	return n
+
+
+## The bricks drying, in rows on the shed's floor in front of the pit (out of the rain, but for the
+## weather's say in Village._dry_bricks), pale once they're nearly dry.
+func _show_racks() -> void:
+	if _racks:
+		_racks.queue_free()
+		_racks = null
+	if drying.is_empty():
+		return
+	_racks = Node3D.new()
+	add_child(_racks)
+	var wet := mud_material()
+	var dry_mat := material("plaster")
+	var k := 0
+	for d in drying:
+		for j in int(d.y):
+			if k >= 24:
+				break
+			var mi := MeshInstance3D.new()
+			mi.mesh = _brick_mesh()
+			mi.material_override = dry_mat if d.x < DRY_TIME * 0.4 else wet
+			mi.position = Vector3(-2.0 + (k % 6) * 0.32, 0.53, -0.2 + (k / 6) * 0.3)
+			_racks.add_child(mi)
+			k += 1
 
 
 static func _stream(id: String) -> AudioStream:

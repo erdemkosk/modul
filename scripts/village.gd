@@ -41,6 +41,7 @@ func _process(dt: float) -> void:
 		_evenings()
 		_camp_fires()
 		_training()
+		_dry_bricks(_heat_t)
 		_heat_t = 0.0
 	if day != _last_day:
 		_last_day = day

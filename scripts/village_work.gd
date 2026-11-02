@@ -325,7 +325,7 @@ func _plan_build(v: Villager) -> bool:
 	if v.idle:
 		v.abort()
 	var site := best
-	if site.state == "repair" and site.upgrading:
+	if site.state == "repair" and site.upgrading == "oda":
 		# (the back room: from beside it, round the back of the house)
 		var c := site.global_transform * Vector3(site.annex.get_center().x, 0, site.annex.get_center().y)
 		var out := site.global_transform.basis * Vector3(randf_range(-2.4, 2.4), 0, -site.annex.size.y * 0.5 - 1.3)
@@ -335,6 +335,12 @@ func _plan_build(v: Villager) -> bool:
 			{"t": "go", "to": at},
 			{"t": "work", "anim": "build", "face": c, "tick": func(dt: float) -> bool: return site.add_work(dt)},
 		], "Büyütüyor: %s" % site.display_name(), site)
+		return true
+	if site.state == "repair" and site.upgrading != "":
+		v.give([
+			{"t": "go", "to": _spot_by(site, v.position)},
+			{"t": "work", "anim": "build", "face": site.global_position, "tick": func(dt: float) -> bool: return site.add_work(dt)},
+		], "%s: %s" % ["Sıvıyor" if site.upgrading == "siva" else "Soba yapıyor", site.display_name()], site)
 		return true
 	if site.state == "repair":
 		v.give([
@@ -453,6 +459,7 @@ func _plan_work(v: Villager) -> void:
 		return
 	# The pile's grown and nobody fetches it: a load of it to the store first.
 	if not carters_about() and b.goods_total() >= 9:
+		res = b.biggest_good()
 		var n := b.take_goods(res, v.capacity(res))
 		if n > 0:
 			v.give([{"t": "go", "to": b.door()}, {"t": "step", "to": b.station()},
@@ -469,6 +476,9 @@ func _plan_work(v: Villager) -> void:
 					v.set_carry("", 0)
 					return true}] + _go_out(store, v), "%s: depoya taşıyor" % b.display_name(), b)
 			return
+	if b.kind == "camur":
+		_plan_mud(v, b)
+		return
 	# Logs lying from a tree already down: one fetched and sawn.
 	if res == "odun":
 		var bl := _billet_for(b)
@@ -552,6 +562,54 @@ func _plan_work(v: Villager) -> void:
 	# What's gathered is brought to the yard and worked there: sawn, dressed, sorted; it's piled there.
 	steps.append_array(_work_at(b, v, res))
 	v.give(steps, "%s: %s" % [b.display_name(), {"odun": "ağaç kesiyor", "tas": "taş kırıyor", "yiyecek": "yemiş topluyor"}[res]], b)
+
+
+## A basket of mud dug from the wettest ground in reach and brought back to the pit: piled there,
+## or (making bricks) pressed into moulds at the table and laid out on the racks to dry.
+func _plan_mud(v: Villager, b: Building) -> void:
+	var at := _mud_spot(b)
+	if at == Vector3.INF:
+		b.idle_note = "Yakında çamur kalmadı"
+		_plan_idle(v)
+		return
+	b.idle_note = ""
+	var away := Vector3(v.position.x - at.x, 0, v.position.z - at.z)
+	var spot := at + (away.normalized() if away.length() > 0.1 else Vector3.BACK) * 0.8
+	spot.y = nav.height(spot.x, spot.z)
+	var bricks := b.mode == "kerpic"
+	var steps: Array = [{"t": "go", "to": spot}, {"t": "work", "time": 6.0, "anim": "dig", "face": at},
+		{"t": "do", "f": func() -> bool:
+			terrain.churn(at, 0.5)
+			v.set_carry("camur", 4)
+			return true}]
+	if bricks:
+		steps.append_array([{"t": "go", "to": b.door()}, {"t": "step", "to": b.station()},
+			{"t": "work", "time": 7.0, "anim": "gather", "face": b.station_face()},
+			{"t": "do", "f": func() -> bool:
+				if is_instance_valid(b) and b.state == "done" and v.carry_n > 0:
+					b.lay_to_dry(v.carry_n)
+				v.set_carry("", 0)
+				return true},
+			{"t": "step", "to": b.door()}])
+	else:
+		steps.append_array(_work_at(b, v, "camur"))
+	v.give(steps, "%s: %s" % [b.display_name(), "kerpiç döküyor" if bricks else "çamur kazıyor"], b)
+
+
+## The muddiest open ground a few tries find in `b`'s reach (INF: none muddy enough).
+func _mud_spot(b: Building) -> Vector3:
+	var best := Vector3.INF
+	var top := 0.3
+	for k in 28:
+		var a := randf() * TAU
+		var p := b.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(6.0, float(b.def.reach))
+		var m := muddiness(p)
+		if m > top and nav.is_open(p) and not terrain.is_water(p.x, p.z):
+			top = m
+			best = p
+	if best != Vector3.INF:
+		best.y = nav.height(best.x, best.z)
+	return best
 
 
 ## Back to the yard with what's carried, worked at its station (sawn on the trestles, dressed on

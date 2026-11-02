@@ -133,7 +133,7 @@ func _hearths(t: float) -> void:
 			var h := weather.hour
 			b.set_hearth(lived and ((h > 5.8 and h < 8.3) or (h > 11.3 and h < 13.0) or (h > 17.3 and h < 20.5)))
 			continue
-		b.heat_acc += t / LOG_EVERY * (1.0 + clampf(-weather.temperature / 12.0, 0.0, 1.0)) # (bitter cold: up to twice the wood)
+		b.heat_acc += t / LOG_EVERY * (1.0 + clampf(-weather.temperature / 12.0, 0.0, 1.0)) * b.fuel_mul() # (bitter cold: up to twice the wood; plaster and a stove save it)
 		while b.heat_acc >= 1.0:
 			b.heat_acc -= 1.0
 			if b.take_goods("odun", 1) == 0:
@@ -169,6 +169,21 @@ func _births() -> void:
 				kid.home = b
 				message.emit("%s ailesinin bir çocuğu oldu: %s" % [f, kid.display_name.split(" ")[0]], "good")
 				return
+
+
+## The bricks on the mud pits' racks drying `t` s: in the sun, slower in the rain, not at all under
+## snow or in the frost.
+func _dry_bricks(t: float) -> void:
+	var rate := 1.0
+	if Weather.snow_cover_now > 0.3 or weather.temperature < 0.0:
+		rate = 0.0
+	elif Weather.rain_now > 0.15:
+		rate = 0.25
+	elif weather.is_night():
+		rate = 0.4
+	for b in buildings:
+		if not b.drying.is_empty() and b.state == "done":
+			b.dry(t, rate)
 
 
 func _morning() -> void:

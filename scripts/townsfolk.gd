@@ -307,7 +307,7 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 	var procedural := false
 	if walking:
 		var real := speed / maxf(rate, 0.01)
-		if carrying in ["tas", "yiyecek", "su", "yarali", "tufek"] or vehicle == "hand":
+		if carrying in ["tas", "yiyecek", "su", "camur", "kerpic", "yarali", "tufek"] or vehicle == "hand":
 			clip = "CarryBoxWalk"
 			pace = speed / CARRY_SPEED
 		elif armed:

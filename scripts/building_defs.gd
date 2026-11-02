@@ -11,11 +11,11 @@ extends RefCounted
 ## its pieces are that model's objects instead: {shape "mesh", mesh, xf, mat, tag}, each object's
 ## name "<stuff>-<n>" or "<stuff>-<tag>-<n>".
 
-const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek"}
+const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "toplayici", "ormanci", "meydan"]
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci"]
+const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "camur", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -42,6 +42,9 @@ const DEFS := {
 	"tasci": {"name": "Taş ocağı", "size": Vector2(7, 6), "cost": {"odun": 14}, "time": 24.0, "role": "work", "slots": 3,
 		"res": "tas", "reach": 130.0, "station": Vector3(0, 0, 0.45), "face": Vector3(0, 0, -0.3), "pile": Vector3(2.3, 0, 1.9), "work": "chisel",
 		"desc": "Taşçılar kayadan blok kırar, bloğu ocağa taşır, tezgâhta keski ve tokmakla yontar. Yontulan taş ocakta yığılır, depoya taşınır."},
+	"camur": {"name": "Çamur ocağı", "size": Vector2(6, 5), "cost": {"odun": 10}, "time": 20.0, "role": "work", "slots": 3,
+		"res": "camur", "reach": 45.0, "station": Vector3(0, 0, 1.35), "face": Vector3(0, 0, 0.6), "pile": Vector3(2.4, 0, 1.8), "work": "gather",
+		"desc": "Islak zemine, kıyıya kurulur. Çamurcular yakındaki çamuru kürekle kazar, ocağa getirip yığar. Kerpiç yaptırılırsa çamuru kalıba döküp rafa dizerler; güneşte kurur (yağmurda yavaş, karda hiç)."},
 	"toplayici": {"name": "Toplayıcı", "size": Vector2(6, 5), "cost": {"odun": 6}, "time": 16.0, "role": "work", "slots": 3,
 		"res": "yiyecek", "reach": 85.0, "station": Vector3(0, 0, 1.35), "face": Vector3(0, 0, 0.8), "pile": Vector3(-1.9, 0, 1.6), "work": "gather",
 		"desc": "Çalılardan yaban mersini toplar, masada ayıklar. Yemiş kulübede yığılır, depoya taşınır. Toplanan çalı bir süre sonra yeniden verir."},
@@ -99,10 +102,26 @@ static func cost_text_of(cost: Dictionary) -> String:
 	return " · ".join(parts)
 
 
-## A house made bigger: a back room against its back wall, two more beds.
-const ANNEX := Rect2(-2.6, -5.85, 4.0, 3.2) ## the room's ground, in the house's space (x, z)
-const UPGRADE_COST := {"odun": 10, "tas": 6}
+## A house made better, each once, as its card offers: a back room against its back wall (two more
+## beds), its logs plastered with mud (less firewood), a brick stove (less still, its flue up through
+## the roof). Each is carried in and built like a mending.
+const UPGRADES := {
+	"oda": {"name": "ODA EKLE", "cost": {"odun": 10, "tas": 6}, "time": 24.0, "tip": "Arkasına bir oda: 6 yatak"},
+	"siva": {"name": "SIVA", "cost": {"camur": 8}, "time": 16.0, "tip": "Kütükleri çamurla sıvar: %30 daha az yakacak"},
+	"soba": {"name": "SOBA", "cost": {"kerpic": 12, "tas": 4}, "time": 20.0, "tip": "Kerpiç soba: %40 daha az yakacak, gece boyu sıcak"},
+}
+const ANNEX := Rect2(-2.6, -5.85, 4.0, 3.2) ## the back room's ground, in the house's space (x, z)
 const UPGRADE_BEDS := 6
+const SIVA_FUEL := 0.7 ## what a plastered house burns, of what it did
+const SOBA_FUEL := 0.6
+
+
+## The brick stove's flue: up through the roof, whitewashed, a stone cap on it.
+static func stove() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	_p(out, "box", Vector3(0.75, 3.2, 0.75), Vector3(-1.4, 4.7, 0.35), "plaster")
+	_p(out, "box", Vector3(0.9, 0.16, 0.9), Vector3(-1.4, 6.38, 0.35), "stone")
+	return out
 
 
 ## The back room: a stone plinth, a plank floor, log walls on three sides (the fourth is the
@@ -184,6 +203,15 @@ static func recipe(kind: String) -> Array[Dictionary]:
 			_p(out, "box", Vector3(0.9, 0.55, 0.7), Vector3(0.1, 0.63, -1.4), "stone")
 			_p(out, "box", Vector3(0.8, 0.5, 0.7), Vector3(-0.6, 1.2, -1.35), "stone")
 			_p(out, "box", Vector3(1.2, 0.8, 0.9), Vector3(1.3, 0.75, 1.0), "stone")
+		"camur":
+			_shed(out, 5.0, 5.0, "plank", "thatch")
+			_p(out, "box", Vector3(2.2, 0.12, 1.2), Vector3(-0.9, 0.48, -1.3), "dark") # (the mixing pit)
+			_p(out, "box", Vector3(2.4, 0.3, 0.12), Vector3(-0.9, 0.6, -0.65), "plank")
+			_p(out, "box", Vector3(1.0, 0.18, 0.6), Vector3(1.2, 0.95, -1.3), "plank") # (the moulding table)
+			for k in 4:
+				_p(out, "box", Vector3(0.22, 0.1, 0.4), Vector3(0.85 + k * 0.24, 1.1, -1.3), "plaster")
+			_p(out, "box", Vector3(0.1, 0.9, 0.1), Vector3(0.75, 0.6, -1.05), "wood")
+			_p(out, "box", Vector3(0.1, 0.9, 0.1), Vector3(1.65, 0.6, -1.05), "wood")
 		"toplayici":
 			_shed(out, 5.0, 5.0, "plank", "thatch")
 			for k in 3:

@@ -8,6 +8,8 @@ global uniform float weather_snow;
 global uniform float weather_wetness;
 
 uniform float roughness_base = 0.92;
+uniform vec3 daub = vec3(0.78, 0.69, 0.53); // a house's mud plaster over its logs
+uniform float daub_k = 0.0;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -31,6 +33,7 @@ void fragment() {
 	float up = clamp(wn.y, 0.0, 1.0);
 	float snow = smoothstep(0.4, 0.8, up) * smoothstep(0.05, 0.55, weather_snow);
 	vec3 c = COLOR.rgb * (0.86 + 0.26 * grain);
+	c = mix(c, daub * (0.9 + 0.2 * grain), daub_k);
 	c *= mix(1.0, 0.7, weather_wetness * (1.0 - snow));
 	ALBEDO = mix(c, vec3(0.92, 0.94, 0.97), snow);
 	ROUGHNESS = mix(roughness_base * mix(1.0, 0.55, weather_wetness), 0.75, snow);
