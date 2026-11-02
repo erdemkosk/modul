@@ -107,6 +107,8 @@ func _assign() -> void:
 			fires.append(b)
 	var raid := raids != null and raids.threat()
 	_rescues()
+	if not raid:
+		_captures()
 	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
 	for v in villagers:
 		if v.dead or v.down or v.drafted or v.leaving:

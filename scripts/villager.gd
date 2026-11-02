@@ -134,6 +134,9 @@ const TRAITS := {
 var thoughts: Array = [] ## {id, text, value, left (s)}
 var low_for := 0.0 ## s its spirits have been at breaking point
 var leaving := false ## (gone for good: on its way out of the valley)
+var held_in: Building ## (an outlaw) the jail it's held in
+var held_mode := "" ## (a prisoner) "": kept, "kazan": being won over, "calistir": put to work
+var won := 0 ## (a prisoner being won over) mornings of it
 var sulk_cd := 0.0 ## s before it can go off on its own again
 var mood: float:
 	get:
@@ -1069,6 +1072,13 @@ func hurt(dmg: float, by: Villager = null) -> void:
 		# One of the town shot or cut down mostly lies wounded, not dead: it can still be saved.
 		if team == 0 and _body and randf() < 0.75:
 			_go_down()
+			return
+		if team == 1 and _body and randf() < 0.6: # (an outlaw too: lying there to be taken, if there's a jail)
+			_go_down()
+			bleed = 200.0
+			job = "Yaralı haydut"
+			if not self in village.downed_outlaws:
+				village.downed_outlaws.append(self)
 			return
 		die()
 		return

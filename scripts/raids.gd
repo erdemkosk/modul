@@ -178,7 +178,7 @@ func nearest_raider(p: Vector3, reach: float, seen := false) -> Villager:
 	var bd := reach
 	for list: Array[Villager] in [raiders, wolves]:
 		for r in list:
-			if not is_instance_valid(r) or r.dead:
+			if not is_instance_valid(r) or r.dead or r.down:
 				continue
 			var d := r.position.distance_to(p)
 			if d < bd and (not seen or can_see(p, r)):
@@ -231,7 +231,10 @@ func _on_raider_down(r: Villager) -> void:
 func _think() -> void:
 	var kept: Array[Villager] = []
 	for r in raiders:
-		if is_instance_valid(r):
+		if is_instance_valid(r) and r.down and not r.dead:
+			if not r in village.downed_outlaws: # (out of the fight: it lies there to be taken or to bleed out)
+				village.downed_outlaws.append(r)
+		elif is_instance_valid(r):
 			kept.append(r)
 	raiders = kept
 	var live := 0

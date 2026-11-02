@@ -94,6 +94,7 @@ var mode := "" ## a mud pit: "" mud, "kerpic" bricks
 var work_area := Rect2() ## a workplace: the ground (x, z) its workers keep to, if it's been drawn (ALAN ÇİZ)
 var drying: Array[Vector2] = [] ## a mud pit: bricks laid out on the racks: (seconds left, how many)
 var _racks: Node3D
+var prisoners: Array = [] ## a jail: the outlaws held in it (Villager)
 var yard_has: Array[String] = [] ## a house: what its people have brought to its yard (Yard), in order
 var crop: Crop ## a field's
 var heat_acc := 0.0 ## a house: the firewood burnt toward the next log

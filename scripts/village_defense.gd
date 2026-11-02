@@ -344,6 +344,203 @@ func _disarm(v: Villager) -> void:
 
 
 ## The wounded lying out: the nearest one free to come picks it up and carries it in to a bed.
+# --- Prisoners -------------------------------------------------------------------------------------
+
+## The jails with a cell free.
+func _jails_free() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "jail" and b.prisoners.size() < int(b.def.cells):
+			out.append(b)
+	return out
+
+
+## How many are held, all the jails together.
+func prisoner_count() -> int:
+	var n := 0
+	for b in buildings:
+		if b.def.role == "jail":
+			n += b.prisoners.size()
+	return n
+
+
+## After a fight: an outlaw lying wounded carried to a jail with room by the nearest free hand.
+func _captures() -> void:
+	for o in downed_outlaws.duplicate():
+		if not is_instance_valid(o) or o.dead or not o.down:
+			downed_outlaws.erase(o)
+			continue
+		if is_instance_valid(o.carried_by) or (o.has_meta("taker") and is_instance_valid(o.get_meta("taker")) and (o.get_meta("taker") as Villager).job == "Haydudu hapse taşıyor"):
+			continue
+		var jails := _jails_free()
+		if jails.is_empty():
+			if not o.has_meta("said"):
+				o.set_meta("said", true)
+				message.emit("Yaralı bir haydut yerde: bir Hapishane olsaydı yakalanabilirdi.", "info")
+			continue
+		var to := _nearest(jails, o.position)
+		var best: Villager = null
+		var bd := 200.0
+		for v in villagers:
+			if v.dead or v.down or v.drafted or v.sleeping or v.is_child or v.has_cart or v.leaving or v.job == "Haydudu hapse taşıyor" or v.job == "Yaralıyı taşıyor":
+				continue
+			var d := v.position.distance_to(o.position)
+			if d < bd:
+				bd = d
+				best = v
+		if best == null:
+			continue
+		var v := best
+		o.set_meta("taker", v)
+		v.abort()
+		v.give([{"t": "go", "to": o.position},
+			{"t": "work", "time": 1.8, "anim": "gather", "face": o.position},
+			{"t": "do", "f": func() -> bool:
+				if not is_instance_valid(o) or o.dead or not o.down:
+					return false
+				o.carried_by = v
+				v.set_carry("yarali", 1)
+				return true},
+			{"t": "go", "to": to.door()},
+			{"t": "do", "f": func() -> bool:
+				v.set_carry("", 0)
+				if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.state == "done" and to.prisoners.size() < int(to.def.cells):
+					imprison(o, to)
+					message.emit("%s bir haydudu yakalayıp hapse kapattı." % v.display_name, "good")
+				return true}], "Haydudu hapse taşıyor", o)
+
+
+## `o` locked up in `jail`: who it is worked out (a name, its knacks and traits) for the card.
+func imprison(o: Villager, jail: Building) -> void:
+	downed_outlaws.erase(o)
+	o.abort()
+	o.sleep_in(jail, true)
+	o.recovering = false
+	o.held_in = jail
+	o.held_mode = ""
+	o.won = 0
+	o.hp = o.max_hp
+	if o.skills.is_empty():
+		var rng := RandomNumberGenerator.new()
+		rng.seed = randi()
+		o.roll_skills(rng)
+		o.family = _new_family()
+		o.female = false
+		o.display_name = full_name(o, NAMES[randi() % 12])
+	o.job = "Hapiste"
+	jail.prisoners.append(o)
+
+
+## The jail's mornings: those held fed (or, the town hungry, trying their luck), those being won
+## over a morning nearer, those put to work a day's stone and wood, the town uneasy at it.
+func _prison_morning() -> void:
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	var forced := 0
+	for b in buildings:
+		if b.def.role != "jail":
+			continue
+		for o in b.prisoners.duplicate():
+			if not is_instance_valid(o):
+				b.prisoners.erase(o)
+				continue
+			if _hungry and randf() < 0.35:
+				message.emit("Aç kalan bir esir, %s, hapisten kaçtı!" % o.display_name.split(" ")[0], "bad")
+				release(o, false)
+				continue
+			match o.held_mode:
+				"kazan":
+					if not _hungry:
+						o.won += 1
+					if o.won >= 3:
+						recruit(o)
+				"calistir":
+					forced += 1
+					add_anywhere("tas" if randf() < 0.5 else "odun", 4, b.global_position)
+	if forced > 0:
+		for v in villagers:
+			v.think("forced", "Köyde zorla çalıştırılan var", -3.0, day_s)
+
+
+## A prisoner won over: one of the town now (its family its own), out of the jail.
+func recruit(o: Villager) -> void:
+	if is_instance_valid(o.held_in):
+		o.held_in.prisoners.erase(o)
+		o.position = o.held_in.door()
+	o.held_in = null
+	o.held_mode = ""
+	o.team = 0
+	o.fighter = false
+	o.ranged = 0.0
+	o.role = ""
+	o.attack = 9.0
+	o.max_hp = 50.0
+	o.apply_traits()
+	for k: String in Villager.SKILLS:
+		o.prio[k] = int(o.prio.get(k, 1))
+	o.wake()
+	o.arm_with("")
+	if o.died.is_connected(raids._on_raider_down):
+		o.died.disconnect(raids._on_raider_down)
+	o.died.connect(_on_villager_died)
+	villagers.append(o)
+	o.think("free", "Hapisten çıktı, yeni bir hayat", 10.0, maxf(weather.day_length_minutes * 60.0, 60.0) * 2.0)
+	_house_people()
+	message.emit("%s artık kasabadan biri: hapisten çıkıp aramıza katıldı." % o.display_name, "good")
+
+
+## A prisoner let go (or escaped, `freed` false): out of the jail and off into the woods. Let go,
+## the outlaws are a day slower to come again.
+func release(o: Villager, freed := true) -> void:
+	var at := o.position
+	if is_instance_valid(o.held_in):
+		o.held_in.prisoners.erase(o)
+		at = o.held_in.door()
+	o.held_in = null
+	o.position = at
+	o.wake()
+	o.leaving = true
+	var away := at + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * 140.0
+	away.y = nav.height(away.x, away.z)
+	o.give([{"t": "go", "to": away}, {"t": "do", "f": func() -> bool:
+		o.queue_free()
+		return true}], "Ormana gidiyor")
+	if freed:
+		if raids:
+			raids.next_day += 1
+		message.emit("%s serbest bırakıldı; haydutlar bunu unutmaz, bir süre gelmezler." % o.display_name.split(" ")[0], "info")
+
+
+## A prisoner put back in a jail on a loaded game: an outlaw again, as it was.
+func spawn_prisoner(d: Dictionary, jail: Building) -> void:
+	var o := Villager.new()
+	o.team = 1
+	o.tunic_color = Color(0.17, 0.12, 0.11)
+	o.village = self
+	o.nav = nav
+	o.look_seed = int(d.get("look", 0))
+	o.display_name = str(d.name)
+	o.family = str(d.get("family", ""))
+	for k: String in d.get("skills", {}):
+		o.skills[k] = float(d.skills[k])
+	for t: String in d.get("traits", []):
+		o.traits.append(t)
+	for k: String in d.get("keen", []):
+		o.keen.append(k)
+	o.max_hp = 70.0
+	o.hp = 70.0
+	if raids:
+		raids.add_child(o)
+	else:
+		add_child(o)
+	o.position = jail.door()
+	o.held_in = jail
+	o.held_mode = str(d.get("mode", ""))
+	o.won = int(d.get("won", 0))
+	o.sleep_in(jail, true)
+	o.job = "Hapiste"
+	jail.prisoners.append(o)
+
+
 func _rescues() -> void:
 	for d in villagers:
 		if not d.down or d.dead or is_instance_valid(d.carried_by):

@@ -51,6 +51,7 @@ func _eat(dt: float) -> void:
 	var mouths := 0.0 # (each by its traits: a glutton eats half again, a frugal one less)
 	for v in villagers:
 		mouths += v.trait_mul("eat")
+	mouths += int(call("prisoner_count")) * 0.8 # (those held eat too, a little less: village_defense.gd)
 	var every := EAT_EVERY / maxf(mouths + oxen(), 0.1)
 	while _eat_t >= every:
 		_eat_t -= every
@@ -194,6 +195,7 @@ func _dry_bricks(t: float) -> void:
 
 func _morning() -> void:
 	_births()
+	call("_prison_morning") # (village_defense.gd)
 	for y in yards:
 		if is_instance_valid(y):
 			y.grow()

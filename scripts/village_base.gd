@@ -83,6 +83,7 @@ var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 
 
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
+var downed_outlaws: Array[Villager] = [] ## outlaws lying wounded after a fight: to be taken to a jail, or to bleed out
 var cut_marks := {} ## prop index -> 1: marked to be felled (KES), 2: urgently (ACİL KES: everyone drops their work for it)
 var _marks_mm: MultiMeshInstance3D ## an orange band round each marked trunk
 var _marks_top: MultiMeshInstance3D ## and a marker over its crown, to be seen from above
@@ -789,7 +790,7 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 ## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
 ## there leaving their stumps: a settlement is a clearing, not houses stood in the forest.
 const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, "forest": 3.0,
-	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0}
+	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0}
 
 
 func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:

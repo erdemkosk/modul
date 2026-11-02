@@ -15,7 +15,7 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "ormanci", "insaatci"]],
-	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci"]], ["EMİRLER", ["kes", "kesme"]]]
+	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci", "hapishane"]], ["EMİRLER", ["kes", "kesme"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."}}
@@ -415,6 +415,8 @@ func kind_at(n: int) -> String:
 
 
 var _dial: SeasonDial
+var _card_jail: VBoxContainer ## a jail's card: a row each held, with what to do with them
+var _jail_rows: Array = [] ## the prisoner each row was built for
 var _strip: FolkStrip
 
 
@@ -487,6 +489,9 @@ func _make_card() -> void:
 		bt.custom_minimum_size = Vector2(96, 26)
 		row.add_child(bt)
 		_pick_rows.append([row, nm, kn, wh, bt, face])
+	_card_jail = VBoxContainer.new()
+	_card_jail.add_theme_constant_override("separation", 6)
+	col.add_child(_card_jail)
 	_card_acts = HBoxContainer.new()
 	_card_acts.add_theme_constant_override("separation", 8)
 	col.add_child(_card_acts)
@@ -910,6 +915,7 @@ func _update_card() -> void:
 	_card.visible = true
 	_card_folk.visible = false
 	_folk_box.visible = false
+	_card_jail.visible = false
 	_card_acts.visible = true
 	_card_train.visible = b.state == "done" and b.def.role == "armory"
 	_card_pick.visible = _pick_open == b and b.state == "done" and b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]
@@ -917,6 +923,7 @@ func _update_card() -> void:
 	if _card_pick.visible:
 		_fill_pick(b)
 	(_btn.repair as Button).visible = b.state == "ruin" or (b.state == "done" and b.can_repair())
+	_fill_jail(b)
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
 	(_btn.mode as Button).visible = b.kind == "camur" and b.state == "done"
@@ -1042,6 +1049,7 @@ func _wall_card(w: Wall) -> void:
 	_card_pick.visible = false
 	_card_folk.visible = false
 	_folk_box.visible = false
+	_card_jail.visible = false
 	_card_acts.visible = true
 	(_btn.repair as Button).visible = false
 	for what: String in BuildingDefs.UPGRADES:
@@ -1215,6 +1223,66 @@ func _fill_folk_box(v: Villager) -> void:
 		(row[3] as Label).text = ("♥" if k in v.keen else "") + (" ▲" if pr == 2 else (" –" if pr == 0 else ""))
 
 
+## A jail's prisoners, each with its face, who it is, how it's being kept, and the three choices.
+func _fill_jail(b: Building) -> void:
+	var held: Array = b.prisoners if b.def.role == "jail" and b.state == "done" else []
+	_card_jail.visible = not held.is_empty()
+	if held != _jail_rows: # (rebuilt only when who's held changes)
+		_jail_rows = held.duplicate()
+		for ch in _card_jail.get_children():
+			ch.queue_free()
+		Ui.label(_card_jail, "ESİRLER", 12, Ui.ACCENT, "head")
+		for o: Villager in held:
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 8)
+			_card_jail.add_child(row)
+			var face := TextureRect.new()
+			face.custom_minimum_size = Vector2(46, 46)
+			face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			face.set_meta("who", o)
+			row.add_child(face)
+			var col := VBoxContainer.new()
+			col.add_theme_constant_override("separation", 1)
+			col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(col)
+			Ui.label(col, o.display_name, 15, Ui.INK, "head")
+			var ks: Array = Villager.SKILLS.keys()
+			ks.sort_custom(func(a: String, c: String) -> bool: return o.skill(a) > o.skill(c))
+			var tr: Array = o.traits.map(func(t: String) -> String: return str(Villager.TRAITS[t].name))
+			var info := Ui.label(col, "%s %d · %s %d%s" % [Villager.SKILLS[ks[0]], int(o.skill(ks[0])), Villager.SKILLS[ks[1]], int(o.skill(ks[1])),
+				(" · " + ", ".join(tr)) if not tr.is_empty() else ""], 12, Ui.DIM)
+			info.custom_minimum_size = Vector2(200, 0)
+			info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var state := Ui.label(col, "", 12, Ui.ACCENT, "head")
+			state.set_meta("who", o)
+			var btns := HBoxContainer.new()
+			btns.add_theme_constant_override("separation", 4)
+			col.add_child(btns)
+			for pair in [["KAZAN", "kazan", "İyi bakılırsa üç sabah sonra kasabaya katılır"], ["ÇALIŞTIR", "calistir", "Her sabah taş ya da odun getirir; kasabalıların morali biraz düşer"]]:
+				var mode: String = pair[1]
+				var bt := _small_button(str(pair[0]), func() -> void:
+					o.held_mode = "" if o.held_mode == mode else mode
+					o.won = 0)
+				bt.tooltip_text = str(pair[2])
+				bt.set_meta("who", o)
+				bt.set_meta("mode", mode)
+				btns.add_child(bt)
+			var free := _small_button("BIRAK", func() -> void: game.village.release(o))
+			free.tooltip_text = "Serbest bırak: gider, haydutlar bir gün daha geç gelir"
+			btns.add_child(free)
+	for n in _card_jail.find_children("*", "", true, false):
+		if not n.has_meta("who") or not is_instance_valid(n.get_meta("who")):
+			continue
+		var o: Villager = n.get_meta("who")
+		if n is TextureRect:
+			(n as TextureRect).texture = Portraits.of_look(o.look_seed, "outlaw")
+		elif n is Label:
+			(n as Label).text = {"": "Hapiste tutuluyor", "kazan": "Kazanılıyor: %d / 3 sabah" % o.won, "calistir": "Zorla çalıştırılıyor"}[o.held_mode]
+		elif n is Button and n.has_meta("mode"):
+			(n as Button).add_theme_color_override("font_color", Ui.ACCENT if o.held_mode == n.get_meta("mode") else Ui.INK)
+
+
 func _folk_card(v: Villager) -> void:
 	_card.visible = true
 	_card_workers.visible = false
@@ -1222,6 +1290,7 @@ func _folk_card(v: Villager) -> void:
 	_card_train.visible = false
 	_card_pick.visible = false
 	_card_folk.visible = true
+	_card_jail.visible = false
 	var many: Array = game._chosen()
 	var guard: bool = v.workplace != null and v.workplace.def.role in ["barracks", "tower"]
 	(_btn.release as Button).visible = v.workplace != null and many.size() <= 1
