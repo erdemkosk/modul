@@ -29,6 +29,7 @@ const KEYS := [
 	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
 	["Kart", "Seçtiğin şeyin yapabileceği her şey kartında düğme: onar, yık, işçi ekle, milis yap, topla, fener, tüfekçi / okçu yetiştir..."],
 	["Kasabalılar", "K ya da üstteki KASABALILAR: herkesin becerileri; bir beceriye tıkla: o işe önce verilsin (▲), normal, hiç verilmesin (–)"],
+	["Araştırma", "T ya da üstteki ARAŞTIRMA: araştırma ağacı; bir konu seç, okuma odasındakiler onu araştırır"],
 	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
 	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
 	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
@@ -71,6 +72,9 @@ var _people_plate: PanelContainer ## the townsfolk table
 var _people_grid: GridContainer
 var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
+var _tech_plate: PanelContainer ## the research tree
+var _tech_tree: TechTree
+var _tech_note: Label
 var _card_train: HBoxContainer
 var _card_pick: VBoxContainer ## a workplace's card: who's best at its work, to put on or take off it
 var _pick_title: Label
@@ -119,6 +123,7 @@ func _ready() -> void:
 	add_child(help)
 	_make_placing()
 	_make_people()
+	_make_tech()
 	_test_plate()
 	_make_help()
 	_make_pause()
@@ -235,6 +240,9 @@ func _stores_plate() -> void:
 	var who := _small_button("KASABALILAR", func() -> void: toggle_people())
 	who.tooltip_text = "Herkesin becerileri ve hangi işe öncelikle verileceği (K)"
 	pair.add_child(who)
+	var tech := _small_button("ARAŞTIRMA", func() -> void: toggle_tech())
+	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
+	pair.add_child(tech)
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 
@@ -697,8 +705,70 @@ func _make_people() -> void:
 	scroll.add_child(_people_grid)
 
 
+## The research tree, over the middle of the screen.
+func _make_tech() -> void:
+	_tech_plate = _plate(false)
+	_tech_plate.set_anchors_preset(Control.PRESET_CENTER)
+	_tech_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_tech_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_tech_plate.visible = false
+	add_child(_tech_plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	_tech_plate.add_child(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	Ui.label(head, "ARAŞTIRMA", 26, Ui.INK, "display")
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	head.add_child(_small_button("KAPAT", func() -> void: toggle_tech()))
+	Ui.rule(col)
+	_tech_note = Ui.label(col, "", 14, Ui.DIM)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_top", 6)
+	pad.add_theme_constant_override("margin_bottom", 6)
+	col.add_child(pad)
+	_tech_tree = TechTree.new()
+	_tech_tree.game = game
+	pad.add_child(_tech_tree)
+
+
+func toggle_tech() -> void:
+	_tech_plate.visible = not _tech_plate.visible
+	if _tech_plate.visible:
+		_people_plate.visible = false
+		_refresh_tech()
+
+
+func tech_open() -> bool:
+	return _tech_plate.visible
+
+
+func _refresh_tech() -> void:
+	if not _tech_plate.visible:
+		return
+	var v: Village = game.village
+	var rooms := 0
+	var readers := 0
+	for b in v.buildings:
+		if b.kind == "okuma" and b.state == "done":
+			rooms += 1
+			readers += b.workers.size()
+	if rooms == 0:
+		_tech_note.text = "Okuma odası yok: araştırma orada yapılır (KASABA > Okuma odası). Konuyu yine de şimdiden seçebilirsin."
+	elif readers == 0:
+		_tech_note.text = "Okuma odasında kimse yok: kartından birini ata. Okuryazarlığı yüksek olan çabuk ilerler."
+	else:
+		_tech_note.text = "%d kişi okuyor. Bir konu seç; bitince sıradakini seçmen gerekir." % readers
+	_tech_note.add_theme_color_override("font_color", Ui.BAD if readers == 0 else Ui.DIM)
+	_tech_tree.refresh()
+
+
 func toggle_people() -> void:
 	_people_plate.visible = not _people_plate.visible
+	if _people_plate.visible:
+		_tech_plate.visible = false
 	_people_rows = []
 	_refresh_people()
 
@@ -932,7 +1002,8 @@ func _update_card() -> void:
 	if _people_t > 0.5:
 		_people_t = 0.0
 		_refresh_people()
-	if _people_plate.visible:
+		_refresh_tech()
+	if _people_plate.visible or _tech_plate.visible:
 		_card.visible = false # (the table's over where the card stands)
 		return
 	_placing_plate.visible = game._placing != "" and not game._placing in ["yol", "sur", "kapi"]
