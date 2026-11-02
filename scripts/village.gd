@@ -144,6 +144,12 @@ func _assign() -> void:
 			continue
 		# An urgent felling (ACİL KES): anyone whose woodcutting isn't set to never, between jobs, goes
 		# for it before their own work (not the watch, not by night).
+		# A healer gathering herbs drops them for a wound.
+		if is_instance_valid(v.workplace) and v.workplace.def.role == "healer" and v.target == v.workplace and v.carry_n == 0 \
+				and v.workplace.state == "done" and needs_healer():
+			v.abort()
+			_plan_work(v)
+			continue
 		# A worker at its workplace's round with nothing in hand drops it at once (what it carries, it
 		# brings home first).
 		var at_work: bool = is_instance_valid(v.workplace) and v.target == v.workplace and v.carry_n == 0 and not v.sleeping

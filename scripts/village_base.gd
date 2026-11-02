@@ -45,7 +45,7 @@ var seasons: Seasons
 ## All the stores' goods together (read only: goods are put in and taken out of a store).
 var stock: Dictionary:
 	get:
-		var out := {"odun": 0, "tas": 0, "yiyecek": 0, "camur": 0, "kerpic": 0}
+		var out := {"odun": 0, "tas": 0, "yiyecek": 0, "camur": 0, "kerpic": 0, "ot": 0}
 		for b in stores():
 			for k: String in b.goods:
 				out[k] = int(out.get(k, 0)) + int(b.goods[k])
@@ -790,7 +790,7 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 ## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
 ## there leaving their stumps: a settlement is a clearing, not houses stood in the forest.
 const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, "forest": 3.0,
-	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0}
+	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0, "jail": 5.0, "healer": 5.0}
 
 
 func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:

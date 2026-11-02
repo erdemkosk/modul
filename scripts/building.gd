@@ -143,7 +143,7 @@ func setup(k: String) -> void:
 		incoming[r] = 0
 	var sz: Vector2 = def.size
 	radius = sz.length() * 0.5
-	wanted = {"work": 1, "tower": 1, "barracks": 2, "bowyer": 1, "builders": 2, "carts": 1, "oxen": 1, "farm": 2, "forest": 1}.get(str(def.role), 0)
+	wanted = {"work": 1, "tower": 1, "barracks": 2, "bowyer": 1, "builders": 2, "carts": 1, "oxen": 1, "farm": 2, "forest": 1, "healer": 1}.get(str(def.role), 0)
 	body = StaticBody3D.new()
 	body.collision_layer = 2
 	body.collision_mask = 0

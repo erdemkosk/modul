@@ -74,7 +74,7 @@ func _plan_firewood(v: Villager, lamps_only := false) -> bool:
 ## Workplaces take free villagers up to what's asked, and give back the ones over it.
 func _staff() -> void:
 	for b in buildings:
-		if not b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest", "bowyer", "builders"]:
+		if not b.def.role in ["work", "barracks", "tower", "carts", "oxen", "farm", "forest", "bowyer", "builders", "healer"]:
 			continue
 		if b.state != "done":
 			continue
@@ -127,7 +127,7 @@ func employ(v: Villager, b: Building) -> void:
 func assign(v: Villager, b: Building) -> String:
 	if v.is_child:
 		return "%s daha çocuk" % v.display_name
-	if not b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders"]:
+	if not b.def.role in ["work", "farm", "forest", "carts", "oxen", "barracks", "tower", "bowyer", "builders", "healer"]:
 		return "%s bir işyeri değil" % b.display_name()
 	if b.state != "done":
 		return "%s henüz bitmedi" % b.display_name()
@@ -451,6 +451,9 @@ func _plan_work(v: Villager) -> void:
 	if b.def.role == "forest":
 		_plan_forest(v, b)
 		return
+	if b.def.role == "healer":
+		_plan_healer(v, b)
+		return
 	var res := str(b.def.res)
 	var store := _nearest(stores(), b.global_position)
 	if store == null:
@@ -565,6 +568,90 @@ func _plan_work(v: Villager) -> void:
 	# What's gathered is brought to the yard and worked there: sawn, dressed, sorted; it's piled there.
 	steps.append_array(_work_at(b, v, res))
 	v.give(steps, "%s: %s" % [b.display_name(), {"odun": "ağaç kesiyor", "tas": "taş kırıyor", "yiyecek": "yemiş topluyor"}[res]], b)
+
+
+## Whether anyone needs a healer just now (and there's a herb for it).
+func needs_healer() -> bool:
+	if store_with("ot", Vector3.ZERO) == null:
+		return false
+	for p in villagers:
+		if p.dead or p.leaving:
+			continue
+		if (p.bleeding and not p.down) or p.down or (p.recovering and p.wounded_badly and not p.treated):
+			if not (p.has_meta("healer") and is_instance_valid(p.get_meta("healer")) and (p.get_meta("healer") as Villager).target == p):
+				return true
+	return false
+
+
+## A healer's next stint: a wound to see to (one bleeding on its feet, one lying where it fell, one
+## abed with a bad wound nobody's seen to), a herb from the stores for it; with nobody to see to,
+## herbs gathered from the ferns in reach (none in the winter) and brought back to dry.
+func _plan_healer(v: Villager, b: Building) -> void:
+	var store := store_with("ot", b.global_position)
+	var patient: Villager = null
+	var bd := 260.0
+	for p in villagers:
+		if p == v or p.dead or p.leaving:
+			continue
+		var needs := (p.bleeding and not p.down) or p.down or (p.recovering and p.wounded_badly and not p.treated)
+		if not needs or (p.has_meta("healer") and is_instance_valid(p.get_meta("healer")) and (p.get_meta("healer") as Villager).target == p):
+			continue
+		var d := p.position.distance_to(v.position)
+		if d < bd:
+			bd = d
+			patient = p
+	if patient and store:
+		b.idle_note = ""
+		var p := patient
+		p.set_meta("healer", v)
+		var at := p.inside.door() if p.sleeping and is_instance_valid(p.inside) else p.position + (v.position - p.position).normalized() * 0.8
+		at.y = nav.height(at.x, at.z)
+		v.give([{"t": "go", "to": store.door(), "job": "%s: ot alıyor" % b.display_name()},
+			{"t": "do", "f": func() -> bool:
+				if not is_instance_valid(store) or store.take_goods("ot", 1) < 1:
+					return false
+				v.set_carry("ot", 1)
+				return true},
+			{"t": "go", "to": at, "job": "%s: yaralıya koşuyor" % b.display_name()},
+			{"t": "work", "time": 6.0, "anim": "build", "face": p.position, "job": "%s: yarayı sarıyor" % b.display_name()},
+			{"t": "do", "f": func() -> bool:
+				v.set_carry("", 0)
+				if is_instance_valid(p) and not p.dead:
+					p.bleeding = false
+					p.treated = true
+					if p.down:
+						p.bleed += 240.0 # (bound up where it lies: time enough to be carried in)
+					p.think("treated", "Yarası sarıldı", 4.0, maxf(weather.day_length_minutes * 60.0, 60.0) * 0.5)
+				return true}], "%s: yaralıya bakıyor" % b.display_name(), p)
+		return
+	if patient and not store:
+		b.idle_note = "Yaralı var ama şifalı ot yok"
+	if seasons and seasons.winter():
+		if b.idle_note == "":
+			b.idle_note = "Kışın şifalı ot yetişmez"
+		_plan_idle(v)
+		return
+	var i := find_prop(b.global_position, float(b.def.reach), "fern", b.work_area)
+	if i < 0:
+		i = find_prop(b.global_position, float(b.def.reach), "bush", b.work_area)
+	if i < 0:
+		b.idle_note = "Yakında şifalı ot kalmadı"
+		_plan_idle(v)
+		return
+	if not patient:
+		b.idle_note = ""
+	reserved[i] = v
+	var o: Vector3 = props.prop_info(i).origin
+	var spot := o + (v.position - o).normalized() * 0.8
+	spot.y = nav.height(spot.x, spot.z)
+	var steps: Array = [{"t": "go", "to": spot}, {"t": "work", "time": 5.0, "anim": "gather", "face": o},
+		{"t": "do", "f": func() -> bool:
+			reserved.erase(i)
+			bush_rest[i] = clock + 300.0
+			v.set_carry("ot", 2)
+			return true}]
+	steps.append_array(_work_at(b, v, "ot"))
+	v.give(steps, "%s: şifalı ot topluyor" % b.display_name(), b)
 
 
 ## A basket of mud dug from the wettest ground in reach and brought back to the pit: piled there,
@@ -928,7 +1015,7 @@ func find_prop(p: Vector3, reach: float, kind: String, area := Rect2()) -> int:
 			continue
 		if str(props._models[props._kind[i]].kind) != kind:
 			continue
-		if kind == "bush" and (float(bush_rest.get(i, -1.0)) > clock or (seasons and seasons.winter())):
+		if kind in ["bush", "fern"] and (float(bush_rest.get(i, -1.0)) > clock or (seasons and seasons.winter())):
 			continue
 		var o: Vector3 = props._xf[i].origin
 		if not nav.is_open(o + Vector3(1.2, 0, 0)) and not nav.is_open(o - Vector3(1.2, 0, 0)):

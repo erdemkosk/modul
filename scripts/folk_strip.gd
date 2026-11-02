@@ -107,6 +107,8 @@ func _card(i: int) -> Button:
 func _trouble(v: Villager) -> Array:
 	if v.down:
 		return ["YERDE", 4]
+	if v.bleeding:
+		return ["KANIYOR", 4]
 	if v.hp < v.max_hp * 0.5:
 		return ["YARALI", 3]
 	if v.leaving:

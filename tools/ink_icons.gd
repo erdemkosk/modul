@@ -10,7 +10,7 @@ extends SceneTree
 const OUT := "res://assets/ui/ink/"
 const INK := preload("res://shaders/ink.gdshader")
 const OUTLINE := preload("res://shaders/ink_outline.gdshader")
-const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic"]
+const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot"]
 const TRIAL := [] ## (buildings and heads drawn the same way: "ev", "oduncu", "camur_ocagi", "portre")
 
 var _vp: SubViewport
@@ -190,6 +190,16 @@ func _make(id: String) -> Node3D:
 					var along := c % 2 == 0
 					var p := Vector3(0, 0.1 + c * 0.2, (i - 0.5) * 0.28) if along else Vector3((i - 0.5) * 0.28, 0.1 + c * 0.2, 0)
 					n.add_child(_mesh(brick, Color(0.72, 0.58, 0.4), Transform3D(Basis(Vector3.UP, 0.0 if along else PI * 0.5), p)))
+		"ot": # (a bundle of herbs tied at the stems, the leaves fanned out)
+			for k in 7:
+				var a := (k - 3) * 0.16
+				var stem := _mesh(_cyl(0.025, 0.9), Color(0.4, 0.5, 0.25), Transform3D(Basis(Vector3.FORWARD, a), Vector3(sin(a) * 0.45, 0.45, 0)))
+				n.add_child(stem)
+				var leaf := SphereMesh.new()
+				leaf.radius = 0.16
+				leaf.height = 0.42
+				n.add_child(_mesh(leaf, Color(0.38, 0.58, 0.28).lerp(Color(0.5, 0.62, 0.3), k / 7.0), Transform3D(Basis(Vector3.FORWARD, a), Vector3(sin(a) * 0.9, 0.95 - absf(a) * 0.3, 0))))
+			n.add_child(_mesh(_cyl(0.09, 0.12), Color(0.6, 0.45, 0.3), Transform3D(Basis.IDENTITY, Vector3(0, 0.15, 0))))
 		"ev", "oduncu", "camur_ocagi":
 			var b := Building.new()
 			b.setup("camur" if id == "camur_ocagi" else id)

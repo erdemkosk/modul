@@ -59,7 +59,8 @@ static func save(game: Node) -> bool:
 			"work": index.get(vl.workplace, -1) if vl.workplace else -1,
 			"home": index.get(vl.home, -1) if vl.home else -1, "militia": vl.militia, "weapon": vl.weapon,
 			"name": vl.display_name, "family": vl.family, "female": vl.female, "skills": vl.skills.duplicate(), "prio": vl.prio.duplicate(), "keen": vl.keen.duplicate(), "traits": vl.traits.duplicate(), "look": vl.look_seed,
-			"thoughts": vl.thoughts.duplicate(true), "low": vl.low_for})
+			"thoughts": vl.thoughts.duplicate(true), "low": vl.low_for,
+			"scars": vl.scars.duplicate(), "bleeding": vl.bleeding, "treated": vl.treated, "wounded": vl.wounded_badly})
 	var stumps: Array = []
 	for s: Node3D in v._stumps.get_children():
 		stumps.append([s.position.x, s.position.y, s.position.z, ((s as MeshInstance3D).mesh as CylinderMesh).top_radius, int(s.get_meta("prop", -1)),
@@ -266,6 +267,11 @@ static func restore(game: Node, d: Dictionary) -> void:
 			for t: Dictionary in pd.get("thoughts", []):
 				vl.thoughts.append(t.duplicate())
 			vl.low_for = float(pd.get("low", 0.0))
+			for t: String in pd.get("scars", []):
+				vl.scars.append(t)
+			vl.bleeding = bool(pd.get("bleeding", false))
+			vl.treated = bool(pd.get("treated", false))
+			vl.wounded_badly = bool(pd.get("wounded", false))
 			if pd.has("traits"):
 				vl.traits.clear()
 				for t: String in pd.traits:

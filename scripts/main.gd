@@ -686,6 +686,9 @@ func toggle_militia() -> void:
 		if on and v.has_trait("coward"):
 			hud.toast("%s korkak: milis olmaz" % v.display_name, "info")
 			continue
+		if on and v.has_trait("no_rifle"):
+			hud.toast("%s tek kollu: silah tutamaz" % v.display_name, "info")
+			continue
 		if v.workplace and v.workplace.def.role in ["barracks", "tower"]:
 			hud.toast("%s bekçi: zaten tüfekli" % v.display_name, "info")
 			continue

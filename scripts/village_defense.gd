@@ -6,7 +6,7 @@ extends "res://scripts/village_life.gd"
 ## runs and hides. False if the raid asks nothing of it just now.
 func _plan_raid(v: Villager) -> bool:
 	# The militia: to the armoury for a rifle, then to a post to hold.
-	if v.militia and not v.is_child:
+	if v.militia and not v.is_child and not v.has_trait("no_rifle"):
 		if v.armed:
 			if v.plan.is_empty() or v.idle:
 				v.abort()
@@ -508,6 +508,23 @@ func release(o: Villager, freed := true) -> void:
 		if raids:
 			raids.next_day += 1
 		message.emit("%s serbest bırakıldı; haydutlar bunu unutmaz, bir süre gelmezler." % o.display_name.split(" ")[0], "info")
+
+
+## A prisoner put to death: gone, and the outlaws frightened off a while (three days more before
+## they come); but the whole town takes it hard (the bold less, the timid more).
+func execute(o: Villager) -> void:
+	if is_instance_valid(o.held_in):
+		o.held_in.prisoners.erase(o)
+	o.held_in = null
+	var name := o.display_name.split(" ")[0]
+	o.queue_free()
+	if raids:
+		raids.next_day += 3
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	for v in villagers:
+		var k := 0.4 if v.has_trait("brave") else (1.6 if v.has_trait("coward") else 1.0)
+		v.think("execution", "Köyde idam yapıldı", -12.0 * k, day_s * 2.0)
+	message.emit("%s idam edildi. Haydutlar bir süre gelmeye cesaret edemez, ama kasaba sarsıldı." % name, "bad")
 
 
 ## A prisoner put back in a jail on a loaded game: an outlaw again, as it was.

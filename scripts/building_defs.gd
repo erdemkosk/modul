@@ -16,13 +16,13 @@ const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına
 	"meydan": "akşam ateşi", "cankulesi": "baskın alarmı", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
 	"oduncu": "odun", "tasci": "taş", "camur": "çamur · kerpiç", "toplayici": "yemiş (yiyecek)", "ormanci": "fidan diker",
 	"insaatci": "inşaat ekibi", "yol": "hızlı, çamursuz yol", "arabaci": "el arabasıyla taşır", "ahir": "öküz arabası",
-	"sur": "kazık duvar", "hapishane": "3 esir tutar", "kapi": "sur kapısı", "kule": "gözcü", "kisla": "bekçiler", "silahlik": "tüfek · milis", "yayci": "yay ve ok"}
+	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yaraları sarar · ot", "kapi": "sur kapısı", "kule": "gözcü", "kisla": "bekçiler", "silahlik": "tüfek · milis", "yayci": "yay ve ok"}
 
-const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç"}
+const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Şifalı ot"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "camur", "toplayici", "ormanci", "meydan"]
-const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "camur", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci", "hapishane"]
+const KINDS := ["meydan", "cankulesi", "ev", "tarla", "oduncu", "ormanci", "tasci", "camur", "toplayici", "ambar", "arabaci", "ahir", "kuyu", "fener", "kule", "kisla", "silahlik", "yayci", "insaatci", "hapishane", "sifaci"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -65,6 +65,9 @@ const DEFS := {
 		"desc": "Yangında kasabalılar buradan su taşır. Kuyu yoksa yangın söndürülemez."},
 	"fener": {"name": "Fener", "size": Vector2(1, 1), "cost": {"odun": 3, "tas": 1}, "time": 6.0, "role": "light", "light": 20.0,
 		"desc": "Gece çevresini aydınlatır, çıra yakar (her gece bir odun; kasabalılar akşamüstü getirir). Bekçiler haydudu ve kurdu yalnızca aydınlıkta görür; haydutlar karanlıktan sızar. Rüzgârda kıvılcım saçabilir."},
+	"sifaci": {"name": "Şifacı kulübesi", "size": Vector2(5, 4), "cost": {"odun": 12, "tas": 2}, "time": 20.0, "role": "healer", "slots": 2,
+		"res": "ot", "reach": 110.0, "station": Vector3(0, 0, 1.2), "face": Vector3(0, 0, 0.5), "pile": Vector3(2.0, 0, 1.6), "work": "gather",
+		"desc": "Şifacı yaralıların yarasını sarar: kanamayı durdurur, iyileşmeyi hızlandırır, kalıcı iz kalmasını çoğu zaman önler. Her tedavi bir şifalı ot ister. Yaralı yoksa ilkbahar ve yazda ormandan ot toplar; kışın ot yetişmez, önceden biriktir."},
 	"hapishane": {"name": "Hapishane", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 8}, "time": 26.0, "role": "jail", "cells": 3,
 		"desc": "Kalın kütüklü, demir parmaklıklı küçük bir hücre: üç esir alır. Baskında yaralı düşen haydutları köylüler buraya taşır. Esirleri kazanabilir (köye katılırlar), çalıştırabilir ya da serbest bırakabilirsin. Esirler de yer; köy aç kalırsa kaçmaya çalışırlar."},
 	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 2,
@@ -202,6 +205,13 @@ static func recipe(kind: String) -> Array[Dictionary]:
 				_p(out, "box", Vector3(0.8, 0.8, 0.8), Vector3(-3.6 + k * 0.95, 0.75, 4.1), "plank")
 			_p(out, "cyl", Vector3(0.7, 0.9, 0.7), Vector3(3.4, 0.8, 4.1), "dark")
 			_p(out, "cyl", Vector3(0.7, 0.9, 0.7), Vector3(3.4, 1.7, 4.1), "dark")
+		"sifaci": # (a herb-drying hut: bundles hung from the eaves, a bench with bowls)
+			_shed(out, 5.0, 4.0, "plank", "thatch")
+			for k in 6:
+				_p(out, "cone", Vector3(0.22, 0.45, 0.22), Vector3(-1.9 + k * 0.75, 2.1, -1.2), "thatch")
+			_p(out, "box", Vector3(1.6, 0.08, 0.6), Vector3(0.6, 0.85, -1.3), "plank")
+			for k in 3:
+				_p(out, "cyl", Vector3(0.22, 0.12, 0.22), Vector3(0.1 + k * 0.45, 0.95, -1.3), "wood")
 		"hapishane": # (a squat log lock-up, barred windows, a heavy door with iron straps)
 			_hall(out, 5.0, 4.0, 2.2, 1.2, "log", "shingle", 0.9)
 			for sx in [-1.0, 1.0]:

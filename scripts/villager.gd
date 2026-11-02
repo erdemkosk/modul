@@ -115,6 +115,19 @@ var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
 var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
 var traits: Array[String] = [] ## who it is (TRAITS): none, one or two, each for better and for worse
+var scars: Array[String] = [] ## what a bad wound left it with for good (SCARS)
+var bleeding := false ## wounded and on its feet, losing blood till it's bound up (a healer)
+var treated := false ## its wound seen to by a healer: mends quicker, seldom leaves a scar
+var wounded_badly := false ## it went down: its mending may leave a scar
+
+## What a bad wound can leave, for good: like a trait, but only the worse.
+const SCARS := {
+	"topal": {"name": "Topal", "minus": "%25 yavaş yürür", "walk": 0.75},
+	"eli_sakat": {"name": "Eli sakat", "minus": "%15 yavaş çalışır, nişanı kötü", "work": 0.85, "aim": 0.8},
+	"yuzu_yarali": {"name": "Yüzü yaralı", "minus": "yarası iz bıraktı", },
+	"tek_kol": {"name": "Tek kollu", "minus": "kolunu yitirdi: %35 yavaş çalışır, yarı yük taşır, tüfek kullanamaz", "work": 0.65, "carry": 0.5, "aim": 0.5, "no_rifle": true},
+	"tek_bacak": {"name": "Tek bacaklı", "minus": "bacağını yitirdi: koltuk değneğiyle, %45 yavaş yürür", "walk": 0.55, "work": 0.9},
+}
 
 ## What it can be, each as good as it's bad, by how it changes: its work's pace, how quick it
 ## learns, what it carries, its walk, its hit points, what it eats, its aim; and the cold, the raids.
@@ -232,17 +245,41 @@ func roll_traits(rng: RandomNumberGenerator) -> void:
 		traits.append(t)
 
 
-## Its traits' say in `what` ("work", "learn", "carry", "walk", "eat", "aim"): their factors multiplied.
+## Its traits' and scars' say in `what` ("work", "learn", "carry", "walk", "eat", "aim"): their
+## factors multiplied.
 func trait_mul(what: String) -> float:
 	var f := 1.0
 	for t in traits:
 		f *= float(TRAITS[t].get(what, 1.0))
+	for t in scars:
+		f *= float(SCARS[t].get(what, 1.0))
 	return f
 
 
-## Whether any of its traits has `what` ("cold", "brave", "coward").
+## Whether any of its traits (or scars) has `what` ("cold", "brave", "coward", "no_rifle").
 func has_trait(what: String) -> bool:
-	return traits.any(func(t: String) -> bool: return bool(TRAITS[t].get(what, false)))
+	return traits.any(func(t: String) -> bool: return bool(TRAITS[t].get(what, false))) \
+		or scars.any(func(t: String) -> bool: return bool(SCARS[t].get(what, false)))
+
+
+## Mended from a bad wound: whether it's left anything, more likely if nobody saw to it; the worst
+## (an arm or a leg lost) only then.
+func _roll_scar() -> void:
+	var chance := 0.08 if treated else 0.45
+	treated = false
+	wounded_badly = false
+	if randf() >= chance:
+		return
+	var pick: Array[String] = ["topal", "eli_sakat", "yuzu_yarali"]
+	if chance > 0.2:
+		pick += ["topal", "eli_sakat", "tek_kol", "tek_bacak"]
+	var s: String = pick[randi() % pick.size()]
+	if s in scars:
+		return
+	scars.append(s)
+	apply_traits()
+	think("scar", "Kalıcı izi kaldı: %s" % SCARS[s].name, -8.0, maxf(village.weather.day_length_minutes * 60.0, 60.0) * 2.0)
+	village.message.emit("%s iyileşti ama yarası iz bıraktı: %s." % [display_name, str(SCARS[s].name).to_lower()], "bad")
 
 
 ## Its traits put on its body: its hit points, its walk.
@@ -251,7 +288,7 @@ func apply_traits() -> void:
 	for t in traits:
 		add += int(TRAITS[t].get("hp", 0))
 	max_hp = maxf(20.0, 50.0 + add)
-	hp = max_hp
+	hp = minf(hp, max_hp) if hp > 0.0 and hp < max_hp and (bleeding or recovering) else max_hp
 	speed_mul = trait_mul("walk")
 
 
@@ -303,6 +340,8 @@ static func skill_of(b: Building) -> String:
 			return "odun"
 		"tasci", "camur":
 			return "tas"
+		"sifaci":
+			return "toplama"
 		"tarla":
 			return "tarim"
 		"toplayici":
@@ -574,6 +613,15 @@ func set_carry(res: String, n: int) -> void:
 			c.radial_segments = 10
 			mi.mesh = c
 			m.albedo_color = Color(0.24, 0.17, 0.11)
+			mi.position = Vector3(0, 1.0, -0.3)
+		"ot": # (a bundle of herbs)
+			var c := CylinderMesh.new()
+			c.top_radius = 0.14
+			c.bottom_radius = 0.05
+			c.height = 0.35
+			c.radial_segments = 8
+			mi.mesh = c
+			m.albedo_color = Color(0.35, 0.5, 0.22)
 			mi.position = Vector3(0, 1.0, -0.3)
 		"kerpic":
 			var b := BoxMesh.new()
@@ -884,6 +932,8 @@ func sleep_rough(cover: Building, at: Vector3, fire: Vector3) -> void:
 
 
 func wake() -> void:
+	if recovering and wounded_badly and team == 0:
+		_roll_scar()
 	recovering = false
 	sleeping = false
 	hiding = false
@@ -1041,6 +1091,9 @@ func _downed(dt: float) -> void:
 func _go_down() -> void:
 	abort()
 	down = true
+	bleeding = false
+	wounded_badly = true
+	treated = false
 	hp = 1.0
 	bleed = 120.0
 	job = "Yaralı, yerde"
@@ -1062,6 +1115,8 @@ func hurt(dmg: float, by: Villager = null) -> void:
 	hp -= dmg
 	if team == 0 and dmg >= 5.0:
 		think("hurt", "Yaralandı", -10.0, 600.0)
+		if dmg >= 10.0 and hp > 0.0 and hp < max_hp * 0.6 and randf() < 0.6:
+			bleeding = true # (on its feet but losing blood till someone binds it)
 	if _tunic:
 		var c := _tunic.albedo_color
 		_tunic.albedo_color = Color(1.0, 0.3, 0.25)
@@ -1121,8 +1176,13 @@ func _process(dt: float) -> void:
 	if down:
 		_downed(dt)
 		return
-	if hp < max_hp:
-		hp = minf(hp + dt * (0.35 if sleeping else 0.12), max_hp) # (mending, quicker asleep)
+	if bleeding and team == 0:
+		hp -= dt * _rate() * 0.45 # (losing blood: down in two minutes or so, unless it's bound up)
+		if hp <= 1.0:
+			_go_down()
+			return
+	elif hp < max_hp:
+		hp = minf(hp + dt * (0.35 if sleeping else 0.12) * (2.0 if treated else 1.0), max_hp) # (mending, quicker asleep, quicker seen to)
 	if sleeping:
 		return
 	_lantern_check()
