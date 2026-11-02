@@ -776,6 +776,9 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	else:
 		nav.set_building(b.cells, true)
 	_clear_ground(kind, pos, yaw)
+	if not kind in BuildingDefs.YARDS and not BuildingDefs.DEFS[kind].role in ["farm", "light"]:
+		# (the ground round it trodden bare by the building of it and the coming and going, fading into the grass)
+		nav.set_yard(b.global_transform, (BuildingDefs.DEFS[kind].size as Vector2) + Vector2(3.0, 3.0), true, 3.5)
 	b.finished.connect(_on_finished)
 	b.ruined.connect(_on_ruined)
 	buildings.append(b)
@@ -783,16 +786,44 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	return b
 
 
+## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
+## there leaving their stumps: a settlement is a clearing, not houses stood in the forest.
+const CLEARING := {"house": 7.0, "store": 8.0, "square": 6.0, "bell": 5.0, "well": 4.0, "work": 5.0, "forest": 3.0,
+	"carts": 6.0, "oxen": 7.0, "builders": 6.0, "bowyer": 5.0, "barracks": 7.0, "armory": 6.0, "tower": 4.0}
+
+
 func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:
-	var sz: Vector2 = BuildingDefs.def(kind).size
+	var def := BuildingDefs.def(kind)
+	var sz: Vector2 = def.size
 	var inv := Basis(Vector3.UP, yaw).inverse()
-	var reach := sz.length() * 0.5 + 3.0
+	var ring := float(CLEARING.get(str(def.role), 0.0))
+	var reach := sz.length() * 0.5 + 3.0 + ring
 	for i in _props_in(pos, reach):
 		var info := props.prop_info(i)
+		if str(info.kind) == "cliff":
+			continue
 		var l := inv * (Vector3(info.origin.x, 0, info.origin.z) - Vector3(pos.x, 0, pos.z))
-		if absf(l.x) <= sz.x * 0.5 + 1.5 and absf(l.z) <= sz.y * 0.5 + 2.5 and str(info.kind) != "cliff":
+		var dx := absf(l.x) - sz.x * 0.5
+		var dz := absf(l.z) - sz.y * 0.5
+		if dx <= 1.5 and dz <= 2.5: # (where it stands: gone, root and all)
 			props.cut_tree(i)
 			reserved.erase(i)
+		elif ring > 0.0 and maxf(dx, dz) <= ring:
+			# The clearing round it: felled to a stump (now and then one left standing for its shade),
+			# the undergrowth grubbed out.
+			var o: Vector3 = info.origin
+			var keep := fposmod(sin(o.x * 12.9898 + o.z * 78.233) * 43758.5453, 1.0) < 0.12
+			if str(info.kind) == "tree":
+				if keep:
+					continue
+				var r := float(props.tree_info(i).radius)
+				props.cut_tree(i)
+				reserved.erase(i)
+				cut_marks.erase(i)
+				call("add_stump", Vector3(o.x, nav.height(o.x, o.z) + 0.2, o.z), r * 1.15, i) # (village_work.gd)
+			elif str(info.kind) in ["bush", "fern", "log", "stump"]:
+				props.cut_tree(i)
+				reserved.erase(i)
 
 
 ## Where a foot stands at `p`: the ground, or a building's floor, porch or loading platform.
