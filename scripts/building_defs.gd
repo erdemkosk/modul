@@ -80,6 +80,7 @@ const DEFS := {
 const TECHS := {
 	"telgraf": {"name": "Telgraf", "pts": 40.0, "desc": "İstasyona telgraf teli: trenle mal ısmarlanır, tren gelmeye başlar."},
 	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Atölye demir ve kömür damarlarından da çıkarabilir (kartında ÜRET: DEMİR, KÖMÜR)."},
+	"dekovil": {"name": "Dekovil", "pts": 70.0, "after": "telgraf", "desc": "Dar hatlı yan hat: atölyelere ve depolara ray döşenir (demir ve odun ister). Tren yükünü oradan doğrudan alır, perona taşımak gerekmez."},
 	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: demir ve kömürden tüfek ve fişek döver."},
 }
 

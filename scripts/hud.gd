@@ -555,6 +555,7 @@ func _make_card() -> void:
 	_btn.mode = _add(_card_acts, "KERPİÇ YAP", func() -> void: game.toggle_mode_selected(), "Çamuru kalıba döküp kerpiç kurutsunlar / yalnızca çamur kazsınlar")
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
+	_btn.spur = _add(_card_acts, "YAN HAT DÖŞE", func() -> void: game.lay_spur_selected(), "Ana hattan buraya dar hatlı ray: tren yükü buradan doğrudan alır")
 	_btn.plant = _add(_card_acts, "FİDAN DİK", func() -> void: game.toggle_planting(), "Kesimciler boş kaldıkça kesilen ağaçların kütüklerine fidan diksin")
 	_btn.ox = _add(_card_acts, "ÖKÜZ AL", func() -> void: game.buy_oxen(), "Arabalar öküz arabası olsun: 30 yük, yavaş; her öküz bir kişi kadar yer (%s)" % BuildingDefs.cost_text_of(BuildingDefs.OX_COST))
 	_btn.strong = _add(_card_acts, "GÜÇLENDİR", func() -> void: game.strengthen_wall(), "Kalın kütük ve taş temel: kazıklar üç kat dayanıklı olur, zor kesilir, zor yanar")
@@ -1099,6 +1100,9 @@ func _update_card() -> void:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
 	(_btn.mode as Button).visible = b.state == "done" and b.kind == "camur"
 	(_btn.plant as Button).visible = b.kind == "oduncu" and b.state == "done"
+	(_btn.spur as Button).visible = b.state == "done" and not b.spur and b != game.village.depot() and b.def.role in ["store", "work"] and game.village.knows("dekovil")
+	if (_btn.spur as Button).visible:
+		(_btn.spur as Button).tooltip_text = "Ana hattan buraya dar hatlı ray: tren yükü buradan doğrudan alır (%s)" % BuildingDefs.cost_text_of(game.village.spur_cost(b))
 	(_btn.plant as Button).text = "FİDAN DİKMEYİ BIRAK" if b.planting else "FİDAN DİK"
 	(_btn.ox as Button).visible = b.kind == "arabaci" and b.state == "done" and not b.ox
 	(_btn.strong as Button).visible = false
@@ -1494,7 +1498,17 @@ func _fill_extra(b: Building) -> void:
 			_extra_status.text = ""
 		else:
 			var due := v.next_train - v.day
-			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d / %d: dolunca trenle yeni bir aile gelir (boş yatak gerek)" % ["Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
+			var standing := "Tren istasyonda"
+			if v.loading_until >= 0.0:
+				var left := (v.loading_until - v.clock) / maxf(game.weather.day_length_minutes * 60.0, 60.0) * 24.0
+				var on: Array[String] = []
+				for r in v.selling:
+					var n := 0
+					for pb in v.platform():
+						n += int(pb.goods.get(r, 0))
+					on.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
+				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
+			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d / %d: dolunca trenle yeni bir aile gelir (boş yatak gerek)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
 				"  ·  Ismarlanan: " + ", ".join(v.orders.map(func(o: String) -> String: return str(Village.OFFERS[o].name))) if not v.orders.is_empty() else "", v.rubles, v.repute, Village.REPUTE_FAMILY]
 	else:
 		if v.studying == "":

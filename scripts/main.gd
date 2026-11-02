@@ -1050,6 +1050,16 @@ func refit_selected(what: String) -> void:
 	hud.toast("%s %s" % [nb.display_name(), "kuruldu" if nb.state == "done" else "olarak kurulacak"], "good")
 
 
+## A side line laid to the selected building.
+func lay_spur_selected() -> void:
+	var b := selected
+	if b == null or not is_instance_valid(b):
+		return
+	var why := village.lay_spur(b)
+	if why != "":
+		hud.toast(why, "bad")
+
+
 ## While a workshop's being placed: what it'll be set to make (its ghost the one for that).
 func place_workshop_as(what: String) -> void:
 	if not _placing in BuildingDefs.WORKSHOP_KINDS:

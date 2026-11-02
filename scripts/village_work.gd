@@ -170,7 +170,54 @@ func _site_needs_hands() -> bool:
 
 
 ## Carry what a site still lacks from the store. False if no site needs anything there's some of.
+## The train at the platform: a load of what's to be sold from another store to the station before
+## it leaves (the carters and whoever's free run for it).
+func _plan_platform(v: Villager) -> bool:
+	if loading_until < 0.0:
+		return false
+	var st := depot()
+	if st == null or st.room() <= 0:
+		return false
+	var have := stock
+	for r in selling:
+		if int(have.get(r, 0)) - KEEP - int(st.goods.get(r, 0)) <= 0:
+			continue
+		var from: Building = null
+		var bd := INF
+		for b in stores():
+			if b == st or b.spur or int(b.goods.get(r, 0)) <= 0:
+				continue
+			var d := b.global_position.distance_squared_to(v.position)
+			if d < bd:
+				bd = d
+				from = b
+		if from == null:
+			continue
+		if v.idle:
+			v.abort()
+		var n := from.take_goods(r, mini(v.capacity(r), int(from.goods.get(r, 0))))
+		var res := r
+		v.owed = {"res": res, "n": n, "store": from}
+		v.give([{"t": "go", "to": from.door()},
+			{"t": "do", "f": func() -> bool:
+				v.set_carry(res, n)
+				return true},
+			{"t": "go", "to": st.door() + Vector3(randf_range(-2, 2), 0, randf_range(0.5, 2))},
+			{"t": "do", "f": func() -> bool:
+				v.owed = {}
+				if is_instance_valid(st) and st.state == "done":
+					st.add_goods(res, v.carry_n)
+				else:
+					add_anywhere(res, v.carry_n, v.position)
+				v.set_carry("", 0)
+				return true}], "Perona taşıyor (%s)" % BuildingDefs.RES_NAMES[res].to_lower(), st)
+		return true
+	return false
+
+
 func _plan_haul(v: Villager) -> bool:
+	if _plan_platform(v):
+		return true
 	var best: Building = null
 	var best_r := ""
 	var bd := INF
@@ -1045,6 +1092,8 @@ func _plan_cart(v: Villager) -> void:
 		if not b.def.role in ["work", "farm"] or b.state == "gone":
 			continue
 		if is_instance_valid(b.pile_claim) and b.pile_claim != v:
+			continue
+		if b.spur and b.biggest_good() in selling: # (piled by the rails for the train: left there)
 			continue
 		var n := b.goods_total()
 		if n > most:

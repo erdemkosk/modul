@@ -79,6 +79,7 @@ var casting := false ## (an armoury) cartridges cast each morning, from stone an
 var bowing := false ## (an armoury) a bow or a sheaf of arrows made each morning, of wood
 var planting := false ## (a logging camp) its men planting the stumps when they've nothing to fell
 var ox := false ## (a carter's) its carts drawn by oxen
+var spur := false ## on a side line: the train loads straight from it
 var wanted := 0
 var residents: Array = []
 var cells: Array[Vector2i] = []
@@ -1270,10 +1271,13 @@ func light_reach() -> float:
 # --- Goods ----------------------------------------------------------------------------------------
 
 const PILE_MAX := 24 ## what a workplace's yard holds piled, unless its kind says ("holds")
+const SIDING_MAX := 120 ## a workplace on a side line: piled by the rails for the train
 
 
-## How much it holds: a store all told, a workplace in its pile.
+## How much it holds: a store all told, a workplace in its pile (more by a side line).
 func holds() -> int:
+	if spur and def.role == "work":
+		return SIDING_MAX
 	return int(def.get("holds", PILE_MAX))
 
 

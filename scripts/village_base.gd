@@ -102,6 +102,7 @@ var orders: Array[String] = [] ## what's been sent for on it (OFFERS), paid for 
 var rubles := 40 ## the town's purse: what the train paid, spent on what's sent for
 var repute := 0 ## how well the town's thought of up the line (families come at REPUTE_FAMILY)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
+var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var known: Array[String] = [] ## what's been found out in a reading room (BuildingDefs.TECHS)
 var studying := "" ## what the reading rooms are on just now ("" nothing chosen)
 var study_pts := 0.0 ## how far into it
@@ -216,6 +217,9 @@ const PRICES := {"odun": 1, "tas": 1, "kerpic": 2, "komur": 3, "demir": 4}
 const KEEP := 30
 const LOAD := 150
 const REPUTE_FAMILY := 100
+const LOAD_HOURS := 2.0 ## how long the train stands at the platform (game hours): what's to be sold must be there by then
+const SPUR_MAX := 160.0 ## how far a side line runs from the main line, at most (m)
+const SPUR_GAUGE := 0.55 ## a side line's narrow gauge, of the main line's
 
 
 # --- What's found out: a reading room works at one thing at a time -------------------------------
@@ -336,24 +340,54 @@ func _train_in(st: Building) -> void:
 	if not got.is_empty():
 		message.emit("Trenden indi: %s." % ", ".join(got), "good")
 	orders.clear()
-	_sell(st)
-	_family_off(st)
 	next_train = day + 3 + randi() % 4
+	# It stands a while: what's to be sold is carried to the platform meanwhile, and goes on as it leaves.
+	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * LOAD_HOURS / 24.0
+	loading_until = clock + secs
+	if not selling.is_empty():
+		message.emit("Tren perona yanaştı: %d saat bekleyecek. Satılacak mallar perona taşınmalı." % int(LOAD_HOURS), "info")
 	var tr := train
-	get_tree().create_timer(10.0, false).timeout.connect(func() -> void:
+	get_tree().create_timer(secs, false).timeout.connect(func() -> void:
+		loading_until = -1.0
+		if is_instance_valid(st):
+			_sell(st)
+			_family_off(st)
 		if is_instance_valid(tr):
 			tr.leave())
 
 
-## What's marked to be sold put on the train (what's over KEEP of each, LOAD at most), paid for.
-func _sell(st: Building) -> void:
+## Where the train loads from: the station, and whatever's on a side line.
+func platform() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and (b == depot() or b.spur):
+			out.append(b)
+	return out
+
+
+## What's marked to be sold put on the train as it leaves: only what's on the platform (the station
+## and the side lines), the workshops' piles there first, never the stores below KEEP of each, LOAD
+## at most; paid for.
+func _sell(_st: Building) -> void:
 	var room := LOAD
 	var earned := 0
 	var sold: Array[String] = []
-	var have := stock
+	var spare := stock
+	var on := platform()
+	on.sort_custom(func(a: Building, b: Building) -> bool: return a.def.role != "store" and b.def.role == "store")
 	for r in selling:
-		var n := mini(int(have.get(r, 0)) - KEEP, room)
-		if n <= 0 or not pay({r: n}, st.global_position):
+		var n := 0
+		for b in on:
+			var want := mini(room - n, int(b.goods.get(r, 0)))
+			if b.def.role == "store":
+				want = mini(want, int(spare.get(r, 0)) - KEEP)
+			if want <= 0:
+				continue
+			var got := b.take_goods(r, want)
+			if b.def.role == "store":
+				spare[r] = int(spare.get(r, 0)) - got
+			n += got
+		if n <= 0:
 			continue
 		room -= n
 		earned += n * int(PRICES[r])
@@ -362,6 +396,46 @@ func _sell(st: Building) -> void:
 		rubles += earned
 		repute += earned
 		message.emit("Trene yüklendi: %s. Kasaya %d ruble girdi." % [", ".join(sold), earned], "good")
+
+
+## A side line from the main line to `b`: straight, from its door to the nearest of the main line.
+func spur_line(b: Building) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if rail.size() < 2:
+		return out
+	var from := b.door()
+	var to := rail[_nearest_k(rail, from)]
+	var d := Vector3(to.x - from.x, 0, to.z - from.z)
+	var n := maxi(int(d.length() / ROAD_STEP), 2)
+	for k in n + 1:
+		var p := from + d * (float(k) / n)
+		p.y = nav.height(p.x, p.z)
+		out.append(p)
+	return out
+
+
+## What a side line to `b` costs: iron for the rails, wood for the sleepers, by its length.
+func spur_cost(b: Building) -> Dictionary:
+	var length := (spur_line(b).size() - 1) * ROAD_STEP
+	return {"demir": ceili(length / 5.0), "odun": ceili(length / 2.0)}
+
+
+## A side line laid to `b`. "" or why not.
+func lay_spur(b: Building) -> String:
+	if not knows("dekovil"):
+		return "Önce okuma odasında Dekovil araştırılmalı"
+	if b.spur:
+		return "Buraya zaten yan hat var"
+	var line := spur_line(b)
+	if line.size() < 2 or (line.size() - 1) * ROAD_STEP > SPUR_MAX:
+		return "Ana hatta çok uzak (en çok %d m)" % int(SPUR_MAX)
+	var cost := spur_cost(b)
+	if not pay(cost, b.global_position):
+		return "Yan hat için %s gerek" % BuildingDefs.cost_text_of(cost)
+	b.spur = true
+	_rail_mesh(line, SPUR_GAUGE)
+	message.emit("%s yan hatta bağlandı: tren yükünü oradan doğrudan alır." % b.display_name(), "good")
+	return ""
 
 
 ## The town well enough thought of: a family off the train (a couple), if there are beds for them.
@@ -559,7 +633,7 @@ func _rail_len(line: PackedVector3Array) -> float:
 
 ## The track: a ballast bed, sleepers across every 0.66 m, two rails, all on the ground as it lies;
 ## the trees in the way felled.
-func _rail_mesh(line: PackedVector3Array) -> void:
+func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 	var lines := line
 	for k in range(0, lines.size(), 8):
 		for i in _props_in(lines[k], 4.0):
@@ -582,12 +656,12 @@ func _rail_mesh(line: PackedVector3Array) -> void:
 		var side := dir.cross(Vector3.UP)
 		var g := maxf(nav.height(c.x, c.z), c.y) # (up on a bridge: the line's own height)
 		var up := c.y - nav.height(c.x, c.z) > 0.3
-		var l := Vector3(c.x, g, c.z) - side * 1.6 + Vector3.UP * 0.02
-		var rr := Vector3(c.x, g, c.z) + side * 1.6 + Vector3.UP * 0.02
+		var l := Vector3(c.x, g, c.z) - side * 1.6 * gauge + Vector3.UP * 0.02
+		var rr := Vector3(c.x, g, c.z) + side * 1.6 * gauge + Vector3.UP * 0.02
 		l.y = (g - 0.1) if up else nav.height(l.x, l.z) + 0.03
 		rr.y = (g - 0.1) if up else nav.height(rr.x, rr.z) + 0.03
 		var top := Vector3(c.x, g + 0.14, c.z)
-		var rl := [top - side * 0.76 + Vector3.UP * 0.18, top + side * 0.76 + Vector3.UP * 0.18]
+		var rl := [top - side * 0.76 * gauge + Vector3.UP * 0.18, top + side * 0.76 * gauge + Vector3.UP * 0.18]
 		if k > 0 and not up:
 			# the bed: two slopes up to its crown
 			_quad(bed, prev_l, l, top, (prev_l + prev_r) * 0.5 + Vector3.UP * 0.12)
@@ -624,7 +698,7 @@ func _rail_mesh(line: PackedVector3Array) -> void:
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
 	var sl := BoxMesh.new()
-	sl.size = Vector3(2.5, 0.14, 0.24)
+	sl.size = Vector3(2.5 * gauge, 0.14, 0.24)
 	var sm := StandardMaterial3D.new()
 	sm.vertex_color_use_as_albedo = true
 	sm.roughness = 0.95
