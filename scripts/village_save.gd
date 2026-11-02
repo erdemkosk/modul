@@ -277,7 +277,15 @@ static func restore(game: Node, d: Dictionary) -> void:
 	var raw: PackedByteArray = (d.wear as PackedByteArray).decompress(int(d.wear_size), FileAccess.COMPRESSION_ZSTD)
 	nav.restore(raw.to_float32_array(), d.scorch)
 	var c: Array = d.cam
-	game.cam.focus = Vector3(c[0], c[1], c[2])
+	# (the view comes back over the town, the way it was turned, not wherever it was left)
+	var mid := Vector3.ZERO
+	var n := 0
+	for b in v.buildings:
+		if b.state == "done" and b.def.role != "farm":
+			mid += b.global_position
+			n += 1
+	game.cam.focus = mid / n if n > 0 else Vector3(c[0], c[1], c[2])
 	game.cam.yaw = float(c[3])
-	game.cam.dist = float(c[4])
+	game.cam.dist = clampf(float(c[4]), 40.0, 90.0)
+	game.cam._dist_to = game.cam.dist
 	v.loading = false
