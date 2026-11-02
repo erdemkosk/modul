@@ -46,7 +46,11 @@ func _ready() -> void:
 	var sz: Vector2 = house.def.size
 	rect = Rect2(-sz.x * 0.5 - SIDE, -sz.y * 0.5 - BACK, sz.x + SIDE * 2.0, sz.y + BACK + FRONT)
 	_rng.seed = hash(Vector2i(roundi(house.global_position.x), roundi(house.global_position.z)))
+	_into = Node3D.new()
+	add_child(_into)
 	_fence()
+	MeshBake.bake(_into)
+	_into = null
 	for f: String in house.yard_has.duplicate():
 		if not _add(f):
 			house.yard_has.erase(f) # (no room for it now)
@@ -126,6 +130,7 @@ func _add(f: String) -> bool:
 	if made.get_child_count() == 0:
 		made.queue_free()
 		return false
+	MeshBake.bake(made, _cloths) # (drawn as one a material; the washing still stirs)
 	_parts[f] = made
 	return true
 
