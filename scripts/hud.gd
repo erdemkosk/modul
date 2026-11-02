@@ -91,6 +91,14 @@ func _ready() -> void:
 	_build_bar()
 	add_child(Portraits.new())
 	_make_card()
+	_make_dial()
+	_strip = FolkStrip.new()
+	_strip.game = game
+	_strip.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_strip.offset_left = 12
+	_strip.offset_bottom = -52
+	add_child(_strip)
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -238,7 +246,7 @@ func _clock_plate() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
-	_clock = _stat(row, "MEVSİM · SAAT · HAVA")
+	_clock = _stat(row, "GÜN · SAAT · HAVA")
 	_raid = _stat(row, "BASKIN", "Haydutların gelmesi beklenen gece")
 	var sp := VBoxContainer.new()
 	sp.add_theme_constant_override("separation", 2)
@@ -404,6 +412,26 @@ func _build_button(kind: String, k: int) -> Button:
 func kind_at(n: int) -> String:
 	var kinds: Array = CATS[category][1]
 	return kinds[n] if n >= 0 and n < kinds.size() else ""
+
+
+var _dial: SeasonDial
+var _strip: FolkStrip
+
+
+## The year's dial, top middle: the seasons, today, how long the food and firewood will last.
+func _make_dial() -> void:
+	var p := _plate()
+	p.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.offset_top = 8
+	add_child(p)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	p.add_child(row)
+	_dial = SeasonDial.new()
+	_dial.game = game
+	row.add_child(_dial)
+	_dial.make_labels(row)
 
 
 func _make_card() -> void:
@@ -828,7 +856,9 @@ func _process(dt: float) -> void:
 	var w: Weather = game.weather
 	var h := int(w.hour)
 	var m := int((w.hour - h) * 60.0)
-	_clock.text = "%s · %02d:%02d · %s %d°" % [game.seasons.label(), h, m, WEATHER_NAMES.get(w._state, w._state), roundi(w.temperature)]
+	_clock.text = "Gün %d · %02d:%02d · %s" % [game.village.day, h, m, WEATHER_NAMES.get(w._state, w._state)]
+	_dial.refresh()
+	_strip.refresh()
 	var rd: Raids = game.raids
 	if rd.active:
 		var alive := 0
