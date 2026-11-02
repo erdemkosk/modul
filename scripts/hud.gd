@@ -15,7 +15,10 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "ormanci", "insaatci"]],
-	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci"]]]
+	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci"]], ["EMİRLER", ["kes", "kesme"]]]
+## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
+const ORDERS := {"kes": {"name": "Kes", "gives": "işaretli ağaçlar kesilir", "desc": "Ağaçların üstünden bir alan sürükle: içindeki ağaçlara kurdele bağlanır, oduncular ya da boştakiler keser, tomrukları depoya taşınır. Bina gerekmez."},
+	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."}}
 const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
 ## is a button on its card, and the build bar, the speed and the menu have their own.
@@ -156,6 +159,22 @@ func _goods_plate() -> void:
 		var change := Ui.label(row, "", 13, Ui.DIM, "head")
 		change.custom_minimum_size = Vector2(40, 0)
 		_res[id] = [row, amount, change]
+	# the arms: rifles and their cartridges, bows and their arrows (in the armouries and in hand)
+	for arm: Array in [["TÜFEK", "Silahlıklardaki ve eldeki Mosin tüfekleri · fişek"], ["YAY", "Silahlıklardaki ve eldeki yaylar · ok"]]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.tooltip_text = str(arm[1])
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.visible = false
+		col.add_child(row)
+		Ui.label(row, str(arm[0]), 13, Ui.DIM, "head").custom_minimum_size = Vector2(70, 0)
+		var amount := Ui.label(row, "", 20, Ui.INK, "display")
+		amount.custom_minimum_size = Vector2(52, 0)
+		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		if arm[0] == "TÜFEK":
+			_guns = amount
+		else:
+			_bows = amount
 
 
 ## The goods column's numbers, and the minute's change (sampled every few seconds of game time).
@@ -188,16 +207,17 @@ func _stores_plate() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	p.add_child(row)
+	var pair := HBoxContainer.new() # (the two that open something, side by side)
+	pair.add_theme_constant_override("separation", 6)
+	row.add_child(pair)
 	_goods_head = _small_button("KAYNAKLAR ▾", func() -> void: pass)
-	_goods_head.tooltip_text = "Depolardaki odun, taş, yiyecek...: üzerine gel"
-	row.add_child(_goods_head)
-	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
-	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
+	_goods_head.tooltip_text = "Depolardaki odun, taş, yiyecek, silahlar...: üzerine gel"
+	pair.add_child(_goods_head)
 	var who := _small_button("KASABALILAR", func() -> void: toggle_people())
 	who.tooltip_text = "Herkesin becerileri ve hangi işe öncelikle verileceği (K)"
-	row.add_child(who)
-	_guns = _stat(row, "TÜFEK", "Silahlıklardaki ve eldeki Mosin tüfekleri · fişek")
-	_bows = _stat(row, "YAY", "Silahlıklardaki ve eldeki yaylar · ok")
+	pair.add_child(who)
+	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
+	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 
 
 func _clock_plate() -> void:
@@ -329,7 +349,7 @@ func show_category(i: int) -> void:
 ## its key and name, what it brings (and how many work there), what it costs (red while the stores
 ## can't cover it).
 func _build_button(kind: String, k: int) -> Button:
-	var def: Dictionary = BuildingDefs.DEFS[kind]
+	var def: Dictionary = ORDERS[kind] if ORDERS.has(kind) else BuildingDefs.DEFS[kind]
 	var b := Button.new()
 	b.tooltip_text = str(def.desc)
 	b.custom_minimum_size = Vector2(134, 124)
@@ -359,11 +379,11 @@ func _build_button(kind: String, k: int) -> Button:
 		icon.texture = load(path)
 	col.add_child(icon)
 	var name := Ui.label(col, "%d  %s" % [k + 1, Ui.upper(str(def.name))], 13, Ui.INK, "head")
-	var gives := str(BuildingDefs.GIVES.get(kind, ""))
+	var gives := str(def.gives) if ORDERS.has(kind) else str(BuildingDefs.GIVES.get(kind, ""))
 	if int(def.get("slots", 0)) > 0:
 		gives += " · %d kişi" % int(def.slots)
 	var give := Ui.label(col, gives, 11, Ui.GOOD, "head")
-	var cost := Ui.label(col, BuildingDefs.cost_text(kind), 11, Ui.DIM, "head")
+	var cost := Ui.label(col, "bedava" if ORDERS.has(kind) else BuildingDefs.cost_text(kind), 11, Ui.DIM, "head")
 	for l: Label in [name, give, cost]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.clip_text = true
@@ -442,6 +462,8 @@ func _make_card() -> void:
 	_btn.mode = _add(_card_acts, "KERPİÇ YAP", func() -> void: game.toggle_mode_selected(), "Çamuru kalıba döküp kerpiç kurutsunlar / yalnızca çamur kazsınlar")
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
+	_btn.area = _add(_card_acts, "ALAN ÇİZ", func() -> void: game.start_placing("alan"), "İşçiler yalnızca sürükleyeceğin alanda çalışsın")
+	_btn.no_area = _add(_card_acts, "ALANI KALDIR", func() -> void: game.clear_work_area(), "İşçiler yine her yerde çalışsın")
 	_card_train = HBoxContainer.new()
 	_card_train.add_theme_constant_override("separation", 8)
 	col.add_child(_card_train)
@@ -791,6 +813,8 @@ func _process(dt: float) -> void:
 				shots += x.ammo
 	_guns.text = "%d·%d" % [guns, shots]
 	_bows.text = "%d·%d" % [bows, arrows]
+	_guns.get_parent().visible = guns + shots > 0 # (in the goods column once there are any)
+	_bows.get_parent().visible = bows + arrows > 0
 	var w: Weather = game.weather
 	var h := int(w.hour)
 	var m := int((w.hour - h) * 60.0)
@@ -811,7 +835,7 @@ func _process(dt: float) -> void:
 		var on := is_equal_approx(now, 0.0 if k == 0 else SPEEDS[k - 1])
 		_speed_buttons[k].add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
 	for b: Node in _build_row.get_children():
-		if b.has_meta("kind"):
+		if b.has_meta("kind") and BuildingDefs.DEFS.has(b.get_meta("kind")):
 			var can := true
 			var cost: Dictionary = BuildingDefs.DEFS[b.get_meta("kind")].cost
 			for r: String in cost:
@@ -856,6 +880,8 @@ func _update_card() -> void:
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
 	(_btn.mode as Button).visible = b.kind == "camur" and b.state == "done"
+	(_btn.area as Button).visible = b.def.role in ["work", "forest"] and b.kind != "camur" and b.state == "done"
+	(_btn.no_area as Button).visible = (_btn.area as Button).visible and b.work_area.has_area()
 	(_btn.mode as Button).text = "ÇAMUR KAZ" if b.mode == "kerpic" else "KERPİÇ YAP"
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
@@ -981,6 +1007,8 @@ func _wall_card(w: Wall) -> void:
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = false
 	(_btn.mode as Button).visible = false
+	(_btn.area as Button).visible = false
+	(_btn.no_area as Button).visible = false
 	_card_title.text = "KAZIK SUR"
 	var up := 0
 	var todo := 0

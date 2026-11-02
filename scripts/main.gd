@@ -178,7 +178,9 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed:
 		var mb := e as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if _placing in ["yol", "sur"]:
+			if AREA_ORDERS.has(_placing):
+				_drag_from = cam.ground_under(mb.position)
+			elif _placing in ["yol", "sur"]:
 				_road_click(mb.position)
 			elif _placing == "kapi":
 				var to: Variant = cam.ground_under(mb.position)
@@ -200,6 +202,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				_assign_to(_building_under(mb.position))
 			else:
 				select(null)
+	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _drag_from != null:
+		_area_done(cam.ground_under((e as InputEventMouseButton).position))
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		match k.physical_keycode:
@@ -332,11 +336,26 @@ func load_game() -> void:
 
 # --- Placing ----------------------------------------------------------------------------------------
 
+## The orders drawn on the ground as a box dragged out with the mouse (not buildings).
+const AREA_ORDERS := {"kes": "KES: ağaçların üstünden bir alan sürükle, içindekiler kesilsin · sağ tık / Esc: bitir",
+	"kesme": "KESME: bir alan sürükle, içindeki ağaçların kesim işareti kalksın · sağ tık / Esc: bitir",
+	"alan": "ALAN ÇİZ: bu işyerinin işçileri yalnızca sürüklediğin alanda çalışsın · sağ tık / Esc: vazgeç"}
+var _drag_from: Variant = null ## where a box being dragged out began (the ground), or null
+var _drag_box: MeshInstance3D
+var _area_box: MeshInstance3D ## the selected workplace's drawn work area
+var _area_for: Building ## (ALAN ÇİZ: the workplace it's for)
+
+
 func start_placing(kind: String) -> void:
+	var was := selected
 	stop_placing()
 	select(null)
 	_placing = kind
 	_yaw_manual = false
+	if AREA_ORDERS.has(kind):
+		_area_for = was if kind == "alan" else null
+		hud.set_hint(str(AREA_ORDERS[kind]))
+		return
 	if kind in ["yol", "sur"]:
 		hud.set_hint("%s: sol tık ile başla, sol tık ile köşe ekle · sağ tık / Enter: bitir · Geri: son köşeyi sil · Esc: vazgeç" % BuildingDefs.DEFS[kind].name)
 		return
@@ -352,6 +371,9 @@ func start_placing(kind: String) -> void:
 
 func stop_placing() -> void:
 	_placing = ""
+	_drag_from = null
+	if _drag_box:
+		_drag_box.visible = false
 	_road_pts.clear()
 	_road_dir = Vector3.ZERO
 	if _road_line:
@@ -836,6 +858,91 @@ func _on_resized() -> void:
 		Graphics.apply(get_tree(), weather if is_instance_valid(weather) else null)
 
 
+# --- Areas dragged out: trees to fell, a workplace's ground ---------------------------------------
+
+func _rect(a: Vector3, b: Vector3) -> Rect2:
+	return Rect2(Vector2(minf(a.x, b.x), minf(a.z, b.z)), Vector2(absf(a.x - b.x), absf(a.z - b.z)))
+
+
+## A flat box over the ground on `rect`, `color` (made the first time).
+func _box_on(box: MeshInstance3D, rect: Rect2, color: Color) -> MeshInstance3D:
+	if box == null:
+		box = MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.no_depth_test = false
+		box.material_override = m
+		box.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(box)
+	(box.material_override as StandardMaterial3D).albedo_color = color
+	var c := rect.get_center()
+	var lo := INF
+	var hi := -INF
+	for p: Vector2 in [rect.position, rect.end, Vector2(rect.position.x, rect.end.y), Vector2(rect.end.x, rect.position.y), c]:
+		var h := terrain.height_at(p.x, p.y)
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+	(box.mesh as BoxMesh).size = Vector3(maxf(rect.size.x, 0.2), hi - lo + 2.0, maxf(rect.size.y, 0.2))
+	box.global_position = Vector3(c.x, (lo + hi) * 0.5, c.y)
+	box.visible = true
+	return box
+
+
+func _update_drag() -> void:
+	if _drag_from == null:
+		if _drag_box:
+			_drag_box.visible = false
+		return
+	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
+	if to == null:
+		return
+	var color: Color = {"kes": Color(1.0, 0.45, 0.08, 0.22), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
+	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
+
+
+func _area_done(to: Variant) -> void:
+	var from: Variant = _drag_from
+	_drag_from = null
+	if _drag_box:
+		_drag_box.visible = false
+	if from == null or to == null:
+		return
+	var rect := _rect(from, to)
+	if rect.size.x < 1.0 or rect.size.y < 1.0:
+		return
+	match _placing:
+		"kes":
+			var n := village.mark_trees(rect, true)
+			hud.toast("%d ağaç kesilecek" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
+		"kesme":
+			var n := village.mark_trees(rect, false)
+			hud.toast("%d ağacın işareti kalktı" % n, "info")
+		"alan":
+			var b := _area_for
+			stop_placing()
+			if b and is_instance_valid(b):
+				b.work_area = rect
+				select(b)
+				hud.toast("%s yalnızca bu alanda çalışacak" % b.display_name(), "good")
+
+
+## The selected workplace's drawn area, while it's selected.
+func _show_work_area() -> void:
+	var b := selected
+	if b and is_instance_valid(b) and b.work_area.has_area() and _placing == "":
+		_area_box = _box_on(_area_box, b.work_area, Color(0.55, 0.9, 0.45, 0.14))
+	elif _area_box:
+		_area_box.visible = false
+
+
+func clear_work_area() -> void:
+	if selected and is_instance_valid(selected):
+		selected.work_area = Rect2()
+		hud.toast("%s yine her yerde çalışacak" % selected.display_name(), "info")
+
+
 func upgrade_selected(what := "oda") -> void:
 	if selected and is_instance_valid(selected):
 		var why := village.upgrade(selected, what)
@@ -867,8 +974,11 @@ func _process(_dt: float) -> void:
 		VillageSave.save(self) # (every morning)
 	if _placing == "yol":
 		_update_road_line()
+	elif AREA_ORDERS.has(_placing):
+		_update_drag()
 	elif _placing != "":
 		_update_ghost()
+	_show_work_area()
 	if selected_villager and is_instance_valid(selected_villager) and not selected_villager.dead and selected_villager.visible:
 		_ring.visible = true
 		_ring.global_transform = Transform3D(Basis().scaled(Vector3(0.7, 0.4, 0.7)), selected_villager.global_position + Vector3.UP * 0.08)

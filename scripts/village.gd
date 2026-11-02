@@ -115,7 +115,9 @@ func _assign() -> void:
 			continue
 		var haul_ok := int(v.prio.get("tasima", 1)) > 0
 		var build_ok := int(v.prio.get("insa", 1)) > 0
-		if (haul_ok and _plan_haul(v)) or (build_ok and _plan_build(v)) or _plan_firewood(v) or (build_ok and _plan_wall(v)):
+		var cut_ok := int(v.prio.get("odun", 1)) > 0
+		if (haul_ok and _plan_haul(v)) or (build_ok and _plan_build(v)) or _plan_firewood(v) or (build_ok and _plan_wall(v)) \
+				or (cut_ok and _plan_cut(v)) or (haul_ok and _plan_logs(v)):
 			continue
 		if v.plan.is_empty():
 			_plan_idle(v)

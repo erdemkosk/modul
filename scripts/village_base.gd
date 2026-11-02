@@ -83,6 +83,9 @@ var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 
 
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
+var cut_marks := {} ## prop index -> true: trees marked to be felled (KES), wherever they stand
+var _marks_mm: MultiMeshInstance3D ## an orange band round each marked trunk
+var _marks_top: MultiMeshInstance3D ## and a marker over its crown, to be seen from above
 
 
 var yards: Array = [] ## Yard, one to a house
@@ -784,6 +787,100 @@ func ground_at(p: Vector3) -> float:
 
 
 ## Every standing prop with its foot within `reach` of `pos`.
+# --- Trees marked to be felled (KES) -------------------------------------------------------------
+
+## The standing trees in `area` (the ground's x, z) marked to be felled, or unmarked (`on` false).
+## How many changed.
+func mark_trees(area: Rect2, on: bool) -> int:
+	var n := 0
+	var c := area.get_center()
+	for i in _props_in(Vector3(c.x, 0, c.y), area.size.length() * 0.5 + 1.0):
+		var o: Vector3 = props._xf[i].origin
+		if not area.has_point(Vector2(o.x, o.z)) or str(props._models[props._kind[i]].kind) != "tree":
+			continue
+		if on and not cut_marks.has(i):
+			cut_marks[i] = true
+			n += 1
+		elif not on and cut_marks.has(i):
+			cut_marks.erase(i)
+			n += 1
+	_show_marks()
+	return n
+
+
+## A band of orange cloth tied round each marked trunk at chest height, and an orange marker
+## pointing down at it over its crown (the view's from above).
+func _show_marks() -> void:
+	for i: int in cut_marks.keys():
+		if props.cut.has(i):
+			cut_marks.erase(i)
+	if _marks_mm == null:
+		_marks_mm = MultiMeshInstance3D.new()
+		var band := CylinderMesh.new()
+		band.top_radius = 1.0
+		band.bottom_radius = 1.0
+		band.height = 0.22
+		band.radial_segments = 12
+		band.rings = 1
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(1.0, 0.45, 0.08)
+		m.emission_enabled = true
+		m.emission = Color(1.0, 0.4, 0.05)
+		m.emission_energy_multiplier = 0.35
+		band.material = m
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = band
+		_marks_mm.multimesh = mm
+		_marks_mm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		add_child(_marks_mm)
+	if _marks_top == null:
+		_marks_top = MultiMeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.7
+		cone.bottom_radius = 0.0
+		cone.height = 1.3
+		cone.radial_segments = 4
+		cone.rings = 1
+		cone.material = (_marks_mm.multimesh.mesh as CylinderMesh).material
+		var mm2 := MultiMesh.new()
+		mm2.transform_format = MultiMesh.TRANSFORM_3D
+		mm2.mesh = cone
+		_marks_top.multimesh = mm2
+		_marks_top.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_marks_top.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		add_child(_marks_top)
+	var mm := _marks_mm.multimesh
+	var top := _marks_top.multimesh
+	mm.instance_count = cut_marks.size()
+	top.instance_count = cut_marks.size()
+	var k := 0
+	for i: int in cut_marks:
+		var info := props.tree_info(i)
+		var r := float(info.radius) + 0.04
+		var o: Vector3 = info.origin
+		mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(r, 1.0, r)), o + Vector3.UP * 1.4))
+		top.set_instance_transform(k, Transform3D(Basis(Vector3.UP, 0.785), o + Vector3.UP * (float(info.height) + 1.6)))
+		k += 1
+
+
+## The marked tree nearest `p` within `reach` (in `area` if it has one) that nobody's after, or -1.
+func marked_tree(p: Vector3, reach: float, area := Rect2()) -> int:
+	var best := -1
+	var bd := INF
+	for i: int in cut_marks:
+		if reserved.has(i) or props.cut.has(i):
+			continue
+		var o: Vector3 = props._xf[i].origin
+		if area.has_area() and not area.has_point(Vector2(o.x, o.z)):
+			continue
+		var d := Vector2(o.x - p.x, o.z - p.z).length()
+		if d <= reach and d < bd:
+			bd = d
+			best = i
+	return best
+
+
 func _props_in(pos: Vector3, reach: float) -> Array[int]:
 	var out: Array[int] = []
 	var k := int(ceil(reach / WorldProps.CELL))

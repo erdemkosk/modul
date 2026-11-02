@@ -496,7 +496,10 @@ func _plan_work(v: Villager) -> void:
 					return true}] + _work_at(b, v, res), "%s: tomruk taşıyor" % b.display_name(), b)
 			return
 	var kind: String = {"odun": "tree", "tas": "rock", "yiyecek": "bush"}[res]
-	var i := find_prop(b.global_position, float(b.def.reach), kind)
+	# (trees marked to be felled first: a little further than the camp would go for its own)
+	var i := marked_tree(b.global_position, float(b.def.reach) * 1.6, b.work_area) if res == "odun" else -1
+	if i < 0:
+		i = find_prop(b.global_position, float(b.def.reach), kind, b.work_area)
 	if i < 0:
 		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
 		_plan_idle(v)
@@ -631,6 +634,99 @@ func _mud_spot(b: Building) -> Vector3:
 	if best != Vector3.INF:
 		best.y = nav.height(best.x, best.z)
 	return best
+
+
+## A free hand to a tree marked to be felled (KES) that no camp's on: felled, limbed and bucked where
+## it lies, and the first log carried to the nearest store (the rest lie for others to fetch).
+func _plan_cut(v: Villager) -> bool:
+	if cut_marks.is_empty():
+		return false
+	var i := marked_tree(v.position, 260.0)
+	var store := _nearest(stores(), v.position)
+	if i < 0 or store == null:
+		return false
+	reserved[i] = v
+	var info := props.tree_info(i)
+	var o: Vector3 = info.origin
+	var away := Vector3(v.position.x - o.x, 0, v.position.z - o.z)
+	if away.length() < 0.1:
+		away = Vector3.BACK
+	var spot := o + away.normalized() * (float(info.radius) + 0.75)
+	spot.y = nav.height(spot.x, spot.z)
+	var fall := Vector3(o.x - spot.x, 0, o.z - spot.z).normalized()
+	var trunk_mid: Vector3 = o + fall * float(info.height) * 0.45
+	var limb_at := trunk_mid + fall.cross(Vector3.UP).normalized() * (float(info.radius) + 0.8)
+	limb_at.y = nav.height(limb_at.x, limb_at.z)
+	var steps: Array = [{"t": "go", "to": spot, "job": "İşaretli ağaca gidiyor"},
+		{"t": "work", "time": 8.0, "anim": "chop", "face": o, "job": "İşaretli ağacı kesiyor"},
+		{"t": "do", "f": func() -> bool:
+			reserved.erase(i)
+			if props.cut.has(i):
+				return false
+			fell_tree(i, fall)
+			return true},
+		{"t": "work", "time": 3.0, "anim": "idle", "face": trunk_mid},
+		{"t": "go", "to": limb_at, "job": "Dallarını budayıp tomruklara bölüyor"},
+		{"t": "work", "time": 4.0, "anim": "limb", "face": trunk_mid},
+		{"t": "work", "time": 4.0, "anim": "saw", "face": trunk_mid},
+		{"t": "do", "f": func() -> bool:
+			_buck(i, o, fall, float(info.height), float(info.radius), null)
+			var bl := _billet_for(null, v.position)
+			if not bl.is_empty():
+				if is_instance_valid(bl.node):
+					(bl.node as Node).queue_free()
+				billets.erase(bl)
+			v.set_carry("odun", BILLET_WOOD)
+			return true}]
+	steps.append({"t": "go", "to": store.door(), "job": "Tomruğu depoya taşıyor"})
+	steps.append_array(_go_in(store, v) + [{"t": "do", "f": func() -> bool:
+			if is_instance_valid(store) and store.state == "done":
+				store.add_goods("odun", v.carry_n)
+			else:
+				add_anywhere("odun", v.carry_n, v.position)
+			v.set_carry("", 0)
+			return true}] + _go_out(store, v))
+	v.give(steps, "İşaretli ağacı kesiyor")
+	return true
+
+
+## A free hand to a log lying from a marked tree (no camp's), carried to the nearest store.
+func _plan_logs(v: Villager) -> bool:
+	var bl := {}
+	var bd := INF
+	for x in billets:
+		if x.camp != null or is_instance_valid(x.claimed) or not is_instance_valid(x.node):
+			continue
+		var d := (x.node as Node3D).global_position.distance_to(v.position)
+		if d < bd and d < 200.0:
+			bd = d
+			bl = x
+	if bl.is_empty():
+		return false
+	var store := _nearest(stores(), v.position)
+	if store == null:
+		return false
+	bl.claimed = v
+	var at: Vector3 = (bl.node as Node3D).global_position
+	var steps: Array = [{"t": "go", "to": at + (v.position - at).normalized() * 0.9},
+		{"t": "work", "time": 1.4, "anim": "gather", "face": at},
+		{"t": "do", "f": func() -> bool:
+			if is_instance_valid(bl.node):
+				(bl.node as Node).queue_free()
+			billets.erase(bl)
+			v.set_carry("odun", BILLET_WOOD)
+			Ambience.log_drop(v.position)
+			return true},
+		{"t": "go", "to": store.door()}]
+	steps.append_array(_go_in(store, v) + [{"t": "do", "f": func() -> bool:
+			if is_instance_valid(store) and store.state == "done":
+				store.add_goods("odun", v.carry_n)
+			else:
+				add_anywhere("odun", v.carry_n, v.position)
+			v.set_carry("", 0)
+			return true}] + _go_out(store, v))
+	v.give(steps, "Tomruk taşıyor")
+	return true
 
 
 ## Back to the yard with what's carried, worked at its station (sawn on the trestles, dressed on
@@ -818,11 +914,17 @@ func _plan_cart(v: Villager) -> void:
 
 ## The nearest standing prop of `kind` ("tree", "rock", "bush") within `reach` of `p` that no one's
 ## going for (a bush not resting), on ground a villager can get to.
-func find_prop(p: Vector3, reach: float, kind: String) -> int:
+func find_prop(p: Vector3, reach: float, kind: String, area := Rect2()) -> int:
 	var best := -1
 	var bd := INF
-	for i in _props_in(p, reach):
+	var near := _props_in(p, reach)
+	if area.has_area(): # (a drawn work area: what's in it, however far)
+		var c := area.get_center()
+		near = _props_in(Vector3(c.x, 0, c.y), area.size.length() * 0.5 + 1.0)
+	for i in near:
 		if reserved.has(i):
+			continue
+		if area.has_area() and not area.has_point(Vector2(props._xf[i].origin.x, props._xf[i].origin.z)):
 			continue
 		if str(props._models[props._kind[i]].kind) != kind:
 			continue
@@ -842,6 +944,9 @@ func find_prop(p: Vector3, reach: float, kind: String) -> int:
 
 ## The tree comes down away from the axe, hinged at its foot, and lies a while; a stump stays.
 func fell_tree(i: int, away: Vector3) -> void:
+	if cut_marks.has(i):
+		cut_marks.erase(i)
+		_show_marks()
 	var info := props.tree_info(i)
 	var mesh := props.felled_mesh(i)
 	props.cut_tree(i)

@@ -36,7 +36,7 @@ static func save(game: Node) -> bool:
 		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
 			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "plastered": b.plastered, "stove": b.stove,
-			"mode": b.mode, "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
+			"mode": b.mode, "area": [b.work_area.position.x, b.work_area.position.y, b.work_area.size.x, b.work_area.size.y], "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(),
 			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
@@ -85,7 +85,7 @@ static func save(game: Node) -> bool:
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people,
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "cut_marks": v.cut_marks.keys(),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -193,6 +193,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 			if bool(bd.get("plastered", false)):
 				b.plaster()
 			b.mode = str(bd.get("mode", ""))
+			var ar: Array = bd.get("area", [0, 0, 0, 0])
+			b.work_area = Rect2(float(ar[0]), float(ar[1]), float(ar[2]), float(ar[3]))
 			for dr: Array in bd.get("drying", []):
 				b.drying.append(Vector2(float(dr[0]), float(dr[1])))
 			if not b.drying.is_empty():
@@ -254,6 +256,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 		if h >= 0 and h < made.size() and made[h].state == "done" and made[h].def.role == "house":
 			vl.home = made[h]
 			made[h].residents.append(vl)
+	for i in d.get("cut_marks", []):
+		v.cut_marks[int(i)] = true
+	v._show_marks()
 	v._house_people()
 	for b in made:
 		if b.def.role == "house" and b.state == "done":
