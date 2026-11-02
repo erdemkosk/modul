@@ -89,6 +89,17 @@ func _assign() -> void:
 			continue
 		if not fires.is_empty() and (v.plan.is_empty() or v.idle) and _plan_fire(v, fires):
 			continue
+		# An urgent felling (ACİL KES): anyone whose woodcutting isn't set to never, between jobs, goes
+		# for it before their own work (not the watch, not by night).
+		# A worker at its workplace's round with nothing in hand drops it at once (what it carries, it
+		# brings home first).
+		var at_work: bool = is_instance_valid(v.workplace) and v.target == v.workplace and v.carry_n == 0 and not v.sleeping
+		if not night and not v.is_child and int(v.prio.get("odun", 1)) > 0 and (v.plan.is_empty() or v.idle or at_work) \
+				and not (v.workplace and v.workplace.def.role in ["barracks", "tower"]) and urgent_count() > 0:
+			if v.idle or at_work:
+				v.abort()
+			if _plan_cut(v, true):
+				continue
 		if not v.plan.is_empty() and not (v.idle and v.workplace == null and _site_needs_hands()):
 			continue
 		var meal := _meal_key()

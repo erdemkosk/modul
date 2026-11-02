@@ -130,6 +130,7 @@ const TRAITS := {
 	"obur": {"name": "Obur", "plus": "sağlam: can +20", "minus": "%50 daha çok yer", "hp": 20, "eat": 1.5},
 	"kanaatkar": {"name": "Kanaatkâr", "plus": "%40 daha az yer", "minus": "zayıf: can −15", "eat": 0.6, "hp": -15},
 }
+const BUILD_PACE := 1.25 ## building, mending, a house made better: a quarter quicker than other work
 const TRAIT_CLASH := [["caliskan", "tembel"], ["obur", "kanaatkar"], ["gozukara", "korkak"], ["obur", "tembel"]]
 var family := "" ## the surname's stem ("Ivanov"): a family shares a house
 var female := false
@@ -221,7 +222,7 @@ func skill(k: String) -> float:
 
 ## How quick at `k` it is: 0.7 at nothing, 1 at middling (5), 1.3 at the best (10).
 func knack(k: String) -> float:
-	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work")
+	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work") * (BUILD_PACE if k == "insa" else 1.0)
 
 
 ## Better at `k` for `secs` s of doing it (slower the better it already is).

@@ -356,9 +356,9 @@ func _plan_build(v: Villager) -> bool:
 	var spot := site.work_spot(i)
 	var at: Vector3 = spot.at
 	var level: float = spot.level
-	# An armful: up to three more pieces going up beside it, at the same height, in the same trip.
+	# An armful: up to four more pieces going up beside it, at the same height, in the same trip.
 	var batch: Array[int] = [i]
-	while batch.size() < 4:
+	while batch.size() < 5:
 		var j := site.claim(v)
 		if j < 0:
 			break
@@ -638,10 +638,10 @@ func _mud_spot(b: Building) -> Vector3:
 
 ## A free hand to a tree marked to be felled (KES) that no camp's on: felled, limbed and bucked where
 ## it lies, and the first log carried to the nearest store (the rest lie for others to fetch).
-func _plan_cut(v: Villager) -> bool:
+func _plan_cut(v: Villager, urgent := false) -> bool:
 	if cut_marks.is_empty():
 		return false
-	var i := marked_tree(v.position, 260.0)
+	var i := marked_tree(v.position, 500.0 if urgent else 260.0, Rect2(), urgent)
 	var store := _nearest(stores(), v.position)
 	if i < 0 or store == null:
 		return false
@@ -657,7 +657,7 @@ func _plan_cut(v: Villager) -> bool:
 	var trunk_mid: Vector3 = o + fall * float(info.height) * 0.45
 	var limb_at := trunk_mid + fall.cross(Vector3.UP).normalized() * (float(info.radius) + 0.8)
 	limb_at.y = nav.height(limb_at.x, limb_at.z)
-	var steps: Array = [{"t": "go", "to": spot, "job": "İşaretli ağaca gidiyor"},
+	var steps: Array = [{"t": "go", "to": spot, "job": "Acil kesime koşuyor" if urgent else "İşaretli ağaca gidiyor"},
 		{"t": "work", "time": 8.0, "anim": "chop", "face": o, "job": "İşaretli ağacı kesiyor"},
 		{"t": "do", "f": func() -> bool:
 			reserved.erase(i)

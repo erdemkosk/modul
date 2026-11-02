@@ -352,7 +352,7 @@ func load_game() -> void:
 # --- Placing ----------------------------------------------------------------------------------------
 
 ## The orders drawn on the ground as a box dragged out with the mouse (not buildings).
-const AREA_ORDERS := {"kes": "KES: ağaçların üstünden bir alan sürükle, içindekiler kesilsin · sağ tık / Esc: bitir",
+const AREA_ORDERS := {"kes": "KES: bir alan sürükle ya da bir ağaca tıkla: herkes işini bırakıp önce bunları keser · sağ tık / Esc: bitir",
 	"kesme": "KESME: bir alan sürükle, içindeki ağaçların kesim işareti kalksın · sağ tık / Esc: bitir",
 	"alan": "ALAN ÇİZ: bu işyerinin işçileri yalnızca sürüklediğin alanda çalışsın · sağ tık / Esc: vazgeç"}
 var _drag_from: Variant = null ## where a box being dragged out began (the ground), or null
@@ -916,7 +916,7 @@ func _update_drag() -> void:
 	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
 	if to == null:
 		return
-	var color: Color = {"kes": Color(1.0, 0.45, 0.08, 0.22), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
+	var color: Color = {"kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
 	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
 
 
@@ -929,11 +929,18 @@ func _area_done(to: Variant) -> void:
 		return
 	var rect := _rect(from, to)
 	if rect.size.x < 1.0 or rect.size.y < 1.0:
-		return
+		if _placing in ["kes", "kesme"]: # (a click, not a drag: the one tree there)
+			var i := village.find_prop(to, 4.0, "tree")
+			if i < 0:
+				return
+			var o: Vector3 = village.props._xf[i].origin
+			rect = Rect2(Vector2(o.x - 0.3, o.z - 0.3), Vector2(0.6, 0.6))
+		else:
+			return
 	match _placing:
-		"kes":
-			var n := village.mark_trees(rect, true)
-			hud.toast("%d ağaç kesilecek" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
+		"kes": # (marked to be felled first: everyone drops their work for it)
+			var n := village.mark_trees(rect, true, true)
+			hud.toast("%d ağaç kesilecek: herkes işini bırakıp gidiyor" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
 		"kesme":
 			var n := village.mark_trees(rect, false)
 			hud.toast("%d ağacın işareti kalktı" % n, "info")
@@ -990,8 +997,10 @@ func _process(_dt: float) -> void:
 	if village.day != _saved_day and weather.hour > 6.0 and not raids.active:
 		_saved_day = village.day
 		VillageSave.save(self) # (every morning)
-	if _placing == "yol":
+	if _placing in ["yol", "sur"]: # (the palisade's stakes shown to the mouse as the road's planks are)
 		_update_road_line()
+	elif _placing == "kapi":
+		pass
 	elif AREA_ORDERS.has(_placing):
 		_update_drag()
 	elif _placing != "":

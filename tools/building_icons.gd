@@ -100,9 +100,71 @@ func _take_order(kind: String) -> void:
 	await process_frame
 
 
+## The things drawn along a line rather than put up whole: a stretch of palisade, its gate, a few
+## planks of road.
+func _take_line(kind: String) -> void:
+	var n := Node3D.new()
+	_vp.add_child(n)
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.45, 0.33, 0.22)
+	var plank := StandardMaterial3D.new()
+	plank.albedo_color = Color(0.62, 0.48, 0.32)
+	match kind:
+		"sur", "kapi":
+			for k in 9:
+				var x := (k - 4) * 0.36
+				if kind == "kapi" and absf(x) < 0.9:
+					continue
+				var st := MeshInstance3D.new()
+				st.mesh = Wall.stake_mesh()
+				st.material_override = wood
+				st.position = Vector3(x, 0, 0)
+				n.add_child(st)
+			if kind == "kapi":
+				for s in [-1.0, 1.0]:
+					var leaf := MeshInstance3D.new()
+					var bm := BoxMesh.new()
+					bm.size = Vector3(0.85, 2.0, 0.08)
+					leaf.mesh = bm
+					leaf.material_override = plank
+					leaf.position = Vector3(s * 0.45, 1.0, 0.25)
+					leaf.rotation.y = s * 0.5
+					n.add_child(leaf)
+		"yol":
+			for k in 7:
+				var pl := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3(2.2, 0.08, 0.3)
+				pl.mesh = bm
+				pl.material_override = plank
+				pl.position = Vector3(sin(k * 0.3) * 0.3, 0.04, (k - 3) * 0.36)
+				pl.rotation.y = k * 0.06
+				n.add_child(pl)
+	var box := AABB()
+	var first := true
+	for mi: Node in n.find_children("*", "MeshInstance3D", true, false):
+		var bb := (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+		box = bb if first else box.merge(bb)
+		first = false
+	var centre := box.get_center()
+	var dir := Vector3(0.78, 0.62, 1.0).normalized()
+	_cam.look_at_from_position(centre + dir * box.size.length() * 0.5 / tan(deg_to_rad(_cam.fov * 0.5)) * 0.95, centre)
+	await process_frame
+	await process_frame
+	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	_vp.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
+	print("icons: wrote %s" % kind)
+	n.queue_free()
+	await process_frame
+
+
 func _take(kind: String) -> void:
 	if kind in ["kes", "kesme"]:
 		await _take_order(kind)
+		return
+	if kind in ["sur", "kapi", "yol"]:
+		await _take_line(kind)
 		return
 	var b := Building.new()
 	b.setup(kind)

@@ -17,7 +17,7 @@ const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kap
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "cankulesi"]], ["ÜRETİM", ["tarla", "oduncu", "tasci", "camur", "toplayici", "ormanci", "insaatci"]],
 	["TAŞIMA", ["yol", "arabaci", "ahir"]], ["SAVUNMA", ["sur", "kapi", "kule", "kisla", "silahlik", "yayci"]], ["EMİRLER", ["kes", "kesme"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
-const ORDERS := {"kes": {"name": "Kes", "gives": "işaretli ağaçlar kesilir", "desc": "Ağaçların üstünden bir alan sürükle: içindeki ağaçlara kurdele bağlanır, oduncular ya da boştakiler keser, tomrukları depoya taşınır. Bina gerekmez."},
+const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."}}
 const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do

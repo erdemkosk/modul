@@ -83,7 +83,7 @@ var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 
 
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
-var cut_marks := {} ## prop index -> true: trees marked to be felled (KES), wherever they stand
+var cut_marks := {} ## prop index -> 1: marked to be felled (KES), 2: urgently (ACİL KES: everyone drops their work for it)
 var _marks_mm: MultiMeshInstance3D ## an orange band round each marked trunk
 var _marks_top: MultiMeshInstance3D ## and a marker over its crown, to be seen from above
 
@@ -804,17 +804,18 @@ func ground_at(p: Vector3) -> float:
 ## Every standing prop with its foot within `reach` of `pos`.
 # --- Trees marked to be felled (KES) -------------------------------------------------------------
 
-## The standing trees in `area` (the ground's x, z) marked to be felled, or unmarked (`on` false).
-## How many changed.
-func mark_trees(area: Rect2, on: bool) -> int:
+## The standing trees in `area` (the ground's x, z) marked to be felled (`urgent`: by everyone, now),
+## or unmarked (`on` false). How many changed.
+func mark_trees(area: Rect2, on: bool, urgent := false) -> int:
 	var n := 0
 	var c := area.get_center()
 	for i in _props_in(Vector3(c.x, 0, c.y), area.size.length() * 0.5 + 1.0):
 		var o: Vector3 = props._xf[i].origin
 		if not area.has_point(Vector2(o.x, o.z)) or str(props._models[props._kind[i]].kind) != "tree":
 			continue
-		if on and not cut_marks.has(i):
-			cut_marks[i] = true
+		var level := 2 if urgent else 1
+		if on and int(cut_marks.get(i, 0)) < level:
+			cut_marks[i] = level
 			n += 1
 		elif not on and cut_marks.has(i):
 			cut_marks.erase(i)
@@ -838,13 +839,15 @@ func _show_marks() -> void:
 		band.radial_segments = 12
 		band.rings = 1
 		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(1.0, 0.45, 0.08)
+		m.albedo_color = Color(1.0, 1.0, 1.0)
+		m.vertex_color_use_as_albedo = true # (each band's own colour: orange, or red for an urgent one)
 		m.emission_enabled = true
-		m.emission = Color(1.0, 0.4, 0.05)
+		m.emission = Color(0.6, 0.25, 0.05)
 		m.emission_energy_multiplier = 0.35
 		band.material = m
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
 		mm.mesh = band
 		_marks_mm.multimesh = mm
 		_marks_mm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -860,6 +863,7 @@ func _show_marks() -> void:
 		cone.material = (_marks_mm.multimesh.mesh as CylinderMesh).material
 		var mm2 := MultiMesh.new()
 		mm2.transform_format = MultiMesh.TRANSFORM_3D
+		mm2.use_colors = true
 		mm2.mesh = cone
 		_marks_top.multimesh = mm2
 		_marks_top.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -876,15 +880,19 @@ func _show_marks() -> void:
 		var o: Vector3 = info.origin
 		mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(r, 1.0, r)), o + Vector3.UP * 1.4))
 		top.set_instance_transform(k, Transform3D(Basis(Vector3.UP, 0.785), o + Vector3.UP * (float(info.height) + 1.6)))
+		var col := Color(0.95, 0.12, 0.08) if int(cut_marks[i]) >= 2 else Color(1.0, 0.45, 0.08)
+		mm.set_instance_color(k, col)
+		top.set_instance_color(k, col)
 		k += 1
 
 
-## The marked tree nearest `p` within `reach` (in `area` if it has one) that nobody's after, or -1.
-func marked_tree(p: Vector3, reach: float, area := Rect2()) -> int:
+## The marked tree nearest `p` within `reach` (in `area` if it has one; `urgent`: only an urgent
+## one) that nobody's after, or -1.
+func marked_tree(p: Vector3, reach: float, area := Rect2(), urgent := false) -> int:
 	var best := -1
 	var bd := INF
 	for i: int in cut_marks:
-		if reserved.has(i) or props.cut.has(i):
+		if reserved.has(i) or props.cut.has(i) or (urgent and int(cut_marks[i]) < 2):
 			continue
 		var o: Vector3 = props._xf[i].origin
 		if area.has_area() and not area.has_point(Vector2(o.x, o.z)):
@@ -894,6 +902,15 @@ func marked_tree(p: Vector3, reach: float, area := Rect2()) -> int:
 			bd = d
 			best = i
 	return best
+
+
+## How many trees are marked urgently and not yet felled.
+func urgent_count() -> int:
+	var n := 0
+	for i: int in cut_marks:
+		if int(cut_marks[i]) >= 2 and not props.cut.has(i):
+			n += 1
+	return n
 
 
 func _props_in(pos: Vector3, reach: float) -> Array[int]:

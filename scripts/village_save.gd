@@ -85,7 +85,7 @@ static func save(game: Node) -> bool:
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "season_offset": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "cut_marks": v.cut_marks.keys(),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -268,7 +268,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 			vl.home = made[h]
 			made[h].residents.append(vl)
 	for i in d.get("cut_marks", []):
-		v.cut_marks[int(i)] = true
+		v.cut_marks[int(i)] = 1
+	for i in d.get("cut_urgent", []):
+		v.cut_marks[int(i)] = 2
 	v._show_marks()
 	v._house_people()
 	for b in made:
