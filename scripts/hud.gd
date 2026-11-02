@@ -151,8 +151,16 @@ func _goods_plate() -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.visible = false
 		col.add_child(row)
+		var icon := TextureRect.new() # (drawn in ink: tools/ink_icons.gd)
+		icon.custom_minimum_size = Vector2(30, 30)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if ResourceLoader.exists("res://assets/ui/ink/%s.png" % id):
+			icon.texture = load("res://assets/ui/ink/%s.png" % id)
+		row.add_child(icon)
 		var name := Ui.label(row, Ui.upper(BuildingDefs.RES_NAMES[id]), 13, Ui.DIM, "head")
-		name.custom_minimum_size = Vector2(70, 0)
+		name.custom_minimum_size = Vector2(62, 0)
 		var amount := Ui.label(row, "0", 22, Ui.INK, "display")
 		amount.custom_minimum_size = Vector2(52, 0)
 		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -546,6 +554,8 @@ func _small_button(text: String, f: Callable) -> Button:
 	b.custom_minimum_size = Vector2(34, 30)
 	b.add_theme_font_override("font", Ui.font("head"))
 	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_color_override("font_color", Ui.INK)
+	b.add_theme_color_override("font_hover_color", Ui.ACCENT)
 	b.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1, 1, 1, 0.06)))
 	b.add_theme_stylebox_override("hover", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.3), Ui.ACCENT))
 	b.add_theme_stylebox_override("pressed", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.45), Ui.ACCENT))
@@ -1049,7 +1059,7 @@ func _bar(fill: Color, width: float, height: float) -> ProgressBar:
 	b.custom_minimum_size = Vector2(width, height)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(1, 1, 1, 0.08)
+	bg.bg_color = Color(0, 0, 0, 0.3)
 	bg.set_corner_radius_all(2)
 	var fg := StyleBoxFlat.new()
 	fg.bg_color = fill

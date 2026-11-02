@@ -8,6 +8,7 @@ extends CanvasLayer
 ## knacks, keenness and traits, each to be thrown again till they're the crew wanted. Esc goes back.
 
 const BG := "res://assets/ui/title_bg.jpg"
+const HOT := Color(1.0, 0.66, 0.3) ## (a menu item pointed at, over the dark picture)
 
 var game: Node ## main.gd
 
@@ -57,8 +58,8 @@ func _ready() -> void:
 	col.offset_top = -250
 	col.add_theme_constant_override("separation", 6)
 	root.add_child(col)
-	Ui.label(col, "İNŞA", 120, Ui.INK, "display")
-	var sub := Ui.label(col, "TAYGADA BİR KERESTE KASABASI · 1880'LER", 18, Ui.DIM, "head")
+	Ui.label(col, "İNŞA", 120, Ui.LIGHT, "display")
+	var sub := Ui.label(col, "TAYGADA BİR KERESTE KASABASI · 1880'LER", 18, Color(Ui.LIGHT, 0.7), "head")
 	sub.add_theme_constant_override("outline_size", 0)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
@@ -73,7 +74,7 @@ func _ready() -> void:
 	_item(col, "YENİ KASABA", "Bir vadi, bir tren, yeni yerleşimciler", func() -> void: _toggle("new"))
 	_item(col, "AYARLAR", "Grafik, ses, oyun", func() -> void: _toggle("settings"))
 	_item(col, "ÇIK", "", func() -> void: get_tree().quit())
-	var foot := Ui.label(root, "Esc: geri", 13, Ui.DIM)
+	var foot := Ui.label(root, "Esc: geri", 13, Color(Ui.LIGHT, 0.6))
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	foot.offset_left = 96
 	foot.offset_top = -44
@@ -139,16 +140,16 @@ func _item(col: VBoxContainer, text: String, note: String, f: Callable) -> void:
 	b.custom_minimum_size = Vector2(380, 54)
 	b.add_theme_font_override("font", Ui.font("display"))
 	b.add_theme_font_size_override("font_size", 34)
-	b.add_theme_color_override("font_color", Ui.INK)
-	b.add_theme_color_override("font_hover_color", Ui.ACCENT)
-	b.add_theme_color_override("font_pressed_color", Ui.ACCENT)
+	b.add_theme_color_override("font_color", Ui.LIGHT)
+	b.add_theme_color_override("font_hover_color", HOT)
+	b.add_theme_color_override("font_pressed_color", HOT)
 	var empty := StyleBoxEmpty.new()
 	empty.content_margin_left = 18
 	for st in ["normal", "focus", "disabled"]:
 		b.add_theme_stylebox_override(st, empty)
 	var lit := StyleBoxFlat.new()
 	lit.bg_color = Color(1.0, 0.56, 0.14, 0.12)
-	lit.border_color = Ui.ACCENT
+	lit.border_color = HOT
 	lit.border_width_left = 4
 	lit.content_margin_left = 18
 	b.add_theme_stylebox_override("hover", lit)
@@ -161,7 +162,7 @@ func _item(col: VBoxContainer, text: String, note: String, f: Callable) -> void:
 		m.add_theme_constant_override("margin_left", 22)
 		m.add_theme_constant_override("margin_bottom", 8)
 		col.add_child(m)
-		Ui.label(m, note, 14, Ui.DIM)
+		Ui.label(m, note, 14, Color(Ui.LIGHT, 0.6))
 
 
 ## The plate `which` ("new", "settings") shown on the right, or none ("" or the open one again).
@@ -181,7 +182,7 @@ func _toggle(which: String) -> void:
 			p.visible = false
 	for key: String in _items:
 		var open: bool = (key == "YENİ KASABA" and _open == "new") or (key == "AYARLAR" and _open == "settings")
-		(_items[key] as Button).add_theme_color_override("font_color", Ui.ACCENT if open else Ui.INK)
+		(_items[key] as Button).add_theme_color_override("font_color", HOT if open else Ui.LIGHT)
 
 
 func _place_plate(p: Control) -> void:
@@ -208,7 +209,7 @@ func _new_game_plate(root: Control) -> void:
 	outer.offset_bottom = -36
 	outer.add_theme_constant_override("separation", 14)
 	screen.add_child(outer)
-	Ui.label(outer, "YENİ KASABA", 52, Ui.INK, "display")
+	Ui.label(outer, "YENİ KASABA", 52, Ui.LIGHT, "display")
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 18)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
