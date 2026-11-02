@@ -192,6 +192,7 @@ func start(at: Vector3) -> void:
 		_start_old(at)
 		return
 	station.complete_now()
+	dress_line()
 	# the station's place along the line (by the line's own length, its rises and falls and all):
 	# the coach stops level with it
 	train = Train.new()
@@ -458,6 +459,14 @@ func _settlers_off(st: Building) -> void:
 			v.give([{"t": "go", "to": st.door() + Vector3(randf_range(-3, 3), 0, randf_range(1, 4))}], "Trenden indi")
 			_house_people())
 	message.emit("Trenden %d göçmen iniyor: ana karadan yeni bir hayat için geldiler." % n, "good")
+
+
+## The line dressed for its years: telegraph poles along it, the water tower and the semaphore by
+## the station (EraDressing; laid out the same from the rail and the station on a loaded game).
+func dress_line() -> void:
+	var era := EraDressing.new()
+	add_child(era)
+	era.build(self, rail, depot())
 
 
 ## The old start, with no railway: a store and a house put down at once.

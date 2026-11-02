@@ -326,6 +326,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.cut_marks[int(i)] = 2
 	v._show_marks()
 	v._house_people()
+	if v.rail.size() > 1:
+		v.dress_line()
 	for b in made:
 		if b and b.def.role == "house" and b.state == "done":
 			v.add_yard(b)
