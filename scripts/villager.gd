@@ -1233,10 +1233,16 @@ func _rod(at: Vector3, r: float, length: float, mat: Material) -> MeshInstance3D
 ## Lying wounded: bleeding out where it fell, or carried on someone's shoulders.
 func _downed(dt: float) -> void:
 	if is_instance_valid(carried_by) and not carried_by.dead and not carried_by.down and carried_by.carry_res == "yarali":
-		# over the shoulder: lying across it, head and arms down the back, legs in front
-		position = carried_by.position + carried_by.global_basis * Vector3(0.0, 1.32, 0.05)
-		rotation.y = carried_by.rotation.y + PI * 0.5
-		rotation.z = 0.0
+		# a child carried in the arms; a grown body dragged by the arms along the ground behind,
+		# on its back, the heels trailing
+		if is_child:
+			position = carried_by.position + carried_by.global_basis * Vector3(0.0, 1.0, -0.35)
+			rotation.y = carried_by.rotation.y + PI * 0.5
+		else:
+			var behind: Vector3 = carried_by.position + carried_by.global_basis.z * 2.05 # (the body's laid out from its feet)
+			behind.y = village.ground_at(behind)
+			position = behind
+			rotation.y = carried_by.rotation.y
 		return
 	if carried_by != null:
 		carried_by = null # (put down, or the one carrying it fell)
@@ -1485,6 +1491,8 @@ func _walk(dt: float) -> bool:
 		if mud > 0.35 and randf() < dt * (0.1 if vehicle == "ox" else 0.06) * mud:
 			_stuck = randf_range(5.0, 9.0) if vehicle == "ox" else randf_range(2.5, 5.0)
 			job = job if job.ends_with("(çamura saplandı)") else job + " (çamura saplandı)"
+	if carry_n > 0 and carry_res == "yarali":
+		speed *= 0.5 # (a body dragged: slow going)
 	speed *= _rate() * (1.1 if team == 1 else 1.0) * speed_mul
 	_speed_now = speed
 	var left := speed * dt
@@ -1991,6 +1999,13 @@ func _animate(dt: float, walking: bool) -> void:
 		arm_r = -0.5
 		el = 1.0 # (the load held in both arms)
 		er = 1.0
+	elif carry_n > 0 and carry_res == "yarali" and _anim == "walk":
+		arm_l = 0.55 # (both hands back, gripping the wrists, leaning into the pull)
+		arm_r = 0.55
+		el = 0.2
+		er = 0.2
+		lean = 0.35
+		kn = 0.2
 	elif carry_n > 0 and carry_res == "odun" and _anim == "walk":
 		arm_r = -2.6
 		er = 1.8 # (the hand over on the log)
