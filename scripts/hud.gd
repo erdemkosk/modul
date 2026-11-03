@@ -1889,7 +1889,13 @@ func _folk_card(v: Villager) -> void:
 	if v.militia:
 		lines.append("Milis (%s)%s · %s: %d · Fener: %s" % [{"rifle": "tüfekçi", "bow": "okçu"}.get(v.weapon, "silahı raftan"), " TOPLANDI" if v.drafted else "",
 			"Ok" if v.held == "bow" else "Fişek", v.ammo, {"": "oto", "off": "sönük", "on": "yanık"}[v.lantern_mode]])
-		if v.in_cover:
+		# its cover against the nearest foe: what shields it, and how hard it is to hit
+		var foe: Villager = game.raids.nearest_raider(v.position, 160.0)
+		if foe:
+			var cv: Array = game.raids.cover(foe.position + Vector3.UP * 1.4, v)
+			var back: Array = game.raids.cover(v.position + Vector3.UP * 1.4, foe)
+			lines.append("Siper: %s · düşman isabeti %%%d  ·  bizim isabetimiz %%%d" % [str(cv[1]) if str(cv[1]) != "" else "açıkta", roundi(float(cv[0]) * 100.0), roundi(float(back[0]) * 100.0)])
+		elif v.in_cover:
 			lines.append("Siperde")
 	if v.carry_n > 0:
 		lines.append("Taşıdığı: %d %s" % [v.carry_n, str(BuildingDefs.RES_NAMES.get(v.carry_res, v.carry_res)).to_lower()])

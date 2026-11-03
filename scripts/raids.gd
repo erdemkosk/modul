@@ -383,11 +383,44 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 		r.died.connect(_on_raider_down)
 		raiders.append(r)
 	_lamp_said = false
+	_to_arms()
 	if not _towers().is_empty():
 		message.emit("Gözcü ormanda ses duydu: %s yönünden %d kişi geliyor!" % [_compass(_origin - store.global_position), n], "bad")
 	if not village.bells().is_empty():
 		village.ring_bells(8, 0.8)
 		message.emit("Tehlike çanı çalıyor: herkes saklanıyor!", "bad")
+
+
+## A fight starting: the game back to its own pace (no fast-forwarding through it), and the militia
+## under the player's hand: each to its armoury for a rifle if it hasn't one, then to a post, and
+## from then on where it's sent (right-click), shooting by itself at what it can see.
+func _to_arms() -> void:
+	if hud and Engine.time_scale > 1.0:
+		hud.game.set_speed(1.0)
+		message.emit("Çatışma başladı: hız 1x. Milis emrinde: seç, sağ tıkla mevzi göster.", "bad")
+	for v: Villager in village.villagers:
+		if v.dead or v.down or v.is_child or not v.militia or v.drafted or v.has_trait("no_rifle"):
+			continue
+		v.drafted = true
+		v.set_meta("called_up", true)
+		if v.sleeping:
+			v.wake()
+		v.abort()
+		if v.armed:
+			village.hold_at(v, village.default_post(v))
+		else:
+			var a: Building = village.armory_for(v)
+			if a:
+				village.arm(v, a)
+
+
+## Over: those called up let go again (they put their rifles back as before).
+func _stand_down() -> void:
+	for v: Villager in village.villagers:
+		if v.has_meta("called_up"):
+			v.remove_meta("called_up")
+			v.drafted = false
+			v.focus = null
 
 
 ## Somewhere out in the woods a few hundred metres from the town, as dark as can be found.
@@ -570,6 +603,7 @@ func _think() -> void:
 		next_day = village.day + every()
 		soldiers = ""
 		_finish_quietly()
+		_stand_down()
 		ended.emit()
 
 
@@ -709,6 +743,7 @@ func _end(text: String, kind: String) -> void:
 	message.emit(text, kind)
 	soldiers = ""
 	_finish_quietly()
+	_stand_down()
 	ended.emit()
 
 
@@ -918,6 +953,129 @@ func _mg_shots(dt: float) -> void:
 		shoot(gun, foe, randf_range(18.0, 26.0), clampf(0.45 - bd / 260.0, 0.15, 0.4), null, "war/burst_shot")
 
 
+## How much of `foe` a shot from `from` can see: what stands between them close in front of it (a
+## log wall, sandbags, a palisade, the lip of a trench, a rock, a tree's trunk), and how high the
+## shooter is above it (from up a tower or a rise, a man in a trench or behind a low wall shows
+## more; shooting uphill, less). [the multiplier on the chance to hit, what covers it]. The same for
+## both sides.
+func cover(from: Vector3, foe: Villager) -> Array:
+	var to := foe.position
+	var dir := Vector3(from.x - to.x, 0, from.z - to.z)
+	var dist := dir.length()
+	if dist < 0.5:
+		return [1.0, ""]
+	dir /= dist
+	var best := 1.0
+	var what := ""
+	var rise := (from.y - 1.4) - to.y # (the shooter's eye over the man's feet)
+	var nav_: Nav = village.nav
+	# close in front of it, toward the shooter
+	var d := 0.6
+	while d < minf(3.2, dist - 0.5):
+		var q := to + dir * d
+		var k := nav_.shut_kind(q)
+		var m := 1.0
+		var name := ""
+		if k == 2:
+			var b := _building_at(q)
+			if b:
+				match str(b.def.role):
+					"obstacle":
+						m = 1.0 # (wire stops no bullet)
+					"post", "mg":
+						m = 0.28
+						name = "kum torbası"
+					"tower":
+						m = 0.4
+						name = "kule"
+					_:
+						m = 0.22
+						name = "duvar (%s)" % b.display_name().to_lower()
+		elif k == 1:
+			m = 0.35
+			name = "kaya"
+		if m < best:
+			best = m
+			what = name
+		d += 0.35
+	# a whole house between them, further out (not the corner the shooter's leaning round: the last
+	# metre and a half by it are let be)
+	var far := 3.2
+	while far < dist - 1.5 and best > 0.12:
+		var q := to + dir * far
+		if nav_.shut_kind(q) == 2:
+			var b := _building_at(q)
+			if b and not str(b.def.role) in ["obstacle", "post", "mg"] and b.state == "done":
+				best = 0.12
+				what = "arada %s" % b.display_name().to_lower()
+		far += 1.0
+	# hugging a wall or leaning round a corner: half of it out of sight
+	if best > 0.65:
+		for k in 8:
+			var side := to + Vector3(cos(k * TAU / 8.0), 0, sin(k * TAU / 8.0)) * 1.1
+			if nav_.shut_kind(side) == 2:
+				var b := _building_at(side)
+				if b and not str(b.def.role) in ["obstacle"] and b.state == "done":
+					best = 0.65
+					what = "duvar dibi / köşe"
+					break
+	# a palisade between, or on its walkway behind the points
+	if foe.in_cover and foe.perched == null and foe.position.y - village.nav.height(foe.position.x, foe.position.z) > 0.8:
+		if 0.45 < best:
+			best = 0.45
+			what = "sur"
+	for w in village.walls:
+		if not is_instance_valid(w):
+			continue
+		var n: Dictionary = w.nearest(to + dir * 0.9)
+		if not n.is_empty() and float(n.dist) < 0.8 and w.built[int(n.k)] == 1 and 0.4 < best:
+			best = 0.4
+			what = "kazık sur"
+	# a trench: down in it, unless looked into from well above
+	if village.in_trench(to):
+		var m := 0.35 if rise < 2.5 else 0.7
+		if m < best:
+			best = m
+			what = "hendek"
+	# a tree trunk or a boulder in the way, close to it
+	if best > 0.4:
+		var c := to + dir * 1.2
+		for i in village._props_in(c, 1.5):
+			if village.props.cut.has(i):
+				continue
+			var info: Dictionary = village.props.prop_info(i)
+			var kind := str(info.kind)
+			if not kind in ["tree", "rock", "cliff"]:
+				continue
+			if Vector2(info.origin.x - c.x, info.origin.z - c.z).length() < (1.4 if kind != "tree" else 0.9):
+				var m := 0.6 if kind == "tree" else 0.4
+				if m < best:
+					best = m
+					what = "ağaç" if kind == "tree" else "kaya"
+	# height: from above the cover counts for less and the shot's easier; from below, harder
+	if rise > 0.5 and best < 1.0:
+		best = lerpf(best, 1.0, clampf((rise - 0.5) / 8.0, 0.0, 0.6))
+	var h := clampf(1.0 + rise * 0.05, 0.75, 1.35)
+	return [best * h, what]
+
+
+## The building standing over point `p`, if one does.
+func _building_at(p: Vector3) -> Building:
+	var best: Building = null
+	var bd := INF
+	for b in village.buildings:
+		if b.state == "gone" or b.state == "ghost":
+			continue
+		var sz: Vector2 = b.def.size
+		var local := b.global_transform.affine_inverse() * p
+		if absf(local.x) <= sz.x * 0.5 + 0.4 and absf(local.z) <= sz.y * 0.5 + 0.4:
+			var dd := Vector2(local.x, local.z).length()
+			if dd < bd:
+				bd = dd
+				best = b
+	return best
+
+
 ## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,
 ## halved if the foe's behind cover). The flash shows the shooter for a moment to anyone looking.
 func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null, sound := "war/rifle") -> void:
@@ -926,8 +1084,7 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 		by.revealed = 2.5
 		chance *= by.aim()
 		by.learn("nisan", 12.0)
-	if foe.in_cover:
-		chance *= 0.5
+	chance *= float(cover(from, foe)[0])
 	_flash(from, sound)
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
@@ -995,8 +1152,7 @@ func arrow(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	if by:
 		chance *= by.aim()
 		by.learn("okcu", 12.0)
-	if foe.in_cover:
-		chance *= 0.5
+	chance *= float(cover(from, foe)[0])
 	var to := foe.position + Vector3.UP * 1.1 + Vector3(randf_range(-0.5, 0.5), randf_range(-0.3, 0.3), randf_range(-0.5, 0.5))
 	var hit := randf() < chance
 	_fly_arrow(from, to, func() -> void:

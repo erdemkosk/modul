@@ -182,6 +182,12 @@ func is_open(p: Vector3) -> bool:
 	return _shut[c.y * N + c.x] == 0
 
 
+## What shuts the cell at `p`: 0 nothing, 1 the land itself (a cliff, water), 2 a building.
+func shut_kind(p: Vector3) -> int:
+	var c := cell_of(p)
+	return _shut[c.y * N + c.x]
+
+
 func is_ground_open(p: Vector3) -> bool:
 	var c := cell_of(p)
 	return _shut[c.y * N + c.x] != 1
