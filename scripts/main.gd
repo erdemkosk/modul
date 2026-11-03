@@ -809,7 +809,7 @@ func _order(at: Vector2) -> void:
 func _raider_under(at: Vector2) -> Villager:
 	var best: Villager = null
 	var bd := 30.0
-	for r in raids.raiders:
+	for r in raids.raiders + raids.camp_men:
 		if not is_instance_valid(r) or r.dead:
 			continue
 		var p := r.global_position + Vector3.UP * 1.0
@@ -1071,12 +1071,19 @@ func refit_selected(what: String) -> void:
 	hud.toast("%s %s" % [nb.display_name(), "kuruldu" if nb.state == "done" else "olarak kurulacak"], "good")
 
 
+var _camp_turn := false ## (show_trouble: the camp shown, the rest next)
 var _trouble_i := -1 ## which of the troubled places was shown last (show_trouble)
 
 
 ## The next of what's stopped the work (a workshop with its pile full, or with the stores full the
 ## fullest store): picked, and the view taken to it.
 func show_trouble() -> void:
+	if raids.camp_known and not _camp_turn:
+		_camp_turn = true
+		cam.jump_to(raids.camp_at)
+		hud.toast("Firari kampı · %d kişi: milisi TOPLA, seç, kampa sağ tıkla" % raids.camp_men.size(), "bad")
+		return
+	_camp_turn = false
 	var list: Array[Building] = village.full_yards()
 	var why := "yığın dolu: %s" % ("arabacılar yetişemiyor" if village.carters_about() else "arabacı yok")
 	if list.is_empty():

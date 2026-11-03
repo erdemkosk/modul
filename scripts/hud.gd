@@ -15,7 +15,7 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
-	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
+	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
@@ -255,6 +255,9 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 		bad = true
 	elif fill.y > 0 and fill.x >= fill.y * 0.85:
 		line += "   ·   depolar dolmak üzere"
+	if game.raids.camp_known:
+		line += "   ·   FİRARİ KAMPI (%d kişi): milisi TOPLA, kampa sağ tıkla" % game.raids.camp_men.size()
+		bad = true
 	_store_line.text = line + ("   ▸ GÖSTER" if bad else "")
 	var lc: Color = Ui.BAD if bad else (Ui.ACCENT if fill.x >= fill.y * 0.85 else Color(Ui.INK, 0.75))
 	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
@@ -1541,11 +1544,19 @@ func _fill_extra(b: Building) -> void:
 		for ch in _card_extra.get_children():
 			ch.queue_free()
 		if kind == "istasyon":
-			Ui.label(_card_extra, "TRENLE SİPARİŞ", 12, Ui.ACCENT, "head")
+			Ui.label(_card_extra, "TREN · TELGRAF", 12, Ui.ACCENT, "head")
 			if not v.knows("telgraf"):
-				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor, köy ana karaya bildirilemiyor. Okuma odasında Telgraf araştır.", 13, Ui.DIM)
+				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor, köy Merkez'e bildirilemiyor. Telgraf okuma odasında araştırılır.", 13, Ui.DIM)
 				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				l.custom_minimum_size = Vector2(300, 0)
+				var rb := _small_button("ARAŞTIRILIYOR: TELGRAF" if v.studying == "telgraf" else "TELGRAFI ARAŞTIR", func() -> void:
+					game.village.study("telgraf")
+					_extra_sig = ""
+					if not game.village.buildings.any(func(o: Building) -> bool: return o.kind == "okuma" and o.state == "done"):
+						toast("Telgraf seçildi: araştırma için bir okuma odası kur (KASABA > Okuma odası)", "info"))
+				rb.disabled = v.studying == "telgraf"
+				rb.tooltip_text = "Okuma odasının konusu Telgraf olsun"
+				_card_extra.add_child(rb)
 			else:
 				var tb := _small_button("TELGRAF ▸  köyü bildir · satış · tren çağır", func() -> void: toggle_telegraph())
 				tb.tooltip_text = "Telgrafhaneyi aç"
@@ -1588,8 +1599,8 @@ func _fill_extra(b: Building) -> void:
 						n += int(pb.goods.get(r, 0))
 					on.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
-			_extra_status.text = "%s%s\nKasa %d mirka  ·  İtibar %d: her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
-				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.repute, v.settlers_due()]
+			_extra_status.text = "%s%s\nKasa %d mirka  ·  %s  ·  her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
+				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.standing_text(), v.settlers_due()]
 			if v.line_state() != "":
 				_extra_status.text = v.line_state() + "\n" + _extra_status.text
 	else:
@@ -1647,6 +1658,12 @@ func _fill_jail(b: Building) -> void:
 			var free := _small_button("BIRAK", func() -> void: game.village.let_go(o))
 			free.tooltip_text = "Serbest bırak: gider, firariler bir gün daha geç gelir"
 			btns.add_child(free)
+			var talk := _small_button("SORGULA", func() -> void: game.village.interrogate(o))
+			talk.tooltip_text = "Sorgula: kampın yerini, baskının ne zaman geleceğini söyleyebilir (bir kez)"
+			btns.add_child(talk)
+			var hand := _small_button("MERKEZE VER", func() -> void: game.village.hand_over(o))
+			hand.tooltip_text = "Merkez'e teslim et: fidye olarak 20 mirka, Merkez memnun, Özgür Kordal kızgın"
+			btns.add_child(hand)
 			var kill := _small_button("İDAM", func() -> void: game.village.execute(o))
 			kill.tooltip_text = "İdam et: firariler üç gün daha geç gelir, ama bütün kasabanın morali ağır düşer"
 			kill.add_theme_color_override("font_color", Ui.BAD)

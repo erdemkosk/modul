@@ -32,6 +32,10 @@ const SKINS := [Color("#e0ac8a"), Color("#d29a78"), Color("#c48a68"), Color("#a8
 const HAIR := [Color("#2a1d14"), Color("#4a3322"), Color("#6b4a2e"), Color("#8a6a44"), Color("#1a1714"), Color("#7a3a1e")]
 const BOOTS := [Color("#3e2a1c"), Color("#2a2420"), Color("#5a4330")]
 const SCARF := [Color("#7a2f25"), Color("#5a5040"), Color("#3a4a5a"), Color("#8a7a5c")]
+## A woman's kerchief (tied over the head and under the chin) and her long skirt.
+const KERCHIEF := [Color("#9a2a22"), Color("#c8b48a"), Color("#3a4f7a"), Color("#6a2f4a"), Color("#d8d0bc"), Color("#4a6a3a")]
+const SKIRT := [Color("#3a2f28"), Color("#2f3646"), Color("#4a3a30"), Color("#55402e"), Color("#2c2826"), Color("#5a4a3a")]
+const WOMAN_KEYS := ["JawNarrow", "ChinWeak", "NoseSmall", "LipsFull", "Cheekbones", "Gaunt"]
 ## The skin textures by age and beard (heads/), each with its mean colour over the face.
 const SKIN_TEX := {
 	"young": ["skin_young_light.png", Color("#df997c")], "tan": ["skin_young_tan.png", Color("#d28059")],
@@ -93,9 +97,9 @@ func build(kind: String, rng: RandomNumberGenerator) -> void:
 	grip_ik = TownsfolkGrip.new()
 	skeleton.add_child(grip_ik)
 	_dress(kind, rng)
-	# A man's build varies: a little taller or shorter, broader or leaner.
-	var tall := rng.randf_range(0.94, 1.03)
-	var broad := rng.randf_range(0.88, 0.98)
+	# A man's build varies: a little taller or shorter, broader or leaner (a woman smaller).
+	var tall := rng.randf_range(0.94, 1.03) if kind != "woman" else rng.randf_range(0.9, 0.96)
+	var broad := rng.randf_range(0.88, 0.98) if kind != "woman" else rng.randf_range(0.82, 0.88)
 	model.scale = Vector3(broad, tall, broad)
 	for side in ["Left", "Right"]:
 		_hands.append(_grip(side + "Hand"))
@@ -159,8 +163,9 @@ func weapon_mount() -> Node3D:
 func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var child := kind == "child"
 	var outlaw := kind == "outlaw"
+	var woman := kind == "woman"
 	var age := 0.0 if child else rng.randf_range(0.05, 1.0)
-	var beard := not child and rng.randf() < (0.8 if outlaw else 0.65)
+	var beard := not child and not woman and rng.randf() < (0.8 if outlaw else 0.65)
 	var mask := outlaw and rng.randf() < 0.5
 	var coat: String = COATS[rng.randi() % COATS.size()]
 	var hat: String = HATS[rng.randi() % HATS.size()]
@@ -171,7 +176,10 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	if mask:
 		hat = ""
 		beard = false
-	var scarf := outlaw or rng.randf() < 0.3
+	if woman:
+		hat = "Survivor_Headwear" # (the kerchief: the knit cap in its colours, the neckerchief the knot under the chin)
+		coat = "Survivor_Jacket"
+	var scarf := outlaw or woman or rng.randf() < 0.3
 	var gloves := not child and rng.randf() < 0.2
 	var wool: Color = WOOL[rng.randi() % WOOL.size()]
 	if outlaw:
@@ -185,6 +193,10 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	var trousers: Color = CANVAS[rng.randi() % CANVAS.size()]
 	var boots: Color = BOOTS[rng.randi() % BOOTS.size()]
 	var scarf_c: Color = SCARF[rng.randi() % SCARF.size()]
+	if woman:
+		hat_c = KERCHIEF[rng.randi() % KERCHIEF.size()]
+		scarf_c = hat_c
+		trousers = SKIRT[rng.randi() % SKIRT.size()]
 	if outlaw:
 		scarf_c = [Color("#6e1c16"), Color("#1c1a18"), Color("#3a2e24")][rng.randi() % 3]
 		trousers = SURPLUS[rng.randi() % 3].darkened(0.3)
@@ -204,10 +216,15 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 		head = "Head_Old"
 	var keys := {}
 	for k in 3:
-		keys[FACE_KEYS[rng.randi() % FACE_KEYS.size()]] = rng.randf_range(0.15, 0.6)
+		if woman:
+			keys[WOMAN_KEYS[rng.randi() % WOMAN_KEYS.size()]] = rng.randf_range(0.35, 0.8)
+		else:
+			keys[FACE_KEYS[rng.randi() % FACE_KEYS.size()]] = rng.randf_range(0.15, 0.6)
+	if woman:
+		head = "Head_Lean" if rng.randf() < 0.6 else "Head_Base"
 	if head == "Head_Old" or age > 0.85:
 		keys["Old"] = rng.randf_range(0.4, 1.0)
-	var heavy_brows := rng.randf() < 0.35
+	var heavy_brows := not woman and rng.randf() < 0.35
 	var beard_cut: Array = [[0.3, 0.32], [2.0, 0.3], [0.52, 0.4]][rng.randi() % 3]
 	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
@@ -261,6 +278,35 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 			mi.set_surface_override_material(s, m)
 			if name == "Jacket":
 				coat_material = m
+	if woman:
+		_skirt(trousers)
+
+
+## A long skirt to the ankles, hung from the hips: a cone of wool over the trousers.
+func _skirt(c: Color) -> void:
+	var at := BoneAttachment3D.new()
+	at.bone_name = "Hips"
+	skeleton.add_child(at)
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.19
+	cm.bottom_radius = 0.33
+	cm.height = 0.78
+	cm.radial_segments = 14
+	cm.cap_top = false
+	cm.cap_bottom = false
+	mi.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = 0.95
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	at.add_child(mi)
+	# (the hips' bone points up the spine: the skirt hangs down from it, in the model's own scale)
+	var hips := skeleton.get_bone_global_rest(skeleton.find_bone("Hips"))
+	var down := hips.basis.inverse() * Vector3.DOWN
+	mi.position = down.normalized() * 0.36
+	mi.basis = Basis(Quaternion(Vector3.DOWN, down.normalized())) if down.normalized().dot(Vector3.DOWN) < 0.999 else Basis.IDENTITY
 
 
 func _face(age: float, beard: bool, skin: Color, hair: Color, rng: RandomNumberGenerator) -> ShaderMaterial:

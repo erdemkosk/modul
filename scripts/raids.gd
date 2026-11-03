@@ -26,6 +26,7 @@ extends Node3D
 ## catches fire, they come out). With a tower standing, the band's heard coming before it's there.
 
 signal message(text: String, kind: String)
+signal ended ## a band done with (beaten off, or gone)
 
 const FIRST_DAY := 8
 const EVERY := 2 ## days between raids
@@ -53,6 +54,13 @@ var _shoot_t := {} ## tower -> seconds to its next shot
 var _wolf_night := -1 ## the day whose night the wolves have had
 var loot: Array[Dictionary] = [] ## rifles the outlaws dropped: {at, node, ammo, claimed}
 var _lamp_said := false
+var camp_men: Array[Villager] = [] ## the outlaws sitting in their camp in the woods (camp)
+var camp_at := Vector3.INF ## where their camp is (INF: none)
+var camp_known := false ## found: seen from a tower, by someone working near, or told by a prisoner
+var _camp_node: Node3D
+var _camp_day := -1
+var _camp_t := 0.0
+var soldiers := "" ## the band now on the town is a side's soldiers ("" outlaws): by day as well
 var hud: Node ## (for asking: the band sends one ahead to ask for food first)
 var _asked_for := -1 ## the raid day whose band has asked already
 var _ask_card: Control
@@ -64,7 +72,7 @@ func _ready() -> void:
 
 ## The band's size: a couple at first, more as the town grows.
 func band_size() -> int:
-	var n := 2 + village.villagers.size() / 4 + (village.day - FIRST_DAY) / 2
+	var n := 2 + village.villagers.size() / 4 + (village.day - FIRST_DAY) / 2 + (2 if camp_at != Vector3.INF else 0)
 	return clampi(roundi(n * [0.6, 1.0, 1.4][level]), 2, 18)
 
 
@@ -103,6 +111,203 @@ func _process(dt: float) -> void:
 			_think()
 		_think_wolves()
 	_tower_shots(dt)
+	_mg_shots(dt)
+	if _camp_day != village.day:
+		_camp_day = village.day
+		_camp_morning()
+	_camp_t += dt
+	if _camp_t >= 0.5:
+		_camp_t = 0.0
+		_camp_think()
+
+
+# --- The camp -------------------------------------------------------------------------------------
+# Outlaws dig in in the woods a couple of hundred metres off: tents round a fire, a few men about
+# it. While it stands the raids come from it, bigger. It can be found (a tower within sight of its
+# smoke, someone working near, a prisoner made to talk) and raided: the militia drafted and sent
+# there (right-click), they fight it out; cleared, what was in it is the town's, and the raids stop
+# a while.
+const CAMP_FROM := 5 ## the first day one may be made
+const CAMP_SEEN := 220.0 ## m a tower's lookout sees its smoke from
+
+
+func _camp_morning() -> void:
+	if camp_at != Vector3.INF or village.day < CAMP_FROM or _main_store() == null or randf() > 0.3:
+		return
+	var home := _main_store().global_position
+	for k in 40:
+		var a := randf() * TAU
+		var p := home + Vector3(cos(a), 0, sin(a)) * randf_range(150.0, 220.0)
+		if nav.is_open(p):
+			p.y = nav.height(p.x, p.z)
+			make_camp(p, clampi(3 + village.villagers.size() / 5, 3, 7))
+			return
+
+
+func make_camp(at: Vector3, n: int, known := false) -> void:
+	camp_at = at
+	camp_known = false
+	_camp_node = Node3D.new()
+	add_child(_camp_node)
+	_camp_node.global_position = at
+	# (a clearing cut for it: the stumps left)
+	for i in village._props_in(at, 11.0):
+		var info: Dictionary = village.props.prop_info(i)
+		if str(info.kind) != "cliff" and Vector2(info.origin.x - at.x, info.origin.z - at.z).length() < 9.0:
+			village.props.cut_tree(i)
+	village._tents(_camp_node)
+	var f := FireFx.flames()
+	f.amount = 18
+	(f.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.3, 0.15, 0.3)
+	f.position = Vector3.UP * 0.3
+	_camp_node.add_child(f)
+	var smoke := FireFx.smoke(false)
+	smoke.amount = 30
+	smoke.lifetime = 9.0
+	smoke.position = Vector3.UP * 1.0
+	_camp_node.add_child(smoke)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.55, 0.25)
+	l.light_energy = 2.6
+	l.omni_range = 12.0
+	l.position = Vector3.UP * 0.9
+	_camp_node.add_child(l)
+	var crate := Building.material("wood")
+	for k in 4: # (their plunder in crates)
+		var c := MeshInstance3D.new()
+		var cm := BoxMesh.new()
+		cm.size = Vector3(0.7, 0.5, 0.5)
+		c.mesh = cm
+		c.material_override = crate
+		var a := k * 1.3 + 0.4
+		c.position = Vector3(cos(a) * 2.2, 0.25, sin(a) * 2.2)
+		c.rotation.y = a
+		_camp_node.add_child(c)
+	for k in n:
+		var r := Villager.new()
+		r.team = 1
+		r.tunic_color = OUTLAW_TUNIC
+		r.village = village
+		r.nav = nav
+		r.hp = 70.0
+		r.max_hp = 70.0
+		r.attack = 13.0
+		r.fighter = true
+		r.role = "shooter" if k % 3 == 0 else "torch"
+		add_child(r)
+		var p := at + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+		p.y = nav.height(p.x, p.z)
+		r.position = p
+		if r.role == "shooter":
+			r.ranged = 40.0
+			r.attack = 22.0
+			r.arm_with("rifle")
+		else:
+			r.arm_with("axe")
+		r.died.connect(_on_raider_down)
+		camp_men.append(r)
+	camp_known = known
+
+
+func _camp_found(how: String) -> void:
+	camp_known = true
+	var store := _main_store()
+	var dir := _compass(camp_at - store.global_position) if store else ""
+	message.emit("%sFirari kampı bulundu: %s yönünde, %d kişi. Milisi topla (TOPLA), seç ve kampa sağ tıkla." % [how, dir, camp_men.size()], "bad")
+
+
+func _camp_think() -> void:
+	if camp_at == Vector3.INF:
+		return
+	var kept: Array[Villager] = []
+	for r in camp_men:
+		if not is_instance_valid(r) or r.dead:
+			continue
+		if r.down:
+			if not r in village.downed_outlaws:
+				village.downed_outlaws.append(r)
+			continue
+		kept.append(r)
+	camp_men = kept
+	if camp_men.is_empty():
+		_camp_cleared()
+		return
+	if not camp_known:
+		for t in _towers():
+			if t.global_position.distance_to(camp_at) < CAMP_SEEN:
+				_camp_found("Gözcü kulesinden duman görüldü. ")
+				break
+	for v in village.villagers:
+		if v.dead or v.down or v.team != 0:
+			continue
+		if v.position.distance_to(camp_at) < 60.0:
+			if not camp_known:
+				_camp_found("%s ormanda bir kamp gördü. " % v.display_name)
+			# the drafted with no rifle go for the nearest of them
+			if v.drafted and not v.armed and (v.plan.is_empty() or v.idle or str(v.plan[0].t) != "fight"):
+				var foe := nearest_raider(v.position, 30.0)
+				if foe:
+					v.abort()
+					v.give([{"t": "fight", "foe": foe, "give_up": 40.0}], "Kampa saldırıyor")
+	var home := _main_store().global_position if _main_store() else Vector3.ZERO
+	for r in camp_men:
+		if r.hp < r.max_hp * 0.3 and r.job != "Kaçıyor":
+			r.abort()
+			var away := camp_at + (camp_at - home).normalized() * 120.0
+			away.y = nav.height(away.x, away.z)
+			r.give([{"t": "go", "to": away}, {"t": "do", "f": func() -> bool:
+				camp_men.erase(r)
+				r.queue_free()
+				return true}], "Kaçıyor")
+			continue
+		if r.job == "Kaçıyor":
+			continue
+		# (they keep to their camp: off after someone too far from it, they go back)
+		if r.position.distance_to(camp_at) > 50.0 and r.job != "Kampa dönüyor":
+			r.abort()
+			var back := camp_at + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+			back.y = nav.height(back.x, back.z)
+			r.give([{"t": "go", "to": back}], "Kampa dönüyor")
+			continue
+		if r.job == "Kampa dönüyor" or (not r.plan.is_empty() and str(r.plan[0].t) == "fight"):
+			continue
+		var foe: Villager = null
+		var bd := 40.0
+		for v in village.villagers:
+			if v.dead or v.down or v.sleeping or v.team != 0 or v.position.distance_to(camp_at) > 45.0:
+				continue
+			var d := v.position.distance_to(r.position)
+			if d < bd:
+				bd = d
+				foe = v
+		if foe:
+			r.abort()
+			r.give([{"t": "fight", "foe": foe, "give_up": 30.0}], "Kampı savunuyor")
+		elif r.plan.is_empty():
+			var p := camp_at + Vector3(randf_range(-5, 5), 0, randf_range(-5, 5))
+			p.y = nav.height(p.x, p.z)
+			r.give([{"t": "go", "to": p}, {"t": "work", "time": randf_range(6.0, 14.0), "anim": "idle"}], "Kampta")
+
+
+func _camp_cleared() -> void:
+	var got := {"yiyecek": randi_range(20, 40), "odun": randi_range(10, 20), "tas": randi_range(1, 10)}
+	var store := _main_store()
+	if store:
+		for r: String in got:
+			village.add_anywhere(r, int(got[r]), store.global_position)
+	var arms: Array = village.call("armories")
+	if not arms.is_empty():
+		(arms[0] as Building).ammo += 12
+	message.emit("Firari kampı dağıtıldı! Ganimet depoya: %d yiyecek, %d odun, %d taş%s. Baskınlar bir süre durur." % [got.yiyecek, got.odun, got.tas, "; silahlığa 12 fişek" if not arms.is_empty() else ""], "good")
+	next_day = maxi(next_day, village.day + 4)
+	camp_at = Vector3.INF
+	camp_known = false
+	if is_instance_valid(_camp_node):
+		var node := _camp_node
+		var tw := node.create_tween()
+		tw.tween_interval(8.0)
+		tw.tween_callback(node.queue_free)
+	_camp_node = null
 
 
 # --- The band -------------------------------------------------------------------------------------
@@ -136,11 +341,14 @@ func _ask_food() -> void:
 		{"label": "REDDET", "f": func() -> void:
 			message.emit("Firari tükürüp ormana döndü. Gece gelecekler: sur, fener ve tüfekler hazır olsun.", "bad")}])
 
-func start(n: int) -> void:
+## A band of `n` on the town: out of the woods (or from `from`, an armoured train's side, the
+## camp); `soldiers` a side's men ("merkez", "isyan") in its colours, more of them with rifles.
+func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 	var store := _main_store()
 	if store == null:
 		return
-	_origin = _edge_point(store.global_position)
+	_origin = from if from != Vector3.INF else _edge_point(store.global_position)
+	self.soldiers = soldiers
 	active = true
 	_started = village.clock
 	_burnt = 0
@@ -148,7 +356,7 @@ func start(n: int) -> void:
 	for k in n:
 		var r := Villager.new()
 		r.team = 1
-		r.tunic_color = OUTLAW_TUNIC
+		r.tunic_color = OUTLAW_TUNIC if soldiers == "" else (Color(0.36, 0.38, 0.27) if soldiers == "merkez" else Color(0.3, 0.1, 0.08))
 		r.village = village
 		r.nav = nav
 		r.hp = 70.0
@@ -156,7 +364,7 @@ func start(n: int) -> void:
 		r.attack = 13.0
 		r.fighter = true
 		# Their parts: about two in five shoot, as many carry the fire, the rest go for the store.
-		r.role = "shooter" if k % 5 in [0, 3] else ("looter" if k % 5 == 4 else "torch")
+		r.role = "shooter" if k % 5 in [0, 3] or (soldiers != "" and k % 2 == 0) else ("looter" if k % 5 == 4 else "torch")
 		add_child(r)
 		var p := _origin + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
 		p.y = nav.height(p.x, p.z)
@@ -179,6 +387,8 @@ func start(n: int) -> void:
 
 ## Somewhere out in the woods a few hundred metres from the town, as dark as can be found.
 func _edge_point(home: Vector3) -> Vector3:
+	if camp_at != Vector3.INF:
+		return camp_at # (they come from their camp)
 	var best := home + Vector3(250, 0, 0)
 	for k in 40:
 		var a := randf() * TAU
@@ -213,7 +423,7 @@ func _towers() -> Array[Building]:
 func nearest_raider(p: Vector3, reach: float, seen := false) -> Villager:
 	var best: Villager = null
 	var bd := reach
-	for list: Array[Villager] in [raiders, wolves]:
+	for list: Array[Villager] in [raiders, wolves, camp_men]:
 		for r in list:
 			if not is_instance_valid(r) or r.dead or r.down:
 				continue
@@ -281,7 +491,7 @@ func _think() -> void:
 	if live == 0:
 		_end("Baskın püskürtüldü! Firarilerin hepsi düştü.", "good")
 		return
-	var dawn := weather.hour > 5.0 and weather.hour < 12.0
+	var dawn := weather.hour > 5.0 and weather.hour < 12.0 and soldiers == ""
 	var leaving := _burnt >= _size + 2 or village.clock - _started > 300.0 or live * 3 < _size or dawn
 	for r in raiders:
 		if r.dead:
@@ -490,7 +700,9 @@ func _end(text: String, kind: String) -> void:
 	active = false
 	next_day = village.day + every()
 	message.emit(text, kind)
+	soldiers = ""
 	_finish_quietly()
+	ended.emit()
 
 
 func _finish_quietly() -> void:
@@ -583,7 +795,7 @@ func _tower_shots(dt: float) -> void:
 			continue
 		var foe: Villager = null
 		var bd := 70.0
-		for list: Array[Villager] in [raiders, wolves]:
+		for list: Array[Villager] in [raiders, wolves, camp_men]:
 			for r in list:
 				if is_instance_valid(r) and not r.dead and village.is_lit(r.position):
 					var d := r.position.distance_to(t.global_position)
@@ -595,6 +807,61 @@ func _tower_shots(dt: float) -> void:
 		_shoot_t[t] = randf_range(2.2, 3.0)
 		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
 		shoot(man.muzzle(), foe, randf_range(28.0, 40.0), 0.6)
+
+
+## The Maxims: a gunner at the gun (within a couple of metres of where it stands) and one it can see
+## in 65 m: a burst of eight, a shot every fifth of a second, wide of the mark more often than a
+## rifle, a cartridge off the armoury's rack a burst; then a pause. No cartridges, no bursts.
+var _mg := {} ## nest -> [seconds to the next shot, shots left in the burst]
+
+
+func _mg_shots(dt: float) -> void:
+	for b in village.buildings:
+		if b.def.role != "mg" or b.state != "done":
+			continue
+		var man: Villager = null
+		for v in b.workers:
+			if not v.dead and not v.down and v.position.distance_to(b.station()) < 2.5:
+				man = v
+				break
+		if man == null:
+			continue
+		var st: Array = _mg.get(b, [0.0, 0])
+		st[0] = float(st[0]) - dt
+		_mg[b] = st
+		if float(st[0]) > 0.0:
+			continue
+		var gun := b.global_transform * Vector3(0, 0.95, 1.2)
+		var foe: Villager = null
+		var bd := 65.0
+		for list: Array[Villager] in [raiders, wolves, camp_men]:
+			for r in list:
+				if is_instance_valid(r) and not r.dead and not r.down and can_see(gun, r):
+					var d := r.position.distance_to(gun)
+					if d < bd:
+						bd = d
+						foe = r
+		if foe == null:
+			st[1] = 0
+			continue
+		if int(st[1]) <= 0:
+			var arms: Array = village.call("armories")
+			var rack: Building = null
+			for a: Building in arms:
+				if a.ammo > 0:
+					rack = a
+					break
+			if rack == null:
+				b.idle_note = "Fişek yok: silahlıkta fişek kalmadı"
+				st[0] = 3.0
+				continue
+			rack.ammo -= 1
+			b.idle_note = ""
+			st[1] = 8
+		st[1] = int(st[1]) - 1
+		st[0] = 0.2 if int(st[1]) > 0 else 1.6
+		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
+		shoot(gun, foe, randf_range(18.0, 26.0), clampf(0.45 - bd / 260.0, 0.15, 0.4))
 
 
 ## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,

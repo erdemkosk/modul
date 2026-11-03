@@ -523,7 +523,7 @@ func _build_look() -> void:
 			rng.randomize()
 			look_seed = rng.seed if rng.seed != 0 else 1
 		rng.seed = look_seed
-		look_kind = "outlaw" if team == 1 else ("child" if is_child else "man")
+		look_kind = "outlaw" if team == 1 else ("child" if is_child else ("woman" if female else "man"))
 		_body = Townsfolk.new()
 		add_child(_body)
 		_body.build(look_kind, rng)

@@ -88,9 +88,9 @@ static func save(game: Node) -> bool:
 					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken])
 			return {"line": pts, "built": Array(w.built), "gates": gs, "level": w.level}),
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
-		"raid_next": game.raids.next_day, "season_days": game.seasons.offset, "cut": RutStore.cut.duplicate(),
+		"raid_next": game.raids.next_day, "camp": [game.raids.camp_at.x, game.raids.camp_at.y, game.raids.camp_at.z, game.raids.camp_men.size(), game.raids.camp_known] if game.raids.camp_at != Vector3.INF else [], "season_days": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -133,6 +133,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 	v.clock = float(d.clock)
 	game.weather.hour = float(d.hour)
 	game.raids.next_day = maxi(int(d.raid_next), v.day)
+	var camp: Array = d.get("camp", [])
+	if camp.size() >= 5 and int(camp[3]) > 0:
+		game.raids.make_camp(Vector3(camp[0], camp[1], camp[2]), int(camp[3]), bool(camp[4]))
 	game.seasons.offset = int(d.get("season_days", Seasons.start_of(int(d.get("season_offset", 0)) % 4)))
 	v.rock_left = (d.rocks as Dictionary).duplicate()
 	for i: int in d.bush:
@@ -313,6 +316,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 	v.studying = str(d.get("studying", ""))
 	v.rubles = int(d.get("rubles", v.rubles))
 	v.repute = int(d.get("repute", 0))
+	v.rebels = int(d.get("rebels", 0))
+	v.armoured_next = int(d.get("armoured_next", v.armoured_next))
 	v.express = bool(d.get("express", false))
 	for r: String in d.get("selling", []):
 		v.selling.append(r)

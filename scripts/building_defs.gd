@@ -17,13 +17,13 @@ const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına
 	"oduncu": "odun · taş · çamur · yemiş",
 	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
 	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yara sarar · sargı", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
-	"okuma": "araştırma", "demirci": "tüfek · fişek"}
+	"okuma": "araştırma", "demirci": "tüfek · fişek", "siper": "milise siper", "tel": "engel", "makineli": "makineli tüfek"}
 
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Sargı ve ot", "komur": "Kömür", "demir": "Demir"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "camur", "toplayici", "meydan"]
-const KINDS := ["meydan", "ev", "tarla", "oduncu", "tasci", "camur", "toplayici", "ambar", "arabaci", "kuyu", "fener", "kule", "silahlik", "hapishane", "sifaci", "okuma", "demirci"]
+const KINDS := ["meydan", "ev", "tarla", "oduncu", "tasci", "camur", "toplayici", "ambar", "arabaci", "kuyu", "fener", "kule", "silahlik", "hapishane", "sifaci", "okuma", "demirci", "siper", "tel", "makineli"]
 
 const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
@@ -71,6 +71,13 @@ const DEFS := {
 		"desc": "Kitaplar, gazeteler, bir masa ve lamba. Buraya verilenler okur, yazar, hesap yapar: seçtiğin konu araştırılır. Okuryazarlığı yüksek olan çok daha çabuk ilerler. Telgraf, madencilik, demircilik buradan açılır."},
 	"demirci": {"name": "Demirci", "size": Vector2(5, 4), "cost": {"odun": 14, "tas": 10}, "time": 30.0, "role": "smith", "slots": 1, "needs": "demircilik",
 		"desc": "Körük, örs, ocak. Demirci depodan demir ve kömür alıp tüfek (3 demir, 2 kömür) ve fişek (1 demir, 1 kömürden 10 fişek) döver, silahlığa taşır."},
+	"siper": {"name": "Kum torbası mevzi", "size": Vector2(3, 2), "cost": {"tas": 3, "odun": 1}, "time": 8.0, "role": "post",
+		"desc": "Toprak doldurulmuş çuvallardan alçak bir duvar. Tehlike çanında milis, firarilerin geldiği yöne en yakın mevzinin arkasına geçer: siperdeki adamı vurmak iki kat zordur."},
+	"tel": {"name": "Dikenli tel", "size": Vector2(4, 1), "cost": {"odun": 2, "demir": 1}, "time": 4.0, "role": "obstacle",
+		"desc": "Çarpı kazıklara gerilmiş dikenli tel. Kimse içinden geçemez: firarileri dolaşmaya, siperlerin ve lambaların önünden geçmeye zorlar."},
+	"makineli": {"name": "Maxim yuvası", "size": Vector2(3, 3), "cost": {"odun": 4, "tas": 6, "demir": 8}, "time": 24.0, "role": "mg", "slots": 2, "needs": "makineli",
+		"station": Vector3(0, 0, -0.9),
+		"desc": "Kum torbası çember içinde tekerlekli bir Maxim makineli tüfeği. İki kişi verilir: biri ateş eder, öteki şeridi besler. 65 m içinde gördüğü düşmana kısa kısa taramalar yapar; her tarama silahlıktan bir fişek yer. Fişek yoksa susar."},
 	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "barracks", "slots": 6,
 		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Buraya verilenler tüfekli bekçi olur: gördükleri firariyle ve kurtla çarpışır (karanlıktakini göremezler). Kartından tüfekçi ya da okçu yetiştir; milis işaretli kasabalılar tehlike çanında buradan silah alıp mevziye geçer. FİŞEK DÖK ve YAY YAP açıksa her sabah depodan alınanla fişek, yay ve ok yapılır."},
 }
@@ -82,6 +89,7 @@ const TECHS := {
 	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Atölye demir ve kömür damarlarından da çıkarabilir (kartında ÜRET: DEMİR, KÖMÜR)."},
 	"dekovil": {"name": "Dekovil", "pts": 70.0, "after": "telgraf", "desc": "Dar hatlı yan hat: atölyelere ve depolara ray döşenir (demir ve odun ister). Tren yükünü oradan doğrudan alır, perona taşımak gerekmez."},
 	"kar_sabani": {"name": "Kar Sabanı", "pts": 50.0, "after": "telgraf", "desc": "Lokomotiflere kar sabanı: hatta kar daha yavaş birikir, her tren çoğunu temizler; hat ancak çok derin karda kapanır."},
+	"makineli": {"name": "Makineli tüfek", "pts": 110.0, "after": "demircilik", "desc": "Maxim yuvası kurulabilir: kum torbası çember içinde bir makineli tüfek. Dikenli tel ile birlikte kasabayı kaleye çevirir."},
 	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: demir ve kömürden tüfek ve fişek döver."},
 }
 
@@ -105,6 +113,7 @@ const STUFF := {
 	"window": {"color": Color(0.1, 0.08, 0.06), "hp": 40.0, "burns": false, "density": 400.0},
 	"water": {"color": Color(0.06, 0.09, 0.1), "hp": 40.0, "burns": false, "density": 1000.0},
 	"cloth": {"color": Color(0.55, 0.22, 0.14), "hp": 30.0, "burns": true, "burn": 8.0, "catch": 0.25, "density": 200.0},
+	"sand": {"color": Color(0.48, 0.42, 0.3), "hp": 400.0, "burns": false, "density": 1600.0},
 }
 
 
@@ -245,6 +254,37 @@ static func recipe(kind: String) -> Array[Dictionary]:
 			_p(out, "box", Vector3(2.0, 0.1, 0.8), Vector3(0.0, 0.9, 3.4), "plank")
 			for k in 3:
 				_p(out, "box", Vector3(0.3 + k * 0.05, 0.08, 0.22), Vector3(-0.5 + k * 0.4, 0.99 + k * 0.02, 3.4), "cloth")
+		"siper": # (a low U of sandbags, three courses, staggered)
+			for c in 3:
+				for k in 5:
+					_p(out, "box", Vector3(0.58, 0.22, 0.36), Vector3(-1.2 + k * 0.6 + (0.3 if c % 2 == 1 else 0.0) * (1.0 if k < 4 else 0.0), 0.11 + c * 0.22, 0.65), "sand", Vector3(0, float((k * 7 + c * 3) % 9) - 4.0, 0))
+				for sx in [-1.0, 1.0]:
+					for k in 2:
+						_p(out, "box", Vector3(0.36, 0.22, 0.58), Vector3(sx * 1.32, 0.11 + c * 0.22, 0.05 - k * 0.6 + (0.25 if c % 2 == 1 else 0.0)), "sand", Vector3(0, float((k * 5 + c) % 7) - 3.0, 0))
+		"tel": # (crossed stakes, the wire strung between, a coil along the bottom)
+			for x in [-1.8, 0.0, 1.8]:
+				for s in [-1.0, 1.0]:
+					_p(out, "box", Vector3(0.07, 1.3, 0.07), Vector3(x, 0.55, 0), "wood", Vector3(0, 0, s * 32.0))
+			for h in [0.35, 0.65, 0.95]:
+				_p(out, "box", Vector3(3.8, 0.015, 0.015), Vector3(0, h, 0), "dark")
+			for k in 12:
+				_p(out, "box", Vector3(0.015, 0.4, 0.015), Vector3(-1.75 + k * 0.32, 0.2, 0.0), "dark", Vector3(fmod(k * 30.0, 180.0) - 90.0, 0, 35.0))
+		"makineli": # (a ring of sandbags open at the back, the Maxim on its wheeled mount, its shield, a box of belts)
+			for c in 4:
+				for k in 9:
+					if c == 3 and k == 4:
+						continue # (the embrasure the gun looks out of)
+					var a := deg_to_rad(-120.0 + k * 30.0 + (15.0 if c % 2 == 1 else 0.0))
+					_p(out, "box", Vector3(0.6, 0.22, 0.36), Vector3(sin(a) * 1.25, 0.11 + c * 0.22, cos(a) * 1.25), "sand", Vector3(0, rad_to_deg(a), 0))
+			_p(out, "box", Vector3(1.0, 0.36, 1.1), Vector3(0, 0.18, 0.15), "sand")
+			for sx in [-1.0, 1.0]:
+				_p(out, "cyl", Vector3(0.42, 0.06, 0.42), Vector3(sx * 0.32, 0.57, 0.0), "dark", Vector3(0, 0, 90))
+			_p(out, "box", Vector3(0.5, 0.08, 0.9), Vector3(0, 0.67, -0.15), "dark")
+			_p(out, "cyl", Vector3(0.17, 0.75, 0.17), Vector3(0, 0.95, 0.4), "dark", Vector3(90, 0, 0))
+			_p(out, "cyl", Vector3(0.05, 0.45, 0.05), Vector3(0, 0.95, 0.98), "dark", Vector3(90, 0, 0))
+			_p(out, "box", Vector3(0.2, 0.18, 0.32), Vector3(0, 0.95, -0.08), "dark")
+			_p(out, "box", Vector3(0.62, 0.5, 0.03), Vector3(0, 1.0, 0.16), "dark")
+			_p(out, "box", Vector3(0.35, 0.22, 0.2), Vector3(0.45, 0.11, -0.5), "wood")
 		"demirci": # (a smithy: a stone forge with its chimney, an anvil on a block, a quench tub)
 			_shed(out, 5.0, 4.0, "plank", "shingle")
 			_p(out, "box", Vector3(1.3, 1.0, 1.0), Vector3(-1.3, 0.95, -0.9), "stone")

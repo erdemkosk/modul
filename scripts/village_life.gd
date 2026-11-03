@@ -204,6 +204,7 @@ func _morning() -> void:
 	call("_armoury_morning")
 	_train_morning()
 	_news_morning()
+	_armoured_morning()
 	for y in yards:
 		if is_instance_valid(y):
 			y.grow()

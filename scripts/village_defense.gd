@@ -30,6 +30,13 @@ func _plan_raid(v: Villager) -> bool:
 		return true
 	if role == "tower":
 		return v.perched != null or not v.plan.is_empty()
+	if role == "mg":
+		# (the Maxim's crew run to the gun, night or not)
+		if v.job != "Makineli tüfek başında" or v.plan.is_empty():
+			v.abort()
+			v.wake()
+			call("_plan_work", v)
+		return true
 	if v.job == "Saklanıyor" and not v.plan.is_empty():
 		return true
 	if v.has_trait("brave") and not v.is_child:
@@ -156,8 +163,23 @@ func default_post(v: Villager) -> Vector3:
 	dir.y = 0.0
 	dir = dir.normalized() if dir.length() > 0.1 else Vector3.RIGHT
 	var side := dir.cross(Vector3.UP)
-	# a palisade toward where they come from: a place on its walkway
 	var far := home + dir * 60.0 + side * randf_range(-14.0, 14.0)
+	# a sandbag post toward where they come from, one man to each: behind it
+	var posts: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "post" and (b.global_position - home).dot(dir) > -10.0:
+			var taken := 0
+			for o in villagers:
+				if o != v and o.armed and not o.plan.is_empty() and str(o.plan[-1].get("t", "")) == "hold" and o.position.distance_to(b.global_position) < 2.5:
+					taken += 1
+			if taken < 2:
+				posts.append(b)
+	if not posts.is_empty():
+		var bp := _nearest(posts, far)
+		var spot := bp.global_position - bp.global_basis.z * 1.4 + bp.global_basis.x * randf_range(-0.8, 0.8)
+		spot.y = ground_at(spot)
+		return spot
+	# a palisade toward where they come from: a place on its walkway
 	var best := {}
 	for w in walls:
 		if not is_instance_valid(w):
@@ -501,6 +523,39 @@ func let_go(o: Villager, freed := true) -> void:
 		if raids:
 			raids.next_day += 1
 		message.emit("%s serbest bırakıldı; firariler bunu unutmaz, bir süre gelmezler." % o.display_name.split(" ")[0], "info")
+
+
+## A prisoner made to talk, once: where their camp is (if there's one not yet found), or when the
+## next band's coming. The bold keep their mouths shut more often.
+func interrogate(o: Villager) -> void:
+	if o.has_meta("talked"):
+		message.emit("%s söyleyeceğini söyledi." % o.display_name.split(" ")[0], "info")
+		return
+	o.set_meta("talked", true)
+	var name := o.display_name.split(" ")[0]
+	if randf() < (0.35 if o.has_trait("brave") else 0.75):
+		if raids.camp_at != Vector3.INF and not raids.camp_known:
+			raids._camp_found("%s konuştu. " % name)
+		elif raids.camp_at != Vector3.INF:
+			message.emit("%s konuştu: kampta %d kişi kalmış." % [name, raids.camp_men.size()], "info")
+		else:
+			message.emit("%s konuştu: ormanda kamp yok; bir sonraki baskın %d. gün gece." % [name, raids.next_day], "info")
+	else:
+		message.emit("%s ağzını açmadı." % name, "info")
+
+
+## A prisoner handed over to the Centre for the reward: gone up the line, money in the purse, the
+## Centre pleased and the rebels not.
+func hand_over(o: Villager) -> void:
+	if is_instance_valid(o.held_in):
+		o.held_in.prisoners.erase(o)
+	o.held_in = null
+	var name := o.display_name.split(" ")[0]
+	o.queue_free()
+	rubles += 20
+	call("_shift", "merkez", 10)
+	call("_shift", "isyan", -5)
+	message.emit("%s Merkez'e teslim edildi: kasaya 20 %s. (%s)" % [name, COIN, call("standing_text")], "info")
 
 
 ## A prisoner put to death: gone, and the outlaws frightened off a while (three days more before

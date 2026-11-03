@@ -100,7 +100,10 @@ var train: Train
 var next_train := 4 ## the day the next train's due up the line (it may be late)
 var announced := false ## the town's founding wired to the mainland: settlers come out by train since
 var rubles := 40 ## the town's purse: what the train paid, spent on what's sent for
-var repute := 0 ## how well the town's thought of up the line (more settlers on each train)
+var repute := 0 ## how well the town's thought of by the Centre, up the line (more settlers on each train)
+var rebels := 0 ## how well by Free Kordal, the rebels in the woods and on the line (their armoured trains)
+var armoured: Train ## (the armoured train standing at the station, if one is)
+var armoured_next := 7 ## the first day one may come
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
@@ -325,6 +328,9 @@ func call_train() -> String:
 ## Of a morning: the train, if it's due (now and then it's late a day or two).
 func _train_morning() -> void:
 	if not knows("telgraf") or depot() == null or rail.size() < 2 or is_instance_valid(train) or day < next_train:
+		return
+	if is_instance_valid(armoured):
+		next_train = day + 1 # (the platform's taken)
 		return
 	if line_shut():
 		next_train = day + 1
@@ -608,6 +614,159 @@ func _taken_away(v: Villager, why: String) -> void:
 		v.home = null
 		v.queue_free()
 		return true}], "Götürülüyor")
+
+
+## The war on the line: two sides, the Centre (the government's men) and Free Kordal (the rebels),
+## and now and then one's armoured train stops at the station, its commander with something to
+## ask: food, wood, a lad for the army, the town's rifles. Given, that side thinks better of the
+## town and the other worse; refused, worse, and a side that's come to hate the town (HOSTILE)
+## doesn't ask: its men come down off the train shooting. A side that's fond of it (FRIENDLY)
+## brings something: the Centre money, the rebels rifles.
+const SIDES := {"merkez": "Merkez", "isyan": "Özgür Kordal"}
+const HOSTILE := -30
+const FRIENDLY := 30
+
+
+func standing(side: String) -> int:
+	return repute if side == "merkez" else rebels
+
+
+func _shift(side: String, by: int) -> void:
+	if side == "merkez":
+		repute += by
+	else:
+		rebels += by
+	repute = clampi(repute, -100, 400)
+	rebels = clampi(rebels, -100, 100)
+
+
+func standing_text() -> String:
+	var parts: Array[String] = []
+	for side: String in SIDES:
+		var s := standing(side)
+		parts.append("%s %+d%s" % [SIDES[side], s, " (DÜŞMAN)" if s <= HOSTILE else (" (dost)" if s >= FRIENDLY else "")])
+	return " · ".join(parts)
+
+
+func _armoured_morning() -> void:
+	if day < armoured_next or depot() == null or rail.size() < 2 or is_instance_valid(train) or is_instance_valid(armoured) or line_shut():
+		return
+	if randf() > 0.35:
+		return
+	armoured_next = day + 4 + randi() % 3
+	send_armoured("merkez" if randf() < 0.5 else "isyan")
+
+
+## An armoured train of `side` up the line to the station.
+func send_armoured(side: String) -> void:
+	var st := depot()
+	if st == null or is_instance_valid(armoured) or is_instance_valid(train):
+		return
+	armoured = Train.new()
+	armoured.armour = side
+	armoured.nav = nav
+	armoured.setup(rail, 0.0, 0.0)
+	armoured.stop_at = armoured.s_of(st.global_position)
+	armoured._s = maxf(armoured.stop_at - 200.0, 0.0)
+	add_child(armoured)
+	armoured.arrived.connect(_armoured_in.bind(st, side))
+	var hostile := standing(side) <= HOSTILE
+	message.emit("Zırhlı tren geliyor: %s bayrağı taşıyor%s" % [SIDES[side], ", silahlar kasabaya dönük!" if hostile else "."], "bad" if hostile else "info")
+	if hostile and not (call("bells") as Array).is_empty():
+		call("ring_bells", 8, 0.8)
+
+
+func _armoured_in(st: Building, side: String) -> void:
+	var tr := armoured
+	if not is_instance_valid(tr):
+		return
+	var name: String = SIDES[side]
+	if standing(side) <= HOSTILE:
+		# (no asking: they come off it shooting, and it waits for them)
+		var n := clampi(3 + villagers.size() / 5, 3, 10)
+		raids.start(n, st.door() + (tr.door(Vector3.ZERO) - st.door()) * 0.6, side)
+		message.emit("%s askerleri trenden iniyor: kasabaya saldırıyorlar!" % name, "bad")
+		raids.ended.connect(func() -> void:
+			if is_instance_valid(tr):
+				tr.leave(), CONNECT_ONE_SHOT)
+		return
+	if standing(side) >= FRIENDLY:
+		if side == "merkez":
+			rubles += 25
+			message.emit("Merkez'in zırhlı treni uğradı: komutan kasabaya 25 %s bıraktı." % COIN, "good")
+		else:
+			var a: Building = call("armories")[0] if not (call("armories") as Array).is_empty() else null
+			if a:
+				a.arms += 1
+				a.ammo += 15
+				message.emit("Özgür Kordal'ın treni uğradı: silahlığa bir tüfek ve 15 fişek bıraktılar.", "good")
+	var food := 12 + villagers.size()
+	var wood := 12
+	var opts: Array = []
+	var body := ""
+	var leave := func() -> void:
+		if is_instance_valid(tr):
+			get_tree().create_timer(4.0, false).timeout.connect(func() -> void:
+				if is_instance_valid(tr):
+					tr.leave())
+	var other := "isyan" if side == "merkez" else "merkez"
+	if side == "merkez":
+		body = "Merkez'in zırhlı treni perona yanaştı. Bir yüzbaşı iniyor: \"Ordu için %d yiyecek ve %d odun. Bir de cepheye bir genç.\"\nVerirseniz Merkez sizi korur; isyancılar duyar." % [food, wood]
+	else:
+		body = "Özgür Kordal'ın kızıl bantlı treni perona yanaştı. Sakallı bir komiser iniyor: \"Ormandaki yoldaşlara %d yiyecek ve %d odun. Silahınız varsa bir tüfek de.\"\nVerirseniz isyancılar sizi korur; Merkez duyar." % [food, wood]
+	var ok := int(stock.get("yiyecek", 0)) >= food and int(stock.get("odun", 0)) >= wood
+	opts.append({"label": "ERZAK VER", "ok": ok, "tip": "%d yiyecek, %d odun" % [food, wood], "f": func() -> void:
+		if pay({"yiyecek": food, "odun": wood}, st.global_position):
+			_shift(side, 15)
+			_shift(other, -8)
+			message.emit("%s erzakı aldı. (%s)" % [name, standing_text()], "info")
+		leave.call()})
+	if side == "merkez":
+		var lads := villagers.filter(func(o: Villager) -> bool: return not o.dead and not o.leaving and not o.is_child and not o.down)
+		opts.append({"label": "BİR GENÇ VER", "ok": lads.size() > 2, "tip": "Bir kasabalı orduya gider; kasaya 30 %s" % COIN, "f": func() -> void:
+			var who: Villager = lads.pick_random()
+			if is_instance_valid(who):
+				rubles += 30
+				_shift(side, 25)
+				_shift(other, -12)
+				_taken_away(who, "%s orduya yazıldı, trene bindi" % who.display_name)
+				for o in villagers:
+					if o != who and not o.dead and o.family == who.family:
+						o.think("conscript", "%s cepheye gitti" % who.display_name.split(" ")[0], -10.0, maxf(weather.day_length_minutes * 60.0, 60.0) * 2.0)
+			leave.call()})
+	else:
+		var a2: Building = call("armories")[0] if not (call("armories") as Array).is_empty() else null
+		opts.append({"label": "TÜFEK VER", "ok": a2 != null and a2.arms > 0, "tip": "Silahlıktan bir tüfek gider", "f": func() -> void:
+			if is_instance_valid(a2) and a2.arms > 0:
+				a2.arms -= 1
+				_shift(side, 20)
+				_shift(other, -12)
+				message.emit("İsyancılar tüfeği aldı. (%s)" % standing_text(), "info")
+			leave.call()})
+	opts.append({"label": "REDDET", "f": func() -> void:
+		_shift(side, -20)
+		if randf() < 0.4:
+			# (they take it anyway)
+			var took: Array[String] = []
+			for s in stores():
+				for r: String in s.goods.keys():
+					var n := s.take_goods(r, int(s.goods[r]) / 4)
+					if n > 0:
+						took.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
+			message.emit("Askerler depoya zorla girdi: %s alındı. (%s)" % [", ".join(took), standing_text()], "bad")
+		else:
+			message.emit("%s eli boş döndü, ama bunu unutmayacak. (%s)" % [name, standing_text()], "bad")
+		leave.call()})
+	if hud:
+		var card: WeakRef = weakref(hud.ask("ZIRHLI TREN · %s" % Ui.upper(name), body, opts))
+		# (it won't stand there forever: no answer in three hours is taken for a no)
+		get_tree().create_timer(maxf(weather.day_length_minutes * 60.0, 60.0) * 3.0 / 24.0, false).timeout.connect(func() -> void:
+			var c: Control = card.get_ref()
+			if c and not c.is_queued_for_deletion():
+				c.queue_free()
+				(opts[-1].f as Callable).call())
+	else:
+		leave.call()
 
 
 ## Where the train loads from: the station, and whatever's on a side line.

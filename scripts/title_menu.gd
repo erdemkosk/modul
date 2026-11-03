@@ -107,7 +107,7 @@ func _process(dt: float) -> void:
 	_face_t = 0.0
 	for f: Array in _crew_faces:
 		if (f[0] as TextureRect).texture == null:
-			(f[0] as TextureRect).texture = Portraits.of_look(int(f[1]))
+			(f[0] as TextureRect).texture = Portraits.of_look(int(f[1]), str(f[2]))
 
 
 ## A shade across the screen: `colors` at `offsets` from `from` to `to` (0..1 of the screen).
@@ -334,9 +334,10 @@ func _settler_card(k: int) -> Control:
 	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	face.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	face.texture = Portraits.of_look(int(c.look_seed))
+	var kind := "woman" if bool(c.get("female", false)) else "man"
+	face.texture = Portraits.of_look(int(c.look_seed), kind)
 	row.add_child(face)
-	_crew_faces.append([face, int(c.look_seed)])
+	_crew_faces.append([face, int(c.look_seed), kind])
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL

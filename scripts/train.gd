@@ -28,6 +28,7 @@ var _state := "coming" ## coming, standing, going
 var _smoke: GPUParticles3D
 var _chuff_t := 0.0
 var _whistle: AudioStreamPlayer3D
+var armour := "" ## an armoured train's side ("merkez", "isyan"): plated over, a gun on its last car, its flag; "" a plain one
 static var _whistle_wav: AudioStreamWAV
 
 
@@ -99,10 +100,98 @@ func _ready() -> void:
 	_whistle.volume_db = 2.0
 	_cars[0].add_child(_whistle)
 	_whistle.position = Vector3(0, 3.6, 1.0)
+	if armour != "":
+		_plate()
 	stop_at = minf(stop_at + _gap[2], length() - 2.0)
 	_s = minf(_s, stop_at)
 	_place()
 	_whistle.play()
+
+
+## Plated over for the war: steel boxed round each car (a band of rivets, firing slits), a turret with
+## its gun on the last, the side's flag on the engine.
+func _plate() -> void:
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.22, 0.24, 0.22)
+	steel.metallic = 0.55
+	steel.roughness = 0.55
+	var slit := StandardMaterial3D.new()
+	slit.albedo_color = Color(0.02, 0.02, 0.02)
+	var paint := StandardMaterial3D.new()
+	paint.albedo_color = Color(0.75, 0.72, 0.62) if armour == "merkez" else Color(0.62, 0.1, 0.08)
+	for i in _cars.size():
+		var car := _cars[i]
+		var box := AABB()
+		var first := true
+		for n in car.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			var b := car.global_transform.affine_inverse() * mi.global_transform * mi.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+		if i == 0:
+			continue # (the engine stays black, its plating's its own)
+		var c := box.get_center()
+		var plate := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(box.size.x + 0.15, box.size.y * 0.62, box.size.z + 0.1)
+		plate.mesh = pm
+		plate.material_override = steel
+		plate.position = Vector3(c.x, box.position.y + box.size.y * 0.55, c.z)
+		car.add_child(plate)
+		# a painted band, and slits along it
+		var band := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(box.size.x + 0.17, 0.16, box.size.z * 0.9)
+		band.mesh = bm
+		band.material_override = paint
+		band.position = plate.position + Vector3.UP * (pm.size.y * 0.5 - 0.25)
+		car.add_child(band)
+		for k in 4:
+			for sx in [-1.0, 1.0]:
+				var s := MeshInstance3D.new()
+				var sm := BoxMesh.new()
+				sm.size = Vector3(0.02, 0.12, 0.45)
+				s.mesh = sm
+				s.material_override = slit
+				s.position = plate.position + Vector3(sx * (pm.size.x * 0.5 + 0.01), 0.1, (k - 1.5) * box.size.z * 0.22)
+				car.add_child(s)
+		if i == _cars.size() - 1:
+			var tur := MeshInstance3D.new()
+			var tm := CylinderMesh.new()
+			tm.top_radius = 0.9
+			tm.bottom_radius = 1.0
+			tm.height = 0.8
+			tur.mesh = tm
+			tur.material_override = steel
+			tur.position = plate.position + Vector3.UP * (pm.size.y * 0.5 + 0.4)
+			car.add_child(tur)
+			var gun := MeshInstance3D.new()
+			var gm := CylinderMesh.new()
+			gm.top_radius = 0.09
+			gm.bottom_radius = 0.12
+			gm.height = 2.4
+			gun.mesh = gm
+			gun.material_override = steel
+			gun.rotation.x = PI * 0.5
+			gun.position = tur.position + Vector3(0, 0.1, 1.5)
+			car.add_child(gun)
+	# the flag on the engine's cab
+	var pole := MeshInstance3D.new()
+	var polem := CylinderMesh.new()
+	polem.top_radius = 0.03
+	polem.bottom_radius = 0.03
+	polem.height = 1.6
+	pole.mesh = polem
+	pole.material_override = Building.material("wood")
+	pole.position = Vector3(0, 5.0, -1.2)
+	_cars[0].add_child(pole)
+	var flag := MeshInstance3D.new()
+	var fm := BoxMesh.new()
+	fm.size = Vector3(0.02, 0.5, 0.8)
+	flag.mesh = fm
+	flag.material_override = paint
+	flag.position = pole.position + Vector3(0, 0.5, -0.42)
+	_cars[0].add_child(flag)
 
 
 ## The whistle: a chord of two pipes with a breathy edge, swelling and dying (made once).

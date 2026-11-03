@@ -88,7 +88,7 @@ func _fuel_trip(v: Villager, house: Building) -> bool:
 ## Workplaces take free villagers up to what's asked, and give back the ones over it.
 func _staff() -> void:
 	for b in buildings:
-		if not b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"]:
+		if not b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer", "mg"]:
 			continue
 		if b.state != "done":
 			continue
@@ -142,7 +142,7 @@ func employ(v: Villager, b: Building) -> void:
 func assign(v: Villager, b: Building) -> String:
 	if v.is_child:
 		return "%s daha çocuk" % v.display_name
-	if not b.def.role in ["work", "farm", "carts", "barracks", "tower", "research", "smith", "healer"]:
+	if not b.def.role in ["work", "farm", "carts", "barracks", "tower", "research", "smith", "healer", "mg"]:
 		return "%s bir işyeri değil" % b.display_name()
 	if b.state != "done":
 		return "%s henüz bitmedi" % b.display_name()
@@ -464,6 +464,14 @@ func _plan_build(v: Villager) -> bool:
 ## A worker's next round: out to what its workplace works, and back to the store with it.
 func _plan_work(v: Villager) -> void:
 	var b := v.workplace
+	if b.def.role == "mg":
+		# (the gunner and his loader behind the gun, day and night: it's no use if nobody's at it)
+		var at := b.station() + b.global_basis.x * (0.0 if b.workers.find(v) == 0 else 0.7)
+		v.give([{"t": "go", "to": b.door()}, {"t": "step", "to": at}, {"t": "do", "f": func() -> bool:
+				v.in_cover = true # (down behind the sandbags)
+				return true},
+			{"t": "work", "time": 20.0, "anim": "aim" if b.workers.find(v) == 0 else "idle", "face": b.global_position + b.global_basis.z * 10.0}], "Makineli tüfek başında", b)
+		return
 	if b.def.role == "tower":
 		v.give([{"t": "go", "to": b.door()}, {"t": "do", "f": func() -> bool:
 			v.perch_on(b)
