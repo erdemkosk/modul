@@ -1837,12 +1837,222 @@ def istasyon():
 
 
 
+# --- the convoy: a lorry and an early tank (scripts/convoy.gd) ------------------------------------
+# Built nose toward +Y (Godot -Z, the way they drive); wheels are pieces of their own, tagged "wheel".
+
+OLIVE = (0.29, 0.31, 0.21)
+OLIVE_DK = (0.2, 0.22, 0.15)
+CANVAS = (0.52, 0.49, 0.37)
+RUBBER = (0.08, 0.08, 0.075)
+RIVET = (0.17, 0.17, 0.15)
+STEEL = (0.26, 0.27, 0.24)
+
+
+def prism(p, outline, x0, x1, color, axis="x"):
+    """A slab with the given 2-D outline (a list of (u, v) in order), extruded from x0 to x1 along
+    `axis` (outline in y-z for "x", in x-z for "y")."""
+    bm = p.bm
+    def v3(u, v, w):
+        return Vector((w, u, v)) if axis == "x" else Vector((u, w, v))
+    a = [bm.verts.new(v3(u, v, x0)) for u, v in outline]
+    b = [bm.verts.new(v3(u, v, x1)) for u, v in outline]
+    faces = [bm.faces.new(list(reversed(a))), bm.faces.new(b)]
+    n = len(outline)
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append(bm.faces.new([a[i], a[j], b[j], b[i]]))
+    for f in faces:
+        f.normal_update()
+    p._paint(faces, color)
+    return faces
+
+
+def spoked_wheel(k, x, y, r, width=0.16):
+    p = k.piece("dark", "wheel")
+    cyl(p, (x - width * 0.5, y, r), (x + width * 0.5, y, r), r, RUBBER, segs=20) # (the solid tyre)
+    cyl(p, (x - width * 0.55, y, r), (x + width * 0.55, y, r), r * 0.78, OLIVE_DK, segs=20) # (the felloe)
+    for i in range(10):
+        a = i / 10 * math.tau
+        p.obox((x, y + math.cos(a) * r * 0.4, r + math.sin(a) * r * 0.4), (1, 0, 0), (0, math.cos(a), math.sin(a)), (0, -math.sin(a), math.cos(a)),
+               (0.05, r * 0.78, 0.05), OLIVE_DK)
+    cyl(p, (x - width * 0.7, y, r), (x + width * 0.7, y, r), r * 0.16, STEEL, segs=10) # (the hub)
+    k.add(p)
+
+
+def kamyon():
+    """A lorry of the war years: a long louvred bonnet and a flat radiator, an open cab with a canvas
+    roof, a plank bed under an arched canvas tilt on hoops, deep mudguards, solid-tyred spoked
+    wheels (doubled at the back), a spare on the side, a lamp each side of the radiator."""
+    k = Kit("kamyon")
+    rng = k.rng
+    p = k.piece("dark", "frame")
+    for sx in (-1, 1):
+        p.box((sx * 0.42, 0, 0.78), (0.12, 6.4, 0.22), RUBBER)
+    for y in (-2.6, -0.8, 1.0, 2.6):
+        p.box((0, y, 0.78), (0.95, 0.1, 0.12), RUBBER)
+    p.box((0, 3.12, 0.72), (1.75, 0.14, 0.18), STEEL) # (the bumper)
+    k.add(p)
+    p = k.piece("dark", "bonnet")
+    p.box((0, 2.25, 1.32), (0.95, 1.5, 0.62), OLIVE) # its sides
+    prism(p, [(-0.48, 1.6), (0.48, 1.6), (0.4, 1.72), (-0.4, 1.72)], 1.5, 3.0, OLIVE, axis="y") # its top, rounded off
+    for sx in (-1, 1):
+        for i in range(6):
+            p.box((sx * 0.48, 1.7 + i * 0.2, 1.38), (0.02, 0.06, 0.32), OLIVE_DK) # (the louvres)
+    k.add(p)
+    p = k.piece("dark", "radiator")
+    p.box((0, 3.05, 1.35), (1.0, 0.12, 0.95), STEEL)
+    for i in range(9):
+        p.box((-0.4 + i * 0.1, 3.12, 1.35), (0.03, 0.03, 0.8), RIVET) # (the grille)
+    cyl(p, (0, 3.0, 1.88), (0, 3.0, 1.98), 0.06, STEEL, segs=8) # (the filler cap)
+    for sx in (-1, 1):
+        cyl(p, (sx * 0.62, 3.05, 1.45), (sx * 0.62, 3.25, 1.45), 0.12, STEEL, segs=10) # (the lamps)
+    k.add(p)
+    p = k.piece("window", "lamps")
+    for sx in (-1, 1):
+        p.box((sx * 0.62, 3.26, 1.45), (0.18, 0.02, 0.18), (1.0, 0.9, 0.7))
+    k.add(p)
+    p = k.piece("dark", "guards")
+    for sx in (-1, 1):
+        # the front mudguards arched over the wheels, the running board back from them
+        for i in range(6):
+            a = math.pi * (0.1 + 0.8 * i / 5)
+            p.obox((sx * 0.86, 2.45 + math.cos(a) * 0.62, 0.55 + math.sin(a) * 0.62), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)),
+                   (0.34, 0.24, 0.03), OLIVE)
+        p.box((sx * 0.86, 0.6, 0.62), (0.34, 2.6, 0.04), OLIVE_DK)
+    k.add(p)
+    p = k.piece("dark", "cab")
+    p.box((0, 0.95, 1.05), (1.7, 1.1, 0.5), OLIVE) # the seat box
+    p.box((0, 1.5, 1.6), (1.6, 0.08, 0.9), OLIVE) # the dash and scuttle
+    for sx in (-1, 1):
+        p.box((sx * 0.8, 0.5, 1.75), (0.06, 0.06, 1.2), OLIVE_DK) # (the roof stays)
+        p.box((sx * 0.8, 1.45, 1.75), (0.06, 0.06, 1.2), OLIVE_DK)
+    cyl(p, (0.35, 1.25, 1.55), (0.35, 1.05, 1.75), 0.2, RUBBER, segs=12) # (the steering wheel)
+    k.add(p)
+    p = k.piece("cloth", "cabroof")
+    p.box((0, 0.95, 2.38), (1.75, 1.35, 0.06), CANVAS)
+    k.add(p)
+    p = k.piece("window", "screen")
+    p.box((0, 1.52, 2.15), (1.4, 0.03, 0.4), GLASS)
+    k.add(p)
+    p = k.piece("plank", "bed")
+    p.box((0, -1.45, 1.0), (2.05, 3.4, 0.1), jit(PLANK, 0.05, rng))
+    for sx in (-1, 1):
+        for i in range(3):
+            p.box((sx * 1.0, -1.45, 1.15 + i * 0.16), (0.05, 3.4, 0.13), jit(PLANK, 0.06, rng))
+    for i in range(3):
+        p.box((0, -3.12, 1.15 + i * 0.16), (2.05, 0.05, 0.13), jit(PLANK, 0.06, rng))
+    k.add(p)
+    p = k.piece("dark", "hoops")
+    for y in (-3.0, -2.0, -1.0, 0.05):
+        for i in range(9):
+            a = math.pi * i / 8
+            p.obox((math.cos(a) * 0.98, y, 1.55 + math.sin(a) * 0.95), (0, 1, 0), (-math.sin(a), 0, math.cos(a)), (math.cos(a), 0, math.sin(a)),
+                   (0.04, 0.36, 0.04), OLIVE_DK)
+    k.add(p)
+    p = k.piece("cloth", "tilt")
+    arch = [(math.cos(math.pi * i / 12) * 1.02, 1.55 + math.sin(math.pi * i / 12) * 0.98) for i in range(13)]
+    arch += [(-1.02, 1.3), (1.02, 1.3)]
+    arch = [arch[-1]] + arch[:13] + [arch[-2]]
+    prism(p, arch, -3.15, 0.15, jit(CANVAS, 0.04, rng), axis="y")
+    for y in (-2.5, -1.5, -0.5):
+        p.box((0, y, 2.55), (0.3, 0.04, 0.02), (0.4, 0.37, 0.27)) # (the lacing)
+    k.add(p)
+    p = k.piece("dark", "spare")
+    cyl(p, (1.12, -0.1, 0.95), (1.24, -0.1, 0.95), 0.45, RUBBER, segs=18)
+    k.add(p)
+    p = k.piece("dark", "exhaust")
+    cyl(p, (0.55, -2.9, 0.62), (0.55, -3.35, 0.6), 0.05, RUBBER, segs=8)
+    k.add(p)
+    spoked_wheel(k, -0.88, 2.45, 0.45)
+    spoked_wheel(k, 0.88, 2.45, 0.45)
+    for y in (-2.0, -0.9):
+        for sx in (-1, 1):
+            spoked_wheel(k, sx * 0.84, y, 0.48, width=0.14)
+            spoked_wheel(k, sx * 0.66, y, 0.48, width=0.14) # (doubled)
+    k.finish()
+
+
+def tank():
+    """An early tank: the tracks run right round its rhomboid sides (the nose climbing high to take a
+    trench), the hull riveted plate between them, a gun in a sponson on each flank, a small cupola
+    on the roof with vision slits, the exhaust and the steering tail behind."""
+    k = Kit("tank")
+    rng = k.rng
+    side = [(-3.4, 0.28), (2.2, 0.28), (3.8, 1.55), (3.4, 2.55), (-3.0, 2.55), (-3.9, 1.25)]
+    # the track frames, plate inside the loop
+    for sx in (-1, 1):
+        p = k.piece("dark", "frame")
+        prism(p, side, sx * 1.02, sx * 1.52, STEEL)
+        k.add(p)
+    # the hull between them
+    p = k.piece("dark", "hull")
+    prism(p, [(-3.0, 0.7), (2.4, 0.7), (3.3, 1.5), (3.0, 2.35), (-2.7, 2.35), (-3.3, 1.3)], -1.02, 1.02, OLIVE)
+    k.add(p)
+    # the tracks: link plates all the way round each loop, a gap of ground at the bottom only
+    for sx in (-1, 1):
+        p = k.piece("dark", "track")
+        pts = side + [side[0]]
+        for i in range(len(pts) - 1):
+            a, b = Vector(pts[i]), Vector(pts[i + 1])
+            n = max(1, int((b - a).length / 0.28))
+            d = (b - a).normalized()
+            nrm = Vector((-d.y, d.x))
+            for j in range(n):
+                c = a.lerp(b, (j + 0.5) / n) - nrm * 0.04
+                p.obox((sx * 1.27, c.x, c.y), (1, 0, 0), (0, d.x, d.y), (0, -d.y, d.x), (0.6, 0.24, 0.07), RUBBER if j % 2 else (0.13, 0.12, 0.11))
+                p.box((sx * 1.27, c.x, c.y), (0.62, 0.05, 0.1), RIVET) if j % 2 == 0 else None
+        k.add(p)
+    # rivet rows and plate seams on the frames
+    p = k.piece("dark", "rivets")
+    for sx in (-1, 1):
+        for row in (0.75, 1.55, 2.3):
+            for i in range(16):
+                y = -3.0 + i * 0.38
+                p.box((sx * 1.535, y, row), (0.03, 0.05, 0.05), RIVET)
+        for y in (-1.6, 0.2, 1.8):
+            p.box((sx * 1.535, y, 1.45), (0.03, 0.04, 1.9), RIVET)
+    k.add(p)
+    # a sponson on each flank, its short gun
+    for sx in (-1, 1):
+        p = k.piece("dark", "sponson")
+        prism(p, [(-0.9, 0.9), (0.9, 0.9), (0.7, 2.0), (-0.7, 2.0)], sx * 1.52, sx * 2.05, OLIVE)
+        k.add(p)
+        p = k.piece("dark", "gun")
+        cyl(p, (sx * 2.0, 0.3, 1.45), (sx * 2.0, 1.6, 1.45), 0.08, RUBBER, segs=10)
+        cyl(p, (sx * 2.02, 0.2, 1.45), (sx * 2.02, 0.5, 1.45), 0.16, STEEL, segs=10) # (its mantlet)
+        k.add(p)
+    # the cupola, slits, hatch
+    p = k.piece("dark", "cupola")
+    p.box((0, 1.2, 2.65), (1.1, 1.0, 0.6), OLIVE)
+    p.box((0, 1.71, 2.72), (0.7, 0.02, 0.06), (0.02, 0.02, 0.02))
+    p.box((0, -1.5, 2.42), (0.9, 0.9, 0.1), OLIVE_DK) # (the hatch)
+    k.add(p)
+    # exhaust stacks and the steering tail
+    p = k.piece("dark", "tail")
+    for sx in (-0.4, 0.4):
+        cyl(p, (sx, -2.2, 2.35), (sx, -2.2, 3.0), 0.09, RUBBER, segs=8)
+    for sx in (-1, 1):
+        p.box((sx * 0.5, -4.4, 0.75), (0.1, 1.4, 0.12), STEEL)
+    k.add(p)
+    for sx in (-1, 1):
+        spoked = k.piece("dark", "wheel")
+        cyl(spoked, (sx * 0.5 - 0.06, -4.95, 0.55), (sx * 0.5 + 0.06, -4.95, 0.55), 0.55, STEEL, segs=16)
+        k.add(spoked)
+    # the side's mark: a band of paint on each frame (light: the Centre; the game recolours the rebels')
+    p = k.piece("dark", "mark")
+    for sx in (-1, 1):
+        p.box((sx * 1.54, 0.4, 1.95), (0.02, 1.0, 0.3), (0.82, 0.8, 0.72))
+    k.add(p)
+    k.finish()
+
+
 BUILDERS = {
     "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
     "meydan": meydan, "silahlik": silahlik, "istasyon": istasyon,
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,
     "ev_oda": ev_oda, "ev_soba": ev_soba,
+    "kamyon": kamyon, "tank": tank,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
 }
 

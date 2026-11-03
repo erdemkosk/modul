@@ -224,6 +224,7 @@ func _morning() -> void:
 	_train_morning()
 	_news_morning()
 	_armoured_morning()
+	_convoy_morning()
 	for b in buildings:
 		if b.state == "done":
 			b.grow_old()

@@ -104,6 +104,8 @@ var repute := 0 ## how well the town's thought of by the Centre, up the line (mo
 var rebels := 0 ## how well by Free Kordal, the rebels in the woods and on the line (their armoured trains)
 var armoured: Train ## (the armoured train standing at the station, if one is)
 var armoured_next := 7 ## the first day one may come
+var convoy: Convoy ## a side's trucks (and maybe a tank) come by road, if there are
+var convoy_next := 9 ## the first day they may
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
@@ -745,6 +747,10 @@ func _armoured_in(st: Building, side: String) -> void:
 				_shift(other, -12)
 				message.emit("İsyancılar tüfeği aldı. (%s)" % standing_text(), "info")
 			leave.call()})
+	opts.append(talk_option(func() -> void:
+		leave.call(), func() -> void:
+		_shift(side, -12)
+		leave.call()))
 	opts.append({"label": "REDDET", "f": func() -> void:
 		_shift(side, -20)
 		if randf() < 0.4:
@@ -769,6 +775,186 @@ func _armoured_in(st: Building, side: String) -> void:
 				(opts[-1].f as Callable).call())
 	else:
 		leave.call()
+
+
+## By road: a side's convoy now and then, out of the woods to the town's edge (Convoy). Not in the
+## deep snow; never while an armoured train or another convoy's about.
+func _convoy_morning() -> void:
+	if day < convoy_next or is_instance_valid(convoy) or is_instance_valid(armoured) or stores().is_empty():
+		return
+	if seasons and seasons.winter() and Weather.snow_cover_now > 0.6:
+		return
+	if randf() > 0.4:
+		return
+	convoy_next = day + 5 + randi() % 4
+	send_convoy("merkez" if randf() < 0.5 else "isyan", day >= 14 or randf() < 0.35)
+
+
+func send_convoy(side: String, with_tank: bool) -> void:
+	var home: Vector3 = stores()[0].global_position
+	for k in 30:
+		var a := randf() * TAU
+		var dir := Vector3(cos(a), 0, sin(a))
+		var from := home + dir * 240.0
+		var to := home + dir * 38.0
+		var ok := 0
+		var n := 40
+		for i in n + 1:
+			var p := from.lerp(to, float(i) / n)
+			if nav.height(p.x, p.z) > terrain.lake_level + 0.5 and nav.is_ground_open(p):
+				ok += 1
+		if ok < n * 0.85:
+			continue
+		convoy = Convoy.new()
+		convoy.village = self
+		convoy.side = side
+		convoy.tank = with_tank
+		add_child(convoy)
+		convoy.lay(from, to)
+		convoy.gone.connect(func() -> void: convoy = null)
+		var hostile := standing(side) <= HOSTILE
+		message.emit("%s yönünden motor sesleri: %s %s geliyor%s" % [Raids._compass(dir), SIDES[side], "kamyonları ve bir tank" if with_tank else "kamyonları", ", silahlar kasabaya dönük!" if hostile else "."], "bad" if hostile else "info")
+		var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+		for v in villagers:
+			v.think("soldiers", "Kasabaya asker geliyor", -5.0 * (0.4 if v.has_trait("brave") else (1.6 if v.has_trait("coward") else 1.0)), day_s * 0.5)
+		if hostile and not (call("bells") as Array).is_empty():
+			call("ring_bells", 8, 0.8)
+		return
+
+
+## The officer at the town: what his side wants, and the town's answer.
+func convoy_demands(c: Convoy) -> void:
+	var side := c.side
+	var name: String = SIDES[side]
+	var other := "isyan" if side == "merkez" else "merkez"
+	var food := 14 + villagers.size() * 2
+	var wood := 20
+	var iron := mini(int(stock.get("demir", 0)), 6)
+	var want := {"yiyecek": food, "odun": wood}
+	if iron > 0:
+		want["demir"] = iron
+	var half := {}
+	for r: String in want:
+		half[r] = int(want[r]) / 2
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	var mood_all := func(id: String, text: String, by: float) -> void:
+		for v in villagers:
+			if not v.dead:
+				v.think(id, text, by, day_s)
+	var can := func(cost: Dictionary) -> bool:
+		for r: String in cost:
+			if int(stock.get(r, 0)) < int(cost[r]):
+				return false
+		return true
+	var body := ("Bir yüzbaşı kamyondan iniyor, arkasında süngülü askerler: \"Ordu aç. %s. Bugün yüklenir, yarın yola çıkarız.\"" if side == "merkez" else
+		"Kızıl kolluklu bir komiser iniyor, tabancası belinde: \"Devrim için %s. Vermezseniz kendimiz alırız.\"") % BuildingDefs.cost_text_of(want)
+	if c.tank:
+		body += "\nTankın namlusu kasabaya dönük."
+	var opts: Array = []
+	opts.append({"label": "VER", "ok": can.call(want), "tip": BuildingDefs.cost_text_of(want), "f": func() -> void:
+		pay(want, c.halt_point())
+		_shift(side, 12)
+		_shift(other, -6)
+		mood_all.call("convoy", "Erzakımız askere gitti", -3.0)
+		message.emit("%s istediğini aldı, konvoy dönüyor. (%s)" % [name, standing_text()], "info")
+		c.leave()})
+	opts.append({"label": "PAZARLIK (yarısı)", "ok": can.call(half), "tip": BuildingDefs.cost_text_of(half) + ": yarısına razı olabilirler, olmayabilirler", "f": func() -> void:
+		if randf() < 0.5:
+			pay(half, c.halt_point())
+			_shift(side, 4)
+			mood_all.call("convoy", "Askerle pazarlık ettik, yarısını verdik", 2.0)
+			message.emit("Subay söylendi ama yarısını alıp gitti. (%s)" % standing_text(), "good")
+			c.leave()
+		else:
+			_shift(side, -10)
+			message.emit("Subay pazarlığa kızdı.", "bad")
+			_convoy_refused(c, 0.6)})
+	opts.append(talk_option(func() -> void:
+		_shift(side, 2)
+		c.leave(), func() -> void:
+		_shift(side, -10)
+		_convoy_refused(c, 0.5 + (0.15 if c.tank else 0.0))))
+	opts.append({"label": "REDDET", "f": func() -> void:
+		_shift(side, -18)
+		_convoy_refused(c, 0.35 + (0.3 if standing(side) < 0 else 0.0) + (0.15 if c.tank else 0.0))})
+	if hud:
+		hud.ask("KONVOY · %s" % Ui.upper(name), body, opts)
+	else:
+		c.leave()
+
+
+## Refused: they come in shooting (`chance`), or go, and the town stood up to them.
+func _convoy_refused(c: Convoy, chance: float) -> void:
+	if randf() < chance:
+		convoy_attacks(c)
+	else:
+		var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+		for v in villagers:
+			if not v.dead:
+				v.think("stood", "Askere boyun eğmedik", 6.0, day_s)
+		message.emit("Subay tehdit savurdu ama konvoy geri döndü. Kasaba dik durdu. (%s)" % standing_text(), "good")
+		c.leave()
+
+
+## The convoy's men come off shooting, the tank's gun with them; when it's over they go.
+func convoy_attacks(c: Convoy) -> void:
+	var n := clampi(3 + villagers.size() / 5, 3, 10)
+	raids.start(n, c.halt_point(), c.side)
+	if c.gun:
+		raids.guns.append(c.gun)
+	message.emit("%s askerleri kamyonlardan atlıyor: kasabaya saldırıyorlar!" % SIDES[c.side], "bad")
+	raids.ended.connect(func() -> void:
+		var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+		for v in villagers:
+			if not v.dead:
+				v.think("repelled", "Askerleri püskürttük", 8.0, day_s)
+		if is_instance_valid(c):
+			if c.gun:
+				raids.guns.erase(c.gun)
+			c.leave(), CONNECT_ONE_SHOT)
+
+
+## The town's best talker, to go out and reason with whoever's come wanting (the most persuasive
+## grown-up on their feet), and the odds they'll talk them round.
+func best_talker() -> Villager:
+	var best: Villager = null
+	for v in villagers:
+		if v.dead or v.down or v.is_child or v.leaving:
+			continue
+		if best == null or v.skill("ikna") > best.skill("ikna"):
+			best = v
+	return best
+
+
+func talk_odds(v: Villager) -> float:
+	return clampf(0.15 + v.skill("ikna") * 0.07, 0.15, 0.85) * v.mood_mul()
+
+
+## The option a question card offers for it: "İKNA ET (Name · İkna 6, %57)"; `won` if they're talked
+## round, `lost` if not. The talker learns from it either way.
+func talk_option(won: Callable, lost: Callable) -> Dictionary:
+	var v := best_talker()
+	if v == null:
+		return {"label": "İKNA ET", "ok": false, "f": func() -> void: pass}
+	var odds := talk_odds(v)
+	var first := v.display_name.split(" ")[0]
+	return {"label": "İKNA ET (%s · %%%d)" % [first, roundi(odds * 100.0)],
+		"tip": "%s konuşmaya çıkar (İkna %d). Başarırsa bir şey vermeden giderler; başaramazsa kızarlar." % [v.display_name, int(v.skill("ikna"))],
+		"f": func() -> void:
+			if is_instance_valid(v):
+				v.learn("ikna", 90.0)
+			if randf() < odds:
+				var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+				if is_instance_valid(v):
+					v.think("persuaded", "Onları ikna etti", 10.0, day_s)
+				for o in villagers:
+					if o != v and not o.dead:
+						o.think("talked", "%s onları laf ile geri çevirdi" % first, 4.0, day_s)
+				message.emit("%s konuştu, ikna etti: eli boş döndüler." % first, "good")
+				won.call()
+			else:
+				message.emit("%s konuştu ama ikna edemedi; öfkelendiler." % first, "bad")
+				lost.call()}
 
 
 ## Where the train loads from: the station, and whatever's on a side line.

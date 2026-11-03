@@ -912,9 +912,10 @@ func ask(title: String, body: String, options: Array) -> PanelContainer:
 	var t := Ui.label(col, body, 16, Ui.INK)
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	t.custom_minimum_size = Vector2(488, 0)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.alignment = BoxContainer.ALIGNMENT_END
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 6)
+	row.alignment = FlowContainer.ALIGNMENT_END
 	col.add_child(row)
 	for o: Dictionary in options:
 		var f: Callable = o.f
@@ -1179,6 +1180,8 @@ func _edge_marks() -> void:
 		want["camp"] = ["KAMP", rd.camp_at]
 	if is_instance_valid(v.armoured):
 		want["armour"] = ["ZIRHLI TREN", v.armoured.engine_at()]
+	if is_instance_valid(v.convoy) and not v.convoy._cars.is_empty():
+		want["convoy"] = ["KONVOY", (v.convoy._cars[0].node as Node3D).global_position]
 	for b in v.buildings:
 		if b.is_burning():
 			want["fire"] = ["YANGIN", b.global_position]

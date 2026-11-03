@@ -60,6 +60,7 @@ var camp_known := false ## found: seen from a tower, by someone working near, or
 var _camp_node: Node3D
 var _camp_day := -1
 var _camp_t := 0.0
+var guns: Array[Node3D] = [] ## a convoy's tank guns, fired while its men are at the town
 var soldiers := "" ## the band now on the town is a side's soldiers ("" outlaws): by day as well
 var hud: Node ## (for asking: the band sends one ahead to ask for food first)
 var _asked_for := -1 ## the raid day whose band has asked already
@@ -339,6 +340,9 @@ func _ask_food() -> void:
 					message.emit("Firariler yiyeceği alıp gitti; biri kaldı: ormandan bıkmış, kasabaya katılmak istiyor.", "good")
 				else:
 					message.emit("Firariler yiyeceği alıp ormana döndü. Bu gece baskın yok.", "good")},
+		village.talk_option(func() -> void:
+			if next_day == day:
+				next_day = day + every(), func() -> void: pass),
 		{"label": "REDDET", "f": func() -> void:
 			message.emit("Firari tükürüp ormana döndü. Gece gelecekler: sur, fener ve tüfekler hazır olsun.", "bad")}])
 
@@ -561,10 +565,12 @@ func _think() -> void:
 				return true},
 		], "Yakıyor", b)
 	if leaving and raiders.all(func(r: Villager) -> bool: return r.dead or r.job == "Kaçıyor"):
-		message.emit("Firariler ormana çekiliyor.", "info")
+		message.emit("Firariler ormana çekiliyor." if soldiers == "" else "Askerler geri çekiliyor.", "info")
 		active = false # (the rest only walk off)
 		next_day = village.day + every()
+		soldiers = ""
 		_finish_quietly()
+		ended.emit()
 
 
 ## A shooter: whoever it can see within its reach gets shot at; with nobody in sight it creeps up
@@ -817,16 +823,22 @@ var _turret_t := 0.0
 
 
 func _turret_shots(dt: float) -> void:
-	if soldiers == "" or not active or not is_instance_valid(village.armoured):
+	if soldiers == "" or not active:
+		return
+	var muzzles: Array[Vector3] = []
+	if is_instance_valid(village.armoured):
+		var tr: Train = village.armoured
+		muzzles.append(tr._cars[tr._cars.size() - 1].global_position + Vector3.UP * 4.2 if not tr._cars.is_empty() else tr.engine_at() + Vector3.UP * 4.0)
+	for g in guns:
+		if is_instance_valid(g):
+			muzzles.append(g.global_position)
+	if muzzles.is_empty():
 		return
 	_turret_t -= dt
 	if _turret_t > 0.0:
 		return
 	_turret_t = randf_range(4.0, 7.0)
-	var tr: Train = village.armoured
-	var gun := tr.engine_at() + Vector3.UP * 4.0
-	if not tr._cars.is_empty():
-		gun = tr._cars[tr._cars.size() - 1].global_position + Vector3.UP * 4.2
+	var gun: Vector3 = muzzles.pick_random()
 	var foe: Villager = null
 	var bd := 90.0
 	for v in village.villagers:

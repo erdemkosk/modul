@@ -110,7 +110,7 @@ var role := "" ## an outlaw's: "shooter", "torch", "looter"
 # --- who it is
 ## What the town's work asks of hands and eyes, and the name each goes by.
 const SKILLS := {"odun": "Odunculuk", "insa": "İnşaat", "tas": "Taşçılık", "tarim": "Tarım", "toplama": "Toplayıcılık",
-	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk", "bilgi": "Okuryazarlık"}
+	"tasima": "Taşıma", "zanaat": "Zanaat", "nisan": "Nişancılık", "okcu": "Okçuluk", "bilgi": "Okuryazarlık", "ikna": "İkna"}
 var skills := {} ## skill -> 0..10, growing as it's done
 var prio := {} ## skill -> 0 never, 1 as needed, 2 first
 var keen: Array[String] = [] ## the work it's keen on (one or two): learnt twice as fast
@@ -132,6 +132,8 @@ const ORIGINS := {
 	"koylu": {"name": "Köylü", "desc": "Toprağı bilir, kaçarken tarlasını bıraktı.", "skill": "tarim", "by": 2.0},
 	"makinist": {"name": "Makinist", "desc": "Fabrikada, atölyede makine başında çalıştı.", "skill": "zanaat", "by": 2.0},
 	"felcer": {"name": "Felçer", "desc": "Sahra hastanesinde sağlık eriydi; otu, sargıyı bilir.", "skill": "toplama", "by": 2.0},
+	"papaz": {"name": "Köy papazı", "desc": "Bir köyün papazıydı; insanlarla konuşmayı, öfkeyi yatıştırmayı bilir.", "skill": "ikna", "by": 4.0},
+	"tuccar": {"name": "Seyyar tüccar", "desc": "Panayır panayır dolaştı; pazarlıkta, dil dökmede üstüne yoktur.", "skill": "ikna", "by": 3.0},
 	"oduncu": {"name": "Ormancı", "desc": "Kordal taygasında büyüdü; baltayı herkesten iyi tutar.", "skill": "odun", "by": 2.0},
 }
 
