@@ -922,6 +922,27 @@ func dig_trench(a: Vector2, b: Vector2, width: float, depth: float) -> void:
 		return -depth * (1.0 - smoothstep(half_w - 0.35, half_w + 0.15, d)))
 
 
+## A stint's digging on a trench from a to b: the floor `depth` m further down, the earth thrown up
+## onto a low bank along its `spoil` side (a unit vector across it), as much as came out.
+func dig_trench_part(a: Vector2, b: Vector2, width: float, depth: float, spoil: Vector2) -> void:
+	var half_w := width * 0.5
+	var mid := (a + b) * 0.5
+	clear_grass(Vector3(mid.x, 0.0, mid.y), a.distance_to(b) * 0.5 + half_w + 1.0)
+	var lo := Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2.ONE * (half_w + 2.2)
+	var hi := Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2.ONE * (half_w + 2.2)
+	var bank_at := half_w + 0.9 # (the bank's crest, out from the middle)
+	_each_sample(lo.x, lo.y, hi.x, hi.y, func(x: float, z: float) -> float:
+		var pt := Vector2(x, z)
+		var q := Geometry2D.get_closest_point_to_segment(pt, a, b)
+		var off := pt - q
+		var d := off.length()
+		var cut := -depth * (1.0 - smoothstep(half_w - 0.35, half_w + 0.15, d))
+		var heap := 0.0
+		if off.dot(spoil) > 0.0:
+			heap = depth * 0.7 * (1.0 - smoothstep(0.0, 0.9, absf(d - bank_at)))
+		return cut + heap)
+
+
 ## Adds f(x, z) to every height sample in the box (world metres).
 func _each_sample(x0: float, z0: float, x1: float, z1: float, f: Callable) -> void:
 	var gx0 := clampi(floori(x0 + half), 0, size - 1)

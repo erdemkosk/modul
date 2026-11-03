@@ -2096,18 +2096,59 @@ func trench_to_dig(p: Vector3) -> Dictionary:
 
 ## A length dug a stint further; finished, the ground's cut down into it.
 func dig_on(t: Dictionary, by: float) -> void:
-	t.done = minf(float(t.done) + by, 1.0)
+	var was := float(t.done)
+	t.done = minf(was + by, 1.0)
+	# the ground going down a stint at a time, the spoil banked on the side away from the town
+	terrain.dig_trench_part(t.a, t.b, 1.3, TRENCH_DEPTH * (float(t.done) - was), trench_bank(t))
+	terrain.commit_digs()
 	if float(t.done) >= 1.0:
-		terrain.dig_trench(t.a, t.b, 1.3, 0.85)
-		terrain.commit_digs()
 		_show_trench(t)
+
+
+const TRENCH_DEPTH := 0.9
+
+
+## Which side of a trench its spoil's banked on: away from the town (the bank faces the enemy, the
+## town's side left open to come and go by).
+func trench_bank(t: Dictionary) -> Vector2:
+	var across := Vector2(t.b.y - t.a.y, -(t.b.x - t.a.x)).normalized()
+	var st: Array = stores()
+	if not st.is_empty():
+		var home: Vector3 = (st[0] as Node3D).global_position
+		if across.dot(Vector2(home.x, home.z) - (t.a + t.b) * 0.5) > 0.0:
+			across = -across
+	return across
+
+
+## A place for a militiaman in a dug trench, the nearest to `p` with room (two to a length).
+func trench_post(p: Vector3, v: Villager) -> Vector3:
+	var best := Vector3.INF
+	var bd := 90.0
+	for t: Dictionary in trenches:
+		if float(t.done) < 1.0:
+			continue
+		var held := 0
+		var c: Vector2 = (t.a + t.b) * 0.5
+		for o in villagers:
+			if o != v and o.armed and Vector2(o.position.x, o.position.z).distance_to(c) < 2.0:
+				held += 1
+		if held >= 2:
+			continue
+		var q: Vector2 = Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), t.a, t.b)
+		var d := q.distance_to(Vector2(p.x, p.z))
+		if d < bd:
+			bd = d
+			best = Vector3(q.x, 0, q.y)
+	if best != Vector3.INF:
+		best.y = nav.height(best.x, best.z)
+	return best
 
 
 ## Down in a dug trench at `p`: cover.
 func in_trench(p: Vector3) -> bool:
 	for t: Dictionary in trenches:
 		if float(t.done) >= 1.0:
-			var q := Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), t.a, t.b)
+			var q: Vector2 = Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), t.a, t.b)
 			if q.distance_to(Vector2(p.x, p.z)) < 0.9:
 				return true
 	return false

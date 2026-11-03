@@ -342,9 +342,9 @@ static func restore(game: Node, d: Dictionary) -> void:
 	for t: Array in d.get("trenches", []):
 		var tt := {"a": Vector2(t[0], t[1]), "b": Vector2(t[2], t[3]), "done": float(t[4]), "node": null}
 		v.trenches.append(tt)
-		if float(t[4]) >= 1.0:
-			v.terrain.dig_trench(tt.a, tt.b, 1.3, 0.85)
-		else:
+		if float(t[4]) > 0.0:
+			v.terrain.dig_trench_part(tt.a, tt.b, 1.3, Village.TRENCH_DEPTH * float(t[4]), v.trench_bank(tt))
+		if float(t[4]) < 1.0:
 			v._show_trench(tt)
 	if not v.trenches.is_empty():
 		v.terrain.commit_digs()

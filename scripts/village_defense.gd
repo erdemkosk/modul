@@ -8,7 +8,7 @@ func _plan_raid(v: Villager) -> bool:
 	# The militia: to the armoury for a rifle, then to a post to hold.
 	if v.militia and not v.is_child and not v.has_trait("no_rifle"):
 		if v.armed:
-			if v.plan.is_empty() or v.idle:
+			if v.plan.is_empty() or v.idle or not v.job in ["Mevzide", "Surda nöbette"]:
 				v.abort()
 				hold_at(v, default_post(v))
 			return true
@@ -174,6 +174,11 @@ func default_post(v: Villager) -> Vector3:
 					taken += 1
 			if taken < 2:
 				posts.append(b)
+	# a dug trench toward where they come from: down in it
+	if not trenches.is_empty():
+		var tp := trench_post(far, v)
+		if tp != Vector3.INF and (posts.is_empty() or tp.distance_to(far) < _nearest(posts, far).global_position.distance_to(far)):
+			return tp
 	if not posts.is_empty():
 		var bp := _nearest(posts, far)
 		var spot := bp.global_position - bp.global_basis.z * 1.4 + bp.global_basis.x * randf_range(-0.8, 0.8)
