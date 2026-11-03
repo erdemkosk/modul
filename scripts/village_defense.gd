@@ -658,6 +658,150 @@ func _rescues() -> void:
 				return true}] + _go_out(to), "Yaralıyı taşıyor", d)
 
 
+# --- Direct control (R): one of the town under the player's hand -----------------------------------
+# Anyone grown can be taken in hand: they drop what they're doing and wait for orders (right-click
+# to send them, an enemy to set on, a house to hide in, the armoury to arm at), and the card offers
+# the rest: a weapon from the nearest rack or off the ground, into cover, hide, carry the wounded.
+
+func take_control(v: Villager) -> void:
+	v.drafted = true
+	v.set_meta("controlled", true)
+	if v.sleeping:
+		v.wake()
+	v.abort()
+	v.give([{"t": "work", "time": 3.0, "anim": "idle"}], "Emrinde")
+
+
+func release_control(v: Villager) -> void:
+	v.remove_meta("controlled")
+	if not v.has_meta("called_up"):
+		v.drafted = false
+	v.focus = null
+	v.abort()
+
+
+func controlled(v: Villager) -> bool:
+	return is_instance_valid(v) and v.has_meta("controlled")
+
+
+## A weapon: off the nearest rack that has one, or a rifle lying where a raider dropped it, whichever's
+## nearer. Why not ("" if it's going).
+func ctl_weapon(v: Villager) -> String:
+	if v.armed:
+		return "%s zaten silahlı" % v.display_name.split(" ")[0]
+	var rack: Building = null
+	var rd := INF
+	for a in armories():
+		if _weapon_at(a, "") != "":
+			var d := a.global_position.distance_to(v.position)
+			if d < rd:
+				rd = d
+				rack = a
+	var lying: Dictionary = {}
+	var ld := INF
+	if raids:
+		for l: Dictionary in raids.loot:
+			if not l.get("claimed", false):
+				var d := (l.at as Vector3).distance_to(v.position)
+				if d < ld:
+					ld = d
+					lying = l
+	if lying.is_empty() and rack == null:
+		return "Yakında silah yok: silahlıkta tüfek ya da yay kalmadı"
+	v.abort()
+	if not lying.is_empty() and ld < rd:
+		lying["claimed"] = true
+		var l := lying
+		v.give([{"t": "go", "to": l.at}, {"t": "work", "time": 1.0, "anim": "gather", "face": l.at},
+			{"t": "do", "f": func() -> bool:
+				if is_instance_valid(l.node):
+					(l.node as Node).queue_free()
+				raids.loot.erase(l)
+				v.held = "rifle"
+				v.armed = true
+				v.ammo = int(l.ammo)
+				v.ranged = 42.0
+				v.attack = 26.0
+				v.fighter = true
+				v.arm_with("rifle")
+				return true}, {"t": "work", "time": 2.0, "anim": "idle"}], "Yerdeki tüfeği alıyor")
+	else:
+		arm(v, rack, false)
+	return ""
+
+
+## Into the nearest cover from where it stands (with a rifle, holding there).
+func ctl_cover(v: Villager) -> void:
+	var p := cover_near(v.position, 8.0)
+	if not trenches.is_empty():
+		var t := trench_post(v.position, v)
+		if t != Vector3.INF and t.distance_to(v.position) < p.distance_to(v.position) + 6.0:
+			p = t
+	v.abort()
+	if v.armed:
+		hold_at(v, p)
+	else:
+		v.give([{"t": "go", "to": p}, {"t": "do", "f": func() -> bool:
+			v.in_cover = is_cover(v.position)
+			return true}, {"t": "work", "time": 3.0, "anim": "idle"}], "Siper alıyor")
+
+
+## Into the nearest house or store, to hide (or `into` that one).
+func ctl_hide(v: Villager, into: Building = null) -> String:
+	var to := into
+	if to == null:
+		var shelters: Array[Building] = []
+		for b in buildings:
+			if b.state == "done" and b.def.role in ["house", "store", "barracks"] and not b.is_burning():
+				shelters.append(b)
+		to = _nearest(shelters, v.position)
+	if to == null:
+		return "Saklanacak yer yok"
+	v.abort()
+	v.give(_go_in(to) + [{"t": "do", "f": func() -> bool:
+		if is_instance_valid(to) and to.state == "done" and not to.is_burning():
+			v.sleep_in(to, true)
+		return true}], "Saklanıyor", to)
+	return ""
+
+
+## The nearest of the town lying wounded, carried in to the nearest house.
+func ctl_carry(v: Villager) -> String:
+	var d: Villager = null
+	var bd := 90.0
+	for o in villagers:
+		if o != v and o.down and not o.dead and not is_instance_valid(o.carried_by):
+			var dist := o.position.distance_to(v.position)
+			if dist < bd:
+				bd = dist
+				d = o
+	if d == null:
+		return "Yakında yerde yatan yaralı yok"
+	var shelters: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role in ["house", "barracks", "store"] and not b.is_burning():
+			shelters.append(b)
+	var to := _nearest(shelters, d.position)
+	if to == null:
+		return "Yaralıyı taşıyacak ev yok"
+	d.set_meta("rescuer", v)
+	v.abort()
+	v.give([{"t": "go", "to": d.position},
+		{"t": "work", "time": 1.6, "anim": "gather", "face": d.position},
+		{"t": "do", "f": func() -> bool:
+			if not is_instance_valid(d) or d.dead or not d.down:
+				return false
+			d.carried_by = v
+			v.set_carry("yarali", 1)
+			return true}] + _go_in(to) + [{"t": "do", "f": func() -> bool:
+			v.set_carry("", 0)
+			if is_instance_valid(d) and not d.dead and d.down and is_instance_valid(to) and to.state == "done":
+				d.sleep_in(to)
+				message.emit("%s yaralıyı %s içine taşıdı." % [v.display_name, to.display_name()], "info")
+			return true}] + _go_out(to), "Yaralıyı taşıyor", d)
+	return ""
+
+
 ## After a raid: a rifle the outlaws dropped, carried to the armoury.
 func _plan_loot(v: Villager) -> bool:
 	if raids == null or raids.loot.is_empty():

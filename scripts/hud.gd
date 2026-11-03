@@ -392,6 +392,19 @@ func _test_plate() -> void:
 	var fire := _small_button("TUTUŞTUR", func() -> void: game.ignite_selected())
 	fire.tooltip_text = "Seçili binayı ateşe ver (F)"
 	row2.add_child(fire)
+	# the war's events, at once, to try them
+	for line: Array in [
+			[["TANKLI KONVOY", "convoy_tank", "Merkez ya da isyancı konvoyu, tankıyla, hemen yola çıkar"], ["KONVOY", "convoy", "Kamyonlu konvoy (tanksız)"], ["DÜŞMAN KONVOY", "convoy_hostile", "Kasabaya düşman bir tarafın tanklı konvoyu: sormadan saldırır"]],
+			[["ZIRHLI TREN", "armoured", "Bir tarafın zırhlı treni istasyona gelir"], ["DÜŞMAN TREN", "armoured_hostile", "Düşman zırhlı tren: askerleri inip saldırır"], ["FİRARİ KAMPI", "camp", "Ormanda bulunmuş bir firari kampı"], ["KAPIDA FİRARİ", "beg", "Firariler yiyecek istemeye gelir"]],
+			[["TELGRAF HABERİ", "news", "Rastgele bir telgraf haberi"], ["POSTA", "mail", "Trenle posta gelmiş gibi mektuplar"], ["HER ŞEYİ AÇ", "techs", "Bütün araştırmalar bilinir"], ["+ KAYNAK", "stock", "Her maldan 100, kasaya 200 mirka"]]]:
+		var r := HBoxContainer.new()
+		r.add_theme_constant_override("separation", 4)
+		col.add_child(r)
+		for e: Array in line:
+			var what: String = e[1]
+			var b := _small_button(str(e[0]), func() -> void: game.test_event(what))
+			b.tooltip_text = str(e[2])
+			r.add_child(b)
 
 
 func _build_bar() -> void:
@@ -639,6 +652,11 @@ func _make_card() -> void:
 	_btn.draft = _add(_card_folk, "TOPLA", func() -> void: game.toggle_draft(), "Emrine al: sağ tık mevzi, hayduda sağ tık hedef (G)")
 	_btn.lantern = _add(_card_folk, "FENERİ SÖNDÜR", func() -> void: game.toggle_lantern(), "Karanlıkta görünmez olur ama az görür (L)")
 	_btn.folk_look = _add(_card_folk, "ODAKLAN", func() -> void: game.focus_selected(), "Kamerayı ona götür")
+	_btn.ctl = _add(_card_folk, "KONTROL (R)", func() -> void: game.toggle_control(), "Emrine al: işini bırakır, sağ tıkla gider, saldırır, binaya girer (R)")
+	_btn.ctl_gun = _add(_card_folk, "SİLAH AL", func() -> void: game.control_order("weapon"), "En yakın silahlıktan ya da yerdeki tüfekten silah alır")
+	_btn.ctl_cover = _add(_card_folk, "SİPER", func() -> void: game.control_order("cover"), "En yakın sipere (duvar dibi, hendek, kum torbası) geçer")
+	_btn.ctl_hide = _add(_card_folk, "SAKLAN", func() -> void: game.control_order("hide"), "En yakın eve ya da depoya saklanır")
+	_btn.ctl_carry = _add(_card_folk, "YARALI TAŞI", func() -> void: game.control_order("carry"), "En yakın yerde yatan yaralıyı bir eve taşır")
 
 
 ## The workplace card's list: everyone grown, best at the work first; those working here marked.
@@ -1868,6 +1886,12 @@ func _folk_card(v: Villager) -> void:
 	(_btn.militia as Button).text = "MİLİSTEN ÇIKAR" if v.militia else "MİLİS YAP"
 	(_btn.draft as Button).visible = v.militia and not v.down
 	(_btn.draft as Button).text = "BIRAK" if v.drafted else "TOPLA"
+	var held: bool = game.village.controlled(v)
+	(_btn.ctl as Button).visible = not v.is_child and not v.down and many.size() <= 1
+	(_btn.ctl as Button).text = "BIRAK (R)" if held else "KONTROL (R)"
+	(_btn.ctl as Button).add_theme_color_override("font_color", Ui.ACCENT if held else Ui.INK)
+	for key in ["ctl_gun", "ctl_cover", "ctl_hide", "ctl_carry"]:
+		(_btn[key] as Button).visible = held and many.size() <= 1
 	(_btn.lantern as Button).visible = v.militia
 	(_btn.lantern as Button).text = "FENERİ YAK" if v.lantern_mode == "off" else "FENERİ SÖNDÜR"
 	_card_title.text = Ui.upper(v.display_name) if many.size() <= 1 else "%d KİŞİ SEÇİLİ" % many.size()

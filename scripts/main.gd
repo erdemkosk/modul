@@ -269,7 +269,10 @@ func _unhandled_input(e: InputEvent) -> void:
 				hud.visible = not atmosphere.photo
 				_ring.visible = false
 			KEY_R:
-				rotate_ghost(-15.0 if k.shift_pressed else 15.0)
+				if _placing == "" and selected_villager and is_instance_valid(selected_villager):
+					toggle_control()
+				else:
+					rotate_ghost(-15.0 if k.shift_pressed else 15.0)
 			KEY_SPACE:
 				if not _menu:
 					set_speed(Engine.time_scale if get_tree().paused else 0.0)
@@ -798,6 +801,93 @@ func toggle_lantern() -> void:
 
 ## An order to the drafted: a raider clicked is the one to shoot; ground, a post there (behind
 ## whatever cover's close), spread out a little.
+## The test panel's events, at once.
+func test_event(what: String) -> void:
+	var v := village
+	var side := "merkez" if randf() < 0.5 else "isyan"
+	match what:
+		"convoy_tank", "convoy", "convoy_hostile":
+			if is_instance_valid(v.convoy):
+				hud.toast("Zaten bir konvoy yolda", "info")
+				return
+			if what == "convoy_hostile":
+				v._shift(side, -60)
+			v.send_convoy(side, what != "convoy")
+		"armoured", "armoured_hostile":
+			if is_instance_valid(v.train):
+				v.train.queue_free()
+			if is_instance_valid(v.armoured):
+				hud.toast("Zaten bir zırhlı tren var", "info")
+				return
+			if what == "armoured_hostile":
+				v._shift(side, -60)
+			v.send_armoured(side)
+		"camp":
+			if raids.camp_at != Vector3.INF:
+				raids._camp_found("")
+				return
+			var home: Vector3 = v.stores()[0].global_position if not v.stores().is_empty() else Vector3.ZERO
+			for k in 30:
+				var a := randf() * TAU
+				var p := home + Vector3(cos(a), 0, sin(a)) * randf_range(90.0, 140.0)
+				if v.nav.is_open(p):
+					p.y = v.nav.height(p.x, p.z)
+					raids.make_camp(p, 4, false)
+					raids._camp_found("")
+					return
+		"beg":
+			raids.next_day = v.day + 1
+			raids._asked_for = -1
+			raids._ask_food()
+		"news":
+			v._news_last = -10
+			v._news_morning(["zirhli", "yarali", "devriye", "yardim"].pick_random())
+		"mail":
+			if v.depot():
+				v._mail(v.depot())
+		"techs":
+			for t: String in BuildingDefs.TECHS:
+				if not v.knows(t):
+					v.known.append(t)
+			hud.toast("Bütün araştırmalar açıldı", "good")
+		"stock":
+			var st: Vector3 = v.stores()[0].global_position if not v.stores().is_empty() else Vector3.ZERO
+			for r: String in ["odun", "tas", "yiyecek", "kerpic", "komur", "demir", "ot"]:
+				v.add_anywhere(r, 100, st)
+			v.rubles += 200
+			hud.toast("Her maldan 100, kasaya 200 mirka", "good")
+
+
+## The selected one taken in hand (R), or let go again.
+func toggle_control() -> void:
+	var v := selected_villager
+	if v == null or not is_instance_valid(v) or v.is_child or v.down:
+		return
+	if village.controlled(v):
+		village.release_control(v)
+		hud.toast("%s yine kendi işinde" % v.display_name, "info")
+	else:
+		village.take_control(v)
+		hud.toast("%s emrinde: sağ tık git / saldır / binaya gir · kartta SİLAH AL, SİPER, SAKLAN, TAŞI · R bırak" % v.display_name.split(" ")[0], "good")
+
+
+## A card order for the one in hand: "weapon", "cover", "hide", "carry".
+func control_order(what: String) -> void:
+	var v := selected_villager
+	if v == null or not is_instance_valid(v):
+		return
+	if not village.controlled(v):
+		village.take_control(v)
+	var why := ""
+	match what:
+		"weapon": why = village.ctl_weapon(v)
+		"cover": village.ctl_cover(v)
+		"hide": why = village.ctl_hide(v)
+		"carry": why = village.ctl_carry(v)
+	if why != "":
+		hud.toast(why, "info")
+
+
 func _order(at: Vector2) -> void:
 	var drafted: Array[Villager] = []
 	for v in _chosen():
@@ -807,8 +897,25 @@ func _order(at: Vector2) -> void:
 	if foe:
 		for v in drafted:
 			v.focus = foe
+			if not v.armed: # (bare-handed: it goes for him)
+				v.abort()
+				v.give([{"t": "fight", "foe": foe, "give_up": 60.0}], "Saldırıyor")
 		hud.toast("Hedef: %d kişi ona ateş edecek" % drafted.size(), "info")
 		return
+	# a building under it, for the one in hand: the armoury to arm at, a house to hide in
+	var b := _building_under(at)
+	if b and drafted.size() == 1 and village.controlled(drafted[0]) and b.state == "done":
+		var v := drafted[0]
+		if b.def.role == "barracks" and not v.armed:
+			if village._weapon_at(b, "") == "":
+				hud.toast("%s rafında silah yok" % b.display_name(), "info")
+			else:
+				v.abort()
+				village.arm(v, b, false)
+			return
+		if b.def.role in ["house", "store", "barracks"]:
+			village.ctl_hide(v, b)
+			return
 	var to: Variant = cam.ground_under(at)
 	if to == null:
 		return
