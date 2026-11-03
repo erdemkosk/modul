@@ -209,7 +209,8 @@ func start(at: Vector3) -> void:
 
 # --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
 
-const CALL_PRICE := 30 ## rubles to wire for a train tomorrow (TREN ÇAĞIR)
+const COIN := "mirka" ## Zarovya's money (the country's made up; so is its coin)
+const CALL_PRICE := 30 ## mirka to wire for a train tomorrow (TREN ÇAĞIR)
 
 ## What the train buys, a ruble or a few each; of what's marked to be sold, KEEP of each stays
 ## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line: the
@@ -287,7 +288,7 @@ func announce() -> String:
 		return "Köy zaten bildirildi"
 	announced = true
 	repute += SETTLERS_PER
-	message.emit("Köyün kuruluşu ana karaya bildirildi: göçmenler bundan böyle trenle gelecek.", "good")
+	message.emit("Köyün kuruluşu Zarovya merkezine bildirildi: göçmenler bundan böyle trenle gelecek.", "good")
 	return ""
 
 
@@ -305,7 +306,7 @@ func call_train() -> String:
 	if next_train - day <= 1:
 		return "Tren zaten yarın geliyor"
 	if rubles < CALL_PRICE:
-		return "Kasada %d ruble gerek" % CALL_PRICE
+		return "Kasada %d %s gerek" % [CALL_PRICE, COIN]
 	rubles -= CALL_PRICE
 	express = true
 	next_train = day + 1
@@ -390,7 +391,7 @@ func _sell(_st: Building) -> void:
 	if earned > 0:
 		rubles += earned
 		repute += earned
-		message.emit("Trene yüklendi: %s. Kasaya %d ruble girdi." % [", ".join(sold), earned], "good")
+		message.emit("Trene yüklendi: %s. Kasaya %d %s girdi." % [", ".join(sold), earned, COIN], "good")
 
 
 ## A side line from the main line to `b`: straight, from its door to the nearest of the main line.

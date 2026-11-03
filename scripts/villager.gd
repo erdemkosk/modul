@@ -132,7 +132,7 @@ const ORIGINS := {
 	"koylu": {"name": "Köylü", "desc": "Toprağı bilir, kaçarken tarlasını bıraktı.", "skill": "tarim", "by": 2.0},
 	"makinist": {"name": "Makinist", "desc": "Fabrikada, atölyede makine başında çalıştı.", "skill": "zanaat", "by": 2.0},
 	"felcer": {"name": "Felçer", "desc": "Sahra hastanesinde sağlık eriydi; otu, sargıyı bilir.", "skill": "toplama", "by": 2.0},
-	"oduncu": {"name": "Ormancı", "desc": "Taygada büyüdü; baltayı herkesten iyi tutar.", "skill": "odun", "by": 2.0},
+	"oduncu": {"name": "Ormancı", "desc": "Kordal taygasında büyüdü; baltayı herkesten iyi tutar.", "skill": "odun", "by": 2.0},
 }
 
 
@@ -202,7 +202,7 @@ const TRAITS := {
 	"pehlivan": {"name": "Pehlivan", "plus": "1,5 kat taşır, can +30", "minus": "%30 yavaş öğrenir", "carry": 1.5, "hp": 30, "learn": 0.7},
 	"zeki": {"name": "Zeki", "plus": "%50 hızlı öğrenir", "minus": "narin: can −20", "learn": 1.5, "hp": -20},
 	"cevik": {"name": "Çevik", "plus": "%20 hızlı yürür", "minus": "can −10", "walk": 1.2, "hp": -10},
-	"sibir": {"name": "Sibiryalı", "plus": "soğuk evde üşümez", "minus": "%15 daha çok yer", "cold": true, "eat": 1.15},
+	"sibir": {"name": "Kordallı", "plus": "soğuk evde üşümez", "minus": "%15 daha çok yer", "cold": true, "eat": 1.15},
 	"gozukara": {"name": "Gözü kara", "plus": "nişan +%20, baskında kaçmaz", "minus": "firari yakına gelirse eli boş da dalar", "aim": 1.2, "brave": true},
 	"korkak": {"name": "Korkak", "plus": "iş hızı +%10 (dikkatli)", "minus": "milis olmaz, baskında hemen saklanır", "work": 1.1, "coward": true},
 	"obur": {"name": "Obur", "plus": "sağlam: can +20", "minus": "%50 daha çok yer", "hp": 20, "eat": 1.5},

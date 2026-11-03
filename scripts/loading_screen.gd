@@ -6,7 +6,8 @@ extends CanvasLayer
 ## fades away.
 
 const TIPS := [
-	"1918. Savaş bitmedi, ülke karışık. Esirler, sürgünler, kaçaklar: taygada, hattın ucunda yeni bir hayat kuruyorlar.",
+	"1918. Zarovya'da savaş bitmedi, ülke karışık. Esirler, sürgünler, kaçaklar: Kordal taygasında, hattın ucunda yeni bir hayat kuruyorlar.",
+	"Kordal Hattı, Zarovya'nın doğusundaki tek demiryolu. Kasabanın can damarı odur: göçmen de para da trenle gelir.",
 	"Kasabalıların geçmişi bir beceri getirir: savaş esirleri inşaatı, sürgünler okumayı, makinistler zanaatı bilir.",
 	"Firariler cepheden kaçmış askerlerdir: aç, silahlı, ormanda dolaşırlar. Sur, fener ve çan onları uzak tutar.",
 	"Kışa hazırlık: kış saati yiyecek ve yakacağın kaç gün yeteceğini gösterir. Kırmızıysa acele et.",
@@ -16,7 +17,7 @@ const TIPS := [
 	"Bir işyerine ALAN ÇİZ ile işçilerinin çalışacağı yeri sen belirlersin.",
 	"Hevesli (♥) olduğu işte bir köylü iki kat hızlı öğrenir.",
 	"Bir işyerinin kartında ATA'ya bas: en yatkın köylüler yüzleriyle sıralanır.",
-	"Sibiryalı köylüler soğuk evde üşümez; korkaklar milis olmaz.",
+	"Kordallı köylüler soğuk evde üşümez; korkaklar milis olmaz.",
 	"Yaralı biri yerde kalırsa kan kaybeder: onu bir eve taşıyan olmazsa ölür.",
 	"Evin bahçesi, içinde oturanların işine göre her sabah biraz daha dolar.",
 	"Boş yatak ve depoda yiyecek varsa kasabaya zamanla yeni insanlar gelir.",

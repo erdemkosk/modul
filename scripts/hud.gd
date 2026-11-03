@@ -287,7 +287,7 @@ func _stores_plate() -> void:
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
 	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
-	_purse = _stat(row, "KASA", "Rubleler: trene mal satınca gelir, telgrafla tren çağırınca gider")
+	_purse = _stat(row, "KASA", "Mirka (Zarovya parası): trene mal satınca gelir, telgrafla tren çağırınca gider")
 	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
 
 
@@ -1035,7 +1035,7 @@ func _process(dt: float) -> void:
 	var stock := v.stock
 	_refresh_goods(v, stock)
 	_pop.text = "%d / %d" % [v.villagers.size(), v.beds()]
-	_purse.text = "%d r" % v.rubles
+	_purse.text = "%d m" % v.rubles
 	_free.text = str(v.free_count())
 	var guns := 0
 	var shots := 0
@@ -1546,7 +1546,7 @@ func _fill_extra(b: Building) -> void:
 						n += int(pb.goods.get(r, 0))
 					on.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
-			_extra_status.text = "%s%s\nKasa %d ruble  ·  İtibar %d: her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
+			_extra_status.text = "%s%s\nKasa %d mirka  ·  İtibar %d: her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
 				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.repute, v.settlers_due()]
 	else:
 		if v.studying == "":

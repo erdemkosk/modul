@@ -59,7 +59,7 @@ func _ready() -> void:
 	col.add_theme_constant_override("separation", 6)
 	root.add_child(col)
 	Ui.label(col, "İNŞA", 120, Ui.LIGHT, "display")
-	var sub := Ui.label(col, "SAVAŞTAN KAÇANLARIN TAYGADA KURDUĞU KASABA · 1918", 18, Color(Ui.LIGHT, 0.7), "head")
+	var sub := Ui.label(col, "ZAROVYA · KORDAL TAYGASI · 1918 — SAVAŞTAN KAÇANLARIN KURDUĞU KASABA", 18, Color(Ui.LIGHT, 0.7), "head")
 	sub.add_theme_constant_override("outline_size", 0)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)

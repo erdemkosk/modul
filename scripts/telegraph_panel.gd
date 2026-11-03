@@ -56,7 +56,7 @@ func _ready() -> void:
 	_status = Ui.label(right, "", 13, Ui.INK)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.custom_minimum_size = Vector2(380, 0)
-	_train_btn = _button(right, "TREN ÇAĞIR · %d ruble" % Village.CALL_PRICE, func() -> void:
+	_train_btn = _button(right, "TREN ÇAĞIR · %d %s" % [Village.CALL_PRICE, Village.COIN], func() -> void:
 		var why: String = game.village.call_train()
 		if why != "":
 			game.hud.toast(why, "bad")
@@ -64,12 +64,12 @@ func _ready() -> void:
 		send("TREN ISTIYORUZ STOP ACELE STOP", "ALINDI STOP TREN YARIN GELIR STOP"))
 	_train_btn.tooltip_text = "Hatta telgraf çekilir: tren yarın gelir, gecikmez"
 	Ui.label(right, "ANA KARA", 13, Ui.ACCENT, "head")
-	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu ana karaya haber ver", func() -> void:
+	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver", func() -> void:
 		var why: String = game.village.announce()
 		if why != "":
 			game.hud.toast(why, "bad")
 			return
-		send("YENI KOY KURULDU STOP %d CAN STOP GOCMEN BEKLIYORUZ STOP" % game.village.villagers.size(), "TEBRIKLER STOP GOCMENLER TRENLE YOLA CIKIYOR STOP")
+		send("KORDAL HATTI UCUNDA YENI KOY KURULDU STOP %d CAN STOP GOCMEN BEKLIYORUZ STOP" % game.village.villagers.size(), "ZAROVYA MERKEZ STOP TEBRIKLER STOP GOCMENLER TRENLE YOLA CIKIYOR STOP")
 		refresh())
 	_announce.tooltip_text = "Bir kez: bundan böyle göçmenler yürüyerek değil, her trenle gelir (boş yatak kadar)"
 	Ui.label(right, "TRENE SAT  (her maldan %d'u kalır)" % Village.KEEP, 13, Ui.ACCENT, "head")
@@ -85,7 +85,7 @@ func _ready() -> void:
 				v.selling.append(r)
 				send("SATILIK %s STOP" % _plain(BuildingDefs.RES_NAMES[r]), "")
 			refresh())
-		_sell_btns[r].tooltip_text = "%s: tane başı %d ruble. İşaretliyse tren gelince fazlası satılır." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r])]
+		_sell_btns[r].tooltip_text = "%s: tane başı %d %s. İşaretliyse tren gelince fazlası satılır." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r]), Village.COIN]
 
 
 func _button(parent: Node, text: String, f: Callable) -> Button:
@@ -177,11 +177,11 @@ func refresh() -> void:
 	var line := "Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Sonraki tren ~%d gün sonra (gecikebilir)" % due)
 	if v.express:
 		line = "Tren çağrıldı: yarın gelir"
-	_status.text = "%s\nKasa %d ruble · İtibar %d%s" % [line, v.rubles, v.repute,
+	_status.text = "%s\nKasa %d mirka · İtibar %d%s" % [line, v.rubles, v.repute,
 		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
 	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1
 	_announce.disabled = v.announced
-	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu ana karaya haber ver"
+	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver"
 	for r: String in _sell_btns:
 		var on := r in v.selling
 		(_sell_btns[r] as Button).add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
