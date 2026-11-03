@@ -126,14 +126,16 @@ func _ready() -> void:
 	_strip.offset_left = 12
 	_strip.offset_bottom = -52
 	add_child(_strip)
+	var map_plate := _plate(false) # (the leather the others are, the map on it)
+	map_plate.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	map_plate.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	map_plate.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	map_plate.offset_right = -12
+	map_plate.offset_bottom = -50
+	add_child(map_plate)
 	var mini := Minimap.new()
 	mini.game = game
-	mini.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	mini.offset_left = -12 - Minimap.SIZE
-	mini.offset_top = -50 - Minimap.SIZE
-	mini.offset_right = -12
-	mini.offset_bottom = -50
-	add_child(mini)
+	map_plate.add_child(mini)
 	if _test_panel:
 		_test_panel.move_to_front()
 	var squad := SquadBar.new()
@@ -1228,6 +1230,8 @@ func _edge_marks() -> void:
 		want["armour"] = ["ZIRHLI TREN", v.armoured.engine_at()]
 	if is_instance_valid(v.convoy) and not v.convoy._cars.is_empty():
 		want["convoy"] = ["KONVOY", (v.convoy._cars[0].node as Node3D).global_position]
+	if is_instance_valid(v.relief) and not v.relief._cars.is_empty():
+		want["relief"] = ["YARDIM", (v.relief._cars[0].node as Node3D).global_position]
 	for b in v.buildings:
 		if b.is_burning():
 			want["fire"] = ["YANGIN", b.global_position]
@@ -1251,8 +1255,19 @@ func _edge_marks() -> void:
 			sp = mid - (sp - mid) * 10.0
 		var on := not behind and sp.x > 40 and sp.x < size.x - 40 and sp.y > 120 and sp.y < size.y - 150
 		if not _marks.has(key):
-			var bt := _small_button("", func() -> void: game.cam.jump_to(want[key][1] if want.has(key) else at))
-			bt.add_theme_color_override("font_color", Ui.BAD)
+			# a leather tag with a brass edge, the word in red ink for trouble, blue for our own
+			var bt := Button.new()
+			bt.focus_mode = Control.FOCUS_NONE
+			bt.add_theme_font_override("font", Ui.font("head"))
+			bt.add_theme_font_size_override("font_size", 14)
+			var ours: bool = key == "relief"
+			var ink := Color(0.55, 0.75, 1.0) if ours else Color(1.0, 0.45, 0.35)
+			bt.add_theme_color_override("font_color", ink)
+			bt.add_theme_color_override("font_hover_color", Ui.INK)
+			bt.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(0.2, 0.14, 0.1, 0.94), Ui.ACCENT))
+			bt.add_theme_stylebox_override("hover", Ui.glass(false, 6.0, Color(0.32, 0.22, 0.14, 0.96), Ui.ACCENT))
+			bt.add_theme_stylebox_override("pressed", Ui.glass(false, 6.0, Color(0.32, 0.22, 0.14, 0.96), Ui.ACCENT))
+			bt.tooltip_text = "Tıkla: kamera oraya gitsin"
 			add_child(bt)
 			_marks[key] = bt
 		var b: Button = _marks[key]
@@ -1263,7 +1278,8 @@ func _edge_marks() -> void:
 		var k := minf((mid.x - 70.0) / maxf(absf(d.x), 0.001), (mid.y - 140.0) / maxf(absf(d.y), 0.001))
 		var edge := mid + d * k
 		var arrow := ("→" if d.x > 0 else "←") if absf(d.x) * size.y > absf(d.y) * size.x else ("↓" if d.y > 0 else "↑")
-		b.text = "%s %s" % [arrow, want[key][0]]
+		var far := Vector2(at.x - game.cam.focus.x, at.z - game.cam.focus.z).length()
+		b.text = "%s  %s · %d m" % [arrow, want[key][0], roundi(far / 10.0) * 10]
 		var target: Vector3 = want[key][1]
 		if b.pressed.get_connections().size() > 0:
 			for c in b.pressed.get_connections():
