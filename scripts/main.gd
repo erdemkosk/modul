@@ -302,6 +302,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				hud.toggle_tech()
 			KEY_J:
 				hud.toggle_log()
+			KEY_V:
+				select_militia()
 			KEY_M:
 				toggle_militia()
 			KEY_G:
@@ -865,6 +867,22 @@ func test_event(what: String) -> void:
 				v.add_anywhere(r, 100, st)
 			v.rubles += 200
 			hud.toast("Her maldan 100, kasaya 200 mirka", "good")
+
+
+## Every militiaman picked at once (V), to be sent together.
+func select_militia() -> void:
+	var list: Array[Villager] = []
+	for v in village.villagers:
+		if not v.dead and not v.down and (v.militia or v.drafted):
+			list.append(v)
+	if list.is_empty():
+		hud.toast("Milis yok: bir kasabalının kartından MİLİS YAP (M)", "info")
+		return
+	select(null)
+	group.clear()
+	group.append_array(list)
+	selected_villager = list[0]
+	hud.toast("%d milis seçili: sağ tıkla mevzi göster" % list.size(), "info")
 
 
 ## The selected one taken in hand (R), or let go again.

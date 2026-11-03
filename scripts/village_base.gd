@@ -640,13 +640,30 @@ func standing(side: String) -> int:
 	return repute if side == "merkez" else rebels
 
 
+## What's moved the sides' goodwill lately: [day, side, by, why] newest first (the why is the message
+## said with it, filled in as it's said).
+var standing_log: Array = []
+
+
 func _shift(side: String, by: int) -> void:
+	if by != 0:
+		standing_log.push_front([day, side, by, ""])
+		if standing_log.size() > 12:
+			standing_log.resize(12)
+		if not message.is_connected(_why_of_shift):
+			message.connect(_why_of_shift)
 	if side == "merkez":
 		repute += by
 	else:
 		rebels += by
 	repute = clampi(repute, -100, 400)
 	rebels = clampi(rebels, -100, 100)
+
+
+func _why_of_shift(text: String, _kind: String) -> void:
+	for e: Array in standing_log:
+		if str(e[3]) == "" and int(e[0]) == day:
+			e[3] = text.get_slice(" (", 0).get_slice(". (", 0)
 
 
 func standing_text() -> String:
@@ -680,6 +697,7 @@ func send_armoured(side: String) -> void:
 	add_child(armoured)
 	armoured.arrived.connect(_armoured_in.bind(st, side))
 	var hostile := standing(side) <= HOSTILE
+	Ambience.alarm()
 	message.emit("Zırhlı tren geliyor: %s bayrağı taşıyor%s" % [SIDES[side], ", silahlar kasabaya dönük!" if hostile else "."], "bad" if hostile else "info")
 	if hostile and not (call("bells") as Array).is_empty():
 		call("ring_bells", 8, 0.8)
@@ -941,6 +959,7 @@ func send_convoy(side: String, with_tank: bool) -> void:
 		convoy.lay(from, to)
 		convoy.gone.connect(func() -> void: convoy = null)
 		var hostile := standing(side) <= HOSTILE
+		Ambience.alarm()
 		message.emit("%s yönünden motor sesleri: %s %s geliyor%s" % [Raids._compass(dir), SIDES[side], "kamyonları ve bir tank" if with_tank else "kamyonları", ", silahlar kasabaya dönük!" if hostile else "."], "bad" if hostile else "info")
 		var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
 		for v in villagers:

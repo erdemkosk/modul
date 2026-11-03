@@ -172,6 +172,20 @@ func _life(dt: float) -> void:
 	_blaze.volume_db = move_toward(_blaze.volume_db, 2.0 if blaze else -80.0, 8.0)
 
 
+## Something to look up for (a band coming, a convoy, an armoured train, a camp found): two quick
+## strokes of the bell, heard wherever the view is.
+static var _alarm_ms := 0
+
+
+static func alarm() -> void:
+	if _me == null or not is_instance_valid(_me) or Time.get_ticks_msec() - _alarm_ms < 4000:
+		return
+	_alarm_ms = Time.get_ticks_msec()
+	var at: Vector3 = _me.cam.global_position + Vector3.DOWN * 2.0
+	bell(at)
+	_me.get_tree().create_timer(0.45, true).timeout.connect(func() -> void: bell(at))
+
+
 ## A train standing at the platform letting off steam.
 static func hiss(at: Vector3) -> void:
 	play("life/steam_hiss", at, -2.0, 1.0, 300.0)

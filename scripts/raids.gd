@@ -214,6 +214,7 @@ func make_camp(at: Vector3, n: int, known := false) -> void:
 
 func _camp_found(how: String) -> void:
 	camp_known = true
+	Ambience.alarm()
 	var store := _main_store()
 	var dir := _compass(camp_at - store.global_position) if store else ""
 	message.emit("%sFirari kampı bulundu: %s yönünde, %d kişi. Milisi topla (TOPLA), seç ve kampa sağ tıkla." % [how, dir, camp_men.size()], "bad")
@@ -384,6 +385,7 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 		r.died.connect(_on_raider_down)
 		raiders.append(r)
 	_lamp_said = false
+	Ambience.alarm()
 	_to_arms()
 	if not _towers().is_empty():
 		message.emit("Gözcü ormanda ses duydu: %s yönünden %d kişi geliyor!" % [_compass(_origin - store.global_position), n], "bad")

@@ -26,6 +26,7 @@ var _sounder: AudioStreamPlayer
 var _status: Label
 var _train_btn: Button
 var _announce: Button
+var _sides: Label ## what moved the sides' goodwill lately
 var _help_btns := {} ## side -> its YARDIM İSTE button
 var _sell_btns := {}
 
@@ -78,6 +79,10 @@ func _ready() -> void:
 			send("ACIL YARDIM STOP KASABA TEHLIKEDE STOP ASKER GONDERIN STOP", "ALINDI STOP BIRLIK TOPLANIYOR STOP IKI SAATE YOLDA STOP")
 			refresh())
 		_help_btns[sd].tooltip_text = "Asker gönderirler (yaklaşık %d saat sonra yola çıkarlar); kasabanın yanında çatışmaya girerler. Bedeli: o tarafın gözünde -%d itibar." % [int(Village.HELP_HOURS), Village.HELP_COST]
+	Ui.label(right, "TARAFLAR · SON DEĞİŞİKLİKLER", 13, Ui.ACCENT, "head")
+	_sides = Ui.label(right, "", 12, Ui.DIM)
+	_sides.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sides.custom_minimum_size = Vector2(380, 0)
 	Ui.label(right, "ANA KARA", 13, Ui.ACCENT, "head")
 	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver", func() -> void:
 		var why: String = game.village.announce()
@@ -197,6 +202,10 @@ func refresh() -> void:
 	_status.text = "%s\nKasa %d mirka · %s%s" % [line, v.rubles, v.standing_text(),
 		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
 	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1 or v.line_shut()
+	var rows: Array[String] = [v.standing_text()]
+	for e: Array in v.standing_log.slice(0, 6):
+		rows.append("Gün %d · %s %+d%s" % [int(e[0]), Village.SIDES[e[1]], int(e[2]), (" · " + str(e[3])) if str(e[3]) != "" else ""])
+	_sides.text = "\n".join(rows)
 	for side: String in _help_btns:
 		var why: String = v.help_why_not(side)
 		(_help_btns[side] as Button).disabled = why != ""

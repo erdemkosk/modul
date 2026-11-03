@@ -26,16 +26,20 @@ const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
 ## is a button on its card, and the build bar, the speed and the menu have their own.
 const KEYS := [
-	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön"],
-	["Bina", "Tab: bina grubu · 1-6: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç · tahta yol: sürükle"],
-	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
+	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön · küçük haritaya tıkla: oraya git"],
+	["Bina", "Tab: bina grubu · 1-6: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç · tahta yol, sur: nokta nokta"],
+	["Emirler", "KES: ağaçları işaretle · TUZAK, MAYIN: alan sürükle (yeşil: konur, kırmızı: konmaz) · HENDEK: çizgi sürükle, boştakiler kazar"],
+	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · V: bütün milisi seç · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
+	["Kontrol", "R (kasabalı seçiliyken): emrine al / bırak · sağ tık: git · düşmana sağ tık: saldır · silahlığa: silah al · eve: saklan · kartta SİLAH AL, SİPER, SAKLAN, YARALI TAŞI"],
+	["Çatışma", "Çatışma başlayınca hız 1x'e iner, milis emrine geçer · seç, sağ tıkla mevzi göster · kartta siper ve iki tarafın isabet yüzdesi · altta birlik şeridi"],
+	["Siper", "Kütük duvar ×0.22 · kum torbası ×0.28 · hendek ×0.35 · kaya ×0.4 · kazık sur ×0.4 · ağaç ×0.6 · duvar dibi / köşe ×0.65 · yukarıdan atış daha isabetli"],
 	["Kart", "Seçtiğin şeyin yapabileceği her şey kartında düğme: onar, yık, işçi ekle, milis yap, topla, fener, tüfekçi / okçu yetiştir..."],
-	["Kasabalılar", "K ya da üstteki KASABALILAR: herkesin becerileri; bir beceriye tıkla: o işe önce verilsin (▲), normal, hiç verilmesin (–)"],
-	["Araştırma", "T ya da üstteki ARAŞTIRMA: araştırma ağacı; bir konu seç, okuma odasındakiler onu araştırır"],
-	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · hayduda sağ tık: ona ateş"],
-	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · F5: kaydet · F9: yükle · Esc: menü"],
-	["Görüntü", "P: fotoğraf modu (ekran gizlenir, uzak bulanıklaşır; tekrar P ile çık)"],
-	["Deneme", "F: seçili binayı tutuştur · B: firari baskını · N: inşaatları bitir"],
+	["Paneller", "K: kasabalılar ve iş öncelikleri · T: araştırma ağacı · J: günlük (olanların hepsi) · istasyonun kartından TELGRAF: tren, satış, yardım isteme"],
+	["Taraflar", "Merkez ve Özgür Kordal: -30 ve altı düşman (sormadan saldırır), +30 ve üstü dost (hediye, telgrafla yardım) · telgrafhanede son değişiklikler"],
+	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · düşmana sağ tık: ona ateş"],
+	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · karar kartı açıkken oyun durur · F5: kaydet · F9: yükle · Esc: menü"],
+	["Görüntü", "P: fotoğraf modu · tekrar P: eski 1918 fotoğrafı (sepya) · tekrar P: çık"],
+	["Deneme", "Sağ alttaki DENEME: mevsim, gece, baskın, konvoy, zırhlı tren, kamp, yardım... · F: tutuştur · B: baskın · N: inşaatları bitir"],
 ]
 
 var game: Node
@@ -76,6 +80,7 @@ var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
 var _store_line: Button ## under the goods: how full the stores are, and what's stopped (a click: show it)
 var _tele_plate: PanelContainer ## the telegraph office
+var _test_panel: Control ## (kept over the minimap when it folds out)
 var _train_stat: Label ## the next train, in the top bar
 var _log_plate: PanelContainer ## the day-book: every message so far, newest first (GÜNLÜK, J)
 var _log_list: VBoxContainer
@@ -121,6 +126,23 @@ func _ready() -> void:
 	_strip.offset_left = 12
 	_strip.offset_bottom = -52
 	add_child(_strip)
+	var mini := Minimap.new()
+	mini.game = game
+	mini.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	mini.offset_left = -12 - Minimap.SIZE
+	mini.offset_top = -50 - Minimap.SIZE
+	mini.offset_right = -12
+	mini.offset_bottom = -50
+	add_child(mini)
+	if _test_panel:
+		_test_panel.move_to_front()
+	var squad := SquadBar.new()
+	squad.game = game
+	squad.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	squad.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	squad.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	squad.offset_bottom = -178
+	add_child(squad)
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -226,11 +248,14 @@ func _goods_plate() -> void:
 
 ## The goods column's numbers, and the minute's change (sampled every few seconds of game time).
 func _refresh_goods(v: Village, stock: Dictionary) -> void:
-	if _history.is_empty() or v.clock - float(_history[-1][0]) >= 5.0:
+	# a game day's worth of the stores looked back over: what's come in and gone out, per day
+	var day_s := maxf(game.weather.day_length_minutes * 60.0, 60.0)
+	if _history.is_empty() or v.clock - float(_history[-1][0]) >= day_s / 96.0:
 		_history.append([v.clock, stock.duplicate()])
-		while _history.size() > 1 and v.clock - float(_history[0][0]) > 62.0:
+		while _history.size() > 1 and v.clock - float(_history[0][0]) > day_s:
 			_history.pop_front()
 	var then: Dictionary = _history[0][1]
+	var span := maxf(v.clock - float(_history[0][0]), day_s / 24.0)
 	for id: String in GOODS:
 		var n := int(stock.get(id, 0))
 		if n > 0:
@@ -239,8 +264,8 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 		(parts[0] as Control).visible = _seen.has(id) or id in ["odun", "tas", "yiyecek"]
 		(parts[1] as Label).text = str(n)
 		(parts[1] as Label).add_theme_color_override("font_color", Ui.BAD if id == "yiyecek" and n <= 5 else Ui.INK)
-		var d := n - int(then.get(id, 0))
-		(parts[2] as Label).text = ("+%d" % d) if d > 0 else (str(d) if d < 0 else "")
+		var d := roundi(float(n - int(then.get(id, 0))) / span * day_s)
+		(parts[2] as Label).text = ("+%d/gün" % d) if d > 0 else (("%d/gün" % d) if d < 0 else "")
 		(parts[2] as Label).add_theme_color_override("font_color", Ui.GOOD if d > 0 else Ui.BAD)
 	_goods_head.add_theme_color_override("font_color", Ui.BAD if int(stock.get("yiyecek", 0)) <= 5 else Ui.INK) # (short of food: it says so, folded or not)
 	# how full the stores are, and a warning when work's stopped for want of room or carters
@@ -363,6 +388,7 @@ func _test_plate() -> void:
 	p.offset_right = -12
 	p.offset_bottom = -46
 	add_child(p)
+	_test_panel = p
 	_fold(head, p)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 4)
