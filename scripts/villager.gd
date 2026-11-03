@@ -226,7 +226,7 @@ var mood: float:
 			m += float(t.value)
 		return clampf(m, 0.0, 100.0)
 
-const BUILD_PACE := 1.25
+const BUILD_PACE := 1.5625
 const BREAK := 15.0 ## spirits this low: it can't go on ## building, mending, a house made better: a quarter quicker than other work
 const TRAIT_CLASH := [["caliskan", "tembel"], ["obur", "kanaatkar"], ["gozukara", "korkak"], ["obur", "tembel"]]
 var family := "" ## the surname's stem ("Ivanov"): a family shares a house
