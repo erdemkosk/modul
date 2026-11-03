@@ -1085,6 +1085,9 @@ func show_trouble() -> void:
 		list = village.stores()
 		list.sort_custom(func(a: Building, b: Building) -> bool: return a.goods_total() > b.goods_total())
 		why = "depolar dolu: yeni depo kur"
+	if list.is_empty() and village.line_shut() and village.depot() != null:
+		list = [village.depot()]
+		why = "hat karla kapalı: bir atölyede HAT KÜRE seçin"
 	if list.is_empty():
 		return
 	_trouble_i = (_trouble_i + 1) % list.size()

@@ -243,6 +243,9 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 	elif not v.unmanned().is_empty():
 		line += "   ·   %d işyerinde çalışan yok: boşta kasabalı kalmadı" % v.unmanned().size()
 		bad = true
+	elif v.line_shut() and v.depot() != null:
+		line += "   ·   HAT KARLA KAPALI: bir atölyede HAT KÜRE seçin"
+		bad = true
 	elif fill.y > 0 and fill.x >= fill.y * 0.85:
 		line += "   ·   depolar dolmak üzere"
 	_store_line.text = line + ("   ▸ GÖSTER" if bad else "")
@@ -1493,7 +1496,7 @@ func _fill_extra(b: Building) -> void:
 	if kind == "":
 		_extra_sig = ""
 		return
-	var sig := "%s|%s|%s|%s|%s|%d" % [b.get_instance_id(), v.known, v.studying, v.announced, v.selling, v.rubles]
+	var sig := "%s|%s|%s|%s|%s|%d|%d" % [b.get_instance_id(), v.known, v.studying, v.announced, v.selling, v.rubles, roundi(v.drift * 50.0)]
 	if sig != _extra_sig:
 		_extra_sig = sig
 		for ch in _card_extra.get_children():
@@ -1548,6 +1551,8 @@ func _fill_extra(b: Building) -> void:
 				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
 			_extra_status.text = "%s%s\nKasa %d mirka  ·  İtibar %d: her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
 				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.repute, v.settlers_due()]
+			if v.line_state() != "":
+				_extra_status.text = v.line_state() + "\n" + _extra_status.text
 	else:
 		if v.studying == "":
 			_extra_status.text = "Bir konu seç: okuyanlar onu araştırır." if v.known.size() < BuildingDefs.TECHS.size() else "Her şey araştırıldı."

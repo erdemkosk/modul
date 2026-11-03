@@ -81,6 +81,7 @@ const TECHS := {
 	"telgraf": {"name": "Telgraf", "pts": 40.0, "desc": "İstasyona telgraf teli: köyün kuruluşu ana karaya bildirilir, göçmenler trenle gelir; trene mal satılır, tren çağrılır."},
 	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Atölye demir ve kömür damarlarından da çıkarabilir (kartında ÜRET: DEMİR, KÖMÜR)."},
 	"dekovil": {"name": "Dekovil", "pts": 70.0, "after": "telgraf", "desc": "Dar hatlı yan hat: atölyelere ve depolara ray döşenir (demir ve odun ister). Tren yükünü oradan doğrudan alır, perona taşımak gerekmez."},
+	"kar_sabani": {"name": "Kar Sabanı", "pts": 50.0, "after": "telgraf", "desc": "Lokomotiflere kar sabanı: hatta kar daha yavaş birikir, her tren çoğunu temizler; hat ancak çok derin karda kapanır."},
 	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: demir ve kömürden tüfek ve fişek döver."},
 }
 
@@ -133,6 +134,7 @@ const WORKSHOP := {
 	"yiyecek": {"kind": "toplayici", "name": "YEMİŞ", "word": "yemiş"},
 	"demir": {"kind": "tasci", "mode": "demir", "name": "DEMİR", "word": "demir", "needs": "madencilik"},
 	"komur": {"kind": "tasci", "mode": "komur", "name": "KÖMÜR", "word": "kömür", "needs": "madencilik"},
+	"kar": {"kind": "oduncu", "mode": "kar", "name": "HAT KÜRE", "word": "hat küreme"},
 }
 
 

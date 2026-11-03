@@ -104,6 +104,10 @@ var repute := 0 ## how well the town's thought of up the line (more settlers on 
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
+var drift := 0.0 ## snow lying on the line (0 clear .. 1 buried): past drift_shut() no train gets through
+var _drift_mm: MultiMeshInstance3D
+var _drift_shown := -1.0
+var _shut_said := false
 var known: Array[String] = [] ## what's been found out in a reading room (BuildingDefs.TECHS)
 var studying := "" ## what the reading rooms are on just now ("" nothing chosen)
 var study_pts := 0.0 ## how far into it
@@ -303,6 +307,8 @@ func call_train() -> String:
 		return "Önce telgraf araştırılmalı"
 	if is_instance_valid(train) or express:
 		return "Tren zaten yolda"
+	if line_shut():
+		return "Hat karla kapalı: önce küreyin (Atölye: HAT KÜRE)"
 	if next_train - day <= 1:
 		return "Tren zaten yarın geliyor"
 	if rubles < CALL_PRICE:
@@ -317,7 +323,11 @@ func call_train() -> String:
 func _train_morning() -> void:
 	if not knows("telgraf") or depot() == null or rail.size() < 2 or is_instance_valid(train) or day < next_train:
 		return
-	if not express and randf() < 0.25:
+	if line_shut():
+		next_train = day + 1
+		message.emit("Hat karla kapalı: tren gelemedi. Atölyeden HAT KÜRE seçip rayları açtırın.", "bad")
+		return
+	if not express and randf() < 0.25 + drift * 0.5: # (snow on the line: later still)
 		var late := 1 + randi() % 2
 		next_train = day + late
 		message.emit("Tren gecikti: %d gün daha bekleniyor." % late, "info")
@@ -334,8 +344,102 @@ func _train_morning() -> void:
 	message.emit("Tren düdüğü: tren istasyona geliyor.", "info")
 
 
+## The snow on the line. It drifts in as it falls (and a little in any winter wind), melts off in the
+## thaw; the shovels (a workshop set to HAT KÜRE) and the engines' ploughs clear it. Past drift_shut()
+## the line's shut: no train gets up it, none can be wired for.
+const DRIFT_PER_DAY := 0.6 ## in a day of full snow
+const DRIFT_WIND := 0.15 ## a winter's day without snow
+const MELT_PER_DAY := 0.8
+
+
+func drift_shut() -> float:
+	return 0.9 if knows("kar_sabani") else 0.6
+
+
+func line_shut() -> bool:
+	return drift >= drift_shut()
+
+
+## The line's state in a word or two, for the cards ("" when it's clear).
+func line_state() -> String:
+	if line_shut():
+		return "HAT KARLA KAPALI (%%%d kar): HAT KÜRE ile açtırın" % roundi(drift * 100.0)
+	if drift > 0.15:
+		return "Hatta kar var (%%%d, %%%d olunca kapanır): tren gecikebilir" % [roundi(drift * 100.0), roundi(drift_shut() * 100.0)]
+	return ""
+
+
+func _drift_tick(dt: float) -> void:
+	if rail.size() < 2 or seasons == null:
+		return
+	var per_day := maxf(weather.day_length_minutes * 60.0, 60.0)
+	var grow := weather.snow_intensity * DRIFT_PER_DAY + (DRIFT_WIND if seasons.winter() else 0.0)
+	if knows("kar_sabani"):
+		grow *= 0.7
+	var melt := MELT_PER_DAY * clampf(weather.temperature / 6.0, 0.0, 1.0) if not seasons.winter() else 0.0
+	var was := line_shut()
+	drift = clampf(drift + (grow - melt) * dt / per_day, 0.0, 1.0)
+	if line_shut() and not was and not _shut_said:
+		_shut_said = true
+		message.emit("Kar hattı kapattı: tren gelemez. Bir atölyede HAT KÜRE seçin.", "bad")
+	elif was and not line_shut():
+		_shut_said = false
+		message.emit("Hat açıldı: tren yeniden gelebilir.", "good")
+	if absf(drift - _drift_shown) > 0.02:
+		_drift_show()
+
+
+## Snow banked on the line, along its length: mounds over the sleepers, as deep as the drift.
+func _drift_show() -> void:
+	_drift_shown = drift
+	if _drift_mm == null:
+		if drift < 0.03:
+			return
+		var mesh := SphereMesh.new()
+		mesh.radius = 1.0
+		mesh.height = 1.0
+		mesh.radial_segments = 8
+		mesh.rings = 4
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.93, 0.95, 0.98)
+		mat.roughness = 0.9
+		mesh.material = mat
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		var spots: Array[Transform3D] = []
+		for k in range(4, rail.size() - 4, 5):
+			var c := rail[k]
+			if c.y - nav.height(c.x, c.z) > 0.3:
+				continue # (up on a bridge: the wind takes it)
+			var dir := rail[k + 2] - rail[k - 2]
+			dir.y = 0.0
+			var yaw := atan2(dir.x, dir.z) + randf_range(-0.2, 0.2)
+			var off := dir.normalized().cross(Vector3.UP) * randf_range(-0.6, 0.6)
+			spots.append(Transform3D(Basis(Vector3.UP, yaw), Vector3(c.x, nav.height(c.x, c.z) + 0.05, c.z) + off))
+		mm.instance_count = spots.size()
+		for i in spots.size():
+			mm.set_instance_transform(i, spots[i])
+		_drift_mm = MultiMeshInstance3D.new()
+		_drift_mm.multimesh = mm
+		_drift_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_drift_mm.set_meta("spots", spots)
+		add_child(_drift_mm)
+	_drift_mm.visible = drift > 0.03
+	if not _drift_mm.visible:
+		return
+	var spots: Array = _drift_mm.get_meta("spots")
+	var mm := _drift_mm.multimesh
+	var h := 0.1 + drift * 0.75
+	for i in spots.size():
+		var t: Transform3D = spots[i]
+		var j := sin(i * 1.7) * 0.25 + 1.0
+		mm.set_instance_transform(i, Transform3D(t.basis * Basis.from_scale(Vector3(2.1 * j, h * j, 1.6)), t.origin))
+
+
 ## In at the station: the settlers step down, and it stands a while before it goes on.
 func _train_in(st: Building) -> void:
+	drift *= 0.2 if knows("kar_sabani") else 0.6 # (the engine's plough throws some of it off)
 	_settlers_off(st)
 	next_train = day + 3 + randi() % 4
 	# It stands a while: what's to be sold is carried to the platform meanwhile, and goes on as it leaves.

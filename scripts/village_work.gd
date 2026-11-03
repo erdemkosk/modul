@@ -507,6 +507,9 @@ func _plan_work(v: Villager) -> void:
 	if b.def.role == "healer":
 		_plan_healer(v, b)
 		return
+	if b.kind == "oduncu" and b.mode == "kar":
+		_plan_shovel(v, b)
+		return
 	var res := b.mode if b.kind == "tasci" and b.mode in ["demir", "komur"] else str(b.def.res)
 	if stores().is_empty():
 		b.idle_note = "Depo yok"
@@ -1296,6 +1299,39 @@ func _grow_saplings(dt: float) -> void:
 			s.visible = false
 			s.scale = Vector3.ONE
 			s.remove_meta("rotting"))
+
+
+## A shoveller's next stint: out to the line, the nearest stretch to the workshop give or take, a
+## while at the snow, the drift that much less.
+const SHOVEL := 0.006 ## of the drift, a stint
+
+
+func _plan_shovel(v: Villager, b: Building) -> void:
+	if rail.size() < 8 or drift < 0.02:
+		b.idle_note = "Hat temiz: küreyecek kar yok" if rail.size() >= 8 else "Hat yok"
+		_plan_idle(v)
+		return
+	b.idle_note = ""
+	var near := 0
+	var bd := INF
+	for k in range(0, rail.size(), 6):
+		var d := rail[k].distance_squared_to(b.global_position)
+		if d < bd:
+			bd = d
+			near = k
+	var k := clampi(near + randi_range(-60, 60), 3, rail.size() - 4)
+	var dir := rail[k + 2] - rail[k - 2]
+	dir.y = 0.0
+	var side := dir.normalized().cross(Vector3.UP) * (2.2 if randf() < 0.5 else -2.2)
+	var at := rail[k]
+	at.y = nav.height(at.x, at.z)
+	v.give([
+		{"t": "go", "to": at + side},
+		{"t": "work", "time": 6.0, "anim": "dig", "face": at},
+		{"t": "do", "f": func() -> bool:
+			drift = maxf(drift - SHOVEL * v.knack(""), 0.0)
+			return true},
+	], "%s: hattı küreyor" % b.display_name(), b)
 
 
 ## A forester's next stint: a sapling on the nearest stump in reach without one.

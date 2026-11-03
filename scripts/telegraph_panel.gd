@@ -177,9 +177,11 @@ func refresh() -> void:
 	var line := "Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Sonraki tren ~%d gün sonra (gecikebilir)" % due)
 	if v.express:
 		line = "Tren çağrıldı: yarın gelir"
+	if v.line_state() != "":
+		line = v.line_state() + "\n" + line
 	_status.text = "%s\nKasa %d mirka · İtibar %d%s" % [line, v.rubles, v.repute,
 		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
-	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1
+	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1 or v.line_shut()
 	_announce.disabled = v.announced
 	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver"
 	for r: String in _sell_btns:

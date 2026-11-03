@@ -27,6 +27,7 @@ extends "res://scripts/village_work.gd"
 
 func _process(dt: float) -> void:
 	clock += dt
+	_drift_tick(dt)
 	if _last_hour >= 0.0 and weather.hour < _last_hour:
 		day += 1
 		message.emit("Gün %d" % day, "info")
