@@ -11,6 +11,8 @@ const TIPS := [
 	"Kasabalıların geçmişi bir beceri getirir: savaş esirleri inşaatı, sürgünler okumayı, makinistler zanaatı bilir.",
 	"Firariler cepheden kaçmış askerlerdir: aç, silahlı, ormanda dolaşırlar. Sur, fener ve çan onları uzak tutar.",
 	"Kışın kar Kordal Hattı'nı kapatır: tren gelmez, göçmen de para da kesilir. Bir atölyede HAT KÜRE seçip rayları açtırın; Kar Sabanı araştırması işi kolaylaştırır.",
+	"Firariler baskından önceki akşam yiyecek istemeye gelir: verirsen o gece gelmezler, bazen biri kasabaya katılır.",
+	"Telgraftan haber gelir: zırhlı tren erzak ister, yaralı vagonu yatak arar, devriye kaçak arar. Verdiğin cevap Merkez'in gözündeki itibarını değiştirir.",
 	"Kışa hazırlık: kış saati yiyecek ve yakacağın kaç gün yeteceğini gösterir. Kırmızıysa acele et.",
 	"Bir evi çamurla sıvamak yakacağı %30, kerpiç soba %40 azaltır.",
 	"Çamur ocağı yalnızca ıslak zemine, kıyıya kurulur. Kartından KERPİÇ YAP ile kerpiç döktürebilirsin.",

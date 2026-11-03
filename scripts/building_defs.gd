@@ -16,10 +16,10 @@ const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına
 	"meydan": "akşam ateşi · çan", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
 	"oduncu": "odun · taş · çamur · yemiş",
 	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
-	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yaraları sarar · ot", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
+	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yara sarar · sargı", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
 	"okuma": "araştırma", "demirci": "tüfek · fişek"}
 
-const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Şifalı ot", "komur": "Kömür", "demir": "Demir"}
+const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Sargı ve ot", "komur": "Kömür", "demir": "Demir"}
 
 ## Open yards: they sit down on the ground as it lies (their ground follows it), not up on a plinth.
 const YARDS := ["oduncu", "tasci", "camur", "toplayici", "meydan"]
@@ -60,9 +60,9 @@ const DEFS := {
 		"desc": "Yangında kasabalılar buradan su taşır. Kuyu yoksa yangın söndürülemez."},
 	"fener": {"name": "Fener", "size": Vector2(1, 1), "cost": {"odun": 3, "tas": 1}, "time": 6.0, "role": "light", "light": 20.0,
 		"desc": "Gece çevresini aydınlatır, çıra yakar (her gece bir odun; kasabalılar akşamüstü getirir). Bekçiler firariyi ve kurdu yalnızca aydınlıkta görür; firariler karanlıktan sızar. Rüzgârda kıvılcım saçabilir."},
-	"sifaci": {"name": "Şifacı kulübesi", "size": Vector2(5, 4), "cost": {"odun": 12, "tas": 2}, "time": 20.0, "role": "healer", "slots": 2,
+	"sifaci": {"name": "Felçer kulübesi", "size": Vector2(5, 4), "cost": {"odun": 12, "tas": 2}, "time": 20.0, "role": "healer", "slots": 2,
 		"res": "ot", "reach": 110.0, "station": Vector3(0, 0, 1.2), "face": Vector3(0, 0, 0.5), "pile": Vector3(2.0, 0, 1.6), "work": "gather",
-		"desc": "Şifacı yaralıların yarasını sarar: kanamayı durdurur, iyileşmeyi hızlandırır, kalıcı iz kalmasını çoğu zaman önler. Her tedavi bir şifalı ot ister. Yaralı yoksa ilkbahar ve yazda ormandan ot toplar; kışın ot yetişmez, önceden biriktir."},
+		"desc": "Felçer, köyün doktor yardımcısı: yaralıların yarasını sarar, kanamayı durdurur, iyileşmeyi hızlandırır, kalıcı iz kalmasını çoğu zaman önler. Her tedavi bir sargı ya da şifalı ot ister. Yaralı yoksa ilkbahar ve yazda ormandan ot toplar; kışın ot yetişmez. Her tren de felçere birkaç sargı bezi ve ilaç bırakır."},
 	"hapishane": {"name": "Hapishane", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 8}, "time": 26.0, "role": "jail", "cells": 3,
 		"desc": "Kalın kütüklü, demir parmaklıklı küçük bir hücre: üç esir alır. Baskında yaralı düşen firarileri köylüler buraya taşır. Esirleri kazanabilir (köye katılırlar), çalıştırabilir ya da serbest bırakabilirsin. Esirler de yer; köy aç kalırsa kaçmaya çalışırlar."},
 	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 2,

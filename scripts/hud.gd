@@ -44,7 +44,7 @@ const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot", "komur", "dem
 const GOOD_TIPS := {"odun": "Kesim kampından: inşaat ve evlerin, fenerlerin yakacağı",
 	"tas": "Taş ocağından: temeller, bacalar, kuyu, meydan", "yiyecek": "Tarladan ve toplayıcıdan: herkes yer, öküzler de",
 	"camur": "Çamur ocağından: evleri sıvamak için", "kerpic": "Çamur ocağında kerpiç yaptırınca: soba için",
-	"ot": "Şifacının ormandan topladığı: her yara sarışta bir tane gider",
+	"ot": "Felçerin ormandan topladığı ot ve trenle gelen sargı bezi: her yara sarışta bir tane gider",
 	"komur": "Atölyede kara kayalardan (kömür damarı) kazılır: demircinin ocağı için", "demir": "Atölyede pas renkli kayalardan (demir damarı) sökülür: demirci tüfek ve fişek döver"}
 var _seen := {} ## goods once had: shown from then on
 var _goods_head: Button
@@ -75,6 +75,7 @@ var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
 var _store_line: Button ## under the goods: how full the stores are, and what's stopped (a click: show it)
 var _tele_plate: PanelContainer ## the telegraph office
+var _asks: VBoxContainer ## the questions put to the player (ask), top middle
 var _tele: TelegraphPanel
 var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
@@ -133,6 +134,12 @@ func _ready() -> void:
 	_make_people()
 	_make_tech()
 	_make_telegraph()
+	_asks = VBoxContainer.new()
+	_asks.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_asks.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_asks.offset_top = 150
+	_asks.add_theme_constant_override("separation", 10)
+	add_child(_asks)
 	_test_plate()
 	_make_help()
 	_make_pause()
@@ -799,6 +806,38 @@ func _make_tech() -> void:
 	pad.add_child(_tech_tree)
 
 
+## A question put to the player, a telegram slip at the top middle: a heading, what's happened, and
+## a button for each answer ({label, f, ok (false: shown but not to be pressed), tip}). Any answer
+## takes it away; so does closing it from outside (the returned card, queue_free).
+func ask(title: String, body: String, options: Array) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", Ui.glass(false, 16.0, Ui.GLASS, Ui.ACCENT))
+	p.custom_minimum_size = Vector2(520, 0)
+	_asks.add_child(p)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	p.add_child(col)
+	Ui.label(col, title, 22, Ui.ACCENT, "display")
+	Ui.rule(col)
+	var t := Ui.label(col, body, 16, Ui.INK)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size = Vector2(488, 0)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	col.add_child(row)
+	for o: Dictionary in options:
+		var f: Callable = o.f
+		var b := _small_button(str(o.label), func() -> void:
+			if is_instance_valid(p):
+				p.queue_free()
+			f.call())
+		b.disabled = not bool(o.get("ok", true))
+		b.tooltip_text = str(o.get("tip", ""))
+		row.add_child(b)
+	return p
+
+
 ## The telegraph office, over the middle of the screen.
 func _make_telegraph() -> void:
 	_tele_plate = _plate(false)
@@ -1430,7 +1469,7 @@ func _fill_folk_box(v: Villager) -> void:
 	if v.down:
 		state = "YARALI, YERDE"
 	elif v.bleeding:
-		state = "KANIYOR: şifacı gerek"
+		state = "KANIYOR: felçer gerek"
 	elif v.recovering:
 		state = "yatakta, iyileşiyor"
 	elif v.sleeping:

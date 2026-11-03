@@ -104,6 +104,9 @@ var repute := 0 ## how well the town's thought of up the line (more settlers on 
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
+var hud: Node ## (for the telegraph's news that wants an answer: ask)
+var _news_card: Control
+var _news_last := 0 ## the day the last news came over the wire
 var drift := 0.0 ## snow lying on the line (0 clear .. 1 buried): past drift_shut() no train gets through
 var _drift_mm: MultiMeshInstance3D
 var _drift_shown := -1.0
@@ -441,6 +444,7 @@ func _drift_show() -> void:
 func _train_in(st: Building) -> void:
 	drift *= 0.2 if knows("kar_sabani") else 0.6 # (the engine's plough throws some of it off)
 	_settlers_off(st)
+	_mail(st)
 	next_train = day + 3 + randi() % 4
 	# It stands a while: what's to be sold is carried to the platform meanwhile, and goes on as it leaves.
 	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * LOAD_HOURS / 24.0
@@ -454,6 +458,156 @@ func _train_in(st: Building) -> void:
 			_sell(st)
 		if is_instance_valid(tr):
 			tr.leave())
+
+
+## What the train brings besides people: the post bag, a letter or two for those whose folk know
+## where they've gone (news good and bad, a mood for days), and a crate of bandages for the
+## feldsher, if there's one.
+const LETTERS_GOOD := [
+	["Annesinden mektup: köyde herkes sağ salim", 8.0],
+	["Kardeşi esirlikten kurtulmuş, yazıyor", 10.0],
+	["Eski bir dosttan mektup ve biraz tütün", 5.0],
+	["Nişanlısından mektup: bekliyormuş", 9.0],
+	["Ailesinden haber: tarlayı ekebilmişler", 6.0],
+]
+const LETTERS_BAD := [
+	["Mektup geldi: babası salgında ölmüş", -10.0],
+	["Köyünün yakıldığını gazeteden okudu", -8.0],
+	["Kardeşinden aylardır haber yok, mektuplar geri dönmüş", -6.0],
+	["Cepheden kara haber: bir arkadaşı düşmüş", -7.0],
+]
+const PAPER := [
+	"Gazete geldi: başkentte yeni hükümet, cephede ateşkes söylentisi.",
+	"Gazete geldi: Kordal Hattı'na yeni köprü yapılacakmış.",
+	"Gazete geldi: güneyde kıtlık, tahıl fiyatları yükseliyor.",
+	"Gazete geldi: firari askerler için af çıkabilirmiş.",
+	"Gazete geldi: Zarovya'nın doğusuna daha çok göçmen yollanacak.",
+	"Gazete geldi: savaş esirleri yurtlarına dönmeye başladı.",
+]
+
+
+func _mail(st: Building) -> void:
+	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * 2.0
+	var folk: Array[Villager] = []
+	for p in villagers:
+		if not p.dead and not p.leaving and not p.is_child:
+			folk.append(p)
+	folk.shuffle()
+	var got: Array[String] = []
+	for p in folk.slice(0, mini(folk.size(), randi_range(1, 2))):
+		var good := randf() < 0.65
+		var pick: Array = LETTERS_GOOD.pick_random() if good else LETTERS_BAD.pick_random()
+		p.think("letter", str(pick[0]), float(pick[1]), secs)
+		got.append("%s (%s)" % [p.display_name, "iyi haber" if good else "kötü haber"])
+	if not got.is_empty():
+		message.emit("Postayla mektup geldi: %s." % ", ".join(got), "info")
+	if randf() < 0.6:
+		message.emit(PAPER.pick_random(), "info")
+	for b in buildings:
+		if b.def.role == "healer" and b.state == "done":
+			add_anywhere("ot", 4, st.global_position)
+			message.emit("Trenle felçere bir sandık sargı bezi ve ilaç geldi (4).", "good")
+			break
+
+
+## News over the wire of a morning, now and then (not more than one every few days), some of it
+## wanting an answer: an armoured train coming through that wants feeding, a wagon of the wounded
+## from the front looking for beds, a patrol up the line after deserters, a crate sent by the
+## Centre. What's answered moves the town's name up the line (repute) one way or the other.
+func _news_morning(force := "") -> void:
+	if hud == null or not knows("telgraf") or depot() == null:
+		return
+	if force == "" and (day - _news_last < 3 or randf() > 0.4):
+		return
+	if is_instance_valid(_news_card):
+		return
+	_news_last = day
+	var deserters: Array[Villager] = []
+	for p in villagers:
+		if not p.dead and not p.leaving and p.origin == "asker":
+			deserters.append(p)
+	var picks := ["zirhli", "yarali", "yardim"]
+	if not deserters.is_empty():
+		picks.append("devriye")
+	match force if force != "" else picks.pick_random():
+		"zirhli":
+			var food := 10 + villagers.size()
+			var wood := 15
+			var ok := int(stock.get("yiyecek", 0)) >= food and int(stock.get("odun", 0)) >= wood
+			_news_card = hud.ask("TELGRAF · ZIRHLI TREN",
+				"\"ZIRHLI TREN YARIN HATTAN GECIYOR STOP ASKERE %d YIYECEK %d ODUN HAZIRLAYIN STOP\"\nVerirseniz Merkez'in gözünde itibarınız artar. Vermezseniz hat bir süre size kapalı tutulur." % [food, wood],
+				[{"label": "HAZIRLA", "ok": ok, "tip": "%d yiyecek, %d odun gider" % [food, wood], "f": func() -> void:
+					if pay({"yiyecek": food, "odun": wood}, depot().global_position):
+						repute += 15
+						rubles += 10
+						message.emit("Zırhlı tren erzakı aldı, komutan teşekkür etti: itibar arttı, kasaya 10 %s girdi." % COIN, "good")},
+				{"label": "REDDET", "f": func() -> void:
+					repute = maxi(repute - 20, 0)
+					next_train = maxi(next_train, day + 3)
+					message.emit("Erzak verilmedi: Merkez kızgın, tren birkaç gün uğramayacak.", "bad")}])
+		"yarali":
+			var n := randi_range(2, 3)
+			var free := beds() - villagers.filter(func(o: Villager) -> bool: return not o.dead).size()
+			_news_card = hud.ask("TELGRAF · YARALI VAGONU",
+				"\"CEPHEDEN YARALI VAGONU STOP %d ASKER YATAK ARIYOR STOP KABUL EDER MISINIZ STOP\"\nBakılırlarsa iyileşip kasabada kalırlar. Boş yatak: %d." % [n, free],
+				[{"label": "KABUL ET", "ok": free >= n, "tip": "%d yatak gerek" % n, "f": func() -> void:
+					var st := depot()
+					for k in n:
+						var at := st.door() + Vector3(randf_range(-3, 3), 0, randf_range(1, 4))
+						at.y = ground_at(at)
+						var v := spawn_villager(at, false, "", 0)
+						v.origin = "asker"
+						v.hp = v.max_hp * 0.4
+						v.call("_wound", 15.0, null)
+						v.think("hurt", "Cepheden yaralı geldi", -6.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+						v.give([{"t": "go", "to": at + Vector3(1, 0, 2)}], "Yaralı, istasyonda bekliyor")
+					_house_people()
+					repute += 10
+					message.emit("%d yaralı asker istasyonda indirildi: felçer baksın." % n, "good")},
+				{"label": "YER YOK", "f": func() -> void:
+					message.emit("Yaralı vagonu bir sonraki kasabaya gitti.", "info")}])
+		"devriye":
+			var who: Villager = deserters.pick_random()
+			_news_card = hud.ask("TELGRAF · DEVRİYE",
+				"\"ASKER KACAKLARINI ARAYAN DEVRIYE YOLDA STOP\"\nKasabada cepheden gelenler var. %s korkuyla telgrafhanenin önünde bekliyor. Onu saklarsanız devriye bulabilir; teslim ederseniz Merkez memnun olur, kasaba üzülür." % who.display_name,
+				[{"label": "SAKLA", "f": func() -> void:
+					if randf() < 0.3 and is_instance_valid(who) and not who.dead:
+						repute = maxi(repute - 15, 0)
+						_taken_away(who, "Devriye %s'i buldu ve götürdü" % who.display_name)
+					else:
+						message.emit("Devriye kasabayı aradı, kimseyi bulamadan gitti.", "good")
+						if is_instance_valid(who):
+							who.think("saved", "Kasaba onu sakladı", 10.0, maxf(weather.day_length_minutes * 60.0, 60.0) * 2.0)},
+				{"label": "TESLİM ET", "f": func() -> void:
+					repute += 20
+					if is_instance_valid(who) and not who.dead:
+						_taken_away(who, "%s devriyeye teslim edildi" % who.display_name)
+						for o in villagers:
+							if o != who and not o.dead:
+								o.think("betrayed", "Biri devriyeye teslim edildi", -6.0, maxf(weather.day_length_minutes * 60.0, 60.0))}])
+		"yardim":
+			add_anywhere("yiyecek", 20, depot().global_position)
+			_news_card = hud.ask("TELGRAF · MERKEZ",
+				"\"MERKEZDEN KORDAL KOYLERINE ERZAK STOP SIZE 20 YIYECEK BIRAKILDI STOP\"\nİstasyona bir çuval un ve kuru balık bırakıldı.",
+				[{"label": "TAMAM", "f": func() -> void: pass}])
+
+
+## Led off to the station by those who came for them, and gone.
+func _taken_away(v: Villager, why: String) -> void:
+	v.abort()
+	v.leaving = true
+	if is_instance_valid(v.workplace):
+		v.workplace.workers.erase(v)
+	v.workplace = null
+	message.emit(why + ".", "bad")
+	var to := depot().door() if depot() else v.position
+	v.give([{"t": "go", "to": to}, {"t": "do", "f": func() -> bool:
+		villagers.erase(v)
+		if is_instance_valid(v.home):
+			v.home.residents.erase(v)
+		v.home = null
+		v.queue_free()
+		return true}], "Götürülüyor")
 
 
 ## Where the train loads from: the station, and whatever's on a side line.

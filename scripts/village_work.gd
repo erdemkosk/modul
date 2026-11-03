@@ -759,7 +759,7 @@ func _plan_healer(v: Villager, b: Building) -> void:
 		p.set_meta("healer", v)
 		var at := p.inside.door() if p.sleeping and is_instance_valid(p.inside) else p.position + (v.position - p.position).normalized() * 0.8
 		at.y = nav.height(at.x, at.z)
-		v.give([{"t": "go", "to": store.door(), "job": "%s: ot alıyor" % b.display_name()},
+		v.give([{"t": "go", "to": store.door(), "job": "%s: sargı alıyor" % b.display_name()},
 			{"t": "do", "f": func() -> bool:
 				if not is_instance_valid(store) or store.take_goods("ot", 1) < 1:
 					return false
@@ -778,7 +778,7 @@ func _plan_healer(v: Villager, b: Building) -> void:
 				return true}], "%s: yaralıya bakıyor" % b.display_name(), p)
 		return
 	if patient and not store:
-		b.idle_note = "Yaralı var ama şifalı ot yok"
+		b.idle_note = "Yaralı var ama sargı da ot da yok"
 	if seasons and seasons.winter():
 		if b.idle_note == "":
 			b.idle_note = "Kışın şifalı ot yetişmez"

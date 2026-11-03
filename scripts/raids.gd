@@ -53,6 +53,9 @@ var _shoot_t := {} ## tower -> seconds to its next shot
 var _wolf_night := -1 ## the day whose night the wolves have had
 var loot: Array[Dictionary] = [] ## rifles the outlaws dropped: {at, node, ammo, claimed}
 var _lamp_said := false
+var hud: Node ## (for asking: the band sends one ahead to ask for food first)
+var _asked_for := -1 ## the raid day whose band has asked already
+var _ask_card: Control
 
 
 func _ready() -> void:
@@ -82,7 +85,12 @@ func threat() -> bool:
 
 func _process(dt: float) -> void:
 	var h := weather.hour
+	if not active and village.day == next_day - 1 and h >= 19.0 and _asked_for != next_day:
+		_ask_food()
 	if not active and village.day >= next_day and h >= ARRIVE_HOUR and h < 3.5:
+		if is_instance_valid(_ask_card):
+			_ask_card.queue_free() # (no answer by midnight: taken for a no)
+			message.emit("Cevap gelmedi: firariler karanlıkta kasabaya iniyor.", "bad")
 		start(band_size())
 	if _wolf_night != village.day and (h > 21.5 or h < 3.0) and village.day >= 5:
 		_wolf_night = village.day
@@ -98,6 +106,35 @@ func _process(dt: float) -> void:
 
 
 # --- The band -------------------------------------------------------------------------------------
+
+## The evening before, one of the band comes to the edge of the town, hat in hand and a rifle on his
+## back: they're starving, give them food and they'll go their way. Given, there's no raid this time
+## (and now and then one of them stays, sick of the woods); refused, or no answer by midnight, they
+## come in the dark as ever.
+func _ask_food() -> void:
+	_asked_for = next_day
+	if hud == null or _main_store() == null:
+		return
+	var n := band_size()
+	var want := n * 4
+	var have := int(village.stock.get("yiyecek", 0))
+	var day := next_day
+	_ask_card = hud.ask("FİRARİLER KAPIDA",
+		"Ormandan biri geldi: yırtık bir asker kaputu, sırtında tüfek, elinde şapkası. \"%d kişiyiz, aç kaldık. %d yiyecek verin, yolumuza gidelim. Vermezseniz gece gelip kendimiz alırız.\"" % [n, want],
+		[{"label": "VER (%d yiyecek)" % want, "ok": have >= want, "tip": "Depoda %d yiyecek var" % have, "f": func() -> void:
+			if village.pay({"yiyecek": want}, _main_store().global_position) and next_day == day:
+				next_day = day + every()
+				if randf() < 0.35:
+					var at := _main_store().door() + Vector3(randf_range(-4, 4), 0, randf_range(3, 6))
+					at.y = nav.height(at.x, at.z)
+					var v: Villager = village.spawn_villager(at, false, "", 0)
+					v.origin = "asker"
+					v.give([{"t": "go", "to": at + Vector3(2, 0, 2)}], "Ormandan geldi, kalmak istiyor")
+					message.emit("Firariler yiyeceği alıp gitti; biri kaldı: ormandan bıkmış, kasabaya katılmak istiyor.", "good")
+				else:
+					message.emit("Firariler yiyeceği alıp ormana döndü. Bu gece baskın yok.", "good")},
+		{"label": "REDDET", "f": func() -> void:
+			message.emit("Firari tükürüp ormana döndü. Gece gelecekler: sur, fener ve tüfekler hazır olsun.", "bad")}])
 
 func start(n: int) -> void:
 	var store := _main_store()

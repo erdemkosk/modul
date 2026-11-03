@@ -171,6 +171,8 @@ func _ready() -> void:
 	add_child(hud)
 	village.message.connect(hud.toast)
 	raids.message.connect(hud.toast)
+	raids.hud = hud
+	village.hud = hud
 	seasons.message.connect(hud.toast)
 	if saved.is_empty():
 		hud.toast("Kasaba kuruldu. Önce bir Kesim kampı ve bir Toplayıcı kur (ÜRETİM). F1: tuşlar", "info")

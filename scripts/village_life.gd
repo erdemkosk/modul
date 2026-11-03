@@ -203,6 +203,7 @@ func _morning() -> void:
 	call("_prison_morning") # (village_defense.gd)
 	call("_armoury_morning")
 	_train_morning()
+	_news_morning()
 	for y in yards:
 		if is_instance_valid(y):
 			y.grow()

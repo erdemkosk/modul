@@ -43,11 +43,11 @@ func refresh() -> void:
 	var v: Village = game.village
 	var w: Weather = game.weather
 	var se: Seasons = game.seasons
-	var per_season := float(Seasons.DAYS)
-	var day_in := float((v.day - 1) % Seasons.DAYS) + w.hour / 24.0
-	_year = (float(se.season) * per_season + day_in) / (per_season * 4.0)
+	var per_season := float(Seasons.LENGTHS[3]) # (the winter's length, for "to the winter's end")
+	var day_in := float(se.day_in(v.day)) + w.hour / 24.0
+	_year = (float(Seasons.start_of(maxi(se.season, 0))) + day_in) / float(Seasons.YEAR)
 	_temp = w.temperature
-	_winter_in = 0.0 if se.season == 3 else (float(3 - se.season) * per_season - day_in)
+	_winter_in = 0.0 if se.season == 3 else (float(Seasons.start_of(3) - Seasons.start_of(maxi(se.season, 0))) - day_in)
 	var day_secs := maxf(w.day_length_minutes * 60.0, 1.0)
 	# food: each mouth by its traits, an ox as one
 	var mouths := 0.0
@@ -68,6 +68,8 @@ func refresh() -> void:
 	var wood_rate := burn * share / v.LOG_EVERY * day_secs * (1.5 if se.season == 3 else 1.0)
 	_wood_days = float(int(v.stock.get("odun", 0)) + int(v.stock.get("komur", 0)) * v.COAL_LASTS + held) / wood_rate if wood_rate > 0.0 else 99.0
 	var short := _winter_in + per_season # (to the winter's end)
+	if se.season == 3:
+		short = per_season - day_in
 	_season.text = "%s · %d°%s" % [Ui.upper(str(Seasons.NAMES[se.season])), roundi(_temp),
 		"  ·  kışa %d gün" % ceili(_winter_in) if se.season != 3 and _winter_in < per_season * 2.0 else ""]
 	_food.text = "YİYECEK  %s" % _days(_food_days)
@@ -91,14 +93,14 @@ func _draw() -> void:
 	draw_circle(c, R + 3.0, Color(0.12, 0.09, 0.07))
 	var cold := clampf(1.0 - _winter_in / float(Seasons.DAYS * 2), 0.0, 1.0)
 	draw_arc(c, R + 2.5, 0.0, TAU, 48, Color(0.55, 0.42, 0.28).lerp(SEASON_COLOURS[3], cold), 1.5, true)
-	# the four seasons, a quarter each, from the top going round
+	# the four seasons, each as long as it is, from the top going round
 	for s in 4:
-		var a0 := -PI * 0.5 + s * PI * 0.5 + 0.04
-		var a1 := a0 + PI * 0.5 - 0.08
+		var a0 := -PI * 0.5 + float(Seasons.start_of(s)) / Seasons.YEAR * TAU + 0.04
+		var a1 := a0 + float(Seasons.LENGTHS[s]) / Seasons.YEAR * TAU - 0.08
 		draw_arc(c, R - 4.0, a0, a1, 16, SEASON_COLOURS[s], 6.0, true)
 	# ticks for the days
-	for d in Seasons.DAYS * 4:
-		var a := -PI * 0.5 + d * TAU / (Seasons.DAYS * 4)
+	for d in Seasons.YEAR:
+		var a := -PI * 0.5 + d * TAU / Seasons.YEAR
 		draw_line(c + Vector2(cos(a), sin(a)) * (R - 9.0), c + Vector2(cos(a), sin(a)) * (R - 11.5), Color(Ui.INK, 0.35), 1.0, true)
 	# the hand on today
 	var ah := -PI * 0.5 + _year * TAU
