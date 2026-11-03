@@ -78,6 +78,7 @@ func bury(v: Villager) -> void:
 	if at == Vector3.INF:
 		return
 	village.message.emit("%s mezarlığa gömüldü." % v.display_name, "info")
+	Ambience.funeral(at)
 	if village.raids and village.raids.active:
 		return
 	var n := 0

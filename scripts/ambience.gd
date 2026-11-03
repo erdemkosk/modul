@@ -14,6 +14,15 @@ var weather: Weather
 var cam: RtsCamera
 var seasons: Seasons
 var terrain: WorldTerrain
+var village: Village
+## The town's own sounds round the camera (assets/audio/life, CC0): feet on the snow or the trodden
+## ground as many as are walking close by, the nearest hearth or fire crackling, a burning building's
+## roar, a standing train's steam.
+var _steps: AudioStreamPlayer
+var _hearth: AudioStreamPlayer3D
+var _blaze: AudioStreamPlayer3D
+var _snowy := false
+var _life_t := 0.0
 
 static var _me: Ambience
 
@@ -53,6 +62,9 @@ func _ready() -> void:
 	add_child(_crickets)
 	_crickets.play()
 	_cricket_pb = _crickets.get_stream_playback() as AudioStreamGeneratorPlayback
+	_steps = _bed("res://assets/audio/life/steps_ground_loop.wav")
+	_hearth = _spot("res://assets/audio/life/hearth_loop.wav", 6.0, 30.0)
+	_blaze = _spot("res://assets/audio/life/blaze_loop.wav", 22.0, 160.0)
 	for k in POOL:
 		var a := AudioStreamPlayer3D.new()
 		a.unit_size = 10.0
@@ -74,6 +86,12 @@ static func _looped(path: String) -> AudioStream:
 	var s := load(path)
 	if s is AudioStreamOggVorbis:
 		(s as AudioStreamOggVorbis).loop = true
+	elif s is AudioStreamWAV:
+		var w := (s as AudioStreamWAV).duplicate() as AudioStreamWAV
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_begin = 0
+		w.loop_end = w.data.size() / 2 # (16-bit mono)
+		s = w
 	return s
 
 
@@ -88,6 +106,7 @@ func _process(dt: float) -> void:
 	var warm_night := night and not winter and weather.temperature > 8.0 and weather.rain_intensity < 0.2
 	_fade(_crickets, (1.0 - high * 0.7) if warm_night else 0.0, -14.0, dt)
 	_fill_crickets()
+	_life(dt)
 	_river_t -= dt
 	if _river_t <= 0.0:
 		_river_t = 0.5
@@ -99,6 +118,73 @@ func _process(dt: float) -> void:
 				bd = d
 				best = p
 		_stream.global_position = best
+
+
+func _spot(path: String, unit: float, reach: float) -> AudioStreamPlayer3D:
+	var a := AudioStreamPlayer3D.new()
+	a.stream = _looped(path)
+	a.unit_size = unit
+	a.max_distance = reach
+	a.volume_db = -80.0
+	add_child(a)
+	a.play()
+	return a
+
+
+func _life(dt: float) -> void:
+	if village == null:
+		return
+	var focus := cam.focus
+	var close := cam.dist < 70.0
+	# feet: how many are walking near the middle of the view
+	var walking := 0
+	for v: Villager in village.villagers:
+		if not v.dead and v._speed_now > 0.4 and v.position.distance_to(focus) < 22.0:
+			walking += 1
+	var snowy := Weather.snow_cover_now > 0.35
+	if snowy != _snowy:
+		_snowy = snowy
+		_steps.stream = _looped("res://assets/audio/life/steps_snow_loop.wav" if snowy else "res://assets/audio/life/steps_ground_loop.wav")
+		_steps.play()
+	_fade(_steps, clampf(walking / 4.0, 0.0, 1.0) if close else 0.0, -10.0, dt)
+	_life_t -= dt
+	if _life_t > 0.0:
+		return
+	_life_t = 0.5
+	# the nearest fire on the go (a hearth smoking, a lamp, a camp or square fire), and anything burning
+	var hearth: Building = null
+	var hd := 26.0
+	var blaze: Building = null
+	var bd := 120.0
+	for b: Building in village.buildings:
+		var d := b.global_position.distance_to(focus)
+		if b.is_burning() and d < bd:
+			bd = d
+			blaze = b
+		elif (b.smoking() or (b.def.role == "square" and village.weather.is_night())) and d < hd:
+			hd = d
+			hearth = b
+	if hearth:
+		_hearth.global_position = hearth.global_position + Vector3.UP * 1.0
+	_hearth.volume_db = move_toward(_hearth.volume_db, -6.0 if hearth and close else -80.0, 6.0)
+	if blaze:
+		_blaze.global_position = blaze.global_position + Vector3.UP * 2.0
+	_blaze.volume_db = move_toward(_blaze.volume_db, 2.0 if blaze else -80.0, 8.0)
+
+
+## A train standing at the platform letting off steam.
+static func hiss(at: Vector3) -> void:
+	play("life/steam_hiss", at, -2.0, 1.0, 300.0)
+
+
+## The burial: the bell tolled slow, three times, and the mourners singing low.
+static func funeral(at: Vector3) -> void:
+	if _me == null or not is_instance_valid(_me):
+		return
+	for k in 3:
+		_me.get_tree().create_timer(k * 3.2, false).timeout.connect(func() -> void: bell(at))
+	_me.get_tree().create_timer(2.0, false).timeout.connect(func() -> void:
+		play("life/hymn", at, -4.0, 1.0, 250.0))
 
 
 func _fade(a: AudioStreamPlayer, k: float, top_db: float, dt: float) -> void:

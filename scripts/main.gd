@@ -147,6 +147,7 @@ func _ready() -> void:
 	ambience.cam = cam
 	ambience.seasons = seasons
 	ambience.terrain = terrain
+	ambience.village = village
 	add_child(ambience)
 	critters = Critters.new()
 	critters.village = village

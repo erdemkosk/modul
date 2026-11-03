@@ -304,6 +304,7 @@ func _process(dt: float) -> void:
 				_v = 0.0
 				if not quiet:
 					_whistle.play()
+				Ambience.hiss(_cars[0].global_position + Vector3.UP * 1.0)
 				_block(true)
 				arrived.emit()
 		"standing":

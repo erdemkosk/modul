@@ -198,6 +198,7 @@ const CREDITS := [
 	["SESLER · CC0", [
 		["Buharlı tren düdüğü, tüfek, makineli tüfek, top", "Joseph Sardin · BigSoundBank.com"],
 		["Orman, kuşlar, dere, soğuk rüzgâr", "Joseph Sardin · BigSoundBank.com"],
+		["Karda ve toprakta ayak sesi, ocak çıtırtısı, yangın, tren buharı, cenaze ilahisi", "Joseph Sardin · BigSoundBank.com"],
 		["Balta, kütük, ağaç devrilmesi", "Joseph Sardin · BigSoundBank.com"],
 		["İnşaat sesleri", "dudebrobrodude, SamuelGremaud, AlaskaRobotics, Bibow, celadon_noise, Anthousai, CallFlan · Freesound.org"],
 		["Telgraf, çan, cırcır böcekleri, yağmur, gök gürültüsü", "oyunun içinde üretildi"]]],
