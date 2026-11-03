@@ -16,6 +16,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 global uniform vec3 weather_wind;
 global uniform float weather_rain;
 global uniform float weather_daylight;
+global uniform float water_frozen;
 
 varying vec3 world_pos;
 
@@ -110,4 +111,21 @@ void fragment() {
 	METALLIC = 0.0;
 	SPECULAR = mix(0.5, 0.2, foam);
 	ALPHA = clamp(0.35 + deep * 0.65 + edge_foam + foam, 0.0, 1.0);
+	// Frozen over: from the banks in, a sheet of grey-blue ice, cracked, snow drifted on it in
+	// streaks, the dark water showing through where it's clear; the river's current stilled.
+	if (water_frozen > 0.01) {
+		vec2 wp = world_pos.xz;
+		float from_bank = 1.0 - smoothstep(0.0, 0.9, thickness);
+		float cover = smoothstep(0.0, 0.25, water_frozen * 1.3 - (1.0 - from_bank) * 0.3 + (vnoise(wp * 0.15) - 0.5) * 0.3);
+		float cracks = 1.0 - smoothstep(0.0, 0.035, abs(vnoise(wp * 0.6) - 0.5)) * 0.6;
+		float drift = smoothstep(0.45, 0.75, waves(wp * vec2(0.08, 0.3) + 3.0));
+		vec3 ice = mix(vec3(0.22, 0.3, 0.34), vec3(0.6, 0.67, 0.72), smoothstep(0.3, 0.8, vnoise(wp * 0.4))) * cracks;
+		ice = mix(ice, vec3(0.8, 0.83, 0.87), drift * 0.85);
+		ALBEDO = mix(ALBEDO, ice, cover);
+		EMISSION = mix(EMISSION, vec3(0.0), cover);
+		NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, cover));
+		ROUGHNESS = mix(ROUGHNESS, mix(0.25, 0.8, drift), cover);
+		SPECULAR = mix(SPECULAR, 0.4, cover);
+		ALPHA = mix(ALPHA, 1.0, cover);
+	}
 }

@@ -249,7 +249,15 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_F1:
 				hud.toggle_help()
 			KEY_P:
-				atmosphere.photo = not atmosphere.photo
+				# off → a picture → an old photograph → off
+				if not atmosphere.photo:
+					atmosphere.photo = true
+					atmosphere.sepia = false
+				elif not atmosphere.sepia:
+					atmosphere.sepia = true
+				else:
+					atmosphere.photo = false
+					atmosphere.sepia = false
 				hud.visible = not atmosphere.photo
 				_ring.visible = false
 			KEY_R:

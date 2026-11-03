@@ -107,6 +107,7 @@ var armoured_next := 7 ## the first day one may come
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
+var cemetery: Cemetery ## (made with the first grave)
 var hud: Node ## (for the telegraph's news that wants an answer: ask)
 var _news_card: Control
 var _news_last := 0 ## the day the last news came over the wire
@@ -206,6 +207,7 @@ func start(at: Vector3) -> void:
 	# the station's place along the line (by the line's own length, its rises and falls and all):
 	# the coach stops level with it
 	train = Train.new()
+	train.quiet = true
 	train.nav = nav
 	train.setup(rail, 0.0, 0.0)
 	var s_station := train.s_of(station.global_position)
@@ -1383,6 +1385,12 @@ func family_of(f: String) -> Array[Villager]:
 func _on_villager_died(v: Villager) -> void:
 	villagers.erase(v)
 	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	if v.team == 0 and not loading:
+		if cemetery == null:
+			cemetery = Cemetery.new()
+			cemetery.village = self
+			add_child(cemetery)
+		cemetery.call_deferred("bury", v)
 	if v.team == 0:
 		for o in villagers:
 			if o.family == v.family:

@@ -90,7 +90,7 @@ static func save(game: Node) -> bool:
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "camp": [game.raids.camp_at.x, game.raids.camp_at.y, game.raids.camp_at.z, game.raids.camp_men.size(), game.raids.camp_known] if game.raids.camp_at != Vector3.INF else [], "season_days": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "graves": v.cemetery.graves.duplicate() if v.cemetery else [], "cemetery": [v.cemetery._plot.x, v.cemetery._plot.y, v.cemetery._plot.z, v.cemetery._yaw] if v.cemetery and v.cemetery._plot != Vector3.INF else [], "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -310,6 +310,16 @@ static func restore(game: Node, d: Dictionary) -> void:
 			made[h].residents.append(vl)
 	v.next_train = int(d.get("next_train", v.day + 3))
 	v.announced = bool(d.get("announced", false))
+	var gr: Array = d.get("graves", [])
+	var cp: Array = d.get("cemetery", [])
+	if not gr.is_empty() and cp.size() == 4:
+		v.cemetery = Cemetery.new()
+		v.cemetery.village = v
+		v.add_child(v.cemetery)
+		v.cemetery._plot = Vector3(cp[0], cp[1], cp[2])
+		v.cemetery._yaw = float(cp[3])
+		for g: Array in gr:
+			v.cemetery.lay(str(g[0]), int(g[1]))
 	v.drift = float(d.get("drift", 0.0))
 	for t: String in d.get("known", []):
 		v.known.append(t)

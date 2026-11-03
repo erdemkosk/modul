@@ -137,22 +137,22 @@ func _fill_crickets() -> void:
 
 static func _stream_of(name: String) -> AudioStream:
 	if not _me._streams.has(name):
-		_me._streams[name] = load("res://assets/audio/wood/%s.wav" % name)
+		_me._streams[name] = load(("res://assets/audio/%s.wav" if name.contains("/") else "res://assets/audio/wood/%s.wav") % name)
 	return _me._streams[name]
 
 
 ## A sound at `at` (only if the camera's near enough to hear it).
-static func play(name: String, at: Vector3, db := 0.0, pitch := 1.0) -> void:
+static func play(name: String, at: Vector3, db := 0.0, pitch := 1.0, reach := 160.0) -> void:
 	if _me == null or not is_instance_valid(_me):
 		return
-	if at.distance_to(_me.cam.global_position) > 160.0:
+	if at.distance_to(_me.cam.global_position) > reach:
 		return
 	var a := _me._pool[_me._next]
 	_me._next = (_me._next + 1) % POOL
 	a.stream = _stream_of(name)
 	a.global_position = at
-	a.max_distance = 110.0
-	a.unit_size = 10.0
+	a.max_distance = maxf(110.0, reach * 0.8)
+	a.unit_size = 10.0 if reach <= 160.0 else 30.0
 	a.volume_db = db
 	a.pitch_scale = pitch * randf_range(0.93, 1.07)
 	a.play()

@@ -7,7 +7,10 @@ extends Node3D
 ##              picture darkened a little; close in, what's far behind softly out of focus
 ##   life       birds wheeling over the woods by day, butterflies over the grass in summer, breath
 ##              smoking from the mouth in the cold, sawdust from the saw, chips from the chisel
-## P hides the screen and deepens the focus, for pictures.
+## P hides the screen and deepens the focus, for pictures; again, and it's an old photograph of 1918:
+## sepia, the grain of the plate, its corners dark, a little soft at the edges; again, back.
+##   grade      each season its own cast laid over the picture (spring a pale green, summer gold,
+##              autumn rust, winter a cold blue-grey), night bluer, a fire's town warmer
 
 const BIRDS := 9
 
@@ -16,6 +19,8 @@ var cam: RtsCamera
 var seasons: Seasons
 var village: Village
 var photo := false
+var sepia := false ## (the photograph an old one)
+var _grade := Color(1, 1, 1) ## the season's cast, eased toward
 
 var _attrs: CameraAttributesPractical
 var _vignette: ColorRect
@@ -42,10 +47,33 @@ func _ready() -> void:
 	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sh := Shader.new()
 	sh.code = """shader_type canvas_item;
+uniform sampler2D screen : hint_screen_texture, filter_linear_mipmap;
 uniform float amount = 0.4;
+uniform vec3 tint = vec3(1.0);
+uniform float tint_amt = 0.0;
+uniform float sepia = 0.0;
+uniform float t = 0.0;
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
+	vec2 uv = SCREEN_UV;
 	float d = length((UV - 0.5) * vec2(1.0, 0.8)) * 1.45;
-	COLOR = vec4(0.02, 0.015, 0.01, smoothstep(0.45, 1.15, d) * amount);
+	vec3 c = texture(screen, uv).rgb;
+	// the season's cast: multiplied in the mid-tones, the highlights kept
+	float lum = dot(c, vec3(0.299, 0.587, 0.114));
+	c = mix(c, c * tint, tint_amt * (1.0 - smoothstep(0.6, 1.0, lum)));
+	if (sepia > 0.0) {
+		// an old plate: soft toward the edges, toned brown, faded, grained, a scratch or two
+		vec3 soft = textureLod(screen, uv, 2.5).rgb;
+		c = mix(c, soft, smoothstep(0.55, 1.1, d) * sepia);
+		float l = dot(c, vec3(0.3, 0.59, 0.11));
+		l = pow(l, 0.92) * 0.92 + 0.05;
+		vec3 tone = mix(vec3(0.16, 0.1, 0.06), vec3(1.0, 0.9, 0.72), l);
+		float g = (h(floor(uv * vec2(900.0, 560.0)) + floor(t * 18.0)) - 0.5) * 0.09;
+		float scratch = step(0.9985, h(vec2(floor(uv.x * 400.0), floor(t * 6.0)))) * 0.25;
+		c = mix(c, tone + g + scratch, sepia);
+	}
+	float v = smoothstep(0.45, 1.15, d) * (amount + sepia * 0.35);
+	COLOR = vec4(mix(c, vec3(0.02, 0.015, 0.01), v), 1.0);
 }"""
 	var sm := ShaderMaterial.new()
 	sm.shader = sh
@@ -121,7 +149,17 @@ func _process(dt: float) -> void:
 	var golden := smoothstep(-0.03, 0.08, sun_y) * (1.0 - smoothstep(0.12, 0.38, sun_y))
 	env.adjustment_saturation = lerpf(1.22, 1.32, golden) * (0.86 if season == 3 else 1.0) * lerpf(1.0, 0.85, weather._night_factor())
 	env.adjustment_brightness = 1.0 + golden * 0.04
-	(_vignette.material as ShaderMaterial).set_shader_parameter("amount", 0.6 if photo else 0.38)
+	var sm := _vignette.material as ShaderMaterial
+	sm.set_shader_parameter("amount", 0.6 if photo else 0.38)
+	sm.set_shader_parameter("sepia", 1.0 if photo and sepia else 0.0)
+	sm.set_shader_parameter("t", Time.get_ticks_msec() / 1000.0)
+	# the season's cast, the night's blue
+	var want: Color = [Color(0.94, 1.03, 0.93), Color(1.06, 1.0, 0.86), Color(1.07, 0.93, 0.8), Color(0.88, 0.95, 1.08)][season]
+	want = want.lerp(Color(0.82, 0.9, 1.12), weather._night_factor() * 0.7)
+	want = want.lerp(Color(1.08, 0.96, 0.84), golden * 0.6)
+	_grade = _grade.lerp(want, clampf(dt * 0.5, 0.0, 1.0))
+	sm.set_shader_parameter("tint", Vector3(_grade.r, _grade.g, _grade.b))
+	sm.set_shader_parameter("tint_amt", 0.55)
 	# Focus: close in, the far distance softly out of focus.
 	var close := clampf(1.0 - (cam.dist - 16.0) / 70.0, 0.0, 1.0)
 	_attrs.dof_blur_far_enabled = close > 0.05 or photo

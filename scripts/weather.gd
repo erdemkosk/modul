@@ -114,6 +114,7 @@ static var wet_now := 0.0 ## `wetness`, for code that has no Weather node to han
 static var rain_now := 0.0 ## `rain_intensity`, the same way (rain washing the mud off a truck).
 static var wind_now := Vector3.ZERO ## `wind` (m/s), the same way (a grass fire running before it: GrassFire).
 static var snow_now := 0.0 ## `snow_intensity`, the same way (snowfall filling tracks back in).
+static var night_now := 0.0 ## how dark it is (0 day .. 1 night), the same way (a train's headlamp).
 static var snow_cover_now := 0.0 ## `snow_cover`, the same way (snow lying on firm ground: grip).
 var lightning_flash := 0.0 ## 0..1 brightness of the current flash.
 
@@ -349,6 +350,7 @@ func _snap() -> void:
 	rain_now = rain_intensity
 	snow_now = snow_intensity
 	snow_cover_now = snow_cover
+	night_now = _night_factor()
 	_initialized = true
 
 

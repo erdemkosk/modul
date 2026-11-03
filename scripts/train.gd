@@ -28,8 +28,11 @@ var _state := "coming" ## coming, standing, going
 var _smoke: GPUParticles3D
 var _chuff_t := 0.0
 var _whistle: AudioStreamPlayer3D
+var _sparks: GPUParticles3D ## from the stack at night, working hard
+var _lamp: SpotLight3D ## the headlamp, lit after dark
+var _engine_box := AABB()
+var quiet := false ## (the first train, at the start: no whistle over the opening)
 var armour := "" ## an armoured train's side ("merkez", "isyan"): plated over, a gun on its last car, its flag; "" a plain one
-static var _whistle_wav: AudioStreamWAV
 
 
 ## Set on `line`, to stop with its coach level with `coach_at` m along it, its engine's front
@@ -80,21 +83,84 @@ func _ready() -> void:
 			first = false
 			if String(mi.name).contains("wheel"):
 				wheels.append([mi, maxf(mi.get_aabb().size.y * 0.5, 0.3)])
+		if kind == "tren_lokomotif":
+			_engine_box = box
 		var half := box.size.z * 0.5
 		_gap.append(back + half)
 		back += half * 2.0 + 0.5
 		_cars.append(car)
 		_wheels.append(wheels)
 	_smoke = FireFx.smoke(false)
-	_smoke.amount = 40
+	_smoke.amount = 70
 	_smoke.lifetime = 6.0
 	(_smoke.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.2, 0.1, 0.2)
 	(_smoke.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.08, 0.08, 0.08, 0.0),
 		Color(0.12, 0.12, 0.12, 0.7), Color(0.35, 0.35, 0.36, 0.3), Color(0.5, 0.5, 0.5, 0.0)], [0.0, 0.1, 0.55, 1.0])
 	_cars[0].add_child(_smoke)
 	_smoke.position = Vector3(0, 4.7, 4.6) # (the stack: the model's -y is our +z)
+	# sparks thrown up the stack, seen only by night
+	var spm := ParticleProcessMaterial.new()
+	spm.direction = Vector3.UP
+	spm.spread = 25.0
+	spm.initial_velocity_min = 4.0
+	spm.initial_velocity_max = 8.0
+	spm.gravity = Vector3(0, -3.0, 0)
+	spm.damping_min = 0.5
+	spm.damping_max = 1.5
+	var sg := Gradient.new()
+	sg.set_color(0, Color(1.0, 0.75, 0.3, 1.0))
+	sg.set_color(1, Color(1.0, 0.3, 0.05, 0.0))
+	var sgt := GradientTexture1D.new()
+	sgt.gradient = sg
+	spm.color_ramp = sgt
+	_sparks = GPUParticles3D.new()
+	_sparks.amount = 40
+	_sparks.lifetime = 1.4
+	_sparks.process_material = spm
+	var dot := QuadMesh.new()
+	dot.size = Vector2(0.06, 0.06)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.vertex_color_use_as_albedo = true
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.emission_enabled = true
+	dm.emission = Color(1.0, 0.5, 0.15)
+	dm.emission_energy_multiplier = 3.0
+	dot.material = dm
+	_sparks.draw_pass_1 = dot
+	_sparks.local_coords = false
+	_sparks.emitting = false
+	_cars[0].add_child(_sparks)
+	_sparks.position = _smoke.position
+	# the headlamp: a brass lamp on the smokebox, its beam down the line after dark
+	var front := Vector3(0, _engine_box.position.y + _engine_box.size.y * 0.6, _engine_box.end.z + 0.1) if _engine_box.size != Vector3.ZERO else Vector3(0, 3.0, 6.0)
+	var bulb := MeshInstance3D.new()
+	var bm := SphereMesh.new()
+	bm.radius = 0.16
+	bm.height = 0.32
+	bulb.mesh = bm
+	var lm := StandardMaterial3D.new()
+	lm.albedo_color = Color(1.0, 0.9, 0.7)
+	lm.emission_enabled = true
+	lm.emission = Color(1.0, 0.85, 0.55)
+	lm.emission_energy_multiplier = 0.0
+	bulb.material_override = lm
+	_cars[0].add_child(bulb)
+	bulb.position = front
+	_lamp = SpotLight3D.new()
+	_lamp.light_color = Color(1.0, 0.86, 0.6)
+	_lamp.light_energy = 0.0
+	_lamp.spot_range = 60.0
+	_lamp.spot_angle = 22.0
+	_lamp.light_volumetric_fog_energy = 1.5
+	_lamp.shadow_enabled = false
+	_cars[0].add_child(_lamp)
+	_lamp.position = front + Vector3(0, 0, 0.2)
+	_lamp.rotation = Vector3(-0.08, PI, 0) # (pointing down +z, the way it runs)
+	_lamp.set_meta("bulb", lm)
 	_whistle = AudioStreamPlayer3D.new()
-	_whistle.stream = _whistle_sound()
+	_whistle.stream = load("res://assets/audio/war/whistle.wav") as AudioStream
 	_whistle.max_distance = 900.0
 	_whistle.unit_size = 40.0
 	_whistle.volume_db = 2.0
@@ -105,7 +171,8 @@ func _ready() -> void:
 	stop_at = minf(stop_at + _gap[2], length() - 2.0)
 	_s = minf(_s, stop_at)
 	_place()
-	_whistle.play()
+	if not quiet:
+		_whistle.play()
 
 
 ## Plated over for the war: steel boxed round each car (a band of rivets, firing slits), a turret with
@@ -194,32 +261,6 @@ func _plate() -> void:
 	_cars[0].add_child(flag)
 
 
-## The whistle: a chord of two pipes with a breathy edge, swelling and dying (made once).
-static func _whistle_sound() -> AudioStreamWAV:
-	if _whistle_wav:
-		return _whistle_wav
-	var rate := 22050
-	var secs := 2.2
-	var data := PackedByteArray()
-	data.resize(int(rate * secs) * 2)
-	var noise := 0.0
-	for i in int(rate * secs):
-		var t := float(i) / rate
-		var env := minf(t / 0.12, 1.0) * clampf((secs - t) / 0.5, 0.0, 1.0)
-		var wob := 1.0 + 0.004 * sin(TAU * 5.0 * t)
-		noise = noise * 0.9 + randf_range(-1.0, 1.0) * 0.1
-		var s := 0.0
-		for f in [392.0, 494.0, 587.0]:
-			s += sin(TAU * f * wob * t) * 0.28 + sin(TAU * f * 2.0 * wob * t) * 0.06
-		s = (s + noise * 0.35) * env * 0.5
-		data.encode_s16(i * 2, clampi(int(s * 32767.0), -32768, 32767))
-	_whistle_wav = AudioStreamWAV.new()
-	_whistle_wav.format = AudioStreamWAV.FORMAT_16_BITS
-	_whistle_wav.mix_rate = rate
-	_whistle_wav.data = data
-	return _whistle_wav
-
-
 ## The point and the way along the line `s` m in.
 func _at(s: float) -> Array:
 	s = clampf(s, 0.0, length())
@@ -261,7 +302,8 @@ func _process(dt: float) -> void:
 			if _s >= stop_at - 0.01:
 				_state = "standing"
 				_v = 0.0
-				_whistle.play()
+				if not quiet:
+					_whistle.play()
 				_block(true)
 				arrived.emit()
 		"standing":
@@ -281,6 +323,10 @@ func _process(dt: float) -> void:
 				(w[0] as Node3D).rotate_object_local(Vector3.RIGHT, moved / float(w[1]))
 	# the stack: thick when it works, a wisp standing still; a chuff a stroke
 	_smoke.amount_ratio = clampf(0.25 + absf(_v) / MAX_SPEED, 0.25, 1.0)
+	var dark := Weather.night_now
+	_sparks.emitting = dark > 0.5 and absf(_v) > 1.5
+	_lamp.light_energy = dark * 6.0
+	(_lamp.get_meta("bulb") as StandardMaterial3D).emission_energy_multiplier = dark * 8.0
 	if absf(_v) > 0.3:
 		_chuff_t -= dt
 		if _chuff_t <= 0.0:

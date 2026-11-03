@@ -20,6 +20,7 @@ var _groups := {} ## setting -> its buttons
 var _new_plate: Control ## the new town's screen
 var _menu: Control ## the name and the menu (put away while the new town's screen is up)
 var _settings: SettingsPanel
+var _credits: Control ## who made what (EMEĞİ GEÇENLER)
 var _crew: Array = [] ## the settlers to come (Villager.candidate), couples one after the other
 var _crew_grid: GridContainer
 var _crew_faces: Array = [] ## [TextureRect, seed] a card each, its face filled in as it's taken
@@ -73,6 +74,7 @@ func _ready() -> void:
 		_item(col, "DEVAM ET", "Gün %d · %d kişi" % [int(saved.get("day", 1)), (saved.get("people", []) as Array).size()], func() -> void: game.continue_game())
 	_item(col, "YENİ KASABA", "Bir vadi, bir tren, yeni yerleşimciler", func() -> void: _toggle("new"))
 	_item(col, "AYARLAR", "Grafik, ses, oyun", func() -> void: _toggle("settings"))
+	_item(col, "EMEĞİ GEÇENLER", "Sesler, modeller, yazılar", func() -> void: _toggle("credits"))
 	_item(col, "ÇIK", "", func() -> void: get_tree().quit())
 	var foot := Ui.label(root, "Esc: geri", 13, Color(Ui.LIGHT, 0.6))
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -85,6 +87,10 @@ func _ready() -> void:
 	_settings.closed.connect(func() -> void: _toggle(""))
 	root.add_child(_settings)
 	_settings.visible = false
+	_credits = _credits_plate()
+	_place_plate(_credits)
+	root.add_child(_credits)
+	_credits.visible = false
 	_toggle("")
 	# (in from black)
 	root.modulate = Color(1, 1, 1, 0)
@@ -171,8 +177,8 @@ func _toggle(which: String) -> void:
 	_menu.visible = _open != "new"
 	if _open == "new" and _crew.is_empty():
 		_fill_crew()
-	for p: Control in [_new_plate, _settings]:
-		var on := (p == _new_plate and _open == "new") or (p == _settings and _open == "settings")
+	for p: Control in [_new_plate, _settings, _credits]:
+		var on := (p == _new_plate and _open == "new") or (p == _settings and _open == "settings") or (p == _credits and _open == "credits")
 		if on and not p.visible:
 			p.visible = true
 			p.modulate.a = 0.0
@@ -181,8 +187,61 @@ func _toggle(which: String) -> void:
 		elif not on:
 			p.visible = false
 	for key: String in _items:
-		var open: bool = (key == "YENİ KASABA" and _open == "new") or (key == "AYARLAR" and _open == "settings")
+		var open: bool = (key == "YENİ KASABA" and _open == "new") or (key == "AYARLAR" and _open == "settings") or (key == "EMEĞİ GEÇENLER" and _open == "credits")
 		(_items[key] as Button).add_theme_color_override("font_color", HOT if open else Ui.LIGHT)
+
+
+## Who made what the game's made of: every outside source, its author and its licence (the full lists
+## are in each folder's CREDITS.md).
+const CREDITS := [
+	["OYUN", [["Tasarım ve geliştirme", "erdemkosk"], ["Motor", "Godot Engine 4.7 (MIT)"]]],
+	["SESLER · CC0", [
+		["Buharlı tren düdüğü, tüfek, makineli tüfek, top", "Joseph Sardin · BigSoundBank.com"],
+		["Orman, kuşlar, dere, soğuk rüzgâr", "Joseph Sardin · BigSoundBank.com"],
+		["Balta, kütük, ağaç devrilmesi", "Joseph Sardin · BigSoundBank.com"],
+		["İnşaat sesleri", "dudebrobrodude, SamuelGremaud, AlaskaRobotics, Bibow, celadon_noise, Anthousai, CallFlan · Freesound.org"],
+		["Telgraf, çan, cırcır böcekleri, yağmur, gök gürültüsü", "oyunun içinde üretildi"]]],
+	["KARAKTERLER · CC0", [
+		["Kasabalı gövdesi", "Mud Run projesinin survivor modeli"],
+		["Hareket kayıtları (yürüme, taşıma, yeme...)", "Quaternius · Universal Animation Library"],
+		["Yüzler, ten, kaş, sakal", "MakeHuman ekibi, Jartur69, Mindfront, onlytheghosts, Toigo, Rehman Polanski · MakeHuman Community"]]],
+	["DÜNYA", [
+		["Binalar, tren, ağaçlar, kayalar", "Blender ile kodla üretildi (tools/blender)"],
+		["Arazi, gökyüzü, su, hava", "oyunun içinde üretildi"]]],
+	["YAZI TİPLERİ · SIL Open Font License", [["Barlow, Barlow Condensed", "The Barlow Project Authors"], ["Chakra Petch", "The Chakra Petch Project Authors"]]],
+]
+
+
+func _credits_plate() -> Control:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", Ui.glass(false, 18.0))
+	p.custom_minimum_size = Vector2(560, 0)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(540, 560)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	p.add_child(scroll)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
+	Ui.label(col, "EMEĞİ GEÇENLER", 30, Ui.LIGHT, "display")
+	Ui.rule(col)
+	for sec: Array in CREDITS:
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 8)
+		col.add_child(gap)
+		Ui.label(col, str(sec[0]), 15, HOT, "head")
+		for row: Array in sec[1]:
+			var what := Ui.label(col, str(row[0]), 15, Ui.LIGHT, "head")
+			what.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			what.custom_minimum_size = Vector2(500, 0)
+			var who := Ui.label(col, str(row[1]), 13, Color(Ui.LIGHT, 0.65))
+			who.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			who.custom_minimum_size = Vector2(500, 0)
+	var note := Ui.label(col, "\nCC0: kamu malı, izin ya da atıf gerekmez; yine de hepsine teşekkürler.", 12, Color(Ui.LIGHT, 0.5))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(500, 0)
+	return p
 
 
 func _place_plate(p: Control) -> void:

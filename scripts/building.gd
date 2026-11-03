@@ -413,6 +413,169 @@ static func rock_material(i: int) -> Material:
 	return _rock_mats[i % _rock_mats.size()]
 
 
+## A house's own woodpile against its side wall, as big as what's in it (logs stacked in rows, a
+## sack or two of coal beside), and a washing line out the back on a fair day.
+var _pile_logs: MultiMeshInstance3D
+var _fuel_shown := -1
+var _coal_sacks: Array[MeshInstance3D] = []
+var _laundry: Node3D
+
+
+func show_fuel() -> void:
+	if state != "done":
+		return
+	var wood := int(goods.get("odun", 0))
+	var coal := int(goods.get("komur", 0))
+	var key := wood * 100 + mini(coal, 9)
+	if key == _fuel_shown:
+		return
+	_fuel_shown = key
+	var sz: Vector2 = def.size
+	var side := Vector3(sz.x * 0.5 + 0.45, 0, -0.3)
+	if _pile_logs == null:
+		var billet := CylinderMesh.new()
+		billet.top_radius = 0.09
+		billet.bottom_radius = 0.09
+		billet.height = 0.7
+		billet.radial_segments = 7
+		billet.rings = 1
+		billet.material = material("log")
+		var stack := MultiMesh.new()
+		stack.transform_format = MultiMesh.TRANSFORM_3D
+		stack.mesh = billet
+		stack.instance_count = 24
+		_pile_logs = MultiMeshInstance3D.new()
+		_pile_logs.multimesh = stack
+		_pile_logs.visibility_range_end = 140.0
+		add_child(_pile_logs)
+	var mm := _pile_logs.multimesh
+	var n := mini(wood * 2, 24)
+	mm.visible_instance_count = n
+	for i in n:
+		var row := i / 6
+		var col := i % 6
+		var at := side + Vector3(0, 0.1 + row * 0.17, -1.0 + col * 0.19 + (0.09 if row % 2 == 1 else 0.0))
+		mm.set_instance_transform(i, Transform3D(Basis(Vector3.BACK, PI * 0.5) * Basis(Vector3.UP, sin(i * 3.1) * 0.15), at))
+	for s in _coal_sacks:
+		s.queue_free()
+	_coal_sacks.clear()
+	for k in mini(coal, 3):
+		var sack := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.25
+		sm.height = 0.55
+		sm.radial_segments = 8
+		sm.rings = 4
+		sack.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.2, 0.19, 0.17)
+		m.roughness = 1.0
+		sack.material_override = m
+		sack.position = side + Vector3(0.1, 0.25, 0.6 + k * 0.45)
+		add_child(sack)
+		_coal_sacks.append(sack)
+
+
+func show_laundry(on: bool) -> void:
+	if state != "done":
+		return
+	if _laundry == null:
+		if hash(get_instance_id()) % 2 == 0:
+			return # (not every house has one)
+		_laundry = Node3D.new()
+		add_child(_laundry)
+		var sz: Vector2 = def.size
+		var back := -sz.y * 0.5 - 2.2
+		var wood := material("wood")
+		for x in [-1.8, 1.8]:
+			var pole := MeshInstance3D.new()
+			var pm := CylinderMesh.new()
+			pm.top_radius = 0.04
+			pm.bottom_radius = 0.05
+			pm.height = 2.0
+			pole.mesh = pm
+			pole.material_override = wood
+			pole.position = Vector3(x, 1.0, back)
+			_laundry.add_child(pole)
+		var line := MeshInstance3D.new()
+		var lm := BoxMesh.new()
+		lm.size = Vector3(3.6, 0.01, 0.01)
+		line.mesh = lm
+		line.material_override = material("dark")
+		line.position = Vector3(0, 1.9, back)
+		_laundry.add_child(line)
+		var cloths := [Color(0.85, 0.83, 0.76), Color(0.62, 0.2, 0.15), Color(0.35, 0.4, 0.5), Color(0.8, 0.78, 0.7), Color(0.5, 0.45, 0.35)]
+		var n := 3 + hash(get_instance_id()) % 3
+		for k in n:
+			var c := MeshInstance3D.new()
+			var cm := QuadMesh.new()
+			cm.size = Vector2(0.45 + 0.2 * (k % 2), 0.6 + 0.25 * ((k + 1) % 2))
+			c.mesh = cm
+			var m := StandardMaterial3D.new()
+			m.albedo_color = cloths[(k + hash(get_instance_id())) % cloths.size()]
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+			m.roughness = 1.0
+			c.material_override = m
+			c.position = Vector3(-1.3 + k * (2.6 / maxf(n - 1, 1)), 1.9 - cm.size.y * 0.5, back)
+			_laundry.add_child(c)
+	_laundry.visible = on
+
+
+## Icicles hung along the eaves in the winter (a house's): little cones of ice along the roof's low
+## front and back edges.
+var _icicles: MultiMeshInstance3D
+var _coal_smoke := false
+
+
+func set_icicles(on: bool) -> void:
+	if not on or state != "done":
+		if _icicles:
+			_icicles.visible = false
+		return
+	if _icicles == null:
+		var roof := AABB()
+		var first := true
+		for p in pieces:
+			if p.stuff == "shingle" and p.alive:
+				roof = p.aabb if first else roof.merge(p.aabb)
+				first = false
+		if first:
+			return
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.035
+		cone.bottom_radius = 0.0
+		cone.height = 0.4
+		cone.radial_segments = 5
+		cone.rings = 1
+		var ice := StandardMaterial3D.new()
+		ice.albedo_color = Color(0.82, 0.9, 0.96, 0.85)
+		ice.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ice.roughness = 0.08
+		ice.metallic_specular = 0.9
+		cone.material = ice
+		var spots: Array[Transform3D] = []
+		var k := 0
+		var x := roof.position.x + 0.2
+		while x < roof.end.x - 0.2:
+			for z in [roof.position.z + 0.05, roof.end.z - 0.05]:
+				var len := 0.5 + 0.9 * absf(sin(k * 2.39 + z))
+				spots.append(Transform3D(Basis.from_scale(Vector3(1, len, 1)), Vector3(x, roof.position.y - 0.2 * len, z)))
+				k += 1
+			x += 0.32 + 0.12 * absf(sin(k * 1.7))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = cone
+		mm.instance_count = spots.size()
+		for i in spots.size():
+			mm.set_instance_transform(i, spots[i])
+		_icicles = MultiMeshInstance3D.new()
+		_icicles.multimesh = mm
+		_icicles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_icicles.visibility_range_end = 120.0
+		add_child(_icicles)
+	_icicles.visible = true
+
+
 ## The windows glow at night (0..1).
 static func set_night(n: float) -> void:
 	(material("window") as StandardMaterial3D).emission_energy_multiplier = n * 6.0
@@ -1123,6 +1286,13 @@ func set_hearth(on: bool) -> void:
 		# Laid over by the wind: straight up on a still morning, streaming off in a breeze.
 		var w := Weather.wind_now
 		(_chimney.process_material as ParticleProcessMaterial).gravity = Vector3(w.x * 0.55, 0.45 / (1.0 + w.length() * 0.25), w.z * 0.55)
+		# coal on the fire: a thicker, darker smoke
+		var coal := coal_burn > 0
+		if coal != _coal_smoke:
+			_coal_smoke = coal
+			(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.12, 0.12, 0.12, 0.0),
+				Color(0.18, 0.18, 0.19, 0.42), Color(0.32, 0.32, 0.33, 0.18), Color(0.45, 0.45, 0.46, 0.0)], [0.0, 0.12, 0.5, 1.0]) if coal else FireFx._ramp([Color(0.32, 0.33, 0.36, 0.0),
+				Color(0.42, 0.43, 0.46, 0.28), Color(0.55, 0.56, 0.58, 0.1), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.12, 0.5, 1.0])
 
 
 ## Its chimney smoking.

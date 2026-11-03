@@ -80,6 +80,8 @@ func force(s: int) -> void:
 
 
 var _autumn := -1.0
+var _ice := 0.0 ## how far the water's frozen over (0..1)
+var _ice_set := -1.0
 
 
 func _process(dt: float) -> void:
@@ -90,6 +92,12 @@ func _process(dt: float) -> void:
 	if absf(want - _autumn) > 0.01:
 		_autumn = want
 		RenderingServer.global_shader_parameter_set(&"season_autumn", want)
+	# The river and the lake: ice comes over them as the winter's cold sets in, and goes in the thaw.
+	var ice_want := 1.0 if season == 3 and weather.temperature < -3.0 else (0.0 if weather.temperature > 1.0 else _ice)
+	_ice = move_toward(_ice, ice_want, dt / 90.0)
+	if absf(_ice - _ice_set) > 0.005:
+		_ice_set = _ice
+		RenderingServer.global_shader_parameter_set(&"water_frozen", _ice)
 	var s := of_day(village.day, offset)
 	if s != season:
 		var first := season < 0
@@ -97,6 +105,8 @@ func _process(dt: float) -> void:
 		_hold = 0.0
 		if not first:
 			message.emit(ARRIVE[s], "info")
+		if village.has_method("dress_for_season"):
+			village.call_deferred("dress_for_season")
 		_next(first)
 		return
 	_hold -= dt

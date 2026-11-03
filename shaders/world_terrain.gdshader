@@ -371,6 +371,16 @@ void fragment() {
 	float snow_total = max(snow, snow_cover * smoothstep(0.55, 0.85, n.y));
 	base = mix(base, snow_c, snow_total);
 	rough = mix(rough, 0.7, snow_total);
+	// Trodden snow: the paths beaten through it grey and packed, the earth showing brown where
+	// the feet and the runners have gone most, a scatter of prints along the edges.
+	float beaten = snow_total * max(trail, smoothstep(0.15, 0.6, trodden) * 0.7);
+	if (beaten > 0.01) {
+		float prints = step(0.62, vnoise(xz * 2.6 + vec2(0.0, 7.0))) * (1.0 - trail) * 0.5;
+		vec3 packed = mix(vec3(0.55, 0.57, 0.6), vec3(0.42, 0.41, 0.4), fbm(xz * 0.5 + 23.0, 3));
+		vec3 slush = mix(packed, vec3(0.24, 0.2, 0.16), smoothstep(0.55, 0.85, trail + (fine - 0.5) * 0.4) * 0.8);
+		base = mix(base, slush, clamp(beaten * 0.85 + prints * snow_total, 0.0, 1.0));
+		rough = mix(rough, 0.55, beaten);
+	}
 
 	// Frost and black ice (Weather.ice). Hoarfrost greys every meadow and bank with white rime.
 	// Where water lay (roads, wet ground, hollows: the same pattern WorldTerrain.ice_patch

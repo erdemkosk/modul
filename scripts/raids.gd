@@ -112,6 +112,7 @@ func _process(dt: float) -> void:
 		_think_wolves()
 	_tower_shots(dt)
 	_mg_shots(dt)
+	_turret_shots(dt)
 	if _camp_day != village.day:
 		_camp_day = village.day
 		_camp_morning()
@@ -809,6 +810,47 @@ func _tower_shots(dt: float) -> void:
 		shoot(man.muzzle(), foe, randf_range(28.0, 40.0), 0.6)
 
 
+## A hostile armoured train's turret gun, while its men are at the town: a heavy crack and a gout of
+## flame every few seconds at whoever of the town it can see within 90 m, a shell's burst where it
+## lands (and a wide one, as often as not).
+var _turret_t := 0.0
+
+
+func _turret_shots(dt: float) -> void:
+	if soldiers == "" or not active or not is_instance_valid(village.armoured):
+		return
+	_turret_t -= dt
+	if _turret_t > 0.0:
+		return
+	_turret_t = randf_range(4.0, 7.0)
+	var tr: Train = village.armoured
+	var gun := tr.engine_at() + Vector3.UP * 4.0
+	if not tr._cars.is_empty():
+		gun = tr._cars[tr._cars.size() - 1].global_position + Vector3.UP * 4.2
+	var foe: Villager = null
+	var bd := 90.0
+	for v in village.villagers:
+		if v.dead or v.down or v.sleeping or v.team != 0:
+			continue
+		var d := v.position.distance_to(gun)
+		if d < bd and can_see(gun, v):
+			bd = d
+			foe = v
+	if foe == null:
+		return
+	_flash(gun, "war/shell")
+	_flash(gun + Vector3.UP * 0.2, "")
+	var at := foe.position + Vector3(randf_range(-5, 5), 0, randf_range(-5, 5))
+	at.y = nav.height(at.x, at.z)
+	get_tree().create_timer(0.25, false).timeout.connect(func() -> void:
+		_flash(at + Vector3.UP * 0.5, "war/shell")
+		for k in 4:
+			_impact(at + Vector3(randf_range(-1.5, 1.5), 0.05, randf_range(-1.5, 1.5)))
+		for v in village.villagers:
+			if not v.dead and v.team == 0 and v.position.distance_to(at) < 3.5:
+				v.hurt(randf_range(18.0, 30.0) * (0.5 if v.in_cover else 1.0)))
+
+
 ## The Maxims: a gunner at the gun (within a couple of metres of where it stands) and one it can see
 ## in 65 m: a burst of eight, a shot every fifth of a second, wide of the mark more often than a
 ## rifle, a cartridge off the armoury's rack a burst; then a pause. No cartridges, no bursts.
@@ -861,12 +903,12 @@ func _mg_shots(dt: float) -> void:
 		st[1] = int(st[1]) - 1
 		st[0] = 0.2 if int(st[1]) > 0 else 1.6
 		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
-		shoot(gun, foe, randf_range(18.0, 26.0), clampf(0.45 - bd / 260.0, 0.15, 0.4))
+		shoot(gun, foe, randf_range(18.0, 26.0), clampf(0.45 - bd / 260.0, 0.15, 0.4), null, "war/burst_shot")
 
 
 ## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,
 ## halved if the foe's behind cover). The flash shows the shooter for a moment to anyone looking.
-func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null) -> void:
+func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null, sound := "war/rifle") -> void:
 	var to := foe.position + Vector3.UP * 1.0 + Vector3(randf_range(-0.4, 0.4), randf_range(-0.3, 0.3), randf_range(-0.4, 0.4))
 	if by:
 		by.revealed = 2.5
@@ -874,7 +916,7 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 		by.learn("nisan", 12.0)
 	if foe.in_cover:
 		chance *= 0.5
-	_flash(from)
+	_flash(from, sound)
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	var length := from.distance_to(to)
@@ -892,6 +934,47 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	st.tween_callback(streak.queue_free)
 	if randf() < chance:
 		foe.hurt(dmg, by)
+	else:
+		# a miss: it strikes the ground beyond, in a kick of dust (snow in the winter)
+		var past := to + (to - from).normalized() * randf_range(0.5, 3.0)
+		past.y = nav.height(past.x, past.z) + 0.05
+		_impact(past)
+
+
+## Where a shot strikes: dust (or snow) kicked up, a few bits flung out.
+var _dust: GPUParticles3D
+
+
+func _impact(at: Vector3) -> void:
+	if _dust == null:
+		var pm := ParticleProcessMaterial.new()
+		pm.gravity = Vector3(0, -4.0, 0)
+		pm.damping_min = 1.5
+		pm.damping_max = 3.0
+		pm.scale_min = 0.5
+		pm.scale_max = 1.2
+		var g := Gradient.new()
+		g.set_color(0, Color(0.55, 0.48, 0.38, 0.75))
+		g.set_color(1, Color(0.6, 0.55, 0.47, 0.0))
+		var gt := GradientTexture1D.new()
+		gt.gradient = g
+		pm.color_ramp = gt
+		_dust = GPUParticles3D.new()
+		_dust.amount = 200
+		_dust.lifetime = 0.9
+		_dust.emitting = false
+		_dust.process_material = pm
+		_dust.draw_pass_1 = FireFx._quad(0.25, false)
+		_dust.visibility_aabb = AABB(Vector3(-2000, -500, -2000), Vector3(4000, 2000, 4000))
+		_dust.local_coords = false
+		_dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_dust)
+	var snowy := Weather.snow_cover_now > 0.3
+	var c := Color(0.85, 0.88, 0.92, 0.8) if snowy else Color(0.55, 0.48, 0.38, 0.75)
+	for k in 5:
+		var vel := Vector3(randf_range(-1.2, 1.2), randf_range(1.5, 3.5), randf_range(-1.2, 1.2))
+		_dust.emit_particle(Transform3D(Basis.IDENTITY, at), vel, c, Color(1, 1, 1, 1),
+			GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY | GPUParticles3D.EMIT_FLAG_COLOR)
 
 
 ## An arrow loosed from `from` at `foe` (by `by`): no flash, hardly a sound, so the archer isn't
@@ -957,7 +1040,7 @@ func practice(from: Vector3, at: Vector3, kind: String) -> void:
 		_fly_arrow(from, to, func() -> void: pass)
 
 
-func _flash(at: Vector3) -> void:
+func _flash(at: Vector3, sound := "war/rifle") -> void:
 	var flash := OmniLight3D.new()
 	flash.light_color = Color(1.0, 0.8, 0.5)
 	flash.light_energy = 6.0
@@ -1007,4 +1090,5 @@ func _flash(at: Vector3) -> void:
 	pw.parallel().tween_property(puff, "global_position", at + Vector3.UP * 0.6 + Weather.wind_now * 0.25, 1.6)
 	pw.parallel().tween_property(smoke, "albedo_color:a", 0.0, 1.6)
 	pw.tween_callback(puff.queue_free)
-	Ambience.knock(at, 0.45) # (the crack of it)
+	if sound != "":
+		Ambience.play(sound, at, -2.0 if sound == "war/burst_shot" else 0.0, 1.0, 400.0) # (the crack of it, heard far off)

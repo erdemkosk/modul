@@ -96,6 +96,7 @@ func build(kind: String, rng: RandomNumberGenerator) -> void:
 	skeleton.add_child(pose)
 	grip_ik = TownsfolkGrip.new()
 	skeleton.add_child(grip_ik)
+	_kind = kind
 	_dress(kind, rng)
 	# A man's build varies: a little taller or shorter, broader or leaner (a woman smaller).
 	var tall := rng.randf_range(0.94, 1.03) if kind != "woman" else rng.randf_range(0.9, 0.96)
@@ -280,6 +281,40 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 				coat_material = m
 	if woman:
 		_skirt(trousers)
+
+
+## The fur hat and the scarf for the winter (a woman's kerchief stays): the summer's hat put away.
+var _summer := {} ## mesh name -> visible, as dressed
+var _kind := ""
+
+
+func set_winter(on: bool) -> void:
+	if model == null or _kind == "woman" or _kind == "outlaw":
+		return
+	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		var n := String(mi.name)
+		if not _summer.has(n):
+			_summer[n] = mi.visible
+		if n in HATS and n != "":
+			mi.visible = (n == "Survivor_Ushanka") if on else bool(_summer[n])
+		elif n == "Survivor_Neckwear":
+			mi.visible = on or bool(_summer[n])
+		if on and n == "Survivor_Ushanka" and not mi.has_meta("furred"):
+			mi.set_meta("furred", true)
+			for s in mi.mesh.get_surface_count():
+				var base := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if base == null:
+					continue
+				var m := base.duplicate() as StandardMaterial3D
+				match base.resource_name:
+					"UshankaTop":
+						m.albedo_color = Color("#4a3426")
+					"LeatherBand":
+						m.albedo_color = Color("#3a2a1e")
+					_:
+						m.albedo_color = Color("#5a4632")
+				mi.set_surface_override_material(s, m)
 
 
 ## A long skirt to the ankles, hung from the hips: a cone of wool over the trousers.

@@ -134,6 +134,8 @@ func _hearths(t: float) -> void:
 			continue
 		var lived := not b.residents.is_empty()
 		b.set_lit(night and lived and b.warm)
+		b.show_fuel()
+		b.show_laundry(lived and not night and Weather.rain_now < 0.1 and weather.snow_intensity < 0.1 and weather.temperature > 2.0)
 		if not want or not lived:
 			b.warm = true
 			# Warm enough without it, the stove's still lit for the cooking: morning, noon and evening.
@@ -198,6 +200,16 @@ func _dry_bricks(t: float) -> void:
 			b.dry(t, rate)
 
 
+## The town as the season has it: icicles on the houses' eaves and fur hats on heads in the winter.
+func dress_for_season() -> void:
+	var cold := seasons != null and seasons.winter()
+	for b in buildings:
+		if b.def.role == "house":
+			b.set_icicles(cold)
+	for v in villagers:
+		v.dress_warm(cold)
+
+
 func _morning() -> void:
 	_births()
 	call("_prison_morning") # (village_defense.gd)
@@ -205,6 +217,7 @@ func _morning() -> void:
 	_train_morning()
 	_news_morning()
 	_armoured_morning()
+	dress_for_season()
 	for y in yards:
 		if is_instance_valid(y):
 			y.grow()

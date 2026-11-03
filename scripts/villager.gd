@@ -1094,6 +1094,12 @@ func get_down() -> void:
 	position.y = village.ground_at(position) if village.has_method("ground_at") else nav.height(position.x, position.z)
 
 
+## In the winter, a fur hat (the women keep their kerchiefs) and a scarf; out of it, as before.
+func dress_warm(on: bool) -> void:
+	if _body and team == 0 and not is_child:
+		_body.set_winter(on)
+
+
 ## A weapon in its right hand: "spear", "axe", "torch", "bow".
 func arm_with(kind: String) -> void:
 	if _weapon:
