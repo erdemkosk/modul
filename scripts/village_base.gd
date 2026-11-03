@@ -6,7 +6,7 @@ extends Node3D
 signal message(text: String, kind: String) ## kind: "info", "good", "bad"
 
 
-const START_STOCK := {"odun": 40, "tas": 12, "yiyecek": 50}
+const START_STOCK := {"odun": 40, "tas": 12, "yiyecek": 100}
 
 
 const EAT_EVERY := 75.0 ## s a villager goes on one food
