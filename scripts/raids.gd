@@ -60,6 +60,7 @@ var camp_known := false ## found: seen from a tower, by someone working near, or
 var _camp_node: Node3D
 var _camp_day := -1
 var _camp_t := 0.0
+var corpses: Array[Villager] = [] ## the band's dead, lying a while to be searched
 var allies: Array[Villager] = [] ## a friendly side's soldiers fighting beside the town (called by telegraph)
 var guns: Array[Node3D] = [] ## a convoy's tank guns, fired while its men are at the town
 var soldiers := "" ## the band now on the town is a side's soldiers ("" outlaws): by day as well
@@ -122,6 +123,7 @@ func _process(dt: float) -> void:
 	if _camp_t >= 0.5:
 		_camp_t = 0.0
 		_camp_think()
+		_allies_think()
 
 
 # --- The camp -------------------------------------------------------------------------------------
@@ -464,6 +466,34 @@ func _towers() -> Array[Building]:
 	return out
 
 
+## The soldiers come to help don't wait to be found: each goes for the nearest of the band, closing
+## to rifle range (into the lamplight if it's dark) and shooting.
+func _allies_think() -> void:
+	for a in allies:
+		if not is_instance_valid(a) or a.dead or a.down:
+			continue
+		if not a.plan.is_empty() and str(a.plan[0].get("t", "")) == "fight":
+			continue
+		var foe: Villager = null
+		var bd := 160.0
+		for list: Array[Villager] in [raiders, camp_men]:
+			for r in list:
+				if is_instance_valid(r) and not r.dead and not r.down:
+					var d := r.position.distance_to(a.position)
+					if d < bd:
+						bd = d
+						foe = r
+		if foe == null:
+			continue
+		a.abort()
+		if bd <= a.ranged * 0.9 and can_see(a.position, foe):
+			a.give([{"t": "fight", "foe": foe, "give_up": a.ranged + 10.0}], "Ateş ediyor")
+		else:
+			var to := foe.position + (a.position - foe.position).normalized() * minf(a.ranged * 0.6, 10.0 if not village.is_lit(foe.position) else 25.0)
+			to.y = nav.height(to.x, to.z)
+			a.give([{"t": "go", "to": to}, {"t": "fight", "foe": foe, "give_up": a.ranged + 10.0}], "Düşmana yürüyor")
+
+
 ## The town and whoever's fighting beside it: what the raiders go for.
 func town_folk() -> Array[Villager]:
 	var out: Array[Villager] = village.villagers.duplicate()
@@ -500,6 +530,8 @@ func origin() -> Vector3:
 
 ## A raider down: a shooter's rifle left lying, a looter's haul got back.
 func _on_raider_down(r: Villager) -> void:
+	corpses.append(r)
+	corpses = corpses.filter(func(c: Villager) -> bool: return is_instance_valid(c))
 	if r.role == "shooter":
 		var node := Node3D.new()
 		add_child(node)
@@ -546,7 +578,11 @@ func _think() -> void:
 		_end("Baskın püskürtüldü! Firarilerin hepsi düştü.", "good")
 		return
 	var dawn := weather.hour > 5.0 and weather.hour < 12.0 and soldiers == ""
-	var leaving := _burnt >= _size + 2 or village.clock - _started > 300.0 or live * 3 < _size or dawn
+	# they don't stay to raze it all: gone when enough's burning, when it's taken too long, when
+	# they've lost too many, or at dawn
+	var standing := village.buildings.filter(func(b: Building) -> bool: return b.state == "done").size()
+	var burning := village.buildings.filter(func(b: Building) -> bool: return b.is_burning()).size()
+	var leaving := _burnt >= mini(_size + 2, maxi(2, standing / 4)) or burning * 3 >= maxi(standing, 3) or village.clock - _started > 220.0 or live * 3 < _size or dawn
 	for r in raiders:
 		if r.dead:
 			continue

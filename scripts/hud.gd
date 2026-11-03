@@ -935,6 +935,26 @@ func _fill_log() -> void:
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
+## The box being dragged to pick folk (empty: none).
+var _sel_box: Panel
+
+
+func show_select_box(r: Rect2) -> void:
+	if _sel_box == null:
+		_sel_box = Panel.new()
+		_sel_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(Ui.ACCENT, 0.12)
+		sb.border_color = Color(Ui.ACCENT, 0.9)
+		sb.set_border_width_all(1)
+		_sel_box.add_theme_stylebox_override("panel", sb)
+		add_child(_sel_box)
+	var k := maxf(get_tree().root.content_scale_factor, 1.0)
+	_sel_box.visible = r.size.length() > 1.0
+	_sel_box.position = r.position / k
+	_sel_box.size = r.size / k
+
+
 ## A question put to the player, a telegram slip at the top middle: a heading, what's happened, and
 ## a button for each answer ({label, f, ok (false: shown but not to be pressed), tip}). Any answer
 ## takes it away; so does closing it from outside (the returned card, queue_free).
@@ -1906,7 +1926,7 @@ func _fill_jail(b: Building) -> void:
 		if n is TextureRect:
 			(n as TextureRect).texture = Portraits.of_look(o.look_seed, "outlaw")
 		elif n is Label:
-			(n as Label).text = {"": "Hapiste tutuluyor", "kazan": "Kazanılıyor: %d / 3 sabah" % o.won, "calistir": "Zorla çalıştırılıyor"}[o.held_mode]
+			(n as Label).text = {"": "Hapiste tutuluyor · KAZAN seçilirse her sabah %%%d şans" % roundi(game.village.win_chance(o) * 100.0), "kazan": "Kazanılıyor: %d / 3 · bu sabah şansı %%%d" % [o.won, roundi(game.village.win_chance(o) * 100.0)], "calistir": "Zorla çalıştırılıyor"}[o.held_mode]
 		elif n is Button and n.has_meta("mode"):
 			(n as Button).add_theme_color_override("font_color", Ui.ACCENT if o.held_mode == n.get_meta("mode") else Ui.INK)
 

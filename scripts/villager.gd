@@ -1233,8 +1233,10 @@ func _rod(at: Vector3, r: float, length: float, mat: Material) -> MeshInstance3D
 ## Lying wounded: bleeding out where it fell, or carried on someone's shoulders.
 func _downed(dt: float) -> void:
 	if is_instance_valid(carried_by) and not carried_by.dead and not carried_by.down and carried_by.carry_res == "yarali":
-		position = carried_by.position + carried_by.global_basis * Vector3(0.0, 1.05, 0.25)
+		# over the shoulder: lying across it, head and arms down the back, legs in front
+		position = carried_by.position + carried_by.global_basis * Vector3(0.0, 1.32, 0.05)
 		rotation.y = carried_by.rotation.y + PI * 0.5
+		rotation.z = 0.0
 		return
 	if carried_by != null:
 		carried_by = null # (put down, or the one carrying it fell)
@@ -1319,7 +1321,8 @@ func die() -> void:
 	else:
 		tw.tween_property(self, "rotation:x", -PI * 0.5, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.parallel().tween_property(self, "position:y", position.y + 0.2, 0.45)
-	tw.tween_interval(30.0)
+	# (the town's dead are buried; the band's lie where they fell a while, to be searched, then go)
+	tw.tween_interval(30.0 if team == 0 else maxf(village.weather.day_length_minutes * 60.0 * 0.5, 90.0))
 	tw.tween_property(self, "position:y", position.y - 1.0, 4.0)
 	tw.tween_callback(queue_free)
 

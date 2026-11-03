@@ -216,6 +216,18 @@ func _rot_morning() -> void:
 				(bl.node as Node).queue_free()
 			billets.remove_at(i)
 			lost["kütük"] = int(lost.get("kütük", 0)) + 1
+	# burnt-out ruins left untouched two days are cleared away (ONAR in time saves one)
+	var cleared := 0
+	for b in buildings.duplicate():
+		if b.state != "ruin" or b.is_burning():
+			continue
+		if not b.has_meta("ruin_day"):
+			b.set_meta("ruin_day", day)
+		elif day - int(b.get_meta("ruin_day")) >= 2:
+			call("remove_building", b)
+			cleared += 1
+	if cleared > 0:
+		message.emit("Yanık enkaz temizlendi (%d bina)." % cleared, "info")
 	var wet := weather.wetness > 0.4 or Weather.rain_now > 0.2
 	for b in buildings:
 		if b.state != "done" or b.def.role in ["store", "house"] or b.goods.is_empty():

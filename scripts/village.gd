@@ -107,6 +107,7 @@ func _assign() -> void:
 		if b.is_burning() and b.state != "gone":
 			fires.append(b)
 	var raid := raids != null and raids.threat()
+	call("_controlled_tick")
 	_rescues()
 	if not raid:
 		_captures()

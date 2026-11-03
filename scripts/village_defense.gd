@@ -471,8 +471,11 @@ func _prison_morning() -> void:
 				continue
 			match o.held_mode:
 				"kazan":
-					if not _hungry:
+					if randf() < win_chance(o):
 						o.won += 1
+						var talker := best_talker()
+						if talker:
+							talker.learn("ikna", 40.0)
 					if o.won >= 3:
 						recruit(o)
 				"calistir":
@@ -669,15 +672,41 @@ func take_control(v: Villager) -> void:
 	if v.sleeping:
 		v.wake()
 	v.abort()
+	if not v.armed:
+		# no rifle: an axe in the hand, to fight with as best it can
+		v.fighter = true
+		v.attack = maxf(v.attack, 16.0)
+		v.arm_with("axe")
+		v.set_meta("axe", true)
 	v.give([{"t": "work", "time": 3.0, "anim": "idle"}], "Emrinde")
 
 
 func release_control(v: Villager) -> void:
 	v.remove_meta("controlled")
+	if v.has_meta("axe"):
+		v.remove_meta("axe")
+		if not v.armed:
+			v.arm_with("")
+			v.fighter = false
 	if not v.has_meta("called_up"):
 		v.drafted = false
 	v.focus = null
 	v.abort()
+
+
+## Those in hand with an axe and nothing to do: they go for any foe that comes within reach.
+func _controlled_tick() -> void:
+	if raids == null:
+		return
+	for v in villagers:
+		if not v.has_meta("axe") or v.armed or v.dead or v.down:
+			continue
+		if not (v.plan.is_empty() or v.idle or str(v.plan[0].get("t", "")) == "work"):
+			continue
+		var foe := raids.nearest_raider(v.position, 12.0)
+		if foe:
+			v.abort()
+			v.give([{"t": "fight", "foe": foe, "give_up": 25.0}], "Baltayla saldırıyor")
 
 
 func controlled(v: Villager) -> bool:
@@ -800,6 +829,92 @@ func ctl_carry(v: Villager) -> String:
 				message.emit("%s yaralıyı %s içine taşıdı." % [v.display_name, to.display_name()], "info")
 			return true}] + _go_out(to), "Yaralıyı taşıyor", d)
 	return ""
+
+
+## A dead raider searched by the one in hand: cartridges, a bite of food, a few kopeks of whatever
+## they'd taken; once only. Why not ("" if it's going).
+func ctl_search(v: Villager, body: Villager) -> String:
+	if not is_instance_valid(body) or not body.dead:
+		return "Üstü aranacak ceset yok"
+	if body.has_meta("searched"):
+		return "Bu cesedin üstü zaten arandı"
+	body.set_meta("searched", true)
+	v.abort()
+	var at := body.position
+	v.give([{"t": "go", "to": at + (v.position - at).normalized() * 0.8},
+		{"t": "work", "time": 3.0, "anim": "gather", "face": at},
+		{"t": "do", "f": func() -> bool:
+			var got: Array[String] = []
+			var shells := randi_range(2, 8) if body.ranged > 0.0 else randi_range(0, 2)
+			if shells > 0:
+				if v.armed and v.held == "rifle":
+					v.ammo += shells
+				else:
+					var a := _nearest(armories(), v.position)
+					if a:
+						a.ammo += shells
+				got.append("%d fişek" % shells)
+			var food := randi_range(0, 4)
+			if food > 0:
+				add_anywhere("yiyecek", food, v.position)
+				got.append("%d yiyecek" % food)
+			if randf() < 0.35:
+				rubles += randi_range(2, 8)
+				got.append("biraz para")
+			if body.ranged > 0.0 and not v.armed and randf() < 0.5:
+				v.held = "rifle"
+				v.armed = true
+				v.ammo = maxi(v.ammo, shells)
+				v.ranged = 42.0
+				v.attack = 26.0
+				v.fighter = true
+				v.arm_with("rifle")
+				got.append("tüfeği")
+			message.emit("%s cesedin üstünü aradı: %s." % [v.display_name.split(" ")[0], ", ".join(got) if not got.is_empty() else "bir şey çıkmadı"], "info")
+			return true}], "Cesedin üstünü arıyor")
+	return ""
+
+
+## A downed foe taken by the one in hand to the jail. Why not ("" if it's going).
+func ctl_capture(v: Villager, o: Villager) -> String:
+	if not is_instance_valid(o) or o.dead or not o.down:
+		return "Esir alınacak yaralı düşman yok"
+	var jails := _jails_free()
+	if jails.is_empty():
+		return "Hapishanede yer yok: önce bir Hapishane kur"
+	var to := _nearest(jails, o.position)
+	o.set_meta("taker", v)
+	v.abort()
+	v.give([{"t": "go", "to": o.position},
+		{"t": "work", "time": 1.8, "anim": "gather", "face": o.position},
+		{"t": "do", "f": func() -> bool:
+			if not is_instance_valid(o) or o.dead or not o.down:
+				return false
+			o.carried_by = v
+			v.set_carry("yarali", 1)
+			return true},
+		{"t": "go", "to": to.door()},
+		{"t": "do", "f": func() -> bool:
+			v.set_carry("", 0)
+			if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.state == "done" and to.prisoners.size() < int(to.def.cells):
+				imprison(o, to)
+				message.emit("%s yaralı düşmanı hapse taşıdı." % v.display_name, "good")
+			return true}], "Haydudu hapse taşıyor", o)
+	return ""
+
+
+## A prisoner's chance of being won over a step each morning while being won (KAZAN): the town's
+## best talker's way with words, the prisoner's temper, whether it's fed.
+func win_chance(o: Villager) -> float:
+	var talker := best_talker()
+	var c := 0.35 + (talker.skill("ikna") * 0.045 if talker else 0.0)
+	if o.has_trait("brave"):
+		c -= 0.15
+	if o.has_trait("coward"):
+		c += 0.1
+	if _hungry:
+		c = 0.0
+	return clampf(c, 0.0, 0.9)
 
 
 ## After a raid: a rifle the outlaws dropped, carried to the armoury.

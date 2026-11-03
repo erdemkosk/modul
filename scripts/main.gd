@@ -214,7 +214,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			elif _placing != "":
 				_place_here(mb.shift_pressed)
 			else:
-				_pick(mb.position, mb.shift_pressed)
+				# a click picks; a drag draws a box round folk to pick them all (on release)
+				_sel_from = mb.position
+				_sel_shift = mb.shift_pressed
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if _placing in ["yol", "sur"] and _road_pts.size() >= 2:
 				_road_finish()
@@ -228,6 +230,18 @@ func _unhandled_input(e: InputEvent) -> void:
 				select(null)
 	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _drag_from != null:
 		_area_done(cam.ground_under((e as InputEventMouseButton).position))
+	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _sel_from != Vector2.INF:
+		var up := (e as InputEventMouseButton).position
+		if up.distance_to(_sel_from) > 10.0:
+			_box_select(Rect2(_sel_from, Vector2.ZERO).expand(up), _sel_shift)
+		else:
+			_pick(_sel_from, _sel_shift)
+		_sel_from = Vector2.INF
+		hud.show_select_box(Rect2())
+	elif e is InputEventMouseMotion and _sel_from != Vector2.INF:
+		var at := (e as InputEventMouseMotion).position
+		if at.distance_to(_sel_from) > 10.0:
+			hud.show_select_box(Rect2(_sel_from, Vector2.ZERO).expand(at))
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		match k.physical_keycode:
@@ -958,6 +972,29 @@ func test_event(what: String) -> void:
 			hud.toast("Her maldan 100, kasaya 200 mirka", "good")
 
 
+## Those of the town inside a box dragged on the screen, picked together (added to, with Shift).
+func _box_select(box: Rect2, add: bool) -> void:
+	var cam3 := get_viewport().get_camera_3d()
+	var list: Array[Villager] = []
+	for v in village.villagers:
+		if v.dead or v.is_child:
+			continue
+		var p := v.global_position + Vector3.UP * 1.0
+		if cam3.is_position_behind(p):
+			continue
+		if box.has_point(cam3.unproject_position(p)):
+			list.append(v)
+	if not add:
+		select(null)
+		group.clear()
+	for v in list:
+		if not v in group:
+			group.append(v)
+	if not group.is_empty():
+		selected_villager = group[0]
+		hud.toast("%d kişi seçili · R: hepsi emrine · sağ tık: oraya" % group.size(), "info")
+
+
 ## Every militiaman picked at once (V), to be sent together.
 func select_militia() -> void:
 	var list: Array[Villager] = []
@@ -976,15 +1013,21 @@ func select_militia() -> void:
 
 ## The selected one taken in hand (R), or let go again.
 func toggle_control() -> void:
-	var v := selected_villager
-	if v == null or not is_instance_valid(v) or v.is_child or v.down:
+	var list := _chosen().filter(func(o: Villager) -> bool: return not o.is_child and not o.down)
+	if list.is_empty():
 		return
-	if village.controlled(v):
-		village.release_control(v)
-		hud.toast("%s yine kendi işinde" % v.display_name, "info")
+	var on := not village.controlled(list[0])
+	for v: Villager in list:
+		if on:
+			village.take_control(v)
+		else:
+			village.release_control(v)
+	if not on:
+		hud.toast("%d kişi yine kendi işinde" % list.size() if list.size() > 1 else "%s yine kendi işinde" % list[0].display_name, "info")
+	elif list.size() > 1:
+		hud.toast("%d kişi emrinde: sağ tık git · düşmana sağ tık saldır · silahsızlar balta kapar · R bırak" % list.size(), "good")
 	else:
-		village.take_control(v)
-		hud.toast("%s emrinde: sağ tık git / saldır / binaya gir · kartta SİLAH AL, SİPER, SAKLAN, TAŞI · R bırak" % v.display_name.split(" ")[0], "good")
+		hud.toast("%s emrinde: sağ tık git / saldır / binaya gir · kartta SİLAH AL, SİPER, SAKLAN, TAŞI · R bırak" % list[0].display_name.split(" ")[0], "good")
 
 
 ## A card order for the one in hand: "weapon", "cover", "hide", "carry".
@@ -1018,6 +1061,13 @@ func _order(at: Vector2) -> void:
 				v.give([{"t": "fight", "foe": foe, "give_up": 60.0}], "Saldırıyor")
 		hud.toast("Hedef: %d kişi ona ateş edecek" % drafted.size(), "info")
 		return
+	# a raider's body or a downed foe, for the one in hand: searched, or taken prisoner
+	if drafted.size() >= 1 and village.controlled(drafted[0]):
+		var near := _body_under(at)
+		if near:
+			var why: String = village.ctl_capture(drafted[0], near) if not near.dead else village.ctl_search(drafted[0], near)
+			hud.toast(why if why != "" else ("%s esir alınıyor" % near.display_name if not near.dead else "Cesedin üstü aranıyor"), "info" if why != "" else "good")
+			return
 	# a building under it, for the one in hand: the armoury to arm at, a house to hide in
 	var b := _building_under(at)
 	if b and drafted.size() == 1 and village.controlled(drafted[0]) and b.state == "done":
@@ -1045,6 +1095,26 @@ func _order(at: Vector2) -> void:
 			village.hold_at(v, village.cover_near(p + off, 3.0))
 		else:
 			v.give([{"t": "go", "to": p + off}], "Emirle gidiyor")
+
+
+## A dead raider or one lying downed, near the screen point `at`.
+func _body_under(at: Vector2) -> Villager:
+	var best: Villager = null
+	var bd := 28.0
+	var list: Array[Villager] = []
+	list.append_array(raids.corpses)
+	list.append_array(village.downed_outlaws)
+	for r in list:
+		if not is_instance_valid(r) or not (r.dead or r.down):
+			continue
+		var p := r.global_position + Vector3.UP * 0.3
+		if cam.is_position_behind(p):
+			continue
+		var d := cam.unproject_position(p).distance_to(at)
+		if d < bd:
+			bd = d
+			best = r
+	return best
 
 
 func _raider_under(at: Vector2) -> Villager:
@@ -1382,6 +1452,8 @@ func refit_selected(what: String) -> void:
 
 
 var _camp_turn := false ## (show_trouble: the camp shown, the rest next)
+var _sel_from := Vector2.INF ## a left press with nothing being placed: where (to tell a click from a drag)
+var _sel_shift := false
 var _trouble_i := -1 ## which of the troubled places was shown last (show_trouble)
 
 

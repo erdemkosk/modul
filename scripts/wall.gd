@@ -36,6 +36,9 @@ var _marks: MultiMeshInstance3D
 var _walk: MultiMeshInstance3D
 var _bind: MultiMeshInstance3D ## the rails binding the standing stakes on the inside
 var _trench: MultiMeshInstance3D ## the trench dug along what's still to be raised
+var _berm: MultiMeshInstance3D ## the earth banked up round the stakes' feet, outside
+var _ropes: MultiMeshInstance3D ## lashings where the rails are tied to the stakes
+var _braces: MultiMeshInstance3D ## the raking props that shore it up from inside
 const BIND_EVERY := 6 ## stakes a rail spans
 var _burn_t := 0.0
 static var _stake_mesh: Mesh
@@ -145,6 +148,13 @@ func _ready() -> void:
 	_trench = MultiMeshInstance3D.new()
 	_trench.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_trench)
+	_berm = MultiMeshInstance3D.new()
+	add_child(_berm)
+	_ropes = MultiMeshInstance3D.new()
+	_ropes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_ropes)
+	_braces = MultiMeshInstance3D.new()
+	add_child(_braces)
 	# the town's side: where its store is
 	var stores: Array = village.stores()
 	if not stores.is_empty() and line.size() > 2:
@@ -169,6 +179,7 @@ func redraw() -> void:
 	_walk.multimesh = _walkway(up)
 	_bind.multimesh = _binding()
 	_trench.multimesh = _ditch(todo)
+	_dress(up)
 
 
 ## Two rails along the inside of each standing stretch, low and high, a rail to every few stakes.
@@ -204,6 +215,82 @@ func _binding() -> MultiMesh:
 		var shade := (0.27 if level >= 2 else 0.33) + fposmod(sin(j * 3.7) * 437.5, 1.0) * 0.1
 		mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.56))
 	_bind.material_override = bark_material(level)
+	return mm
+
+
+## What makes a standing palisade look built rather than stuck in: the earth thrown up against its
+## feet on the outside (grassed over, stones in it), rope lashings where the rails meet the stakes,
+## and every so often a raking prop shoring it from inside.
+func _dress(up: Array[int]) -> void:
+	var stand := {}
+	for k in up:
+		stand[k] = true
+	var bank: Array[Transform3D] = []
+	var ties: Array[Transform3D] = []
+	var props: Array[Transform3D] = []
+	for k in up:
+		var dir := line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		var left := Vector3.UP.cross(dir).normalized() * inward
+		var g := line[k]
+		g.y = nav.height(g.x, g.z)
+		var h := fposmod(sin(k * 41.7) * 2671.3, 1.0)
+		# the bank: low, long, flat mounds run into one another, outside and a little off the line
+		var heap := g - left * (0.45 + h * 0.2) - Vector3.UP * 0.06
+		bank.append(Transform3D(Basis.looking_at(dir, Vector3.UP).scaled(Vector3(1.1 + h * 0.3, 0.2 + h * 0.08, 2.2)), heap))
+		if k % BIND_EVERY == 0 and stand.has(mini(k + BIND_EVERY, line.size() - 1)):
+			for hgt in [0.75, 1.95]:
+				var at: Vector3 = g + left * 0.19 + Vector3.UP * (float(hgt) - 0.3)
+				ties.append(Transform3D(Basis.looking_at(dir, Vector3.UP), at))
+		if k % 9 == 4 and stand.has(maxi(k - 1, 0)) and stand.has(mini(k + 1, line.size() - 1)):
+			# a prop: from the ground 1.6 m inside up to just under the top rail
+			var foot := g + left * 1.6
+			foot.y = nav.height(foot.x, foot.z)
+			var top := g + left * 0.22 + Vector3.UP * 1.75
+			var mid := (foot + top) * 0.5
+			var along := (top - foot)
+			var b := Basis.looking_at(along.normalized(), Vector3.UP if absf(along.normalized().y) < 0.99 else Vector3.FORWARD)
+			props.append(Transform3D(b.scaled(Vector3(1, 1, along.length())), mid))
+	var mound := SphereMesh.new()
+	mound.radius = 0.5
+	mound.height = 1.0
+	mound.radial_segments = 16
+	mound.rings = 8
+	var em := StandardMaterial3D.new()
+	em.albedo_color = Color(0.34, 0.33, 0.19) # (turned earth gone grassy)
+	em.roughness = 1.0
+	mound.material = em
+	_berm.multimesh = _mm(mound, bank)
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.17
+	ring.outer_radius = 0.23
+	ring.rings = 10
+	ring.ring_segments = 5
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color(0.55, 0.47, 0.32)
+	ring.material = rm
+	_ropes.multimesh = _mm(ring, ties)
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.07
+	pole.bottom_radius = 0.09
+	pole.height = 1.0
+	pole.radial_segments = 6
+	pole.rings = 1
+	pole.material = bark_material(level)
+	var turned: Array[Transform3D] = []
+	for t in props:
+		turned.append(Transform3D(t.basis * Basis(Vector3.RIGHT, PI * 0.5), t.origin)) # (the cylinder's along its y)
+	_braces.multimesh = _mm(pole, turned)
+
+
+static func _mm(mesh: Mesh, xfs: Array[Transform3D]) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xfs.size()
+	for i in xfs.size():
+		mm.set_instance_transform(i, xfs[i])
 	return mm
 
 
