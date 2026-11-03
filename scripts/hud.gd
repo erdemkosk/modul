@@ -52,7 +52,6 @@ var _folds: Array = [] ## [header, body, seconds since the mouse left both]
 var _history: Array = [] ## [clock, stock] every few seconds, the last minute's
 var _pop: Label
 var _purse: Label
-var _free: Label
 var _clock: Label
 var _raid: Label
 var _speed_buttons: Array[Button] = []
@@ -65,8 +64,8 @@ var _card_title: Label
 var _card_lines: Label
 var _card_workers: HBoxContainer
 var _card_count: Label
-var _card_acts: HBoxContainer
-var _card_folk: HBoxContainer
+var _card_acts: HFlowContainer
+var _card_folk: HFlowContainer
 var _btn := {} ## the card's buttons by name, shown and labelled for what's selected
 var _placing_plate: PanelContainer
 var _people_plate: PanelContainer ## the townsfolk table
@@ -75,13 +74,18 @@ var _people_rows: Array = [] ## the villagers the table's rows are for
 var _people_t := 0.0
 var _store_line: Button ## under the goods: how full the stores are, and what's stopped (a click: show it)
 var _tele_plate: PanelContainer ## the telegraph office
+var _train_stat: Label ## the next train, in the top bar
+var _log_plate: PanelContainer ## the day-book: every message so far, newest first (GÜNLÜK, J)
+var _log_list: VBoxContainer
+var _log: Array = [] ## [day, hour, text, kind]
+var _ask_paused := false ## (a question put: the game held still till it's answered)
 var _asks: VBoxContainer ## the questions put to the player (ask), top middle
 var _tele: TelegraphPanel
 var _tech_plate: PanelContainer ## the research tree
 var _tech_tree: TechTree
 var _tech_note: Label
-var _card_train: HBoxContainer
-var _card_make: HBoxContainer ## a workshop's card: what it's set to make
+var _card_train: HFlowContainer
+var _card_make: HFlowContainer ## a workshop's card: what it's set to make
 var _make_btns := {} ## what -> its button
 var _place_make: HBoxContainer ## while placing a workshop: what it's to make
 var _place_btns := {} ## what -> its button
@@ -134,6 +138,7 @@ func _ready() -> void:
 	_make_people()
 	_make_tech()
 	_make_telegraph()
+	_make_log()
 	_asks = VBoxContainer.new()
 	_asks.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_asks.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -239,7 +244,7 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 	# how full the stores are, and a warning when work's stopped for want of room or carters
 	var fill := v.store_fill()
 	var full := v.full_yards()
-	var line := "DEPO  %d / %d" % [fill.x, fill.y]
+	var line := "DEPO  %d / %d   ·   %s" % [fill.x, fill.y, Ui.upper(v.standing_text())]
 	var bad := false
 	if fill.y > 0 and fill.x >= fill.y:
 		line += "   ·   DEPOLAR DOLU: yeni depo kur, üretim duruyor"
@@ -285,7 +290,7 @@ func _stores_plate() -> void:
 	_store_line.pressed.connect(func() -> void: game.show_trouble())
 	add_child(_store_line)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 22)
+	row.add_theme_constant_override("separation", 12)
 	p.add_child(row)
 	var pair := HBoxContainer.new() # (the two that open something, side by side)
 	pair.add_theme_constant_override("separation", 6)
@@ -299,9 +304,12 @@ func _stores_plate() -> void:
 	var tech := _small_button("ARAŞTIRMA", func() -> void: toggle_tech())
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
-	_pop = _stat(row, "NÜFUS", "Kasabalılar / yataklar")
+	var book := _small_button("GÜNLÜK", func() -> void: toggle_log())
+	book.tooltip_text = "Olanların hepsi, gün gün: kaçırdığın haberler, telgraflar, baskınlar (J)"
+	pair.add_child(book)
+	_pop = _stat(row, "NÜFUS · BOŞTA", "Kasabalılar / yataklar · bir işyerine verilmemiş, taşıyıp inşa edenler")
 	_purse = _stat(row, "KASA", "Mirka (Zarovya parası): trene mal satınca gelir, telgrafla tren çağırınca gider")
-	_free = _stat(row, "BOŞTA", "Bir işyerine verilmemiş, taşıyıp inşa eden kasabalılar")
+	_train_stat = _stat(row, "TREN", "Sonraki tren: kaç gün sonra, peronda mı, hat karla kapalı mı")
 
 
 func _clock_plate() -> void:
@@ -521,8 +529,11 @@ func _make_card() -> void:
 	add_child(_card)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
+	col.custom_minimum_size = Vector2(340, 0)
 	_card.add_child(col)
 	_card_title = Ui.label(col, "", 26, Ui.INK, "display")
+	_card_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_card_title.custom_minimum_size = Vector2(330, 0)
 	Ui.rule(col)
 	_make_folk_box(col)
 	_card_lines = Ui.label(col, "", 15, Ui.INK)
@@ -570,8 +581,9 @@ func _make_card() -> void:
 	_card_jail = VBoxContainer.new()
 	_card_jail.add_theme_constant_override("separation", 6)
 	col.add_child(_card_jail)
-	_card_acts = HBoxContainer.new()
-	_card_acts.add_theme_constant_override("separation", 8)
+	_card_acts = HFlowContainer.new()
+	_card_acts.add_theme_constant_override("v_separation", 4)
+	_card_acts.add_theme_constant_override("h_separation", 8)
 	col.add_child(_card_acts)
 	_btn.repair = _add(_card_acts, "ONAR", func() -> void: game.repair_selected(), "Yıkılan parçaları yeniden yap (O)")
 	for what: String in BuildingDefs.UPGRADES:
@@ -586,8 +598,9 @@ func _make_card() -> void:
 	_btn.strong = _add(_card_acts, "GÜÇLENDİR", func() -> void: game.strengthen_wall(), "Kalın kütük ve taş temel: kazıklar üç kat dayanıklı olur, zor kesilir, zor yanar")
 	_btn.area = _add(_card_acts, "ALAN ÇİZ", func() -> void: game.start_placing("alan"), "İşçiler yalnızca sürükleyeceğin alanda çalışsın")
 	_btn.no_area = _add(_card_acts, "ALANI KALDIR", func() -> void: game.clear_work_area(), "İşçiler yine her yerde çalışsın")
-	_card_make = HBoxContainer.new()
-	_card_make.add_theme_constant_override("separation", 4)
+	_card_make = HFlowContainer.new()
+	_card_make.add_theme_constant_override("v_separation", 4)
+	_card_make.add_theme_constant_override("h_separation", 4)
 	col.add_child(_card_make)
 	Ui.label(_card_make, "ÜRET:", 12, Ui.ACCENT, "head")
 	for what: String in BuildingDefs.WORKSHOP:
@@ -595,8 +608,9 @@ func _make_card() -> void:
 		mb.tooltip_text = "Atölye %s için kurulsun: içi ona göre değişir, işçiler kalır" % BuildingDefs.WORKSHOP[what].word
 		_card_make.add_child(mb)
 		_make_btns[what] = mb
-	_card_train = HBoxContainer.new()
-	_card_train.add_theme_constant_override("separation", 8)
+	_card_train = HFlowContainer.new()
+	_card_train.add_theme_constant_override("v_separation", 4)
+	_card_train.add_theme_constant_override("h_separation", 8)
 	col.add_child(_card_train)
 	_card_train.add_child(_small_button("+ TÜFEKÇİ", func() -> void: game.train("rifle")))
 	_card_train.add_child(_small_button("+ OKÇU", func() -> void: game.train("bow")))
@@ -614,8 +628,9 @@ func _make_card() -> void:
 	_btn.bows.tooltip_text = "Her sabah depodan odun alınıp bir yay (2 odun) ya da 12 ok (1 odun) yapılır"
 	_card_train.add_child(_btn.bows)
 
-	_card_folk = HBoxContainer.new()
-	_card_folk.add_theme_constant_override("separation", 8)
+	_card_folk = HFlowContainer.new()
+	_card_folk.add_theme_constant_override("v_separation", 4)
+	_card_folk.add_theme_constant_override("h_separation", 8)
 	col.add_child(_card_folk)
 	_btn.release = _add(_card_folk, "İŞTEN AL", func() -> void: game.release_selected(), "İşyerinden çıkar: taşır, inşa eder")
 	_btn.militia = _add(_card_folk, "MİLİS YAP", func() -> void: game.toggle_militia(), "Tehlike çanında silahlıktan silah alıp mevziye geçer (M)")
@@ -676,7 +691,7 @@ func _pick(i: int) -> void:
 	toast(why if why != "" else "%s artık %s'de çalışıyor" % [v.display_name, b.display_name()], "info" if why != "" else "good")
 
 
-func _add(row: HBoxContainer, text: String, f: Callable, tip := "") -> Button:
+func _add(row: Container, text: String, f: Callable, tip := "") -> Button:
 	var b := _small_button(text, f)
 	b.tooltip_text = tip
 	row.add_child(b)
@@ -809,6 +824,69 @@ func _make_tech() -> void:
 	pad.add_child(_tech_tree)
 
 
+## The day-book, over the middle of the screen: what's happened, newest first, a day to a heading.
+func _make_log() -> void:
+	_log_plate = _plate(false)
+	_log_plate.set_anchors_preset(Control.PRESET_CENTER)
+	_log_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_log_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_log_plate.visible = false
+	add_child(_log_plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	_log_plate.add_child(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	Ui.label(head, "GÜNLÜK", 26, Ui.INK, "display")
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	head.add_child(_small_button("KAPAT", func() -> void: toggle_log()))
+	Ui.rule(col)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(620, 460)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	_log_list = VBoxContainer.new()
+	_log_list.add_theme_constant_override("separation", 3)
+	_log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_log_list)
+
+
+func toggle_log() -> void:
+	_log_plate.visible = not _log_plate.visible
+	if _log_plate.visible:
+		_people_plate.visible = false
+		_tech_plate.visible = false
+		_tele_plate.visible = false
+		_fill_log()
+
+
+func log_open() -> bool:
+	return _log_plate.visible
+
+
+func _fill_log() -> void:
+	for ch in _log_list.get_children():
+		ch.queue_free()
+	if _log.is_empty():
+		Ui.label(_log_list, "Henüz bir şey olmadı.", 14, Ui.DIM)
+		return
+	var day := -1
+	for e: Array in _log.slice(0, 150):
+		if int(e[0]) != day:
+			day = int(e[0])
+			var h := Ui.label(_log_list, "GÜN %d" % day, 14, Ui.ACCENT, "head")
+			h.custom_minimum_size = Vector2(0, 26)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		_log_list.add_child(row)
+		Ui.label(row, "%02d:%02d" % [int(e[1]), int(fmod(float(e[1]), 1.0) * 60.0)], 13, Ui.DIM, "head")
+		var t := Ui.label(row, str(e[2]), 14, {"good": Ui.GOOD, "bad": Ui.BAD}.get(str(e[3]), Ui.INK))
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+
 ## A question put to the player, a telegram slip at the top middle: a heading, what's happened, and
 ## a button for each answer ({label, f, ok (false: shown but not to be pressed), tip}). Any answer
 ## takes it away; so does closing it from outside (the returned card, queue_free).
@@ -817,6 +895,15 @@ func ask(title: String, body: String, options: Array) -> PanelContainer:
 	p.add_theme_stylebox_override("panel", Ui.glass(false, 16.0, Ui.GLASS, Ui.ACCENT))
 	p.custom_minimum_size = Vector2(520, 0)
 	_asks.add_child(p)
+	_log.push_front([game.village.day, game.weather.hour, title + ": " + body.get_slice("\n", 0), "info"]) # (in the day-book; the card says it on the screen)
+	# the game held still while it's thought over, and let go when the last question's answered
+	if not game.get_tree().paused:
+		_ask_paused = true
+		game.set_speed(0.0)
+	p.tree_exited.connect(func() -> void:
+		if _ask_paused and is_inside_tree() and _asks.get_children().all(func(c: Node) -> bool: return c.is_queued_for_deletion() or c == p):
+			_ask_paused = false
+			game.set_speed(Engine.time_scale))
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	p.add_child(col)
@@ -1029,10 +1116,16 @@ func set_hint(text: String, bad := false) -> void:
 
 
 func toast(text: String, kind := "info") -> void:
+	var v: Village = game.village if game else null
+	_log.push_front([v.day if v else 0, game.weather.hour if game and game.weather else 0.0, text, kind])
+	if _log.size() > 300:
+		_log.resize(300)
+	if _log_plate and _log_plate.visible:
+		_fill_log()
 	var l := Ui.label(_toasts, text, 17, {"good": Ui.GOOD, "bad": Ui.BAD}.get(kind, Ui.INK), "strong")
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_toasts.offset_top = 84
+	_toasts.offset_top = 112
 	while _toasts.get_child_count() > 4:
 		_toasts.get_child(0).free()
 	var tw := l.create_tween()
@@ -1070,18 +1163,91 @@ func _unfold(dt: float) -> void:
 			body.visible = false
 
 
+## Off the screen, what wants seeing: an arrow at the edge toward it, a word what it is; a click and
+## the view goes there (the camp once found, an armoured train, a fire, a band on the town).
+var _marks := {} ## key -> Button
+
+
+func _edge_marks() -> void:
+	var cam3 := get_viewport().get_camera_3d()
+	if cam3 == null or not visible:
+		return
+	var want := {}
+	var v: Village = game.village
+	var rd: Raids = game.raids
+	if rd.camp_known and rd.camp_at != Vector3.INF:
+		want["camp"] = ["KAMP", rd.camp_at]
+	if is_instance_valid(v.armoured):
+		want["armour"] = ["ZIRHLI TREN", v.armoured.engine_at()]
+	for b in v.buildings:
+		if b.is_burning():
+			want["fire"] = ["YANGIN", b.global_position]
+			break
+	if rd.active:
+		for r in rd.raiders:
+			if is_instance_valid(r) and not r.dead:
+				want["raid"] = ["BASKIN", r.position]
+				break
+	for key: String in _marks.keys():
+		if not want.has(key):
+			(_marks[key] as Button).queue_free()
+			_marks.erase(key)
+	var size := get_viewport().get_visible_rect().size / maxf(get_tree().root.content_scale_factor, 1.0)
+	var mid := size * 0.5
+	for key: String in want:
+		var at: Vector3 = want[key][1]
+		var behind := cam3.is_position_behind(at)
+		var sp := cam3.unproject_position(at) / maxf(get_tree().root.content_scale_factor, 1.0)
+		if behind:
+			sp = mid - (sp - mid) * 10.0
+		var on := not behind and sp.x > 40 and sp.x < size.x - 40 and sp.y > 120 and sp.y < size.y - 150
+		if not _marks.has(key):
+			var bt := _small_button("", func() -> void: game.cam.jump_to(want[key][1] if want.has(key) else at))
+			bt.add_theme_color_override("font_color", Ui.BAD)
+			add_child(bt)
+			_marks[key] = bt
+		var b: Button = _marks[key]
+		b.visible = not on
+		if on:
+			continue
+		var d := (sp - mid)
+		var k := minf((mid.x - 70.0) / maxf(absf(d.x), 0.001), (mid.y - 140.0) / maxf(absf(d.y), 0.001))
+		var edge := mid + d * k
+		var arrow := ("→" if d.x > 0 else "←") if absf(d.x) * size.y > absf(d.y) * size.x else ("↓" if d.y > 0 else "↑")
+		b.text = "%s %s" % [arrow, want[key][0]]
+		var target: Vector3 = want[key][1]
+		if b.pressed.get_connections().size() > 0:
+			for c in b.pressed.get_connections():
+				b.pressed.disconnect(c.callable)
+		b.pressed.connect(func() -> void: game.cam.jump_to(target))
+		b.position = edge - b.size * 0.5
+
+
 func _process(dt: float) -> void:
 	_unfold(dt)
 	_t += dt
 	if _t < 0.15:
 		return
 	_t = 0.0
+	_edge_marks()
 	var v: Village = game.village
 	var stock := v.stock
 	_refresh_goods(v, stock)
-	_pop.text = "%d / %d" % [v.villagers.size(), v.beds()]
+	_pop.text = "%d/%d · %d" % [v.villagers.size(), v.beds(), v.free_count()]
 	_purse.text = "%d m" % v.rubles
-	_free.text = str(v.free_count())
+	var due := v.next_train - v.day
+	if not v.knows("telgraf"):
+		_train_stat.text = "—"
+	elif v.line_shut():
+		_train_stat.text = "KAPALI"
+	elif is_instance_valid(v.armoured):
+		_train_stat.text = "ZIRHLI"
+	elif is_instance_valid(v.train):
+		_train_stat.text = "PERONDA"
+	else:
+		_train_stat.text = "BUGÜN" if due <= 0 else "%d GÜN" % due
+	_train_stat.add_theme_color_override("font_color", Ui.BAD if v.line_shut() or is_instance_valid(v.armoured) else Ui.INK)
+
 	var guns := 0
 	var shots := 0
 	var bows := 0
