@@ -59,9 +59,10 @@ func _ready() -> void:
 	col.offset_top = -250
 	col.add_theme_constant_override("separation", 6)
 	root.add_child(col)
-	Ui.label(col, "İNŞA", 120, Ui.LIGHT, "display")
-	var sub := Ui.label(col, "ZAROVYA · KORDAL TAYGASI · 1918 — SAVAŞTAN KAÇANLARIN KURDUĞU KASABA", 18, Color(Ui.LIGHT, 0.7), "head")
-	sub.add_theme_constant_override("outline_size", 0)
+	var logo := Logo.new()
+	logo.tall = 96.0
+	logo.sub = "KORDAL TAYGASI · 1918"
+	col.add_child(logo)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
 	col.add_child(gap)
@@ -209,7 +210,7 @@ const CREDITS := [
 	["DÜNYA", [
 		["Binalar, tren, ağaçlar, kayalar", "Blender ile kodla üretildi (tools/blender)"],
 		["Arazi, gökyüzü, su, hava", "oyunun içinde üretildi"]]],
-	["YAZI TİPLERİ · SIL Open Font License", [["Barlow, Barlow Condensed", "The Barlow Project Authors"], ["Chakra Petch", "The Chakra Petch Project Authors"]]],
+	["YAZI TİPLERİ · SIL Open Font License", [["Barlow, Barlow Condensed", "The Barlow Project Authors"], ["Chakra Petch", "The Chakra Petch Project Authors"], ["Old Standard", "The Old Standard Project Authors"], ["Courier Prime", "The Courier Prime Project Authors"]]],
 ]
 
 

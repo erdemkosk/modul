@@ -23,24 +23,29 @@ const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", 
 	"hendek": {"name": "Hendek", "gives": "milise siper", "desc": "Bir çizgi sürükle: boştaki köylüler kürekle bir siper hendeği kazar. Hendekteki milis siperdedir: onu vurmak iki kat zor. Bedava, emek ister."},
 	"tuzak": {"name": "Tuzak", "gives": "firariyi yaralar, yavaşlatır", "desc": "Bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları kazılır (çukur başı 2 odun). Üstünden geçen firari yaralanır, topallar; çukur bozulur. Aynı yere yeniden TUZAK verince bozulanlar kurulur. Köylüler yerini bilir, düşmez."}}
 const SPEEDS := [1.0, 2.0, 4.0]
-## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
-## is a button on its card, and the build bar, the speed and the menu have their own.
+## Every key, in one place (the help card, F1), by what it's for: the keys of each line (a "+" or
+## "/" between them printed as it is, not as a key) and what they do. Nothing needs a key: what the
+## selected thing can do is a button on its card, and the build bar, the speed and the menu have
+## their own.
 const KEYS := [
-	["Kamera", "WASD / ok tuşları / ekran kenarı: kaydır · Shift: hızlı · Q E / orta tuş: döndür · tekerlek: yakınlaş · H: depoya dön · küçük haritaya tıkla: oraya git"],
-	["Bina", "Tab: bina grubu · 1-6: bina seç · sol tık: koy · Shift+tık: üst üste koy · R / Shift+R: çevir · sağ tık / Esc: vazgeç · tahta yol, sur: nokta nokta"],
-	["Emirler", "KES: ağaçları işaretle · TUZAK, MAYIN: alan sürükle (yeşil: konur, kırmızı: konmaz) · HENDEK: çizgi sürükle, boştakiler kazar"],
-	["Seçim", "Sol tık: bina ya da kasabalı seç · Shift+tık: birkaç kasabalı · V: bütün milisi seç · kasabalı seçiliyken sağ tık bir işyerine: oraya ata"],
-	["Kontrol", "R (kasabalı seçiliyken): emrine al / bırak · sağ tık: git · düşmana sağ tık: saldır · silahlığa: silah al · eve: saklan · kartta SİLAH AL, SİPER, SAKLAN, YARALI TAŞI"],
-	["Çatışma", "Çatışma başlayınca hız 1x'e iner, milis emrine geçer · seç, sağ tıkla mevzi göster · kartta siper ve iki tarafın isabet yüzdesi · altta birlik şeridi"],
-	["Siper", "Kütük duvar ×0.22 · kum torbası ×0.28 · hendek ×0.35 · kaya ×0.4 · kazık sur ×0.4 · ağaç ×0.6 · duvar dibi / köşe ×0.65 · yukarıdan atış daha isabetli"],
-	["Kart", "Seçtiğin şeyin yapabileceği her şey kartında düğme: onar, yık, işçi ekle, milis yap, topla, fener, tüfekçi / okçu yetiştir..."],
-	["Paneller", "K: kasabalılar ve iş öncelikleri · T: araştırma ağacı · J: günlük (olanların hepsi) · istasyonun kartından TELGRAF: tren, satış, yardım isteme"],
-	["Taraflar", "Merkez ve Özgür Kordal: -30 ve altı düşman (sormadan saldırır), +30 ve üstü dost (hediye, telgrafla yardım) · telgrafhanede son değişiklikler"],
-	["Kısayol", "O: onar · Del: yık · M: milis yap · G: milisi topla / bırak · L: fener · toplanmışken sağ tık: mevzi (siper arar) · düşmana sağ tık: ona ateş"],
-	["Zaman", "Boşluk: duraklat (durmuşken de emir verilir) · + / -: hızlandır, yavaşlat · karar kartı açıkken oyun durur · F5: kaydet · F9: yükle · Esc: menü"],
-	["Görüntü", "P: fotoğraf modu · tekrar P: eski 1918 fotoğrafı (sepya) · tekrar P: çık"],
-	["Deneme", "Sağ alttaki DENEME: mevsim, gece, baskın, konvoy, zırhlı tren, kamp, yardım... · F: tutuştur · B: baskın · N: inşaatları bitir"],
+	["Kamera", [[["W", "A", "S", "D"], "kaydır"], [["Shift"], "hızlı kaydır"], [["Q", "E"], "döndür (orta tuşla da)"],
+		[["Tekerlek"], "yakınlaş"], [["H"], "depoya dön"], [["Harita"], "tıklanan yere git"]]],
+	["Bina", [[["Tab"], "bina grubu"], [["1", "–", "6"], "bina seç"], [["Sol tık"], "koy"], [["Shift", "+", "tık"], "üst üste koy"],
+		[["R", "/", "Shift", "R"], "çevir"], [["Alt"], "hizasız koy"], [["Sağ tık", "/", "Esc"], "vazgeç"]]],
+	["Emirler", [[["Sürükle"], "kesim, tuzak, mayın alanı"], [["Çizgi"], "hendek: boştakiler kazar"], [["Sağ tık"], "işareti kaldır"]]],
+	["Seçim", [[["Sol tık"], "bina ya da kasabalı"], [["Shift", "+", "tık"], "birkaç kasabalı"], [["Sürükle"], "kutuyla seç"],
+		[["V"], "bütün milis"], [["Sağ tık"], "işyerine ata"]]],
+	["Emirde", [[["R"], "emrine al, bırak"], [["Sağ tık"], "git, saldır, gir"], [["Sağ sürükle"], "sıraya diz, siper arar"],
+		[["G"], "milisi topla"], [["M"], "milis yap"], [["L"], "fener"]]],
+	["Bina kartı", [[["O"], "onar"], [["Del"], "yık"]]],
+	["Defterler", [[["K"], "kasabalılar"], [["T"], "araştırma"], [["J"], "günlük"], [["F1"], "bu kart"]]],
+	["Zaman", [[["Boşluk"], "duraklat (emir verilir)"], [["+", "/", "−"], "hız"], [["F5"], "kaydet"], [["F9"], "yükle"], [["Esc"], "menü"]]],
+	["Görüntü", [[["P"], "fotoğraf, sepya, çık"]]],
+	["Deneme", [[["F"], "tutuştur"], [["B"], "baskın"], [["N"], "inşaatı bitir"]]],
 ]
+## How hard one in cover is to hit (the help card's table).
+const COVER := [["Kütük duvar", "0,22"], ["Kum torbası", "0,28"], ["Hendek", "0,35"], ["Kaya", "0,40"], ["Kazık sur", "0,40"],
+	["Ağaç", "0,60"], ["Duvar dibi, köşe", "0,65"]]
 
 var game: Node
 var category := 0
@@ -67,6 +72,7 @@ var _tabs: Array[Button] = []
 var _build_row: HBoxContainer
 var _card: PanelContainer
 var _card_title: Label
+var _card_kind: Label ## printed at the head of the card: what sort of record it is
 var _card_lines: Label
 var _card_workers: HBoxContainer
 var _card_count: Label
@@ -149,7 +155,7 @@ func _ready() -> void:
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toasts.offset_top = 18
-	_toasts.add_theme_constant_override("separation", 2)
+	_toasts.add_theme_constant_override("separation", 5)
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
 	var help := _small_button("? TUŞLAR", func() -> void: toggle_help())
@@ -183,14 +189,16 @@ func _plate(lean := true, fill := Ui.GLASS) -> PanelContainer:
 	return p
 
 
-func _stat(row: HBoxContainer, title: String, tip := "") -> Label:
+## A read-out on a bar: its name small over it, the figure under. `ink`: on the enamel sign (dark
+## writing on cream), else cream on the leather.
+func _stat(row: HBoxContainer, title: String, tip := "", ink := false, kind := "text", size := 21) -> Label:
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", -4)
+	box.add_theme_constant_override("separation", -2)
 	box.tooltip_text = tip
 	box.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(box)
-	Ui.label(box, title, 12, Ui.DIM, "head")
-	return Ui.label(box, "-", 22, Ui.INK, "display")
+	Ui.label(box, title, 12, Ui.P_DIM if ink else Ui.DIM, "label")
+	return Ui.label(box, "-", size, Ui.P_INK if ink else Ui.INK, kind)
 
 
 ## The goods down the left: each as it's first had, how much is in the stores, and how it's gone
@@ -199,7 +207,7 @@ func _goods_plate() -> void:
 	var p := _plate()
 	p.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	p.offset_left = 12
-	p.offset_top = 84
+	p.offset_top = 116
 	add_child(p)
 	_fold(_goods_head, p)
 	var col := VBoxContainer.new()
@@ -270,33 +278,49 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 		(parts[2] as Label).text = ("+%d/gün" % d) if d > 0 else (("%d/gün" % d) if d < 0 else "")
 		(parts[2] as Label).add_theme_color_override("font_color", Ui.GOOD if d > 0 else Ui.BAD)
 	_goods_head.add_theme_color_override("font_color", Ui.BAD if int(stock.get("yiyecek", 0)) <= 5 else Ui.INK) # (short of food: it says so, folded or not)
-	# how full the stores are, and a warning when work's stopped for want of room or carters
+	# how full the stores are and where the town stands with the sides, on the brass plate under
+	# the bar; a slip pinned under it when work's stopped for want of room or carters
 	var fill := v.store_fill()
 	var full := v.full_yards()
-	var line := "DEPO  %d / %d   ·   %s" % [fill.x, fill.y, Ui.upper(v.standing_text())]
+	_depo_fill.text = "%d / %d" % [fill.x, fill.y]
+	_depo_bar.max_value = maxf(float(fill.y), 1.0)
+	_depo_bar.value = fill.x
+	(_depo_bar.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Color(0.5, 0.1, 0.06) if fill.y > 0 and fill.x >= fill.y * 0.85 else Color(0.2, 0.13, 0.06)
+	for side: String in _side_marks:
+		var st := v.standing(side)
+		var l: Label = _side_marks[side]
+		l.text = "%+d" % st
+		l.add_theme_color_override("font_color", Color(0.5, 0.08, 0.04) if st <= Village.HOSTILE else (Color(0.08, 0.3, 0.1) if st >= Village.FRIENDLY else Color(0.2, 0.13, 0.06)))
+	var line := ""
 	var bad := false
 	if fill.y > 0 and fill.x >= fill.y:
-		line += "   ·   DEPOLAR DOLU: yeni depo kur, üretim duruyor"
+		line = "DEPOLAR DOLU: yeni depo kur, üretim duruyor"
 		bad = true
 	elif not full.is_empty():
-		line += "   ·   %d işyerinin yığını dolu: %s" % [full.size(), "arabacılar yetişemiyor" if v.carters_about() else "arabacı kur"]
+		line = "%d işyerinin yığını dolu: %s" % [full.size(), "arabacılar yetişemiyor" if v.carters_about() else "arabacı kur"]
 		bad = true
 	elif not v.unmanned().is_empty():
-		line += "   ·   %d işyerinde çalışan yok: boşta kasabalı kalmadı" % v.unmanned().size()
+		line = "%d işyerinde çalışan yok: boşta kasabalı kalmadı" % v.unmanned().size()
 		bad = true
 	elif v.line_shut() and v.depot() != null:
-		line += "   ·   HAT KARLA KAPALI: bir atölyede HAT KÜRE seçin"
+		line = "HAT KARLA KAPALI: bir atölyede HAT KÜRE seçin"
 		bad = true
 	elif fill.y > 0 and fill.x >= fill.y * 0.85:
-		line += "   ·   depolar dolmak üzere"
+		line = "Depolar dolmak üzere"
 	if game.raids.camp_known:
-		line += "   ·   FİRARİ KAMPI (%d kişi): milisi TOPLA, kampa sağ tıkla" % game.raids.camp_men.size()
+		line = "FİRARİ KAMPI (%d kişi): milisi TOPLA, kampa sağ tıkla" % game.raids.camp_men.size()
 		bad = true
+	_store_line.visible = line != ""
 	_store_line.text = line + ("   ▸ GÖSTER" if bad else "")
-	var lc: Color = Ui.BAD if bad else (Ui.ACCENT if fill.x >= fill.y * 0.85 else Color(Ui.INK, 0.75))
+	var lc: Color = Ui.P_RED if bad else Ui.P_INK
 	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
-		_store_line.add_theme_color_override(state, lc.lightened(0.25) if state == "font_hover_color" else lc)
-	_store_line.tooltip_text = "Bütün depoların aldığı ve içindeki yük.\n" + ("\n".join(full.map(func(b: Building) -> String: return "%s: yığın dolu" % b.display_name())) if not full.is_empty() else "")
+		_store_line.add_theme_color_override(state, lc.darkened(0.3) if state == "font_hover_color" else lc)
+	_store_line.tooltip_text = "Tıkla: oraya bak" + ("\n" + "\n".join(full.map(func(b: Building) -> String: return "%s: yığın dolu" % b.display_name())) if not full.is_empty() else "")
+
+
+var _depo_fill: Label
+var _depo_bar: ProgressBar
+var _side_marks := {} ## side -> its standing on the brass plate
 
 
 func _stores_plate() -> void:
@@ -305,17 +329,25 @@ func _stores_plate() -> void:
 	p.offset_left = 12
 	p.offset_top = 10
 	add_child(p)
+	_brass_plate()
+	# what's gone wrong, on a slip of tape pinned under the plate (a click: show it)
 	_store_line = Button.new()
-	_store_line.flat = true
 	_store_line.focus_mode = Control.FOCUS_NONE
 	_store_line.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_store_line.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_store_line.offset_left = 16
-	_store_line.offset_top = 88
-	_store_line.add_theme_font_override("font", Ui.font("head"))
-	_store_line.add_theme_font_size_override("font_size", 14)
-	_store_line.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_store_line.add_theme_constant_override("outline_size", 3)
+	_store_line.offset_left = 22
+	_store_line.offset_top = 118
+	_store_line.visible = false
+	_store_line.add_theme_font_override("font", Ui.font("type_bold"))
+	_store_line.add_theme_font_size_override("font_size", 13)
+	var tape := Ui.sheet("tape")
+	var tape_over := Ui.sheet("tape")
+	tape_over.modulate_color = Color(0.96, 0.94, 0.88)
+	_store_line.add_theme_stylebox_override("normal", tape)
+	_store_line.add_theme_stylebox_override("hover", tape_over)
+	_store_line.add_theme_stylebox_override("pressed", tape_over)
+	_store_line.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	_store_line.rotation = -0.012
 	_store_line.pressed.connect(func() -> void: game.show_trouble())
 	add_child(_store_line)
 	var row := HBoxContainer.new()
@@ -324,39 +356,81 @@ func _stores_plate() -> void:
 	var pair := HBoxContainer.new() # (the two that open something, side by side)
 	pair.add_theme_constant_override("separation", 6)
 	row.add_child(pair)
-	_goods_head = _small_button("KAYNAKLAR ▾", func() -> void: pass)
+	_goods_head = _nav_button("Kaynaklar ▾", func() -> void: pass)
 	_goods_head.tooltip_text = "Depolardaki odun, taş, yiyecek, silahlar...: üzerine gel"
 	pair.add_child(_goods_head)
-	var who := _small_button("KASABALILAR", func() -> void: toggle_people())
+	var who := _nav_button("Kasabalılar", func() -> void: toggle_people())
 	who.tooltip_text = "Herkesin becerileri ve hangi işe öncelikle verileceği (K)"
 	pair.add_child(who)
-	var tech := _small_button("ARAŞTIRMA", func() -> void: toggle_tech())
+	var tech := _nav_button("Araştırma", func() -> void: toggle_tech())
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
-	var book := _small_button("GÜNLÜK", func() -> void: toggle_log())
+	var book := _nav_button("Günlük", func() -> void: toggle_log())
 	book.tooltip_text = "Olanların hepsi, gün gün: kaçırdığın haberler, telgraflar, baskınlar (J)"
 	pair.add_child(book)
-	_pop = _stat(row, "NÜFUS · BOŞTA", "Kasabalılar / yataklar · bir işyerine verilmemiş, taşıyıp inşa edenler")
-	_purse = _stat(row, "KASA", "Mirka (Zarovya parası): trene mal satınca gelir, telgrafla tren çağırınca gider")
-	_train_stat = _stat(row, "TREN", "Sonraki tren: kaç gün sonra, peronda mı, hat karla kapalı mı")
+	_pop = _stat(row, "Nüfus", "Kasabalılar / yataklar, ve bir işyerine verilmemiş olanlar (taşır, inşa eder)")
+	_purse = _stat(row, "Kasa", "Mirka (Zarovya parası): trene mal satınca gelir, telgrafla tren çağırınca gider")
+	_train_stat = _stat(row, "Tren", "Sonraki tren: kaç gün sonra, peronda mı, hat karla kapalı mı")
+
+
+## Under the bar, a brass plate screwed to the leather: how full the stores are (a gauge, the
+## figures), and the town's standing with the two sides, engraved.
+func _brass_plate() -> void:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", Ui.sheet("brass"))
+	p.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	p.offset_left = 22
+	p.offset_top = 80
+	p.tooltip_text = "Bütün depoların aldığı ve içindeki yük; Merkez ve Özgür Kordal'ın gözünde kasaba (−30 ve altı düşman, +30 ve üstü dost)"
+	add_child(p)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(row)
+	var engraved := Color(0.2, 0.13, 0.06)
+	var cut := func(text: String, size: int, kind: String) -> Label:
+		var l := Ui.label(row, text, size, engraved, kind)
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return l
+	cut.call("DEPO", 12, "head")
+	_depo_bar = _bar(engraved, 64, 6)
+	(_depo_bar.get_theme_stylebox("background") as StyleBoxFlat).bg_color = Color(0.3, 0.2, 0.08, 0.35)
+	row.add_child(_depo_bar)
+	_depo_fill = cut.call("0 / 0", 14, "digital")
+	for side: String in Village.SIDES:
+		var bar := ColorRect.new() # (an engraved stroke between them)
+		bar.color = Color(engraved, 0.5)
+		bar.custom_minimum_size = Vector2(1, 14)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(bar)
+		cut.call(Ui.upper(str(Village.SIDES[side])), 12, "head")
+		_side_marks[side] = cut.call("+0", 14, "digital")
 
 
 func _clock_plate() -> void:
-	var p := _plate()
+	var p := PanelContainer.new() # (a cream enamel sign, as on the station's wall: the day, the hour, the sky)
+	p.add_theme_stylebox_override("panel", Ui.sheet("enamel"))
 	p.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	p.offset_right = -12
 	p.offset_top = 10
 	add_child(p)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 22)
+	row.add_theme_constant_override("separation", 18)
 	p.add_child(row)
-	_clock = _stat(row, "GÜN · SAAT · HAVA")
-	_raid = _stat(row, "BASKIN", "Firarilerin gelmesi beklenen gece")
+	_clock = _stat(row, "Gün", "", true)
+	_clock_time = _stat(row, "Saat", "", true, "type", 21)
+	_clock_sky = _stat(row, "Hava", "", true, "italic", 20)
+	var bar := ColorRect.new() # (a line struck down the sign between the hour and the raid)
+	bar.color = Color(Ui.P_INK, 0.35)
+	bar.custom_minimum_size = Vector2(1, 0)
+	row.add_child(bar)
+	_raid = _stat(row, "Baskın", "Firarilerin gelmesi beklenen gece", true)
 	var sp := VBoxContainer.new()
-	sp.add_theme_constant_override("separation", 2)
+	sp.add_theme_constant_override("separation", 1)
 	row.add_child(sp)
-	Ui.label(sp, "HIZ", 12, Ui.DIM, "head")
+	Ui.label(sp, "Hız", 12, Ui.P_DIM, "label")
 	var btns := HBoxContainer.new()
 	btns.add_theme_constant_override("separation", 4)
 	sp.add_child(btns)
@@ -372,6 +446,13 @@ func _clock_plate() -> void:
 	var menu := _small_button("MENÜ", func() -> void: game.set_menu(true))
 	menu.tooltip_text = "Kaydet, yükle, yeni oyun (Esc)"
 	btns.add_child(menu)
+	Ui.inkify(p, Ui.P_INK)
+	for b: Button in _speed_buttons:
+		Ui.ink_button(b, Ui.P_INK, 15, "digital") # (the figures even, as a timetable's)
+
+
+var _clock_time: Label
+var _clock_sky: Label
 
 
 ## Bottom right, folded under its name: to try things out at once.
@@ -480,32 +561,57 @@ func show_category(i: int) -> void:
 		_build_row.add_child(_build_button(kinds[k], k))
 
 
-## A build bar button: the building's picture (assets/ui/icons, made by tools/building_icons.gd),
-## its key and name, what it brings (and how many work there), what it costs (red while the stores
-## can't cover it).
+## The tickets' card, a colour a group, as the railway's were a colour a class.
+const TICKET := [Color(0.92, 0.87, 0.74), Color(0.8, 0.86, 0.72), Color(0.9, 0.78, 0.74), Color(0.92, 0.79, 0.6), Color(0.78, 0.84, 0.88)]
+
+
+## A build bar button, a card ticket: its key in the corner (and how many work there in the other),
+## the building's picture (assets/ui/icons, made by tools/building_icons.gd), its name, the one thing
+## it brings, what it costs with the goods drawn (red while the stores can't cover it).
 func _build_button(kind: String, k: int) -> Button:
 	var def: Dictionary = ORDERS[kind] if ORDERS.has(kind) else BuildingDefs.DEFS[kind]
 	var b := Button.new()
 	b.tooltip_text = str(def.desc)
-	b.custom_minimum_size = Vector2(134, 124)
+	b.custom_minimum_size = Vector2(132, 126)
 	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1, 1, 1, 0.05)))
-	var hover := Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.25), Ui.ACCENT)
+	var card: Color = TICKET[category % TICKET.size()]
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = card
+	normal.border_color = Color(Ui.P_INK, 0.55)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(3)
+	normal.shadow_color = Color(0, 0, 0, 0.35)
+	normal.shadow_size = 2
+	normal.shadow_offset = Vector2(0, 2)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = card.lightened(0.25)
+	hover.border_color = Ui.P_INK
+	hover.set_border_width_all(2)
+	b.add_theme_stylebox_override("normal", normal)
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", hover)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.set_meta("kind", kind)
 	b.pressed.connect(func() -> void: game.start_placing(kind))
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 4
-	col.offset_right = -4
+	col.offset_left = 6
+	col.offset_right = -6
 	col.offset_top = 3
-	col.offset_bottom = -3
+	col.offset_bottom = -4
 	col.add_theme_constant_override("separation", 0)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(col)
+	var top := HBoxContainer.new()
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(top)
+	var no := Ui.label(top, "No %d" % (k + 1), 11, Ui.P_DIM, "type_bold")
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	no.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if int(def.get("slots", 0)) > 0:
+		Ui.label(top, "%d kişi" % int(def.slots), 11, Ui.P_DIM, "italic").mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(0, 62)
+	icon.custom_minimum_size = Vector2(0, 56)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -513,21 +619,52 @@ func _build_button(kind: String, k: int) -> Button:
 	if ResourceLoader.exists(path):
 		icon.texture = load(path)
 	col.add_child(icon)
-	var name := Ui.label(col, "%d  %s" % [k + 1, Ui.upper(str(def.name))], 13, Ui.INK, "head")
+	var name := Ui.label(col, Ui.upper(str(def.name)), 13, Ui.P_INK, "head")
 	var gives := str(def.gives) if ORDERS.has(kind) else str(BuildingDefs.GIVES.get(kind, ""))
-	if int(def.get("slots", 0)) > 0:
-		gives += " · %d kişi" % int(def.slots)
-	var give := Ui.label(col, gives, 11, Ui.GOOD, "head")
-	var cost := Ui.label(col, "bedava" if ORDERS.has(kind) else BuildingDefs.cost_text(kind), 11, Ui.DIM, "head")
+	var give := Ui.label(col, gives.get_slice(" · ", 0), 12, Ui.P_DIM, "italic")
+	# what it costs: each good's little ink drawing and how many
+	var costs := HBoxContainer.new()
+	costs.alignment = BoxContainer.ALIGNMENT_CENTER
+	costs.add_theme_constant_override("separation", 2)
+	costs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(costs)
+	var nums: Array = []
+	if ORDERS.has(kind):
+		Ui.label(costs, "bedava", 12, Ui.P_GREEN, "italic").mouse_filter = Control.MOUSE_FILTER_IGNORE
+	else:
+		var cost: Dictionary = BuildingDefs.DEFS[kind].cost
+		var goods: Array = cost.keys()
+		for r: String in goods:
+			if ResourceLoader.exists("res://assets/ui/ink/%s.png" % r):
+				var ic := TextureRect.new()
+				ic.texture = load("res://assets/ui/ink/%s.png" % r)
+				ic.custom_minimum_size = Vector2(17, 17)
+				ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				costs.add_child(ic)
+			var n := Ui.label(costs, str(int(cost[r])), 13, Ui.P_INK, "type_bold")
+			n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			nums.append([r, n])
+			if r != goods[-1]:
+				var gap := Control.new()
+				gap.custom_minimum_size = Vector2(6, 0)
+				gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				costs.add_child(gap)
+		b.tooltip_text += "\n\nMaliyet: " + BuildingDefs.cost_text(kind)
+	var lock := Ui.label(col, "", 11, Ui.P_RED, "head")
+	lock.visible = false
 	var needs := str(def.get("needs", ""))
 	if needs != "":
 		b.set_meta("needs", needs)
 		b.tooltip_text = "KİLİTLİ: okuma odasında %s araştırılınca açılır.\n\n%s" % [BuildingDefs.TECHS[needs].name, def.desc]
-	for l: Label in [name, give, cost]:
+	for l: Label in [name, give, lock]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.clip_text = true
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.set_meta("cost_label", cost)
+	b.set_meta("costs", nums)
+	b.set_meta("cost_row", costs)
+	b.set_meta("lock_label", lock)
 	return b
 
 
@@ -562,8 +699,11 @@ func _make_dial() -> void:
 	_dial.make_labels(row)
 
 
+## The chosen thing's card: a buff file card from the clerk's drawer, its kind printed small at
+## the head, the name over a red line, the rest written in.
 func _make_card() -> void:
-	_card = _plate(false)
+	_card = PanelContainer.new()
+	_card.add_theme_stylebox_override("panel", Ui.sheet("file"))
 	_card.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_card.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_card.offset_right = -12
@@ -574,27 +714,31 @@ func _make_card() -> void:
 	col.add_theme_constant_override("separation", 6)
 	col.custom_minimum_size = Vector2(340, 0)
 	_card.add_child(col)
-	_card_title = Ui.label(col, "", 26, Ui.INK, "display")
+	_card_kind = Ui.label(col, "", 11, Ui.P_DIM, "head")
+	_card_title = Ui.label(col, "", 25, Ui.P_INK, "display")
 	_card_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_card_title.custom_minimum_size = Vector2(330, 0)
-	Ui.rule(col)
+	var red := ColorRect.new() # (the card's printed red line under the name)
+	red.color = Color(Ui.P_RED, 0.8)
+	red.custom_minimum_size = Vector2(0, 2)
+	col.add_child(red)
 	_make_folk_box(col)
-	_card_lines = Ui.label(col, "", 15, Ui.INK)
+	_card_lines = Ui.label(col, "", 15, Ui.P_INK)
 	_card_lines.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_card_lines.custom_minimum_size = Vector2(300, 0)
 	_card_workers = HBoxContainer.new()
 	_card_workers.add_theme_constant_override("separation", 8)
 	col.add_child(_card_workers)
-	Ui.label(_card_workers, "İŞÇİ", 14, Ui.DIM, "head")
+	Ui.label(_card_workers, "İŞÇİ", 14, Ui.P_DIM, "head")
 	_card_workers.add_child(_small_button("−", func() -> void: game.change_workers(-1)))
-	_card_count = Ui.label(_card_workers, "0/3", 20, Ui.INK, "display")
+	_card_count = Ui.label(_card_workers, "0/3", 20, Ui.P_INK, "display")
 	_card_workers.add_child(_small_button("+", func() -> void: game.change_workers(1)))
 	_pick_btn = _add(_card_workers, "ATA ▾", func() -> void: _pick_open = null if _pick_open == game.selected else game.selected,
 		"Kimin bu işe en yatkın olduğunu gör ve ata")
 	_card_pick = VBoxContainer.new()
 	_card_pick.add_theme_constant_override("separation", 3)
 	col.add_child(_card_pick)
-	_pick_title = Ui.label(_card_pick, "", 13, Ui.ACCENT, "head")
+	_pick_title = Ui.label(_card_pick, "", 13, Ui.P_BLUE, "head")
 	for i in 10:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
@@ -604,15 +748,15 @@ func _make_card() -> void:
 		face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		row.add_child(face)
-		var nm := Ui.label(row, "", 14, Ui.INK)
+		var nm := Ui.label(row, "", 14, Ui.P_INK)
 		nm.custom_minimum_size = Vector2(140, 0)
-		nm.clip_text = true
-		var kn := Ui.label(row, "", 16, Ui.INK, "display")
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		var kn := Ui.label(row, "", 16, Ui.P_INK, "display")
 		kn.custom_minimum_size = Vector2(44, 0)
 		kn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		var wh := Ui.label(row, "", 12, Ui.DIM)
+		var wh := Ui.label(row, "", 12, Ui.P_DIM)
 		wh.custom_minimum_size = Vector2(110, 0)
-		wh.clip_text = true
+		wh.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		var idx := i
 		var bt := _small_button("ATA", func() -> void: _pick(idx))
 		bt.custom_minimum_size = Vector2(96, 26)
@@ -645,7 +789,7 @@ func _make_card() -> void:
 	_card_make.add_theme_constant_override("v_separation", 4)
 	_card_make.add_theme_constant_override("h_separation", 4)
 	col.add_child(_card_make)
-	Ui.label(_card_make, "ÜRET:", 12, Ui.ACCENT, "head")
+	Ui.label(_card_make, "ÜRET:", 12, Ui.P_BLUE, "head")
 	for what: String in BuildingDefs.WORKSHOP:
 		var mb := _small_button(str(BuildingDefs.WORKSHOP[what].name), func() -> void: game.refit_selected(what))
 		mb.tooltip_text = "Atölye %s için kurulsun: içi ona göre değişir, işçiler kalır" % BuildingDefs.WORKSHOP[what].word
@@ -685,6 +829,7 @@ func _make_card() -> void:
 	_btn.ctl_cover = _add(_card_folk, "SİPER", func() -> void: game.control_order("cover"), "En yakın sipere (duvar dibi, hendek, kum torbası) geçer")
 	_btn.ctl_hide = _add(_card_folk, "SAKLAN", func() -> void: game.control_order("hide"), "En yakın eve ya da depoya saklanır")
 	_btn.ctl_carry = _add(_card_folk, "YARALI TAŞI", func() -> void: game.control_order("carry"), "En yakın yerde yatan yaralıyı bir eve taşır")
+	Ui.inkify(_card)
 
 
 ## The workplace card's list: everyone grown, best at the work first; those working here marked.
@@ -692,7 +837,7 @@ func _fill_pick(b: Building) -> void:
 	var sk := Villager.skill_of(b)
 	var folk: Array = game.village.villagers.filter(func(v: Villager) -> bool: return not v.dead and not v.is_child)
 	folk.sort_custom(func(a: Villager, c: Villager) -> bool: return a.skill(sk) > c.skill(sk))
-	_pick_title.text = "EN UYGUN: %s · %d / %d kişi" % [Ui.upper(str(Villager.SKILLS.get(sk, "iş"))), b.workers.size(), int(b.def.slots)]
+	_pick_title.text = "EN UYGUN: %s (%d/%d)" % [Ui.upper(str(Villager.SKILLS.get(sk, "iş"))), b.workers.size(), int(b.def.slots)]
 	_pick_for = folk.slice(0, _pick_rows.size())
 	var full := b.workers.size() >= int(b.def.slots)
 	for i in _pick_rows.size():
@@ -704,13 +849,13 @@ func _fill_pick(b: Building) -> void:
 		var here := v.workplace == b
 		(row[5] as TextureRect).texture = Portraits.of(v)
 		(row[1] as Label).text = v.display_name
-		(row[1] as Label).add_theme_color_override("font_color", Ui.ACCENT if here else Ui.INK)
+		(row[1] as Label).add_theme_color_override("font_color", Ui.P_BLUE if here else Ui.P_INK)
 		(row[2] as Label).text = str(int(v.skill(sk))) + (" ♥" if sk in v.keen else "")
 		(row[2] as Label).tooltip_text = "Bu işe hevesli: iki kat hızlı öğrenir" if sk in v.keen else ""
 		(row[2] as Label).mouse_filter = Control.MOUSE_FILTER_PASS
-		(row[2] as Label).add_theme_color_override("font_color", Ui.GOOD if v.skill(sk) >= 6.0 else (Ui.DIM if v.skill(sk) < 2.0 else Ui.INK))
+		(row[2] as Label).add_theme_color_override("font_color", Ui.P_GREEN if v.skill(sk) >= 6.0 else (Ui.P_DIM if v.skill(sk) < 2.0 else Ui.P_INK))
 		var pr := int(v.prio.get(sk, 1))
-		(row[3] as Label).text = ("burada" if here else (v.workplace.display_name() if is_instance_valid(v.workplace) else "boşta")) + (" · ▲" if pr == 2 else (" · –" if pr == 0 else ""))
+		(row[3] as Label).text = ("burada" if here else (v.workplace.display_name() if is_instance_valid(v.workplace) else "boşta")) + (" ▲" if pr == 2 else (" –" if pr == 0 else ""))
 		(row[4] as Button).text = "ÇIKAR" if here else ("DEĞİŞTİR" if full else "ATA")
 		(row[4] as Button).tooltip_text = "İşten al" if here else ("Buradaki en beceriksizin yerine koy" if full else "Bu işe ver")
 
@@ -746,13 +891,22 @@ func _add(row: Container, text: String, f: Callable, tip := "") -> Button:
 	return b
 
 
+## The bar's four that open a book: tooled tags as the rest, but the word set in the book face, as
+## on a spine.
+func _nav_button(text: String, f: Callable) -> Button:
+	var b := _small_button(text, f)
+	b.add_theme_font_override("font", Ui.font("strong"))
+	b.add_theme_font_size_override("font_size", 15)
+	return b
+
+
 func _small_button(text: String, f: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(34, 30)
-	b.add_theme_font_override("font", Ui.font("head"))
-	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_font_override("font", Ui.face("head", 14))
+	b.add_theme_font_size_override("font_size", 14)
 	b.add_theme_color_override("font_color", Ui.INK)
 	b.add_theme_color_override("font_hover_color", Ui.ACCENT)
 	b.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1, 1, 1, 0.06)))
@@ -762,28 +916,88 @@ func _small_button(text: String, f: Callable) -> Button:
 	return b
 
 
+## The keys, as the card printed for the settlers would have them: a heading for each kind of
+## thing, a line a key, the keys drawn as keys; the cover table and the sides' rule in the corner.
 func _make_help() -> void:
-	_help = _plate(false)
+	_help = PanelContainer.new()
+	_help.add_theme_stylebox_override("panel", Ui.sheet("card"))
 	_help.set_anchors_preset(Control.PRESET_CENTER)
 	_help.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_help.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_help.visible = false
 	add_child(_help)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 4)
 	_help.add_child(col)
-	Ui.label(col, "TUŞLAR", 26, Ui.INK, "display")
-	Ui.rule(col)
-	for pair in KEYS:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 14)
-		col.add_child(row)
-		var h := Ui.label(row, Ui.upper(pair[0]), 15, Ui.ACCENT, "head")
-		h.custom_minimum_size = Vector2(80, 0)
-		var l := Ui.label(row, pair[1], 15, Ui.INK)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(620, 0)
-	Ui.label(col, "F1 ya da Esc: kapat", 13, Ui.DIM, "head")
+	var title := Ui.label(col, "TUŞLAR", 30, Ui.P_INK, "display")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var sub := Ui.label(col, "Kordal hattı kasabaları için kullanım kartı", 14, Ui.P_DIM, "italic")
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	Ui.double_rule(col)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 30)
+	col.add_child(cols)
+	var groups: Array = [KEYS.slice(0, 3), KEYS.slice(3, 6), KEYS.slice(6)]
+	for gi in groups.size():
+		var c := VBoxContainer.new()
+		c.add_theme_constant_override("separation", 3)
+		c.custom_minimum_size = Vector2(300, 0)
+		cols.add_child(c)
+		for sec: Array in groups[gi]:
+			_help_heading(c, str(sec[0]))
+			for line: Array in sec[1]:
+				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", 8)
+				c.add_child(row)
+				var keys := HBoxContainer.new()
+				keys.add_theme_constant_override("separation", 3)
+				keys.custom_minimum_size = Vector2(124, 0)
+				row.add_child(keys)
+				for k: String in line[0]:
+					if k in ["+", "/", "–"]:
+						Ui.label(keys, k, 13, Ui.P_DIM).size_flags_vertical = Control.SIZE_SHRINK_CENTER
+					else:
+						Ui.keycap(keys, k)
+				var what := Ui.label(row, str(line[1]), 15, Ui.P_INK)
+				what.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if gi == 2:
+			_help_heading(c, "Siperdekine isabet")
+			for pair: Array in COVER:
+				var row := HBoxContainer.new()
+				c.add_child(row)
+				var nm := Ui.label(row, str(pair[0]), 14, Ui.P_INK)
+				nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				Ui.label(row, "× " + str(pair[1]), 14, Ui.P_INK, "type_bold")
+			var note := Ui.label(c, "Yukarıdan atış daha isabetli.", 13, Ui.P_DIM, "italic")
+			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	Ui.double_rule(col)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 6)
+	col.add_child(foot)
+	var sides := Ui.label(foot, "Merkez ve Özgür Kordal: −30 ve altı düşman, +30 ve üstü dost.", 13, Ui.P_DIM, "italic")
+	sides.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sides.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	Ui.keycap(foot, "F1")
+	Ui.label(foot, "kapat", 13, Ui.P_DIM, "italic").size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+
+## A heading on the key card: the word in spaced capitals between two short rules.
+func _help_heading(parent: Control, text: String) -> void:
+	if parent.get_child_count() > 0:
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 8)
+		parent.add_child(gap)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+	var l := Ui.label(row, Ui.upper(text), 13, Ui.P_RED, "head")
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var line := ColorRect.new()
+	line.color = Color(Ui.P_RED, 0.5)
+	line.custom_minimum_size = Vector2(0, 1)
+	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(line)
 
 
 ## While a building's being placed: turn it, or give up, with the mouse.
@@ -812,59 +1026,111 @@ func _make_placing() -> void:
 		_place_btns[what] = mb
 
 
-## The townsfolk table: a row each, their knack at each kind of work (0-10, growing as they do it),
-## and, clicked, whether they're put to it first (▲), as needed, or never (–).
+## The townsfolk register: a green account book, a row each, ruled in red between the columns:
+## their knack at each kind of work (0-10, growing as they do it), and, clicked, whether they're put
+## to it first (▲), as needed, or never (–).
 func _make_people() -> void:
-	_people_plate = _plate(false)
+	_people_plate = PanelContainer.new()
+	_people_plate.add_theme_stylebox_override("panel", Ui.sheet("register"))
 	_people_plate.set_anchors_preset(Control.PRESET_CENTER)
 	_people_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_people_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_people_plate.visible = false
 	add_child(_people_plate)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	_people_plate.add_child(col)
 	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
 	col.add_child(head)
-	Ui.label(head, "KASABALILAR", 26, Ui.INK, "display")
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(gap)
-	head.add_child(_small_button("KAPAT", func() -> void: toggle_people()))
-	Ui.rule(col)
-	Ui.label(col, "Sayı: beceri (iş yaptıkça artar). ♥ hevesli: iki kat hızlı öğrenir. Tıkla: ▲ önce bu işe verilir · normal · – bu işe hiç verilmez.", 14, Ui.DIM)
+	var title := VBoxContainer.new()
+	title.add_theme_constant_override("separation", -2)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	Ui.label(title, "KASABALILAR DEFTERİ", 26, Ui.P_INK, "display")
+	Ui.label(title, "Nüfus ve iş kaydı", 14, Ui.P_DIM, "italic")
+	var close := Ui.ink_button(Button.new(), Ui.P_RED, 15, "strong")
+	close.text = "×"
+	close.tooltip_text = "Kapat (K)"
+	close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	close.pressed.connect(func() -> void: toggle_people())
+	head.add_child(close)
+	Ui.double_rule(col, Ui.P_GREEN)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(980, 420)
+	scroll.custom_minimum_size = Vector2(1010, 400)
 	col.add_child(scroll)
 	_people_grid = GridContainer.new()
 	_people_grid.columns = 2 + Villager.SKILLS.size()
-	_people_grid.add_theme_constant_override("h_separation", 6)
-	_people_grid.add_theme_constant_override("v_separation", 4)
+	_people_grid.add_theme_constant_override("h_separation", 0)
+	_people_grid.add_theme_constant_override("v_separation", 0)
+	_people_grid.draw.connect(_rule_register)
 	scroll.add_child(_people_grid)
+	var key := HBoxContainer.new()
+	key.add_theme_constant_override("separation", 18)
+	key.alignment = BoxContainer.ALIGNMENT_END
+	col.add_child(key)
+	for pair: Array in [["♥", "hevesli: iki kat hızlı öğrenir"], ["▲", "önce bu işe"], ["–", "bu işe hiç"]]:
+		var k := HBoxContainer.new()
+		k.add_theme_constant_override("separation", 4)
+		key.add_child(k)
+		Ui.label(k, str(pair[0]), 14, Ui.P_RED, "strong")
+		Ui.label(k, str(pair[1]), 13, Ui.P_DIM, "italic")
 
 
-## The research tree, over the middle of the screen.
+## The register's ruling: green under each row, red down between the columns, a double red line
+## after the names.
+func _rule_register() -> void:
+	var g := _people_grid
+	var cols := g.columns
+	if g.get_child_count() < cols:
+		return
+	var h := g.size.y
+	for c in range(1, cols):
+		var x := (g.get_child(c) as Control).position.x - 1.0
+		g.draw_line(Vector2(x, 0), Vector2(x, h), Color(Ui.P_RED, 0.55), 1.0)
+		if c == 2:
+			g.draw_line(Vector2(x - 3.0, 0), Vector2(x - 3.0, h), Color(Ui.P_RED, 0.55), 1.0)
+	for i in range(0, g.get_child_count(), cols):
+		var r := g.get_child(i) as Control
+		var y := r.position.y + r.size.y
+		g.draw_line(Vector2(0, y), Vector2(g.size.x, y), Color(Ui.P_GREEN, 0.9 if i == 0 else 0.35), 2.0 if i == 0 else 1.0)
+
+
+## The research tree, over the middle of the screen: a drawing's sepia print pinned to the board, the
+## studies drawn on it in cream, what's being read pencilled in yellow, a title block in the corner.
 func _make_tech() -> void:
-	_tech_plate = _plate(false)
+	_tech_plate = PanelContainer.new()
+	_tech_plate.add_theme_stylebox_override("panel", Ui.sheet("blueprint"))
 	_tech_plate.set_anchors_preset(Control.PRESET_CENTER)
 	_tech_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_tech_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_tech_plate.visible = false
 	add_child(_tech_plate)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	_tech_plate.add_child(col)
 	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
 	col.add_child(head)
-	Ui.label(head, "ARAŞTIRMA", 26, Ui.INK, "display")
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(gap)
-	head.add_child(_small_button("KAPAT", func() -> void: toggle_tech()))
-	Ui.rule(col)
-	_tech_note = Ui.label(col, "", 14, Ui.DIM)
+	var title := VBoxContainer.new()
+	title.add_theme_constant_override("separation", -2)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	Ui.label(title, "ARAŞTIRMA PLANI", 26, Ui.CHALK, "display").remove_theme_constant_override("outline_size")
+	_tech_note = Ui.label(title, "", 14, Color(Ui.CHALK, 0.75), "italic")
+	_tech_note.remove_theme_constant_override("outline_size")
+	var close := Ui.ink_button(Button.new(), Ui.CHALK, 14)
+	close.text = "KAPAT"
+	close.tooltip_text = "Kapat (T)"
+	close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	close.pressed.connect(func() -> void: toggle_tech())
+	head.add_child(close)
+	var line := ColorRect.new()
+	line.color = Color(Ui.CHALK, 0.7)
+	line.custom_minimum_size = Vector2(0, 1)
+	col.add_child(line)
 	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_top", 6)
+	pad.add_theme_constant_override("margin_top", 10)
 	pad.add_theme_constant_override("margin_bottom", 6)
 	col.add_child(pad)
 	_tech_tree = TechTree.new()
@@ -872,31 +1138,50 @@ func _make_tech() -> void:
 	pad.add_child(_tech_tree)
 
 
-## The day-book, over the middle of the screen: what's happened, newest first, a day to a heading.
+## The day-book, over the middle of the screen: a ruled ledger page, the hours down the left of its
+## red margin, what happened written in beside them, a day to a heading, newest first.
 func _make_log() -> void:
-	_log_plate = _plate(false)
+	_log_plate = PanelContainer.new()
+	_log_plate.add_theme_stylebox_override("panel", Ui.sheet("ledger"))
 	_log_plate.set_anchors_preset(Control.PRESET_CENTER)
 	_log_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_log_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_log_plate.visible = false
 	add_child(_log_plate)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 4)
 	_log_plate.add_child(col)
 	var head := HBoxContainer.new()
 	col.add_child(head)
-	Ui.label(head, "GÜNLÜK", 26, Ui.INK, "display")
 	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.custom_minimum_size = Vector2(72, 0)
 	head.add_child(gap)
-	head.add_child(_small_button("KAPAT", func() -> void: toggle_log()))
-	Ui.rule(col)
+	var title := VBoxContainer.new()
+	title.add_theme_constant_override("separation", -2)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	Ui.label(title, "GÜNLÜK", 28, Ui.P_INK, "display")
+	Ui.label(title, "Kordal kasabası, olanlar defteri", 14, Ui.P_DIM, "italic")
+	var close := Ui.ink_button(Button.new(), Ui.P_RED, 15, "strong")
+	close.text = "×"
+	close.tooltip_text = "Kapat (J)"
+	close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	close.pressed.connect(func() -> void: toggle_log())
+	head.add_child(close)
+	var top := VBoxContainer.new()
+	top.add_theme_constant_override("separation", 2)
+	col.add_child(top)
+	for k in 2: # (the ledger's double red line across the head of the page)
+		var r := ColorRect.new()
+		r.color = Color(Ui.P_RED, 0.75)
+		r.custom_minimum_size = Vector2(0, 1)
+		top.add_child(r)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(620, 460)
+	scroll.custom_minimum_size = Vector2(640, 460)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	col.add_child(scroll)
 	_log_list = VBoxContainer.new()
-	_log_list.add_theme_constant_override("separation", 3)
+	_log_list.add_theme_constant_override("separation", 0)
 	_log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_log_list)
 
@@ -918,21 +1203,43 @@ func _fill_log() -> void:
 	for ch in _log_list.get_children():
 		ch.queue_free()
 	if _log.is_empty():
-		Ui.label(_log_list, "Henüz bir şey olmadı.", 14, Ui.DIM)
+		_ledger_line(_log_list, "", "Henüz bir şey yazılmadı.", Ui.P_DIM, "italic")
 		return
 	var day := -1
 	for e: Array in _log.slice(0, 150):
 		if int(e[0]) != day:
 			day = int(e[0])
-			var h := Ui.label(_log_list, "GÜN %d" % day, 14, Ui.ACCENT, "head")
-			h.custom_minimum_size = Vector2(0, 26)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		_log_list.add_child(row)
-		Ui.label(row, "%02d:%02d" % [int(e[1]), int(fmod(float(e[1]), 1.0) * 60.0)], 13, Ui.DIM, "head")
-		var t := Ui.label(row, str(e[2]), 14, {"good": Ui.GOOD, "bad": Ui.BAD}.get(str(e[3]), Ui.INK))
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var h := _ledger_line(_log_list, "", "Gün %d" % day, Ui.P_INK, "display")
+			h.custom_minimum_size = Vector2(0, 34)
+		_ledger_line(_log_list, "%02d.%02d" % [int(e[1]), int(fmod(float(e[1]), 1.0) * 60.0)], str(e[2]),
+			{"good": Ui.P_GREEN, "bad": Ui.P_RED}.get(str(e[3]), Ui.P_INK), "text")
+
+
+## A line of the ledger: the hour in the margin, the words beside it, the page's blue rule under them.
+func _ledger_line(parent: Control, hour: String, text: String, ink: Color, kind: String) -> PanelContainer:
+	var line := PanelContainer.new()
+	var rule := StyleBoxFlat.new()
+	rule.bg_color = Color(0, 0, 0, 0)
+	rule.border_color = Color(Ui.P_BLUE, 0.28)
+	rule.border_width_bottom = 1
+	rule.content_margin_top = 3
+	rule.content_margin_bottom = 2
+	line.add_theme_stylebox_override("panel", rule)
+	parent.add_child(line)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	line.add_child(row)
+	var t := Ui.label(row, hour, 13, Ui.P_DIM, "type")
+	t.custom_minimum_size = Vector2(50, 0)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	t.size_flags_vertical = Control.SIZE_SHRINK_END
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(22, 0)
+	row.add_child(gap)
+	var w := Ui.label(row, text, 20 if kind == "display" else 15, ink, kind)
+	w.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	w.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return line
 
 
 ## The box being dragged to pick folk (empty: none).
@@ -955,13 +1262,17 @@ func show_select_box(r: Rect2) -> void:
 	_sel_box.size = r.size / k
 
 
-## A question put to the player, a telegram slip at the top middle: a heading, what's happened, and
-## a button for each answer ({label, f, ok (false: shown but not to be pressed), tip}). Any answer
-## takes it away; so does closing it from outside (the returned card, queue_free).
+## A question put to the player, a telegram form at the top middle: the office's printed head, the
+## day and the hour filled in, what's happened typed out, the office's stamp struck over the corner,
+## and a typed answer for each choice ({label, f, ok (false: shown but not to be pressed), tip}). Any
+## answer takes it away; so does closing it from outside (the returned card, queue_free).
+var _ask_no := 214 ## (the forms' running number)
+
+
 func ask(title: String, body: String, options: Array) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", Ui.glass(false, 16.0, Ui.GLASS, Ui.ACCENT))
-	p.custom_minimum_size = Vector2(520, 0)
+	p.add_theme_stylebox_override("panel", Ui.sheet("slip"))
+	p.custom_minimum_size = Vector2(540, 0)
 	_asks.add_child(p)
 	_log.push_front([game.village.day, game.weather.hour, title + ": " + body.get_slice("\n", 0), "info"]) # (in the day-book; the card says it on the screen)
 	# the game held still while it's thought over, and let go when the last question's answered
@@ -972,22 +1283,51 @@ func ask(title: String, body: String, options: Array) -> PanelContainer:
 		if _ask_paused and is_inside_tree() and _asks.get_children().all(func(c: Node) -> bool: return c.is_queued_for_deletion() or c == p):
 			_ask_paused = false
 			game.set_speed(Engine.time_scale))
+	_ask_no += 1
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	p.add_child(col)
-	Ui.label(col, title, 22, Ui.ACCENT, "display")
-	Ui.rule(col)
-	var t := Ui.label(col, body, 16, Ui.INK)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	col.add_child(head)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", -2)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(left)
+	Ui.label(left, "ZAROVYA POSTA VE TELGRAF İDARESİ", 11, Ui.P_DIM, "head")
+	Ui.label(left, "TELGRAF", 30, Ui.P_INK, "display")
+	var h := int(game.weather.hour)
+	var form := HBoxContainer.new()
+	form.add_theme_constant_override("separation", 16)
+	left.add_child(form)
+	for pair: Array in [["No.", str(_ask_no)], ["Gün", str(game.village.day)], ["Saat", "%02d.%02d" % [h, int((float(game.weather.hour) - h) * 60.0)]]]:
+		var f := HBoxContainer.new()
+		f.add_theme_constant_override("separation", 4)
+		form.add_child(f)
+		Ui.label(f, str(pair[0]), 12, Ui.P_DIM, "italic").size_flags_vertical = Control.SIZE_SHRINK_END
+		Ui.label(f, str(pair[1]), 14, Ui.P_BLUE, "type_bold")
+	head.add_child(Ui.Stamp.new("KORDAL TELGRAFHANESİ", "GÜN\n%d" % game.village.day, randf_range(-0.35, 0.2)))
+	Ui.double_rule(col)
+	var t := Ui.label(col, Ui.upper(title), 17, Ui.P_INK, "type_bold")
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	t.custom_minimum_size = Vector2(488, 0)
+	t.custom_minimum_size = Vector2(500, 0)
+	var msg := Ui.label(col, body, 15, Ui.P_INK, "type")
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.custom_minimum_size = Vector2(500, 0)
+	var dash := Ui.label(col, "- ".repeat(60), 10, Color(Ui.P_INK, 0.35), "type")
+	dash.text_overrun_behavior = TextServer.OVERRUN_TRIM_CHAR
+	dash.custom_minimum_size = Vector2(500, 0)
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 8)
 	row.add_theme_constant_override("v_separation", 6)
 	row.alignment = FlowContainer.ALIGNMENT_END
 	col.add_child(row)
+	Ui.label(row, "Cevap:", 13, Ui.P_DIM, "italic").size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for o: Dictionary in options:
 		var f: Callable = o.f
-		var b := _small_button(str(o.label), func() -> void:
+		var b := Ui.ink_button(Button.new(), Ui.P_INK, 15, "type_bold")
+		b.text = str(o.label)
+		b.pressed.connect(func() -> void:
 			if is_instance_valid(p):
 				p.queue_free()
 			f.call())
@@ -997,9 +1337,11 @@ func ask(title: String, body: String, options: Array) -> PanelContainer:
 	return p
 
 
-## The telegraph office, over the middle of the screen.
+## The telegraph office, over the middle of the screen: the key and its tape on the operator's
+## wooden desk, the forms to send beside them.
 func _make_telegraph() -> void:
-	_tele_plate = _plate(false)
+	_tele_plate = PanelContainer.new()
+	_tele_plate.add_theme_stylebox_override("panel", Ui.sheet("wood"))
 	_tele_plate.set_anchors_preset(Control.PRESET_CENTER)
 	_tele_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_tele_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -1009,13 +1351,18 @@ func _make_telegraph() -> void:
 	col.add_theme_constant_override("separation", 8)
 	_tele_plate.add_child(col)
 	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
 	col.add_child(head)
-	Ui.label(head, "TELGRAFHANE", 26, Ui.INK, "display")
+	var plate := PanelContainer.new() # (the office's brass plate on the desk)
+	plate.add_theme_stylebox_override("panel", Ui.sheet("brass"))
+	head.add_child(plate)
+	Ui.label(plate, "TELGRAFHANE", 18, Color(0.2, 0.13, 0.06), "head")
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(gap)
-	head.add_child(_small_button("KAPAT", func() -> void: toggle_telegraph()))
-	Ui.rule(col)
+	var close := _small_button("KAPAT", func() -> void: toggle_telegraph())
+	close.tooltip_text = "Telgrafhaneyi kapat"
+	head.add_child(close)
 	_tele = TelegraphPanel.new()
 	_tele.game = game
 	col.add_child(_tele)
@@ -1057,12 +1404,14 @@ func _refresh_tech() -> void:
 			rooms += 1
 			readers += b.workers.size()
 	if rooms == 0:
-		_tech_note.text = "Okuma odası yok: araştırma orada yapılır (KASABA > Okuma odası). Konuyu yine de şimdiden seçebilirsin."
+		_tech_note.text = "Okuma odası yok: konu şimdiden seçilebilir"
 	elif readers == 0:
-		_tech_note.text = "Okuma odasında kimse yok: kartından birini ata. Okuryazarlığı yüksek olan çabuk ilerler."
+		_tech_note.text = "Okuma odasında okuyan yok"
 	else:
-		_tech_note.text = "%d kişi okuyor. Bir konu seç; bitince sıradakini seçmen gerekir." % readers
-	_tech_note.add_theme_color_override("font_color", Ui.BAD if readers == 0 else Ui.DIM)
+		_tech_note.text = "%d kişi okuyor" % readers
+	_tech_note.tooltip_text = "Araştırma okuma odasında yapılır (KASABA). Okuryazarlığı yüksek olan çabuk ilerler; bir konu bitince sıradakini seç."
+	_tech_note.mouse_filter = Control.MOUSE_FILTER_PASS
+	_tech_note.add_theme_color_override("font_color", Color(1.0, 0.84, 0.45) if readers == 0 else Color(Ui.CHALK, 0.75))
 	_tech_tree.refresh()
 
 
@@ -1082,42 +1431,65 @@ func _refresh_people() -> void:
 	if folk != _people_rows:
 		_people_rows = folk
 		for c in _people_grid.get_children():
+			_people_grid.remove_child(c) # (out at once: the rows below are counted from the new ones)
 			c.queue_free()
-		Ui.label(_people_grid, "KİŞİ", 13, Ui.ACCENT, "head").custom_minimum_size = Vector2(170, 0)
-		Ui.label(_people_grid, "NE YAPIYOR", 13, Ui.ACCENT, "head").custom_minimum_size = Vector2(170, 0)
+		var cell := func(text: String, w: float, ink: Color, kind: String, size: int) -> Label:
+			var l := Ui.label(_people_grid, text, size, ink, kind)
+			l.custom_minimum_size = Vector2(w, 30)
+			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			return l
+		var c0: Label = cell.call("  Adı", 175, Ui.P_DIM, "italic", 13)
+		c0.custom_minimum_size.y = 26
+		cell.call("  Ne yapıyor", 150, Ui.P_DIM, "italic", 13)
 		for k: String in Villager.SKILLS:
-			var h := Ui.label(_people_grid, Ui.upper(str(Villager.SKILLS[k])).substr(0, 6), 12, Ui.ACCENT, "head")
-			h.custom_minimum_size = Vector2(64, 0)
-			h.tooltip_text = str(Villager.SKILLS[k])
-			h.mouse_filter = Control.MOUSE_FILTER_PASS
+			var hd: Label = cell.call(str(Villager.SKILLS[k]).substr(0, 7) + ".", 62, Ui.P_DIM, "italic", 12)
+			hd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			hd.tooltip_text = str(Villager.SKILLS[k])
+			hd.mouse_filter = Control.MOUSE_FILTER_PASS
 		for v: Villager in folk:
-			var n := Ui.label(_people_grid, v.display_name + (" (çocuk)" if v.is_child else ""), 14, Ui.INK)
-			n.custom_minimum_size = Vector2(170, 0)
-			var j := Ui.label(_people_grid, "", 13, Ui.DIM)
-			j.custom_minimum_size = Vector2(170, 0)
-			j.clip_text = true
+			cell.call("  " + v.display_name + (" (çocuk)" if v.is_child else ""), 175, Ui.P_INK, "text", 15)
+			var j: Label = cell.call("", 150, Ui.P_DIM, "italic", 13)
+			j.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			for k: String in Villager.SKILLS:
 				var who := v
 				var key := k
-				var b := _small_button("", func() -> void:
+				var b := Button.new()
+				b.focus_mode = Control.FOCUS_NONE
+				b.custom_minimum_size = Vector2(62, 30)
+				b.add_theme_font_override("font", Ui.font("type_bold"))
+				b.add_theme_font_size_override("font_size", 15)
+				b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+				b.add_theme_stylebox_override("disabled", StyleBoxEmpty.new())
+				b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+				var over := StyleBoxFlat.new() # (the pencil's ring round the figure)
+				over.bg_color = Color(Ui.P_BLUE, 0.08)
+				over.border_color = Color(Ui.P_BLUE, 0.7)
+				over.set_border_width_all(1)
+				over.set_corner_radius_all(12)
+				over.set_expand_margin_all(-3)
+				b.add_theme_stylebox_override("hover", over)
+				b.add_theme_stylebox_override("pressed", over)
+				b.pressed.connect(func() -> void:
 					who.prio[key] = [2, 0, 1][int(who.prio.get(key, 1))] # (normal -> first -> never -> normal)
 					_refresh_people())
-				b.custom_minimum_size = Vector2(64, 28)
-				b.tooltip_text = "%s · %s" % [v.display_name, Villager.SKILLS[k]]
+				b.tooltip_text = "%s, %s\nTıkla: önce bu işe, olağan, hiç" % [v.display_name, Villager.SKILLS[k]]
 				b.disabled = v.is_child
 				_people_grid.add_child(b)
 	var cols := 2 + Villager.SKILLS.size()
 	for i in folk.size():
 		var v: Villager = folk[i]
 		var base := cols * (i + 1)
-		(_people_grid.get_child(base + 1) as Label).text = v.job
+		(_people_grid.get_child(base + 1) as Label).text = "  " + v.job
 		var c := 0
 		for k: String in Villager.SKILLS:
 			var b := _people_grid.get_child(base + 2 + c) as Button
 			var pr := int(v.prio.get(k, 1))
 			b.text = ("%d%s%s" % [int(v.skill(k)), "♥" if k in v.keen else "", " ▲" if pr == 2 else ""]) if pr != 0 else "–"
-			b.add_theme_color_override("font_color", Ui.ACCENT if pr == 2 else (Ui.DIM if pr == 0 else (Ui.GOOD if v.skill(k) >= 6.0 else Ui.INK)))
+			var ink: Color = Ui.P_BLUE if pr == 2 else (Color(Ui.P_INK, 0.35) if pr == 0 else (Ui.P_GREEN if v.skill(k) >= 6.0 else Ui.P_INK))
+			for st: String in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
+				b.add_theme_color_override(st, ink)
 			c += 1
+	_people_grid.queue_redraw()
 
 
 func people_open() -> bool:
@@ -1133,30 +1505,98 @@ func help_open() -> bool:
 	return _help.visible
 
 
+## The pause: a railway timetable pasted on its board. The line's name over it, then the stops,
+## each an entry (its number, its name, dots to the key it's under), the day and the hour it was
+## stopped at the foot.
 func _make_pause() -> void:
-	_pause = _plate(false)
+	_pause = PanelContainer.new()
+	_pause.add_theme_stylebox_override("panel", Ui.sheet("wood"))
 	_pause.set_anchors_preset(Control.PRESET_CENTER)
 	_pause.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_pause.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_pause.visible = false
 	add_child(_pause)
+	var sheet := PanelContainer.new()
+	sheet.add_theme_stylebox_override("panel", Ui.sheet("timetable"))
+	_pause.add_child(sheet)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	col.custom_minimum_size = Vector2(280, 0)
-	_pause.add_child(col)
-	Ui.label(col, "DURAKLATILDI", 28, Ui.INK, "display")
-	Ui.rule(col)
-	for pair in [["DEVAM", func() -> void: game.set_menu(false)], ["KAYDET", func() -> void: game.save_game()], ["YÜKLE", func() -> void: game.load_game()],
-			["TUŞLAR", func() -> void: toggle_help()], ["AYARLAR", func() -> void: _show_settings(true)], ["YENİ OYUN", func() -> void: game.new_game()], ["KAYDET VE ÇIK", func() -> void:
-				game.save_game()
-				game.get_tree().quit()]]:
-		var b := _small_button(pair[0], pair[1])
-		b.custom_minimum_size = Vector2(0, 40)
-		col.add_child(b)
+	col.add_theme_constant_override("separation", 2)
+	col.custom_minimum_size = Vector2(400, 0)
+	sheet.add_child(col)
+	var line := Ui.label(col, "ZAROVYA DEMİRYOLLARI", 12, Ui.P_DIM, "head")
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var title := Ui.label(col, "DURAKLATILDI", 32, Ui.P_INK, "display")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var sub := Ui.label(col, "Kordal hattı, son durak", 14, Ui.P_DIM, "italic")
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	Ui.double_rule(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	Ui.label(head, "No.", 11, Ui.P_DIM, "italic").custom_minimum_size = Vector2(34, 0)
+	var h2 := Ui.label(head, "İstikamet", 11, Ui.P_DIM, "italic")
+	h2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	Ui.label(head, "Tuş", 11, Ui.P_DIM, "italic")
+	var thin := ColorRect.new()
+	thin.color = Color(Ui.P_INK, 0.6)
+	thin.custom_minimum_size = Vector2(0, 1)
+	col.add_child(thin)
+	var stops: Array = [["Devam", "Esc", func() -> void: game.set_menu(false)], ["Kaydet", "F5", func() -> void: game.save_game()],
+		["Yükle", "F9", func() -> void: game.load_game()], ["Tuşlar", "F1", func() -> void: toggle_help()],
+		["Ayarlar", "", func() -> void: _show_settings(true)], ["Yeni oyun", "", func() -> void: game.new_game()],
+		["Kaydet ve çık", "", func() -> void:
+			game.save_game()
+			game.get_tree().quit()]]
+	for i in stops.size():
+		col.add_child(_timetable_row(i + 1, str(stops[i][0]), str(stops[i][1]), stops[i][2]))
+	Ui.double_rule(col)
+	_pause_foot = Ui.label(col, "", 12, Ui.P_DIM, "italic")
+	_pause_foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+
+var _pause_foot: Label
+
+
+## A line of the timetable, a button: its number, its name, the dots running to its key; the line
+## underscored in pencil while the mouse is on it.
+func _timetable_row(no: int, text: String, key: String, f: Callable) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 34)
+	var none := StyleBoxEmpty.new()
+	var over := StyleBoxFlat.new()
+	over.bg_color = Color(Ui.P_BLUE, 0.08)
+	over.border_color = Color(Ui.P_BLUE, 0.8)
+	over.border_width_bottom = 2
+	for st: String in ["normal", "focus", "disabled"]:
+		b.add_theme_stylebox_override(st, none)
+	for st: String in ["hover", "pressed", "hover_pressed"]:
+		b.add_theme_stylebox_override(st, over)
+	b.pressed.connect(f)
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(row)
+	var n := Ui.label(row, "%d" % no, 15, Ui.P_DIM, "type_bold")
+	n.custom_minimum_size = Vector2(28, 0)
+	var name := Ui.label(row, text, 19, Ui.P_INK, "strong")
+	var dots := Ui.label(row, " . ".repeat(40), 13, Color(Ui.P_INK, 0.55), "type")
+	dots.text_overrun_behavior = TextServer.OVERRUN_TRIM_CHAR
+	dots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var k := Ui.label(row, key if key != "" else "—", 15, Ui.P_INK, "type_bold")
+	k.custom_minimum_size = Vector2(36, 0)
+	k.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	for l: Label in [n, name, dots, k]:
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
 
 
 func show_menu(on: bool) -> void:
 	_pause.visible = on
+	if on and game and game.village and game.weather:
+		var h := int(game.weather.hour)
+		_pause_foot.text = "Gün %d, saat %02d.%02d itibariyle" % [game.village.day, h, int((game.weather.hour - h) * 60.0)]
 	if not on and _settings:
 		_settings.visible = false
 
@@ -1191,9 +1631,15 @@ func toast(text: String, kind := "info") -> void:
 		_log.resize(300)
 	if _log_plate and _log_plate.visible:
 		_fill_log()
-	var l := Ui.label(_toasts, text, 17, {"good": Ui.GOOD, "bad": Ui.BAD}.get(kind, Ui.INK), "strong")
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# the news as it comes off the line: a strip of telegraph tape, typed, pasted up
+	var l := PanelContainer.new()
+	l.add_theme_stylebox_override("panel", Ui.sheet("tape"))
+	l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toasts.add_child(l)
+	var words := Ui.label(l, text, 15, {"good": Ui.P_GREEN, "bad": Ui.P_RED}.get(kind, Ui.P_INK), "type_bold")
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.offset_top = 112
 	while _toasts.get_child_count() > 4:
 		_toasts.get_child(0).free()
@@ -1278,7 +1724,7 @@ func _edge_marks() -> void:
 			# a leather tag with a brass edge, the word in red ink for trouble, blue for our own
 			var bt := Button.new()
 			bt.focus_mode = Control.FOCUS_NONE
-			bt.add_theme_font_override("font", Ui.font("head"))
+			bt.add_theme_font_override("font", Ui.face("head", 14))
 			bt.add_theme_font_size_override("font_size", 14)
 			var ours: bool = key == "relief"
 			var ink := Color(0.55, 0.75, 1.0) if ours else Color(1.0, 0.45, 0.35)
@@ -1318,19 +1764,19 @@ func _process(dt: float) -> void:
 	var v: Village = game.village
 	var stock := v.stock
 	_refresh_goods(v, stock)
-	_pop.text = "%d/%d · %d" % [v.villagers.size(), v.beds(), v.free_count()]
+	_pop.text = "%d/%d (%d)" % [v.villagers.size(), v.beds(), v.free_count()]
 	_purse.text = "%d m" % v.rubles
 	var due := v.next_train - v.day
 	if not v.knows("telgraf"):
 		_train_stat.text = "—"
 	elif v.line_shut():
-		_train_stat.text = "KAPALI"
+		_train_stat.text = "Kapalı"
 	elif is_instance_valid(v.armoured):
-		_train_stat.text = "ZIRHLI"
+		_train_stat.text = "Zırhlı"
 	elif is_instance_valid(v.train):
-		_train_stat.text = "PERONDA"
+		_train_stat.text = "Peronda"
 	else:
-		_train_stat.text = "BUGÜN" if due <= 0 else "%d GÜN" % due
+		_train_stat.text = "Bugün" if due <= 0 else "%d gün" % due
 	_train_stat.add_theme_color_override("font_color", Ui.BAD if v.line_shut() or is_instance_valid(v.armoured) else Ui.INK)
 
 	var guns := 0
@@ -1357,7 +1803,9 @@ func _process(dt: float) -> void:
 	var w: Weather = game.weather
 	var h := int(w.hour)
 	var m := int((w.hour - h) * 60.0)
-	_clock.text = "Gün %d · %02d:%02d · %s" % [game.village.day, h, m, WEATHER_NAMES.get(w._state, w._state)]
+	_clock.text = str(game.village.day)
+	_clock_time.text = "%02d.%02d" % [h, m]
+	_clock_sky.text = str(WEATHER_NAMES.get(w._state, w._state))
 	_dial.refresh()
 	_strip.refresh()
 	var rd: Raids = game.raids
@@ -1366,15 +1814,15 @@ func _process(dt: float) -> void:
 		for x in rd.raiders:
 			if is_instance_valid(x) and not x.dead:
 				alive += 1
-		_raid.text = "%d HAYDUT" % alive
-		_raid.add_theme_color_override("font_color", Ui.BAD)
+		_raid.text = "%d haydut" % alive
+		_raid.add_theme_color_override("font_color", Ui.P_RED)
 	else:
-		_raid.text = ("GÜN %d" % rd.next_day) if rd.next_day > v.day else "BU GECE"
-		_raid.add_theme_color_override("font_color", Ui.INK)
+		_raid.text = ("Gün %d" % rd.next_day) if rd.next_day > v.day else "Bu gece"
+		_raid.add_theme_color_override("font_color", Ui.P_INK)
 	var now := 0.0 if game.get_tree().paused else Engine.time_scale
 	for k in _speed_buttons.size():
 		var on := is_equal_approx(now, 0.0 if k == 0 else SPEEDS[k - 1])
-		_speed_buttons[k].add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
+		_speed_buttons[k].add_theme_stylebox_override("normal", Ui.ink_box(Ui.P_INK, 0.0, 0.5, on))
 	for b: Node in _build_row.get_children():
 		if b.has_meta("kind") and BuildingDefs.DEFS.has(b.get_meta("kind")):
 			var can := true
@@ -1382,15 +1830,18 @@ func _process(dt: float) -> void:
 			for r: String in cost:
 				if int(stock.get(r, 0)) < int(cost[r]):
 					can = false
-			var lbl := b.get_meta("cost_label") as Label
-			if b.has_meta("needs") and not game.village.knows(str(b.get_meta("needs"))):
-				lbl.text = "KİLİTLİ · %s" % Ui.upper(str(BuildingDefs.TECHS[b.get_meta("needs")].name))
-				lbl.add_theme_color_override("font_color", Ui.BAD)
-				(b as Control).modulate.a = 0.45
+			var row := b.get_meta("cost_row") as Control
+			var lock := b.get_meta("lock_label") as Label
+			var locked: bool = b.has_meta("needs") and not game.village.knows(str(b.get_meta("needs")))
+			row.visible = not locked
+			lock.visible = locked
+			if locked:
+				lock.text = "KİLİTLİ: %s" % Ui.upper(str(BuildingDefs.TECHS[b.get_meta("needs")].name))
+				(b as Control).modulate.a = 0.55
 				continue
-			lbl.text = BuildingDefs.cost_text(b.get_meta("kind"))
-			lbl.add_theme_color_override("font_color", Ui.DIM if can else Ui.BAD)
-			(b as Control).modulate.a = 1.0 if can else 0.75
+			for pair: Array in b.get_meta("costs"):
+				(pair[1] as Label).add_theme_color_override("font_color", Ui.P_INK if int(stock.get(pair[0], 0)) >= int(cost[pair[0]]) else Ui.P_RED)
+			(b as Control).modulate.a = 1.0 if can else 0.85
 	_update_card()
 
 
@@ -1461,7 +1912,7 @@ func _update_card() -> void:
 		var mb: Button = _make_btns[what]
 		mb.visible = game.village.knows(str(BuildingDefs.WORKSHOP[what].get("needs", "")))
 		var on := what == making
-		mb.add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
+		mb.add_theme_stylebox_override("normal", Ui.ink_box(Ui.P_INK, 0.0, 0.55, on))
 	_card_title.text = Ui.upper(b.display_name())
 	var lines: Array[String] = []
 	match b.state:
@@ -1478,7 +1929,7 @@ func _update_card() -> void:
 			if not short.is_empty():
 				lines.append("Depoda yok: " + ", ".join(short))
 		"ruin":
-			lines.append("Harabe. ONAR ile parça parça yeniden yapılır, YIK ile kaldırılır.")
+			lines.append("Harabe.")
 		"done":
 			lines.append(str(b.def.desc))
 	if b.is_burning():
@@ -1494,7 +1945,7 @@ func _update_card() -> void:
 		var parts: Array[String] = []
 		for f: String in fams:
 			parts.append("%s ailesi: %s" % [f, ", ".join(fams[f])])
-		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), b.beds(), " · ".join(parts) if not parts.is_empty() else "kimse"])
+		lines.append("Oturanlar (%d/%d): %s" % [b.residents.size(), b.beds(), "; ".join(parts) if not parts.is_empty() else "kimse"])
 		if not b.warm:
 			lines.append("SOĞUK: yakacak bitti!")
 		else:
@@ -1564,7 +2015,7 @@ func _update_card() -> void:
 	if _card_workers.visible:
 		# (working there now, of how many it's asked for: red while it's short)
 		_card_count.text = "%d / %d" % [b.workers.size(), b.wanted]
-		_card_count.add_theme_color_override("font_color", Ui.BAD if b.workers.size() < b.wanted or b.wanted == 0 else Ui.INK)
+		_card_count.add_theme_color_override("font_color", Ui.P_RED if b.workers.size() < b.wanted or b.wanted == 0 else Ui.P_INK)
 		_card_count.tooltip_text = "Çalışan / istenen (en çok %d)" % int(b.def.slots)
 		_card_count.mouse_filter = Control.MOUSE_FILTER_PASS
 		var names: Array[String] = []
@@ -1573,10 +2024,14 @@ func _update_card() -> void:
 			if is_instance_valid(x):
 				names.append(x.display_name + ((" (%d)" % int(x.skill(sk))) if sk != "" else ""))
 		if names.is_empty():
-			lines.append("ÇALIŞAN YOK: + ile işçi iste ya da ATA'dan birini seç" if b.wanted == 0 else "ÇALIŞAN YOK: boşta kasabalı yok")
+			lines.append("Çalışan yok." if b.wanted == 0 else "Çalışan yok: boşta kasabalı kalmadı.")
 		if b.workers.size() < b.wanted:
 			lines.append("Boşta kasabalı yok: %d işçi eksik" % (b.wanted - b.workers.size()))
-	_card_lines.text = "\n".join(lines)
+	_card_lines.text = "\n".join(lines).replace(" · ", ", ")
+	_card_kind.text = "YAPI KAYDI"
+	_card.tooltip_text = "Harabeyi ONAR parça parça yeniden yapar, YIK kaldırır." if b.state == "ruin" else ""
+	if b.state == "done" and b.def.role in ["work", "barracks", "tower", "carts", "farm", "research", "smith", "healer"]:
+		_card_count.tooltip_text += "\n+ ile işçi iste ya da ATA'dan birini seç"
 
 
 func _wall_card(w: Wall) -> void:
@@ -1616,9 +2071,9 @@ func _wall_card(w: Wall) -> void:
 	lines.append("Kapılar: " + (", ".join(gs) if not gs.is_empty() else "yok"))
 	if not w.burning.is_empty():
 		lines.append("YANIYOR: %d kazık (yavaş yanar; yağmur söndürür)" % w.burning.size())
-	lines.append("")
-	lines.append("Milis surun iç tarafındaki basamaktan ateş eder. YIK: sökülür, kazıkların yarısının odunu geri gelir.")
 	_card_lines.text = "\n".join(lines)
+	_card_kind.text = "SUR KAYDI"
+	_card.tooltip_text = "Milis surun iç tarafındaki basamaktan ateş eder. YIK: sökülür, kazıkların yarısının odunu geri gelir."
 
 
 # --- A villager's card: its face, what it's doing, how it is, what it's good at ------------------
@@ -1628,7 +2083,7 @@ var _folk_face: TextureRect
 var _folk_job: Label
 var _folk_state: Label
 var _folk_wounds: Label ## where it's hurt, whether it's bleeding
-var _folk_traits: VBoxContainer ## a line a trait: its name, its good, its bad
+var _folk_traits: HFlowContainer ## a word a trait (its good and its bad on the mouse)
 var _folk_mood: ProgressBar
 var _folk_mood_word: Label
 var _folk_thoughts: Label ## what it's been thinking, each with its say (+5, -14)
@@ -1662,57 +2117,75 @@ func _make_folk_box(col: VBoxContainer) -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
 	_folk_box.add_child(head)
+	var photo := PanelContainer.new() # (the photograph, its white border, a little crooked on the card)
+	var print := StyleBoxFlat.new()
+	print.bg_color = Color(0.97, 0.95, 0.9)
+	print.set_content_margin_all(4)
+	print.content_margin_bottom = 9
+	print.shadow_color = Color(0, 0, 0, 0.28)
+	print.shadow_size = 3
+	print.shadow_offset = Vector2(1, 2)
+	photo.add_theme_stylebox_override("panel", print)
+	photo.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	photo.rotation = -0.03
+	head.add_child(photo)
 	_folk_face = TextureRect.new()
-	_folk_face.custom_minimum_size = Vector2(84, 84)
+	_folk_face.custom_minimum_size = Vector2(80, 84)
 	_folk_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_folk_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	head.add_child(_folk_face)
+	photo.add_child(_folk_face)
 	var side := VBoxContainer.new()
 	side.add_theme_constant_override("separation", 4)
 	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(side)
-	_folk_job = Ui.label(side, "", 16, Ui.INK, "strong")
+	_folk_job = Ui.label(side, "", 16, Ui.P_INK, "strong")
 	_folk_job.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_folk_job.custom_minimum_size = Vector2(230, 0)
-	_folk_state = Ui.label(side, "", 13, Ui.DIM, "head")
-	_folk_wounds = Ui.label(side, "", 13, Ui.BAD, "head")
+	_folk_state = Ui.label(side, "", 14, Ui.P_DIM, "italic")
+	_folk_wounds = Ui.label(side, "", 13, Ui.P_RED, "strong")
 	_folk_wounds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_folk_wounds.custom_minimum_size = Vector2(230, 0)
-	_folk_traits = VBoxContainer.new()
-	_folk_traits.add_theme_constant_override("separation", 0)
+	_folk_traits = HFlowContainer.new()
+	_folk_traits.add_theme_constant_override("h_separation", 10)
 	side.add_child(_folk_traits)
-	_folk_hp = _bar(Color(0.55, 0.78, 0.4), 230, 8)
+	_folk_hp = _bar(Color(0.36, 0.55, 0.26), 230, 6)
+	_folk_hp.mouse_filter = Control.MOUSE_FILTER_PASS
 	side.add_child(_folk_hp)
 	var mrow := HBoxContainer.new()
 	mrow.add_theme_constant_override("separation", 8)
 	_folk_box.add_child(mrow)
-	Ui.label(mrow, "MORAL", 12, Ui.ACCENT, "head")
-	_folk_mood = _bar(Ui.GOOD, 150, 8)
+	Ui.label(mrow, "MORAL", 12, Ui.P_BLUE, "head")
+	_folk_mood = _bar(Ui.P_GREEN, 150, 8)
 	_folk_mood.max_value = 100.0
 	mrow.add_child(_folk_mood)
-	_folk_mood_word = Ui.label(mrow, "", 13, Ui.INK, "head")
-	_folk_thoughts = Ui.label(_folk_box, "", 13, Ui.INK)
+	_folk_mood_word = Ui.label(mrow, "", 13, Ui.P_INK, "head")
+	_folk_thoughts = Ui.label(_folk_box, "", 13, Ui.P_INK)
 	_folk_thoughts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_folk_thoughts.custom_minimum_size = Vector2(330, 0)
-	Ui.label(_folk_box, "BECERİLER  ·  ♥ hevesli  ·  ▲ önce  ·  – hiç", 12, Ui.ACCENT, "head")
+	var sk := Ui.label(_folk_box, "BECERİLER", 12, Ui.P_RED, "head")
+	sk.tooltip_text = "♥ hevesli: iki kat hızlı öğrenir\n▲ önce bu işe verilir\n– bu işe hiç verilmez"
+	sk.mouse_filter = Control.MOUSE_FILTER_PASS
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 1)
 	_folk_box.add_child(grid)
 	for i in Villager.SKILLS.size():
-		var n := Ui.label(grid, "", 13, Ui.INK, "head")
+		var n := Ui.label(grid, "", 13, Ui.P_INK, "head")
 		n.custom_minimum_size = Vector2(96, 0)
-		var bar := _bar(Ui.ACCENT, 130, 7)
+		var bar := _bar(Color(Ui.P_INK, 0.7), 130, 5)
 		bar.max_value = 10.0
 		grid.add_child(bar)
-		var num := Ui.label(grid, "", 15, Ui.INK, "display")
+		var num := Ui.label(grid, "", 15, Ui.P_INK, "display")
 		num.custom_minimum_size = Vector2(22, 0)
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		var marks := Ui.label(grid, "", 13, Ui.ACCENT, "head")
+		var marks := Ui.label(grid, "", 13, Ui.P_BLUE, "head")
 		marks.custom_minimum_size = Vector2(26, 0)
 		_folk_rows.append([n, bar, num, marks])
-	Ui.rule(_folk_box)
+	var end := ColorRect.new()
+	end.color = Color(Ui.P_BLUE, 0.35)
+	end.custom_minimum_size = Vector2(0, 1)
+	_folk_box.add_child(end)
 
 
 func _fill_folk_box(v: Villager) -> void:
@@ -1731,27 +2204,28 @@ func _fill_folk_box(v: Villager) -> void:
 	elif v.hp < v.max_hp * 0.999:
 		state = "yaralı"
 	var age := "çocuk, %d günlük" % (game.village.day - v.born_day) if v.is_child else ("kadın" if v.female else "erkek")
-	_folk_state.text = "%s%s · %s · can %d/%d" % [age, (" · " + str(Villager.ORIGINS[v.origin].name).to_lower()) if v.origin != "" else "", state, int(v.hp), int(v.max_hp)]
+	_folk_state.text = "%s%s%s" % [age, (", " + str(Villager.ORIGINS[v.origin].name).to_lower()) if v.origin != "" else "", (", " + state) if state != "iyi" else ""]
+	_folk_hp.tooltip_text = "Can %d / %d" % [int(v.hp), int(v.max_hp)]
 	_folk_wounds.visible = not v.wounds.is_empty() or v.bleeding
 	if _folk_wounds.visible:
-		_folk_wounds.text = "YARALAR: %s%s%s" % [v.wounds_text() if not v.wounds.is_empty() else "yarası var", "  ·  KANIYOR" if v.bleeding else "", "  ·  sarıldı" if v.treated else ""]
+		_folk_wounds.text = "YARALAR: %s%s%s" % [v.wounds_text() if not v.wounds.is_empty() else "yarası var", ", KANIYOR" if v.bleeding else "", ", sarıldı" if v.treated else ""]
 	if _folk_traits_of != v or _folk_traits.get_child_count() != v.traits.size() + v.scars.size():
 		_folk_traits_of = v
 		for ch in _folk_traits.get_children():
 			ch.queue_free()
 		for t: String in v.traits:
 			var tr: Dictionary = Villager.TRAITS[t]
-			var line := Ui.label(_folk_traits, "%s: + %s · − %s" % [tr.name, tr.plus, tr.minus], 12, Ui.ACCENT, "head")
-			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			line.custom_minimum_size = Vector2(230, 0)
+			var line := Ui.label(_folk_traits, str(tr.name), 13, Ui.P_BLUE, "strong")
+			line.tooltip_text = "+ %s\n− %s" % [tr.plus, tr.minus]
+			line.mouse_filter = Control.MOUSE_FILTER_PASS
 		for t: String in v.scars:
 			var sc: Dictionary = Villager.SCARS[t]
-			var line := Ui.label(_folk_traits, "%s: %s" % [sc.name, sc.minus], 12, Ui.BAD, "head")
-			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			line.custom_minimum_size = Vector2(230, 0)
+			var line := Ui.label(_folk_traits, str(sc.name), 13, Ui.P_RED, "strong")
+			line.tooltip_text = str(sc.minus)
+			line.mouse_filter = Control.MOUSE_FILTER_PASS
 	var m := v.mood
 	_folk_mood.value = m
-	(_folk_mood.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.GOOD if m >= 55.0 else (Ui.ACCENT if m >= 35.0 else Ui.BAD)
+	(_folk_mood.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.P_GREEN if m >= 55.0 else (Color(0.7, 0.5, 0.15) if m >= 35.0 else Ui.P_RED)
 	_folk_mood_word.text = "%s (%d)" % [v.mood_word(), roundi(m)]
 	var th: Array = v.thoughts.duplicate()
 	th.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return absf(float(a.value)) > absf(float(b.value)))
@@ -1761,7 +2235,7 @@ func _fill_folk_box(v: Villager) -> void:
 	_folk_thoughts.text = "\n".join(lines) if not lines.is_empty() else "Aklında bir şey yok"
 	_folk_hp.max_value = v.max_hp
 	_folk_hp.value = v.hp
-	(_folk_hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.BAD if v.hp < v.max_hp * 0.4 else (Color(0.9, 0.7, 0.3) if v.hp < v.max_hp * 0.8 else Color(0.55, 0.78, 0.4))
+	(_folk_hp.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = Ui.P_RED if v.hp < v.max_hp * 0.4 else (Color(0.7, 0.5, 0.15) if v.hp < v.max_hp * 0.8 else Color(0.36, 0.55, 0.26))
 	var ks: Array = Villager.SKILLS.keys()
 	ks.sort_custom(func(a: String, b: String) -> bool: return v.skill(a) > v.skill(b))
 	var work := Villager.skill_of(v.workplace) if is_instance_valid(v.workplace) else ""
@@ -1771,11 +2245,11 @@ func _fill_folk_box(v: Villager) -> void:
 		var sk := v.skill(k)
 		var pr := int(v.prio.get(k, 1))
 		(row[0] as Label).text = str(Villager.SKILLS[k])
-		(row[0] as Label).add_theme_color_override("font_color", Ui.ACCENT if k == work else (Ui.DIM if pr == 0 else Ui.INK))
+		(row[0] as Label).add_theme_color_override("font_color", Ui.P_BLUE if k == work else (Ui.P_DIM if pr == 0 else Ui.P_INK))
 		(row[1] as ProgressBar).value = sk
 		(row[1] as ProgressBar).modulate = Color(1, 1, 1, 0.35 if pr == 0 else 1.0)
 		(row[2] as Label).text = str(int(sk))
-		(row[2] as Label).add_theme_color_override("font_color", Ui.GOOD if sk >= 6.0 else (Ui.DIM if sk < 2.0 else Ui.INK))
+		(row[2] as Label).add_theme_color_override("font_color", Ui.P_GREEN if sk >= 6.0 else (Ui.P_DIM if sk < 2.0 else Ui.P_INK))
 		(row[3] as Label).text = ("♥" if k in v.keen else "") + (" ▲" if pr == 2 else (" –" if pr == 0 else ""))
 
 
@@ -1795,9 +2269,11 @@ func _fill_extra(b: Building) -> void:
 		for ch in _card_extra.get_children():
 			ch.queue_free()
 		if kind == "istasyon":
-			Ui.label(_card_extra, "TREN · TELGRAF", 12, Ui.ACCENT, "head")
+			Ui.label(_card_extra, "TREN VE TELGRAF", 12, Ui.P_RED, "head")
 			if not v.knows("telgraf"):
-				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor, köy Merkez'e bildirilemiyor. Telgraf okuma odasında araştırılır.", 13, Ui.DIM)
+				var l := Ui.label(_card_extra, "Telgraf yok: tren gelmiyor.", 14, Ui.P_DIM, "italic")
+				l.tooltip_text = "Telgraf olmadan köy Merkez'e bildirilemez. Telgraf okuma odasında araştırılır."
+				l.mouse_filter = Control.MOUSE_FILTER_PASS
 				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				l.custom_minimum_size = Vector2(300, 0)
 				var rb := _small_button("ARAŞTIRILIYOR: TELGRAF" if v.studying == "telgraf" else "TELGRAFI ARAŞTIR", func() -> void:
@@ -1809,32 +2285,33 @@ func _fill_extra(b: Building) -> void:
 				rb.tooltip_text = "Okuma odasının konusu Telgraf olsun"
 				_card_extra.add_child(rb)
 			else:
-				var tb := _small_button("TELGRAF ▸  köyü bildir · satış · tren çağır", func() -> void: toggle_telegraph())
-				tb.tooltip_text = "Telgrafhaneyi aç"
+				var tb := _small_button("TELGRAFHANE ▸", func() -> void: toggle_telegraph())
+				tb.tooltip_text = "Telgrafhaneyi aç: köyü bildir, mal sat, tren çağır, yardım iste"
 				_card_extra.add_child(tb)
 		else:
-			Ui.label(_card_extra, "ARAŞTIRMA", 12, Ui.ACCENT, "head")
+			Ui.label(_card_extra, "ARAŞTIRMA", 12, Ui.P_RED, "head")
 			for t: String in BuildingDefs.TECHS:
 				var td: Dictionary = BuildingDefs.TECHS[t]
 				var row := HBoxContainer.new()
 				row.add_theme_constant_override("separation", 8)
 				_card_extra.add_child(row)
 				var known := v.knows(t)
-				var l := Ui.label(row, "%s%s" % [td.name, "  ✓" if known else ""], 14, Ui.GOOD if known else (Ui.ACCENT if t == v.studying else Ui.INK), "head")
+				var l := Ui.label(row, "%s%s" % [td.name, "  ✓" if known else ""], 14, Ui.P_GREEN if known else (Ui.P_BLUE if t == v.studying else Ui.P_INK), "head")
 				l.tooltip_text = str(td.desc)
 				l.mouse_filter = Control.MOUSE_FILTER_PASS
 				l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				if not known:
 					var after := str(td.get("after", ""))
 					if not v.knows(after):
-						Ui.label(row, "önce %s" % BuildingDefs.TECHS[after].name, 12, Ui.DIM)
+						Ui.label(row, "önce %s" % BuildingDefs.TECHS[after].name, 12, Ui.P_DIM)
 					elif t != v.studying:
 						var bt := _small_button("ARAŞTIR", func() -> void: v.study(t))
 						bt.tooltip_text = str(td.desc)
 						row.add_child(bt)
-		_extra_status = Ui.label(_card_extra, "", 12, Ui.DIM, "head")
+		_extra_status = Ui.label(_card_extra, "", 13, Ui.P_DIM, "italic")
 		_extra_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_extra_status.custom_minimum_size = Vector2(300, 0)
+		Ui.inkify(_card_extra)
 	if kind == "istasyon":
 		if not v.knows("telgraf"):
 			_extra_status.text = ""
@@ -1849,9 +2326,9 @@ func _fill_extra(b: Building) -> void:
 					for pb in v.platform():
 						n += int(pb.goods.get(r, 0))
 					on.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
-				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("  ·  peronda: " + ", ".join(on)) if not on.is_empty() else ""]
-			_extra_status.text = "%s%s\nKasa %d mirka  ·  %s  ·  her trenle %d göçmen gelir (boş yatak kadar)" % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor (gecikebilir)" % due),
-				"" if v.announced else "  ·  Köy henüz ana karaya bildirilmedi (TELGRAF)", v.rubles, v.standing_text(), v.settlers_due()]
+				standing = "Tren perona yanaştı: %d sa %02d dk sonra kalkar%s" % [int(left), int(fmod(left, 1.0) * 60.0), ("; peronda: " + ", ".join(on)) if not on.is_empty() else ""]
+			_extra_status.text = "%s.%s\nKasada %d mirka. Her trenle %d göçmen." % [standing if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Tren ~%d gün sonra bekleniyor" % due),
+				"" if v.announced else "\nKöy henüz ana karaya bildirilmedi.", v.rubles, v.settlers_due()]
 			if v.line_state() != "":
 				_extra_status.text = v.line_state() + "\n" + _extra_status.text
 	else:
@@ -1869,7 +2346,7 @@ func _fill_jail(b: Building) -> void:
 		_jail_rows = held.duplicate()
 		for ch in _card_jail.get_children():
 			ch.queue_free()
-		Ui.label(_card_jail, "ESİRLER", 12, Ui.ACCENT, "head")
+		Ui.label(_card_jail, "ESİRLER", 12, Ui.P_BLUE, "head")
 		for o: Villager in held:
 			var row := HBoxContainer.new()
 			row.add_theme_constant_override("separation", 8)
@@ -1884,15 +2361,15 @@ func _fill_jail(b: Building) -> void:
 			col.add_theme_constant_override("separation", 1)
 			col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(col)
-			Ui.label(col, o.display_name, 15, Ui.INK, "head")
+			Ui.label(col, o.display_name, 15, Ui.P_INK, "head")
 			var ks: Array = Villager.SKILLS.keys()
 			ks.sort_custom(func(a: String, c: String) -> bool: return o.skill(a) > o.skill(c))
 			var tr: Array = o.traits.map(func(t: String) -> String: return str(Villager.TRAITS[t].name))
-			var info := Ui.label(col, "%s %d · %s %d%s" % [Villager.SKILLS[ks[0]], int(o.skill(ks[0])), Villager.SKILLS[ks[1]], int(o.skill(ks[1])),
-				(" · " + ", ".join(tr)) if not tr.is_empty() else ""], 12, Ui.DIM)
+			var info := Ui.label(col, "%s %d, %s %d%s" % [Villager.SKILLS[ks[0]], int(o.skill(ks[0])), Villager.SKILLS[ks[1]], int(o.skill(ks[1])),
+				("; " + ", ".join(tr)) if not tr.is_empty() else ""], 12, Ui.P_DIM, "italic")
 			info.custom_minimum_size = Vector2(200, 0)
 			info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			var state := Ui.label(col, "", 12, Ui.ACCENT, "head")
+			var state := Ui.label(col, "", 12, Ui.P_BLUE, "head")
 			state.set_meta("who", o)
 			var btns := HBoxContainer.new()
 			btns.add_theme_constant_override("separation", 4)
@@ -1917,8 +2394,9 @@ func _fill_jail(b: Building) -> void:
 			btns.add_child(hand)
 			var kill := _small_button("İDAM", func() -> void: game.village.execute(o))
 			kill.tooltip_text = "İdam et: firariler üç gün daha geç gelir, ama bütün kasabanın morali ağır düşer"
-			kill.add_theme_color_override("font_color", Ui.BAD)
+			kill.add_theme_color_override("font_color", Ui.P_RED)
 			btns.add_child(kill)
+		Ui.inkify(_card_jail)
 	for n in _card_jail.find_children("*", "", true, false):
 		if not n.has_meta("who") or not is_instance_valid(n.get_meta("who")):
 			continue
@@ -1926,9 +2404,9 @@ func _fill_jail(b: Building) -> void:
 		if n is TextureRect:
 			(n as TextureRect).texture = Portraits.of_look(o.look_seed, "outlaw")
 		elif n is Label:
-			(n as Label).text = {"": "Hapiste tutuluyor · KAZAN seçilirse her sabah %%%d şans" % roundi(game.village.win_chance(o) * 100.0), "kazan": "Kazanılıyor: %d / 3 · bu sabah şansı %%%d" % [o.won, roundi(game.village.win_chance(o) * 100.0)], "calistir": "Zorla çalıştırılıyor"}[o.held_mode]
+			(n as Label).text = {"": "Hapiste; kazanma şansı %%%d" % roundi(game.village.win_chance(o) * 100.0), "kazan": "Kazanılıyor %d/3, bu sabah şansı %%%d" % [o.won, roundi(game.village.win_chance(o) * 100.0)], "calistir": "Zorla çalıştırılıyor"}[o.held_mode]
 		elif n is Button and n.has_meta("mode"):
-			(n as Button).add_theme_color_override("font_color", Ui.ACCENT if o.held_mode == n.get_meta("mode") else Ui.INK)
+			(n as Button).add_theme_color_override("font_color", Ui.P_BLUE if o.held_mode == n.get_meta("mode") else Ui.P_INK)
 
 
 func _folk_card(v: Villager) -> void:
@@ -1951,7 +2429,7 @@ func _folk_card(v: Villager) -> void:
 	var held: bool = game.village.controlled(v)
 	(_btn.ctl as Button).visible = not v.is_child and not v.down and many.size() <= 1
 	(_btn.ctl as Button).text = "BIRAK (R)" if held else "KONTROL (R)"
-	(_btn.ctl as Button).add_theme_color_override("font_color", Ui.ACCENT if held else Ui.INK)
+	(_btn.ctl as Button).add_theme_color_override("font_color", Ui.P_BLUE if held else Ui.P_INK)
 	for key in ["ctl_gun", "ctl_cover", "ctl_hide", "ctl_carry"]:
 		(_btn[key] as Button).visible = held and many.size() <= 1
 	(_btn.lantern as Button).visible = v.militia
@@ -1990,9 +2468,6 @@ func _folk_card(v: Villager) -> void:
 		for x in many:
 			names.append((x as Villager).display_name)
 		lines.append("Seçili: " + ", ".join(names))
-	lines.append("")
-	if v.drafted:
-		lines.append("Toplandı: yere sağ tık mevzi (siper arar), hayduda sağ tık hedef.")
-	else:
-		lines.append("Bir işyerine, tarlaya ya da silahlığa sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç.")
-	_card_lines.text = "\n".join(lines)
+	_card_lines.text = "\n".join(lines).replace(" · ", ", ")
+	_card_kind.text = "NÜFUS KÂĞIDI" if many.size() <= 1 else "BİRLİK"
+	_card.tooltip_text = "Toplandı: yere sağ tık mevzi (siper arar), hayduda sağ tık hedef." if v.drafted else "Bir işyerine, tarlaya ya da silahlığa sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç."

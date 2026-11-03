@@ -32,9 +32,9 @@ func make_labels(row: HBoxContainer) -> void:
 	col.add_theme_constant_override("separation", 0)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_child(col)
-	_season = Ui.label(col, "", 15, Ui.ACCENT, "head")
-	_food = Ui.label(col, "", 14, Ui.INK, "head")
-	_wood = Ui.label(col, "", 14, Ui.INK, "head")
+	_season = Ui.label(col, "", 14, Ui.ACCENT, "head")
+	_food = Ui.label(col, "", 13, Ui.INK, "head")
+	_wood = Ui.label(col, "", 13, Ui.INK, "head")
 	col.tooltip_text = "Depodaki yiyecek ve yakacak, şimdiki tüketimle kaç gün yeter (kış yakacağı iki katına çıkarır)"
 	col.mouse_filter = Control.MOUSE_FILTER_PASS
 
@@ -70,8 +70,8 @@ func refresh() -> void:
 	var short := _winter_in + per_season # (to the winter's end)
 	if se.season == 3:
 		short = per_season - day_in
-	_season.text = "%s · %d°%s" % [Ui.upper(str(Seasons.NAMES[se.season])), roundi(_temp),
-		"  ·  kışa %d gün" % ceili(_winter_in) if se.season != 3 and _winter_in < per_season * 2.0 else ""]
+	_season.text = "%s  %d°%s" % [Ui.upper(str(Seasons.NAMES[se.season])), roundi(_temp),
+		"    kışa %d gün" % ceili(_winter_in) if se.season != 3 and _winter_in < per_season * 2.0 else ""]
 	_food.text = "YİYECEK  %s" % _days(_food_days)
 	_food.add_theme_color_override("font_color", Ui.BAD if _food_days < minf(short, 3.0) else Ui.INK)
 	_wood.text = "YAKACAK  %s" % _days(_wood_days)
@@ -108,7 +108,7 @@ func _draw() -> void:
 	draw_line(c, tip, Ui.ACCENT, 2.0, true)
 	draw_circle(tip, 2.5, Ui.ACCENT)
 	draw_circle(c, 11.0, Color(0.12, 0.09, 0.07))
-	var f := Ui.font("display")
+	var f := Ui.font("strong")
 	var t := "%d°" % roundi(_temp)
 	var ts := f.get_string_size(t, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
 	draw_string(f, c + Vector2(-ts.x * 0.5, ts.y * 0.32), t, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, SEASON_COLOURS[3] if _temp < 0.0 else Ui.INK)

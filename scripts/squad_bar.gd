@@ -23,7 +23,7 @@ func _ready() -> void:
 	var all := Button.new()
 	all.text = "HEPSİ (V)"
 	all.focus_mode = Control.FOCUS_NONE
-	all.add_theme_font_override("font", Ui.font("head"))
+	all.add_theme_font_override("font", Ui.face("head", 12))
 	all.add_theme_font_size_override("font_size", 12)
 	all.pressed.connect(func() -> void: game.select_militia())
 	head.add_child(all)
@@ -97,9 +97,9 @@ func _build() -> void:
 		hp.add_theme_stylebox_override("background", bg)
 		hp.add_theme_stylebox_override("fill", fg)
 		col.add_child(hp)
-		var ammo := Ui.label(col, "", 11, Ui.DIM, "head")
+		var ammo := Ui.label(col, "", 11, Ui.DIM, "digital")
 		ammo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var state := Ui.label(col, "", 11, Ui.ACCENT, "head")
+		var state := Ui.label(col, "", 10, Ui.ACCENT, "head")
 		state.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var who := _shown[i]
 		b.tooltip_text = who.display_name

@@ -3,9 +3,12 @@ config_version=5
 
 [application]
 
-config/name="İnşa"
+config/name="Last Verst"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="Godot/app_userdata/İnşa"
 config/description="Bir vadide köy kurma ve yönetme oyunu."
 run/main_scene="res://scenes/main.tscn"
+config/icon="res://icon.png"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [physics]
@@ -23,7 +26,7 @@ limits/global_shader_variables/buffer_size=262144
 
 [gui]
 
-theme/custom_font="res://assets/fonts/Barlow-Medium.ttf"
+theme/custom_font="res://assets/fonts/OldStandard-Regular.ttf"
 
 [layer_names]
 

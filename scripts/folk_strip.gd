@@ -24,7 +24,7 @@ func _ready() -> void:
 	_head.flat = true
 	_head.focus_mode = Control.FOCUS_NONE
 	_head.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_head.add_theme_font_override("font", Ui.font("head"))
+	_head.add_theme_font_override("font", Ui.face("head", 12))
 	_head.add_theme_font_size_override("font_size", 12)
 	_head.add_theme_color_override("font_color", Ui.ACCENT)
 	_head.add_theme_color_override("font_hover_color", Ui.INK)
@@ -81,7 +81,7 @@ func _card(i: int) -> Button:
 	col.add_child(top)
 	var name := Ui.label(top, "", 14, Ui.INK, "head")
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name.clip_text = true
+	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var mood := Ui.label(top, "•", 18, Ui.GOOD, "display") # (its spirits, by colour)
 	mood.mouse_filter = Control.MOUSE_FILTER_IGNORE

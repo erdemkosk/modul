@@ -71,8 +71,10 @@ func _ready() -> void:
 	col.add_theme_constant_override("separation", 10)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	_root.add_child(col)
-	var name := Ui.label(col, "İNŞA", 72, Ui.LIGHT, "display")
-	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var logo := Logo.new()
+	logo.tall = 64.0
+	logo.centred = true
+	col.add_child(logo)
 	_what = Ui.label(col, "", 18, Color(Ui.LIGHT, 0.8), "head")
 	_what.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bar = ProgressBar.new()

@@ -49,25 +49,31 @@ func _ready() -> void:
 	_tape = Tape.new()
 	_tape.custom_minimum_size = Vector2(360, 120)
 	left.add_child(_tape)
-	# what's sent
+	# what's sent: the office's form, its boxes to tick
+	var form := PanelContainer.new()
+	form.add_theme_stylebox_override("panel", Ui.sheet("slip"))
+	add_child(form)
 	var right := VBoxContainer.new()
-	right.add_theme_constant_override("separation", 6)
-	right.custom_minimum_size = Vector2(380, 0)
-	add_child(right)
-	Ui.label(right, "TREN", 13, Ui.ACCENT, "head")
-	_status = Ui.label(right, "", 13, Ui.INK)
+	right.add_theme_constant_override("separation", 5)
+	right.custom_minimum_size = Vector2(400, 0)
+	form.add_child(right)
+	var title := Ui.label(right, "GİDEN TELGRAF", 20, Ui.P_INK, "display")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	Ui.double_rule(right)
+	_heading(right, "Tren")
+	_status = Ui.label(right, "", 14, Ui.P_INK, "type")
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.custom_minimum_size = Vector2(380, 0)
-	_train_btn = _button(right, "TREN ÇAĞIR · %d %s" % [Village.CALL_PRICE, Village.COIN], func() -> void:
+	_status.custom_minimum_size = Vector2(400, 0)
+	_train_btn = _button(right, "TREN ÇAĞIR, %d %s" % [Village.CALL_PRICE, Village.COIN], func() -> void:
 		var why: String = game.village.call_train()
 		if why != "":
 			game.hud.toast(why, "bad")
 			return
 		send("TREN ISTIYORUZ STOP ACELE STOP", "ALINDI STOP TREN YARIN GELIR STOP"))
 	_train_btn.tooltip_text = "Hatta telgraf çekilir: tren yarın gelir, gecikmez"
-	Ui.label(right, "YARDIM İSTE  (dost tarafa: +%d ve üstü)" % Village.FRIENDLY, 13, Ui.ACCENT, "head")
+	_heading(right, "Yardım iste")
 	var help := HBoxContainer.new()
-	help.add_theme_constant_override("separation", 4)
+	help.add_theme_constant_override("separation", 6)
 	right.add_child(help)
 	for side: String in Village.SIDES:
 		var sd := side
@@ -78,23 +84,23 @@ func _ready() -> void:
 				return
 			send("ACIL YARDIM STOP KASABA TEHLIKEDE STOP ASKER GONDERIN STOP", "ALINDI STOP BIRLIK TOPLANIYOR STOP IKI SAATE YOLDA STOP")
 			refresh())
-		_help_btns[sd].tooltip_text = "Asker gönderirler (yaklaşık %d saat sonra yola çıkarlar); kasabanın yanında çatışmaya girerler. Bedeli: o tarafın gözünde -%d itibar." % [int(Village.HELP_HOURS), Village.HELP_COST]
-	Ui.label(right, "TARAFLAR · SON DEĞİŞİKLİKLER", 13, Ui.ACCENT, "head")
-	_sides = Ui.label(right, "", 12, Ui.DIM)
+	_heading(right, "Taraflar")
+	_sides = Ui.label(right, "", 13, Ui.P_INK, "type")
 	_sides.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sides.custom_minimum_size = Vector2(380, 0)
-	Ui.label(right, "ANA KARA", 13, Ui.ACCENT, "head")
-	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver", func() -> void:
+	_sides.custom_minimum_size = Vector2(400, 0)
+	_heading(right, "Ana kara")
+	_announce = _button(right, "KÖYÜ BİLDİR", func() -> void:
 		var why: String = game.village.announce()
 		if why != "":
 			game.hud.toast(why, "bad")
 			return
 		send("KORDAL HATTI UCUNDA YENI KOY KURULDU STOP %d CAN STOP GOCMEN BEKLIYORUZ STOP" % game.village.villagers.size(), "ZAROVYA MERKEZ STOP TEBRIKLER STOP GOCMENLER TRENLE YOLA CIKIYOR STOP")
 		refresh())
-	_announce.tooltip_text = "Bir kez: bundan böyle göçmenler yürüyerek değil, her trenle gelir (boş yatak kadar)"
-	Ui.label(right, "TRENE SAT  (her maldan %d'u kalır)" % Village.KEEP, 13, Ui.ACCENT, "head")
-	var sell := HBoxContainer.new()
-	sell.add_theme_constant_override("separation", 4)
+	_heading(right, "Trene sat")
+	var sell := HFlowContainer.new()
+	sell.add_theme_constant_override("h_separation", 6)
+	sell.add_theme_constant_override("v_separation", 4)
+	sell.tooltip_text = "İşaretli mallar tren gelince satılır; her maldan %d kalır" % Village.KEEP
 	right.add_child(sell)
 	for r: String in Village.PRICES:
 		_sell_btns[r] = _button(sell, "%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])], func() -> void:
@@ -105,15 +111,26 @@ func _ready() -> void:
 				v.selling.append(r)
 				send("SATILIK %s STOP" % _plain(BuildingDefs.RES_NAMES[r]), "")
 			refresh())
-		_sell_btns[r].tooltip_text = "%s: tane başı %d %s. İşaretliyse tren gelince fazlası satılır." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r]), Village.COIN]
+		_sell_btns[r].tooltip_text = "%s: tane başı %d %s. İşaretliyse tren gelince fazlası satılır (her maldan %d kalır)." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r]), Village.COIN, Village.KEEP]
+
+
+## A heading on the form, printed small, a dotted line run out after it.
+func _heading(parent: Node, text: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.custom_minimum_size = Vector2(0, 24)
+	parent.add_child(row)
+	var l := Ui.label(row, Ui.upper(text), 12, Ui.P_RED, "head")
+	l.size_flags_vertical = Control.SIZE_SHRINK_END
+	var dots := Ui.label(row, ". ".repeat(80), 10, Color(Ui.P_INK, 0.4), "type")
+	dots.text_overrun_behavior = TextServer.OVERRUN_TRIM_CHAR
+	dots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dots.size_flags_vertical = Control.SIZE_SHRINK_END
 
 
 func _button(parent: Node, text: String, f: Callable) -> Button:
-	var b := Button.new()
+	var b := Ui.ink_button(Button.new(), Ui.P_INK, 14, "type_bold")
 	b.text = text
-	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_override("font", Ui.font("head"))
-	b.add_theme_font_size_override("font_size", 13)
 	b.pressed.connect(f)
 	parent.add_child(b)
 	return b
@@ -194,27 +211,33 @@ static func _click(secs: float, hz: float, loud: float) -> AudioStreamWAV:
 func refresh() -> void:
 	var v: Village = game.village
 	var due := v.next_train - v.day
-	var line := "Tren istasyonda" if is_instance_valid(v.train) else ("Tren bugün bekleniyor" if due <= 0 else "Sonraki tren ~%d gün sonra (gecikebilir)" % due)
+	var line := "Tren istasyonda." if is_instance_valid(v.train) else ("Tren bugün bekleniyor." if due <= 0 else "Sonraki tren ~%d gün sonra." % due)
 	if v.express:
-		line = "Tren çağrıldı: yarın gelir"
+		line = "Tren çağrıldı: yarın gelir."
 	if v.line_state() != "":
 		line = v.line_state() + "\n" + line
-	_status.text = "%s\nKasa %d mirka · %s%s" % [line, v.rubles, v.standing_text(),
-		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
+	_status.text = "%s\nKasada %d mirka. %s" % [line, v.rubles,
+		("Her trenle %d göçmen." % v.settlers_due()) if v.announced else "Köy bildirilmedi: göçmen gelmiyor."]
+	_status.tooltip_text = "Trenler gecikebilir. Göçmen boş yatak kadar gelir."
+	_status.mouse_filter = Control.MOUSE_FILTER_PASS
 	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1 or v.line_shut()
-	var rows: Array[String] = [v.standing_text()]
-	for e: Array in v.standing_log.slice(0, 6):
-		rows.append("Gün %d · %s %+d%s" % [int(e[0]), Village.SIDES[e[1]], int(e[2]), (" · " + str(e[3])) if str(e[3]) != "" else ""])
+	var rows: Array[String] = []
+	for side: String in Village.SIDES:
+		rows.append("%-14s %+d" % [str(Village.SIDES[side]).to_upper(), v.standing(side)])
+	for e: Array in v.standing_log.slice(0, 5):
+		rows.append("Gün %d  %s %+d%s" % [int(e[0]), Village.SIDES[e[1]], int(e[2]), (", " + str(e[3])) if str(e[3]) != "" else ""])
 	_sides.text = "\n".join(rows)
 	for side: String in _help_btns:
 		var why: String = v.help_why_not(side)
 		(_help_btns[side] as Button).disabled = why != ""
-		(_help_btns[side] as Button).text = "%s'E%s" % [Ui.upper(str(Village.SIDES[side])), "" if why == "" else " · " + why]
+		(_help_btns[side] as Button).tooltip_text = ("Yardım gelmez: " + why + "\n\n" if why != "" else "") + "Asker gönderirler (yaklaşık %d saat sonra yola çıkarlar); kasabanın yanında çatışmaya girerler. Bedeli: o tarafın gözünde -%d itibar. Yalnızca +%d ve üstü dost taraf yollar." % [int(Village.HELP_HOURS), Village.HELP_COST, Village.FRIENDLY]
 	_announce.disabled = v.announced
-	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver"
+	_announce.text = "KÖY BİLDİRİLDİ" if v.announced else "KÖYÜ BİLDİR"
+	_announce.tooltip_text = "Kurulduğumuzu Zarovya merkezine bildir. Bir kez: bundan böyle göçmenler yürüyerek değil, her trenle gelir (boş yatak kadar)."
 	for r: String in _sell_btns:
 		var on := r in v.selling
-		(_sell_btns[r] as Button).add_theme_stylebox_override("normal", Ui.glass(false, 5.0, Color(1.0, 0.56, 0.14, 0.4) if on else Color(1, 1, 1, 0.06), Ui.ACCENT if on else Ui.EDGE))
+		(_sell_btns[r] as Button).add_theme_stylebox_override("normal", Ui.ink_box(Ui.P_INK, 0.0, 0.55, on))
+		(_sell_btns[r] as Button).text = ("✓ " if on else "") + "%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])]
 
 
 ## The key: a wooden base, the brass lever on its pivot, its knob, the contact under it; down while a
@@ -294,7 +317,7 @@ class Tape extends Control:
 		draw_rect(strip, Color(0.86, 0.8, 0.66))
 		for k in 6: # (the paper's grain)
 			draw_line(Vector2(0, strip.position.y + 8 + k * 16), Vector2(w, strip.position.y + 8 + k * 16), Color(0.78, 0.72, 0.58), 1.0)
-		var f := Ui.font("head")
+		var f := Ui.font("type_bold")
 		for i in _lines.size():
 			var l: Dictionary = _lines[i]
 			var y := strip.position.y + 22 + i * 46

@@ -216,15 +216,15 @@ func _draw() -> void:
 	draw_colored_polygon(PackedVector2Array([cr + Vector2(0, -11), cr + Vector2(3, 0), cr + Vector2(-3, 0)]), INK)
 	draw_polyline(PackedVector2Array([cr + Vector2(0, 11), cr + Vector2(3, 0), cr + Vector2(-3, 0), cr + Vector2(0, 11)]), INK, 1.0, true)
 	draw_polyline(PackedVector2Array([cr + Vector2(-9, 0), cr + Vector2(0, -2.5), cr + Vector2(9, 0), cr + Vector2(0, 2.5), cr + Vector2(-9, 0)]), INK, 0.8, true)
-	draw_string(Ui.font("head"), cr + Vector2(-3.5, -13), "K", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, INK)
+	draw_string(Ui.font("narrow"), cr + Vector2(-3.5, -13), "K", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, INK)
 	# the title in a cartouche, and a scale bar
 	draw_rect(Rect2(Vector2(5, 5), Vector2(74, 14)), Color(PAPER, 0.92))
 	draw_rect(Rect2(Vector2(5, 5), Vector2(74, 14)), INK, false, 0.8)
-	draw_string(Ui.font("head"), Vector2(9, 16), "KORDAL · HARİTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
+	draw_string(Ui.font("narrow"), Vector2(9, 16), "KORDAL · HARİTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
 	var px100 := 100.0 / REACH * SIZE * 0.5
 	var sb := Vector2(8, SIZE - 9)
 	draw_line(sb, sb + Vector2(px100, 0), INK, 1.4)
 	for k in 3:
 		draw_line(sb + Vector2(px100 * k / 2.0, -2), sb + Vector2(px100 * k / 2.0, 2), INK, 1.0)
-	draw_string(Ui.font("head"), sb + Vector2(px100 + 3, 3), "100 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
+	draw_string(Ui.font("narrow"), sb + Vector2(px100 + 3, 3), "100 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
 	draw_rect(Rect2(Vector2.ZERO, Vector2(SIZE, SIZE)), INK, false, 1.5)

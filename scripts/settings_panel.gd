@@ -200,7 +200,7 @@ func _button(text: String, f: Callable, width: float) -> Button:
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(width, 34)
-	b.add_theme_font_override("font", Ui.font("head"))
+	b.add_theme_font_override("font", Ui.face("head", 15))
 	b.add_theme_font_size_override("font_size", 15)
 	b.add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1, 1, 1, 0.06)))
 	b.add_theme_stylebox_override("hover", Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.3), Ui.ACCENT))
