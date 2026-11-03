@@ -877,6 +877,7 @@ func _send_relief(side: String) -> void:
 ## the town (raids.allies); when it's over (or a day on, if nothing comes), back up and away.
 func relief_arrives(c: Convoy) -> void:
 	var n := 8 if c.tank else 6
+	c.unload()
 	var at := c.halt_point()
 	for k in n:
 		var a := Villager.new()
@@ -1054,6 +1055,7 @@ func _convoy_refused(c: Convoy, chance: float) -> void:
 ## The convoy's men come off shooting, the tank's gun with them; when it's over they go.
 func convoy_attacks(c: Convoy) -> void:
 	var n := clampi(3 + villagers.size() / 5, 3, 10)
+	c.unload()
 	raids.start(n, c.halt_point(), c.side)
 	if c.gun:
 		raids.guns.append(c.gun)
@@ -1828,7 +1830,7 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	_clear_ground(kind, pos, yaw)
 	if not kind in BuildingDefs.YARDS and not BuildingDefs.DEFS[kind].role in ["farm", "light"]:
 		# (the ground round it trodden bare by the building of it and the coming and going, fading into the grass)
-		nav.set_yard(b.global_transform, (BuildingDefs.DEFS[kind].size as Vector2) + Vector2(3.0, 3.0), true, 3.5)
+		nav.set_yard(b.global_transform, (BuildingDefs.DEFS[kind].size as Vector2) + Vector2(1.0, 1.0), true, 2.2, true)
 	b.finished.connect(_on_finished)
 	b.ruined.connect(_on_ruined)
 	buildings.append(b)
@@ -2204,7 +2206,7 @@ func _blow(m: Dictionary) -> void:
 	raids._flash(at + Vector3.UP * 1.2, "")
 	FireFx.explosion(self, at, 1.0)
 	terrain.dig_crater(at, 1.4, 0.5)
-	terrain.commit_digs()
+	request_commit()
 	nav.scorch(at, 2.5, 1.0)
 	var all: Array[Villager] = []
 	all.append_array(villagers)
@@ -2217,8 +2219,61 @@ func _blow(m: Dictionary) -> void:
 				v.hurt(70.0 * (1.0 - d / 4.5) + 10.0)
 
 
+## An order on the ground near `p` not yet carried out (a trench length still to dig, a mine, a
+## set pit): {kind, it}, or empty.
+func order_under(p: Vector3, reach := 1.4) -> Dictionary:
+	var at := Vector2(p.x, p.z)
+	for m: Dictionary in mines:
+		if Vector2(m.at.x, m.at.z).distance_to(at) < reach:
+			return {"kind": "mayin", "it": m}
+	for t: Dictionary in traps:
+		if t.armed and Vector2(t.at.x, t.at.z).distance_to(at) < reach:
+			return {"kind": "tuzak", "it": t}
+	for t: Dictionary in trenches:
+		if float(t.done) < 1.0 and Geometry2D.get_closest_point_to_segment(at, t.a, t.b).distance_to(at) < reach:
+			return {"kind": "hendek", "it": t}
+	return {}
+
+
+## That order called off: the mine dug up and its iron and coal back in the stores, the pit's wood
+## back, a trench's length no longer to be dug (what was dug of it stays dug). What was done.
+func cancel_order(o: Dictionary) -> String:
+	var it: Dictionary = o.it
+	if is_instance_valid(it.get("node")):
+		(it.node as Node).queue_free()
+	match str(o.kind):
+		"mayin":
+			mines.erase(it)
+			for res: String in MINE_COST:
+				add_anywhere(res, int(MINE_COST[res]), it.at)
+			return "Mayın söküldü (%s geri)" % BuildingDefs.cost_text_of(MINE_COST)
+		"tuzak":
+			traps.erase(it)
+			add_anywhere("odun", TRAP_COST, it.at)
+			return "Tuzak kaldırıldı"
+		_:
+			# the whole marked line goes, not just the length under the mouse
+			var gone := 0
+			for t: Dictionary in trenches.duplicate():
+				if float(t.done) < 1.0 and (t == it or _joined(t, it)):
+					if is_instance_valid(t.get("node")):
+						(t.node as Node).queue_free()
+					trenches.erase(t)
+					gone += 1
+			return "Hendek iptal edildi (%d parça)" % gone
+
+
+## Two trench lengths of one marked line (end to end, the same way).
+func _joined(t: Dictionary, u: Dictionary) -> bool:
+	var dt: Vector2 = (t.b - t.a).normalized()
+	var du: Vector2 = (u.b - u.a).normalized()
+	if dt.dot(du) < 0.999:
+		return false
+	return absf((u.a - t.a).cross(dt)) < 0.05
+
+
 ## A trench marked from `a` to `b`, in 3 m lengths for the free hands to dig. How many lengths.
-func mark_trench(a: Vector2, b: Vector2) -> int:
+func mark_trench(a: Vector2, b: Vector2, width := 1.3) -> int:
 	var len := a.distance_to(b)
 	if len < 2.0:
 		return 0
@@ -2226,7 +2281,7 @@ func mark_trench(a: Vector2, b: Vector2) -> int:
 	for k in n:
 		var p0 := a.lerp(b, float(k) / n)
 		var p1 := a.lerp(b, float(k + 1) / n)
-		trenches.append({"a": p0, "b": p1, "done": 0.0, "node": null})
+		trenches.append({"a": p0, "b": p1, "done": 0.0, "node": null, "w": width})
 		_show_trench(trenches[-1])
 	return n
 
@@ -2274,11 +2329,19 @@ func trench_to_dig(p: Vector3) -> Dictionary:
 
 ## A length dug a stint further; finished, the ground's cut down into it.
 func dig_on(t: Dictionary, by: float) -> void:
+	if not t in trenches: # (called off while it was being dug)
+		return
 	var was := float(t.done)
 	t.done = minf(was + by, 1.0)
 	# the ground going down a stint at a time, the spoil banked on the side away from the town
-	terrain.dig_trench_part(t.a, t.b, 1.3, TRENCH_DEPTH * (float(t.done) - was), trench_bank(t))
-	terrain.commit_digs()
+	terrain.dig_trench_part(t.a, t.b, float(t.get("w", 1.3)), TRENCH_DEPTH * (float(t.done) - was), trench_bank(t))
+	# the cut earth bare and brown, not grass
+	var mid := Vector3((t.a.x + t.b.x) * 0.5, 0, (t.a.y + t.b.y) * 0.5)
+	for k in 4:
+		var q := Vector3(lerpf(t.a.x, t.b.x, k / 3.0), 0, lerpf(t.a.y, t.b.y, k / 3.0))
+		nav.tread(q, 40.0, 20.0)
+	terrain.clear_grass(mid, a_len(t) * 0.5 + 1.2)
+	request_commit()
 	if float(t.done) >= 1.0:
 		_show_trench(t)
 
@@ -2322,12 +2385,30 @@ func trench_post(p: Vector3, v: Villager) -> Vector3:
 	return best
 
 
+func a_len(t: Dictionary) -> float:
+	return (t.a as Vector2).distance_to(t.b)
+
+
+## The dug ground sent to the shader and the collision now and then, not on every stroke of the
+## spade: the whole map's heights go each time, and that's a heavy thing to do often.
+var _commit_soon := false
+
+
+func request_commit() -> void:
+	if _commit_soon:
+		return
+	_commit_soon = true
+	get_tree().create_timer(2.5, false).timeout.connect(func() -> void:
+		_commit_soon = false
+		terrain.commit_digs())
+
+
 ## Down in a dug trench at `p`: cover.
 func in_trench(p: Vector3) -> bool:
 	for t: Dictionary in trenches:
 		if float(t.done) >= 1.0:
 			var q: Vector2 = Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), t.a, t.b)
-			if q.distance_to(Vector2(p.x, p.z)) < 0.9:
+			if q.distance_to(Vector2(p.x, p.z)) < float(t.get("w", 1.3)) * 0.5 + 0.25:
 				return true
 	return false
 

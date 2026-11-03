@@ -194,6 +194,14 @@ func _ready() -> void:
 
 # --- Input ------------------------------------------------------------------------------------------
 
+func _input(e: InputEvent) -> void:
+	# the wheel sets a trench's width while one's being laid out (not the zoom)
+	if _placing == "hendek" and e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		_trench_w = clampf(_trench_w + (0.2 if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_UP else -0.2), 0.8, 2.6)
+		hud.set_hint("HENDEK genişliği %.1f m (tekerlek: genişlet / daralt) · çizgi sürükle" % _trench_w)
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(e: InputEvent) -> void:
 	if _titled or _loading:
 		return
@@ -223,7 +231,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			elif _placing != "":
 				stop_placing()
 			elif _chosen().any(func(v: Villager) -> bool: return v.drafted):
-				_order(mb.position)
+				_rclick_from = mb.position # (a drag lines them up; on release)
+			elif not _order_at(mb.position).is_empty():
+				hud.toast(village.cancel_order(_order_at(mb.position)), "info")
+				_hover_order(mb.position)
 			elif selected_villager and is_instance_valid(selected_villager):
 				_assign_to(_building_under(mb.position))
 			else:
@@ -238,7 +249,20 @@ func _unhandled_input(e: InputEvent) -> void:
 			_pick(_sel_from, _sel_shift)
 		_sel_from = Vector2.INF
 		hud.show_select_box(Rect2())
-	elif e is InputEventMouseMotion and _sel_from != Vector2.INF:
+	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT and _rclick_from != Vector2.INF:
+		var up := (e as InputEventMouseButton).position
+		if up.distance_to(_rclick_from) > 14.0:
+			_line_order(_rclick_from, up)
+		else:
+			_order(_rclick_from)
+		_rclick_from = Vector2.INF
+		_show_formation([])
+	elif e is InputEventMouseMotion and _rclick_from != Vector2.INF:
+		var at := (e as InputEventMouseMotion).position
+		_show_formation(_formation(_rclick_from, at) if at.distance_to(_rclick_from) > 14.0 else [])
+	elif e is InputEventMouseMotion and _sel_from == Vector2.INF and _drag_from == null:
+		_hover_order((e as InputEventMouseMotion).position)
+	if e is InputEventMouseMotion and _sel_from != Vector2.INF:
 		var at := (e as InputEventMouseMotion).position
 		if at.distance_to(_sel_from) > 10.0:
 			hud.show_select_box(Rect2(_sel_from, Vector2.ZERO).expand(at))
@@ -1097,6 +1121,156 @@ func _order(at: Vector2) -> void:
 			v.give([{"t": "go", "to": p + off}], "Emirle gidiyor")
 
 
+## A right-drag with folk in hand: they line up along it, one to a spot, each spot pulled into cover
+## close by if there's any (a trench, sandbags, a wall, a house's corner) and shown so while dragging.
+var _rclick_from := Vector2.INF
+var _form_marks: Array[MeshInstance3D] = []
+
+
+## The spots along the drag from screen `a` to `b`, one for each in hand: [[pos, in cover], ...].
+func _formation(a: Vector2, b: Vector2) -> Array:
+	var pa: Variant = cam.ground_under(a)
+	var pb: Variant = cam.ground_under(b)
+	var who := _chosen().filter(func(v: Villager) -> bool: return v.drafted and not v.down)
+	if pa == null or pb == null or who.is_empty():
+		return []
+	var from: Vector3 = pa
+	var to: Vector3 = pb
+	var n := who.size()
+	var len := Vector2(to.x - from.x, to.z - from.z).length()
+	var dir := (to - from).normalized() if len > 0.1 else Vector3.RIGHT
+	var gap := maxf(len / maxf(n - 1, 1), 1.4) if n > 1 else 0.0
+	var mid := (from + to) * 0.5
+	var out := []
+	for i in n:
+		var p := mid + dir * gap * (i - (n - 1) * 0.5) if n > 1 else mid
+		var q: Vector3 = village.cover_near(p, 2.5) if (who[i] as Villager).armed else p
+		q.y = village.nav.height(q.x, q.z)
+		out.append([q, village.is_cover(q)])
+	return out
+
+
+func _line_order(a: Vector2, b: Vector2) -> void:
+	var spots := _formation(a, b)
+	var who := _chosen().filter(func(v: Villager) -> bool: return v.drafted and not v.down)
+	if spots.is_empty():
+		return
+	# the nearest to each end takes that end (so no one crosses the line to get there)
+	var ends: Vector3 = spots[0][0]
+	who.sort_custom(func(x: Villager, y: Villager) -> bool: return x.position.distance_to(ends) < y.position.distance_to(ends))
+	var covered := 0
+	for i in mini(who.size(), spots.size()):
+		var v: Villager = who[i]
+		v.focus = null
+		v.abort()
+		if v.armed:
+			village.hold_at(v, spots[i][0])
+		else:
+			v.give([{"t": "go", "to": spots[i][0]}], "Emirle gidiyor")
+		covered += int(spots[i][1])
+	hud.toast("%d kişi sıraya giriyor · %d siperde" % [spots.size(), covered], "info")
+
+
+## The spots shown on the ground: a pale ring each, a green one with a shield-post where there's cover.
+func _show_formation(spots: Array) -> void:
+	while _form_marks.size() < spots.size():
+		var m := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.42
+		tm.outer_radius = 0.6
+		tm.rings = 16
+		tm.ring_segments = 4
+		m.mesh = tm
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.no_depth_test = true
+		m.material_override = mat
+		var post := MeshInstance3D.new()
+		var pm := PrismMesh.new()
+		pm.size = Vector3(0.5, 0.45, 0.08)
+		post.mesh = pm
+		post.material_override = mat
+		post.position = Vector3(0, 0.9, 0)
+		post.rotation.x = PI # (a little shield, point down)
+		post.name = "Shield"
+		m.add_child(post)
+		add_child(m)
+		_form_marks.append(m)
+	for i in _form_marks.size():
+		var m := _form_marks[i]
+		m.visible = i < spots.size()
+		if not m.visible:
+			continue
+		var cover: bool = spots[i][1]
+		m.global_position = (spots[i][0] as Vector3) + Vector3.UP * 0.08
+		(m.material_override as StandardMaterial3D).albedo_color = Color(0.35, 0.95, 0.45, 0.9) if cover else Color(0.95, 0.92, 0.8, 0.75)
+		(m.get_node("Shield") as Node3D).visible = cover
+		var face := cam.global_position
+		face.y = m.global_position.y
+		if face.distance_to(m.global_position) > 0.1:
+			m.look_at(face, Vector3.UP)
+
+
+## An order on the ground under the screen point `at` (a mine, a pit, a trench yet to dig).
+func _order_at(at: Vector2) -> Dictionary:
+	if _placing != "":
+		return {}
+	var p: Variant = cam.ground_under(at)
+	return {} if p == null else village.order_under(p)
+
+
+## The pointer says what a right-click would do: a red gunsight over a foe when folk are in hand (they
+## fire on him), a struck-through ring over an order on the ground (it's called off).
+func _hover_order(at: Vector2 = Vector2.INF) -> void:
+	if at == Vector2.INF:
+		at = get_viewport().get_mouse_position()
+	if not _cursors_made:
+		_make_cursors()
+	var drafted := _chosen().any(func(v: Villager) -> bool: return v.drafted)
+	var hint := ""
+	var shape := Input.CURSOR_ARROW
+	if drafted and _raider_under(at) != null:
+		shape = Input.CURSOR_CROSS
+		hint = "Sağ tık: bu düşmana ateş et"
+	elif not drafted and not _order_at(at).is_empty():
+		shape = Input.CURSOR_FORBIDDEN
+		hint = "Sağ tık: emri iptal et"
+	Input.set_default_cursor_shape(shape)
+	if hint != _cross_hint:
+		hud.set_hint(hint)
+		_cross_hint = hint
+
+
+var _cross_hint := ""
+var _cursors_made := false
+
+
+func _make_cursors() -> void:
+	_cursors_made = true
+	var n := 40
+	var c := n / 2.0
+	var aim := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var stop := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var dx := x + 0.5 - c
+			var dy := y + 0.5 - c
+			var d := sqrt(dx * dx + dy * dy)
+			# the gunsight: a ring, four ticks breaking in, a dot in the middle (dark edged)
+			var on := absf(d - 12.0) < 1.3 or d < 1.8 or ((absf(dx) < 1.1 and absf(dy) > 5.0 and absf(dy) < 18.0) or (absf(dy) < 1.1 and absf(dx) > 5.0 and absf(dx) < 18.0))
+			var edge := absf(d - 12.0) < 2.4 or d < 2.9 or ((absf(dx) < 2.2 and absf(dy) > 4.0 and absf(dy) < 19.0) or (absf(dy) < 2.2 and absf(dx) > 4.0 and absf(dx) < 19.0))
+			aim.set_pixel(x, y, Color(0.95, 0.18, 0.12) if on else (Color(0.05, 0.03, 0.02, 0.85) if edge else Color(0, 0, 0, 0)))
+			# called off: a ring struck through
+			var bar := absf(dx - dy) / sqrt(2.0)
+			var s_on := (absf(d - 11.0) < 1.5 or (bar < 1.5 and d < 11.0))
+			var s_edge := (absf(d - 11.0) < 2.6 or (bar < 2.6 and d < 12.0))
+			stop.set_pixel(x, y, Color(1.0, 0.62, 0.16) if s_on else (Color(0.05, 0.03, 0.02, 0.85) if s_edge else Color(0, 0, 0, 0)))
+	Input.set_custom_mouse_cursor(ImageTexture.create_from_image(aim), Input.CURSOR_CROSS, Vector2(c, c))
+	Input.set_custom_mouse_cursor(ImageTexture.create_from_image(stop), Input.CURSOR_FORBIDDEN, Vector2(c, c))
+
+
 ## A dead raider or one lying downed, near the screen point `at`.
 func _body_under(at: Vector2) -> Villager:
 	var best: Villager = null
@@ -1282,6 +1456,33 @@ func _rect(a: Vector3, b: Vector3) -> Rect2:
 
 
 ## A flat box over the ground on `rect`, `color` (made the first time).
+## The trench as it'll be cut, while it's dragged: a dark strip of its width from where the drag
+## began to the mouse, the spoil's side shown lighter.
+var _trench_w := 1.3
+
+
+func _trench_on(box: MeshInstance3D, a: Vector3, b: Vector3) -> MeshInstance3D:
+	if box == null:
+		box = MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		box.material_override = m
+		box.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(box)
+	var len := Vector2(b.x - a.x, b.z - a.z).length()
+	(box.material_override as StandardMaterial3D).albedo_color = Color(0.3, 0.2, 0.12, 0.55) if len >= 2.0 else Color(1.0, 0.3, 0.2, 0.45)
+	(box.mesh as BoxMesh).size = Vector3(_trench_w, 0.25, maxf(len, 0.1))
+	var mid := (a + b) * 0.5
+	mid.y = maxf(village.nav.height(mid.x, mid.z), maxf(a.y, b.y)) + 0.1
+	box.visible = true
+	box.global_position = mid
+	if len > 0.05:
+		box.look_at(Vector3(b.x, mid.y, b.z), Vector3.UP)
+	return box
+
+
 func _box_on(box: MeshInstance3D, rect: Rect2, color: Color) -> MeshInstance3D:
 	if box == null:
 		box = MeshInstance3D.new()
@@ -1316,7 +1517,11 @@ func _update_drag() -> void:
 	if to == null:
 		return
 	var color: Color = {"mayin": Color(0.8, 0.25, 0.1, 0.25), "hendek": Color(0.35, 0.25, 0.15, 0.3), "tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
-	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
+	if _placing == "hendek":
+		_drag_box = _trench_on(_drag_box, _drag_from, to)
+		hud.set_hint("HENDEK: %d m · genişlik %.1f m (tekerlek: genişlet / daralt) · bırak: kazılsın" % [roundi(Vector2(to.x - _drag_from.x, to.z - _drag_from.z).length()), _trench_w])
+	else:
+		_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
 	_spot_marks(_rect(_drag_from, to) if _placing in ["mayin", "tuzak"] else Rect2())
 
 
@@ -1371,7 +1576,7 @@ func _area_done(to: Variant) -> void:
 		return
 	var rect := _rect(from, to)
 	if _placing == "hendek": # (a line, not a box)
-		var n := village.mark_trench(Vector2(from.x, from.z), Vector2(to.x, to.z))
+		var n := village.mark_trench(Vector2(from.x, from.z), Vector2(to.x, to.z), _trench_w)
 		hud.toast("%d m hendek kazılacak" % (n * 3) if n > 0 else "Hendek o kadar kısa olamaz", "good" if n > 0 else "info")
 		return
 	if rect.size.x < 1.0 or rect.size.y < 1.0:

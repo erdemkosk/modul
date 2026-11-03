@@ -224,19 +224,28 @@ func cut_grass(cells: Array[Vector2i]) -> void:
 ## A workyard's ground (or let go, the grass back over it): trodden earth over the rounded
 ## `size` (m) round `xf`, its edge giving out into the grass over `margin` m (the mask's alpha:
 ## world_terrain and grass shaders). Fenced or not, there's no line round it.
-func set_yard(xf: Transform3D, size: Vector2, on: bool, margin := 2.5) -> void:
+## `ragged`: the edge left uneven (a site's trodden ground, not a laid-out yard): it reaches out
+## further here and stops short there, and out longest before the door.
+func set_yard(xf: Transform3D, size: Vector2, on: bool, margin := 2.5, ragged := false) -> void:
 	var half := size * 0.5
 	var reach := half.length() + margin
 	var c0 := cell_of(xf.origin - Vector3(reach, 0, reach))
 	var c1 := cell_of(xf.origin + Vector3(reach, 0, reach))
 	var inv := xf.affine_inverse()
-	var corner := minf(minf(half.x, half.y), 3.0)
+	var corner := minf(minf(half.x, half.y), 1.0 if ragged else 3.0)
 	for cz in range(c0.y, c1.y + 1):
 		for cx in range(c0.x, c1.x + 1):
 			var l := inv * center_of(Vector2i(cx, cz))
 			var q := Vector2(absf(l.x), absf(l.z)) - (half - Vector2(corner, corner))
 			var d := Vector2(maxf(q.x, 0.0), maxf(q.y, 0.0)).length() + minf(maxf(q.x, q.y), 0.0) - corner
+			if ragged:
+				var h := absi(hash(Vector2i(cx, cz))) % 1000 / 1000.0
+				d += (h - 0.5) * margin * 0.9
+				if l.z > 0.0 and absf(l.x) < 1.5: # (the door's side: worn out further)
+					d -= margin * 0.6
 			var v := clampf(1.0 - d / margin, 0.0, 1.0)
+			if ragged:
+				v = v * v * (3.0 - 2.0 * v)
 			if v <= 0.0:
 				continue
 			var px := terrain.village_img.get_pixel(cx, cz)
@@ -443,6 +452,10 @@ func _path_from(ids: Array[Vector2i], b: Vector3) -> PackedVector3Array:
 		else:
 			out.append(_point(ids[k]))
 		last_dir = dir
+	# the last stretch straight to where it was asked, unless that's in a building: then the way
+	# stops at its wall (no one walks in through the logs)
+	if shut_kind(b) == 2 and ids.size() > 1:
+		return out
 	if out.size() > 0:
 		out.remove_at(out.size() - 1)
 	var end := b

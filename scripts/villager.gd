@@ -485,6 +485,68 @@ var _rifle := false
 const TOOLS := {"mow": "scythe", "eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet"}
 
 
+## Room kept between folk: no one walks through another. Everyone on their feet out in the open is
+## in a coarse grid rebuilt once a frame, and each is eased off whoever it's pressed up against
+## (the one standing at its work less than the one walking).
+static var _all: Array[Villager] = []
+static var _grid := {}
+static var _grid_frame := -1
+const ROOM := 0.62 ## m between two, at least
+
+
+func _enter_tree() -> void:
+	if not self in _all:
+		_all.append(self)
+
+
+func _exit_tree() -> void:
+	_all.erase(self)
+
+
+func _keeps_room() -> bool:
+	return not dead and not down and not sleeping and inside == null and carried_by == null and not has_cart and visible and is_inside_tree()
+
+
+func _make_room(dt: float, walking: bool) -> void:
+	var f := Engine.get_process_frames()
+	if f != _grid_frame:
+		_grid_frame = f
+		_grid.clear()
+		for o in _all:
+			if is_instance_valid(o) and o._keeps_room():
+				var c := Vector2i(floori(o.position.x), floori(o.position.z))
+				if _grid.has(c):
+					(_grid[c] as Array).append(o)
+				else:
+					_grid[c] = [o]
+	var me := Vector2i(floori(position.x), floori(position.z))
+	var push := Vector2.ZERO
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var list: Variant = _grid.get(me + Vector2i(dx, dz))
+			if list == null:
+				continue
+			for o: Villager in list:
+				if o == self:
+					continue
+				var d := Vector2(position.x - o.position.x, position.z - o.position.z)
+				var len := d.length()
+				if len >= ROOM:
+					continue
+				if len < 0.01: # (right on top of each other: apart some way, the same way each time)
+					d = Vector2(cos(get_instance_id() % 628 * 0.01), sin(get_instance_id() % 628 * 0.01))
+					len = 0.01
+				push += d / len * (ROOM - len)
+	if push == Vector2.ZERO:
+		return
+	var by := push * minf(dt * (6.0 if walking else 2.5), 0.5)
+	var to := position + Vector3(by.x, 0, by.y)
+	if nav.is_open(to) or not nav.is_open(position):
+		position.x = to.x
+		position.z = to.z
+		position.y = village.ground_at(position) if village.has_method("ground_at") else nav.height(position.x, position.z)
+
+
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_build_look()
@@ -1362,6 +1424,8 @@ func _process(dt: float) -> void:
 			wounds.clear() # (mended: what's left of it is a scar, if anything)
 	if sleeping:
 		return
+	if _keeps_room():
+		_make_room(dt, not _path.is_empty() or (not plan.is_empty() and str(plan[0].t) == "step"))
 	_lantern_check()
 	if plan.is_empty():
 		_anim = "idle"
@@ -1509,6 +1573,10 @@ func _walk(dt: float) -> bool:
 			_path_i += 1
 		else:
 			var step := d / len * left
+			# a foe doesn't walk in through a wall: up against a building it stops there
+			if team == 1 and nav.shut_kind(position + Vector3(step.x, 0, step.y)) == 2 and nav.shut_kind(position) != 2:
+				_path_i = _path.size()
+				break
 			position.x += step.x
 			position.z += step.y
 			_face(to, dt)

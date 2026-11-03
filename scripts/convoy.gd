@@ -126,8 +126,19 @@ func _process(dt: float) -> void:
 		for c: Dictionary in _cars:
 			for w: Node3D in c.wheels:
 				w.rotate_object_local(Vector3.RIGHT, moved / 0.47)
+			# the tracks: the links laid down at the front and picked up behind (the phase that shows
+			# steps back a third of a link at a time as it goes forward)
+			if c.has("tracks"):
+				c.run = float(c.run) + moved
+				var ph := posmod(-int(float(c.run) / (0.28 / 3.0)), 3)
+				for k in 3:
+					for mi: MeshInstance3D in c.tracks[k]:
+						mi.visible = k == ph
 		_crush()
 	_engine.pitch_scale = 1.0 if moved > 0.0 else 0.7
+	for s in _exhaust:
+		if is_instance_valid(s):
+			s.emitting = moved > 0.0
 
 
 ## A mine under one of them: a truck blown and burning where it stands, a tank's track torn off
@@ -274,39 +285,100 @@ func _model(kind: String) -> Array:
 	var node := (load("res://assets/buildings/%s.glb" % kind) as PackedScene).instantiate() as Node3D
 	add_child(node)
 	var wheels: Array[Node3D] = []
+	var tracks: Array = [[], [], []] # (a tank's: the links in three phases, one shown at a time)
 	for n in node.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		var stuff := String(mi.name).split("-")[0]
 		mi.material_override = Building.material((stuff if BuildingDefs.STUFF.has(stuff) else "dark") + "+")
+		for k in 3:
+			if String(mi.name).contains("track%d" % k):
+				tracks[k].append(mi)
+				mi.visible = k == 0
 		if String(mi.name).contains("wheel"):
 			wheels.append(mi)
 		elif String(mi.name).contains("mark") and side == "isyan":
 			mi.material_override = _mat(Color(0.62, 0.1, 0.08))
-	return [node, wheels]
+	return [node, wheels, tracks]
+
+
+## A wisp of exhaust from a tank's stacks, only while it's driving (Convoy._process).
+var _exhaust: Array[GPUParticles3D] = []
 
 
 func _smoke(node: Node3D, at: Vector3, amount: int) -> void:
 	var smoke := FireFx.smoke(false)
 	smoke.amount = amount
-	smoke.lifetime = 3.5
+	smoke.lifetime = 2.0
 	smoke.local_coords = false
+	smoke.scale = Vector3.ONE * 0.45
 	node.add_child(smoke)
 	smoke.position = at
+	_exhaust.append(smoke)
 
 
 func _build_truck(back: float) -> Dictionary:
 	var m := _model("kamyon")
 	var node: Node3D = m[0]
-	_smoke(node, Vector3(0.55, 0.6, 3.4), 14)
+	_seat_riders(node) # (no smoke: a lorry's exhaust is nothing to see)
 	return {"node": node, "back": back, "wheels": m[1], "len": TRUCK_LEN, "kind": "truck"}
+
+
+## Its men riding in the back: on the benches down either side of the bed under the tilt, facing in,
+## rifles between their knees. They jump down when it comes to fighting (unload).
+var _riders: Array[Node3D] = []
+
+
+func _seat_riders(truck: Node3D) -> void:
+	if not Townsfolk.available():
+		return
+	var bed: MeshInstance3D = null
+	for n in truck.find_children("*bed*", "MeshInstance3D", true, false):
+		bed = n
+		break
+	if bed == null:
+		return
+	# the bed's box, in the truck's own frame
+	var box: AABB = bed.get_aabb()
+	var to_truck := truck.global_transform.affine_inverse() * bed.global_transform
+	box = to_truck * box
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var floor_y := box.position.y + 0.08
+	var long_z := box.size.z > box.size.x # (which way the bed runs)
+	for sx in [-1, 1]:
+		for k in 3:
+			var f := Townsfolk.new()
+			truck.add_child(f)
+			f.build("outlaw", rng)
+			var t := (k + 0.5) / 3.0
+			var p: Vector3
+			if long_z:
+				p = Vector3(box.get_center().x + sx * box.size.x * 0.3, floor_y, box.position.z + box.size.z * lerpf(0.15, 0.85, t))
+				f.rotation.y = -PI * 0.5 * sx
+			else:
+				p = Vector3(box.position.x + box.size.x * lerpf(0.15, 0.85, t), floor_y, box.get_center().z + sx * box.size.z * 0.3)
+				f.rotation.y = PI * 0.5 - PI * 0.5 * sx
+			f.position = p
+			f.scale = Vector3.ONE * 0.95
+			f.play("RifleCrouchIdle", rng.randf_range(0.8, 1.1))
+			f.player.seek(rng.randf() * 2.0, true)
+			_riders.append(f)
+
+
+## The men down off the trucks (Raids or the relief puts them on the ground where they halted).
+func unload() -> void:
+	for f in _riders:
+		if is_instance_valid(f):
+			f.queue_free()
+	_riders.clear()
 
 
 func _build_tank(back: float) -> Dictionary:
 	var m := _model("tank")
 	var node: Node3D = m[0]
 	for x in [-0.4, 0.4]:
-		_smoke(node, Vector3(x, 3.05, 2.2), 18)
+		_smoke(node, Vector3(x, 3.05, 2.2), 6)
 	gun = Node3D.new()
 	node.add_child(gun)
 	gun.position = Vector3(2.0, 1.45, -1.65)
-	return {"node": node, "back": back, "wheels": m[1], "len": TANK_LEN, "kind": "tank"}
+	return {"node": node, "back": back, "wheels": m[1], "len": TANK_LEN, "kind": "tank", "tracks": m[2], "run": 0.0}

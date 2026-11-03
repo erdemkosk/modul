@@ -32,7 +32,11 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   camur      the mud pit: a plank-framed pit of wet mud with a spade in it, a moulding table with
              brick moulds and fresh bricks, a thatched drying shelter over a straw-strewn floor,
              a heap of straw, a water barrel, puddles on the trodden mud
-  arabaci    the cart shed (a work shed with a handcart and spare wheels)
+  arabaci    the cartwright's shed: a two-wheeled cart tipped on its shafts, a wheel being built on its
+             stool, spares on the wall, a bench with drawknife, adze and mallet, a shaving horse, spokes
+             and felloes stacked, a grindstone, the tyring plate with embers and a tyre, a plank rack
+  hapishane  the lock-up: rubble-stone walls, dressed quoins, a hipped iron roof, barred windows, an
+             iron-banded padlocked door with a judas hatch, a sign, a lantern, the guard's bench
 """
 
 import math
@@ -1167,29 +1171,292 @@ def shed(kind, w, d, props):
     k.finish()
 
 
-def _cart_props(k, w, d):
-    p = k.piece("plank")
-    p.box((-0.6, 0.0, 1.05), (1.2, 1.6, 0.1), jit(PLANK, 0.06, k.rng))
+FELLOE = (0.55, 0.4, 0.25)
+ASH = (0.7, 0.58, 0.4)
+CHAR = (0.12, 0.1, 0.09)
+EMBER = (1.0, 0.42, 0.1)
+
+
+def _axes(axis):
+    a = Vector(axis).normalized()
+    u = a.cross(Vector((0, 0, 1)))
+    if u.length < 0.1:
+        u = a.cross(Vector((1, 0, 0)))
+    u.normalize()
+    return a, u, a.cross(u).normalized()
+
+
+def _ring(p, c, axis, radius, thick, width, color, n=18, frac=1.0, start=0.0, rng=None):
+    """A ring of `n` short blocks round `axis` (a felloe, a tyre, a hoop); only `frac` of it."""
+    a, u, v = _axes(axis)
+    c = Vector(c)
+    for i in range(int(round(n * frac))):
+        t = start + (i + 0.5) / n * math.tau
+        rad = u * math.cos(t) + v * math.sin(t)
+        tan = -u * math.sin(t) + v * math.cos(t)
+        col = jit(color, 0.05, rng) if rng else color
+        p.obox(c + rad * radius, tan, a, rad, (math.tau * radius / n * 1.06, width, thick), col)
+
+
+def cart_wheel(p, c, axis, r, spokes=12, felloes=1.0, tyre=True, rng=random):
+    """A wooden cart wheel: a turned nave banded in iron, its spokes, the felloes round them (only
+    `felloes` of the round, for one being built), an iron tyre shrunk on."""
+    a, u, v = _axes(axis)
+    c = Vector(c)
+    cyl(p, c - a * 0.16, c + a * 0.16, 0.1, jit(FELLOE, 0.05, rng), segs=12, taper=0.0)
+    for s in (-1, 1):
+        cyl(p, c + a * (s * 0.15), c + a * (s * 0.12), 0.11, IRON, segs=12)
+    cyl(p, c - a * 0.2, c + a * 0.2, 0.035, IRON, segs=8) # (the axle box)
+    rin = r - 0.025 - 0.075 # (the felloes' inside)
+    for i in range(spokes):
+        t = i / spokes * math.tau
+        rad = u * math.cos(t) + v * math.sin(t)
+        tan = -u * math.sin(t) + v * math.cos(t)
+        ln = rin + 0.02 - 0.08
+        dish = a * (0.012 if i % 2 else -0.012)
+        p.obox(c + rad * (0.08 + ln * 0.5) + dish, tan, a, rad, (0.04, 0.05, ln), jit(ASH, 0.06, rng))
+    _ring(p, c, a, r - 0.025 - 0.0375, 0.075, 0.07, FELLOE, n=24, frac=felloes, rng=rng)
+    if tyre:
+        _ring(p, c, a, r - 0.0125, 0.025, 0.075, IRON, n=28)
+
+
+def _place(m, at):
+    return m @ Vector(at)
+
+
+def _cart(k, x, y, rng):
+    """A two-wheeled cart standing tipped forward, its shafts on a trestle: a plank bed on two side
+    beams that run on forward into the shafts, sideboards held by stakes, a tailboard, the axle under
+    it all, the wheels on its ends ("wheel" pieces)."""
+    r = 0.6
+    ax_z = FLOOR + r
+    rest = FLOOR + 0.5 # (the trestle's top)
+    L = 2.3 # (the shafts' reach ahead of the axle)
+    tip_z = 0.18
+    # tip forward till the shafts' undersides lie on the trestle at L - 0.2 ahead
+    want = rest - ax_z
+    reach = L - 0.25
+    lo, hi = 0.0, 0.8
+    for _ in range(40):
+        phi = (lo + hi) * 0.5
+        if -reach * math.sin(phi) + (tip_z - 0.045) * math.cos(phi) > want:
+            lo = phi
+        else:
+            hi = phi
+    m = Matrix.Translation((x, y, ax_z)) @ Matrix.Rotation(phi, 4, "X")
+    rot = m.to_3x3()
+    X, Y, Z = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0)), rot @ Vector((0, 0, 1))
+
+    def bx(p, at, size, col):
+        p.obox(m @ Vector(at), X, Y, Z, size, col)
+
+    p = k.piece("plank", "cart")
+    # the axle-tree and the bolster on it
+    bx(p, (0, 0, 0.0), (1.44, 0.11, 0.11), jit(DARK, 0.05, rng))
+    bx(p, (0, 0, 0.1), (1.12, 0.14, 0.1), jit(DARK, 0.05, rng))
     for sx in (-1, 1):
-        p.box((-0.6 + sx * 0.58, 0.0, 1.3), (0.05, 1.6, 0.4), jit(PLANK, 0.06, k.rng))
-    p.box((-0.6, -1.25, 1.05), (0.06, 1.0, 0.06), DARK)
-    p.box((-0.6, 0.2, 0.86), (1.62, 0.08, 0.08), DARK) # (the axle, the wheels on its ends)
-    p.box((-0.6, 0.2, 0.96), (0.1, 0.1, 0.14), DARK)
+        # the side beams, running on forward into the shafts, which close in toward their tips
+        bx(p, (sx * 0.5, 0.15, 0.2), (0.09, 1.9, 0.1), jit(DARK, 0.05, rng))
+        a = m @ Vector((sx * 0.5, -0.75, 0.2))
+        b = m @ Vector((sx * 0.36, -L, 0.18))
+        p.log(a, b, 0.045, color=jit(PLANK, 0.06, rng), end=END_GRAIN, rng=rng, taper=0.15, jitter=0.02)
+        bx(p, (sx * 0.36, -L + 0.12, 0.18), (0.06, 0.08, 0.1), IRON) # (the tug iron)
+    # the bed
+    for i in range(6):
+        bx(p, (0, -0.75 + (i + 0.5) * 1.8 / 6, 0.28), (1.1, 1.8 / 6 - 0.012, 0.05), jit(PLANK, 0.08, rng))
+    # sideboards, two planks a side, held by stakes in iron staples; the front and the tailboard
+    stakes = (-0.7, -0.2, 0.3, 0.85)
+    for sx in (-1, 1):
+        for zz in (0.42, 0.62):
+            bx(p, (sx * 0.58, 0.15, zz), (0.04, 1.84, 0.17), jit(PLANK, 0.08, rng))
+        for sy in stakes:
+            bx(p, (sx * 0.63, sy, 0.48), (0.05, 0.05, 0.62), jit(DARK, 0.06, rng))
+            bx(p, (sx * 0.62, sy, 0.24), (0.07, 0.09, 0.05), IRON)
+    for sy in (-0.77, 1.07):
+        for zz in (0.42, 0.62):
+            bx(p, (0, sy, zz), (1.12, 0.04, 0.17), jit(PLANK, 0.08, rng))
+    bx(p, (0, 1.1, 0.52), (0.04, 0.03, 0.34), IRON) # (the tailboard's pin)
+    # a crossbar between the shafts, part way, and a sack and some straw in the bed
+    bx(p, (0, -1.1, 0.2), (0.84, 0.06, 0.06), jit(DARK, 0.05, rng))
+    k.add(p)
+    p = k.piece("cloth", "sack")
+    p.stone(m @ Vector((0.2, 0.55, 0.42)), (0.5, 0.35, 0.26), color=SACK, rng=rng, subdiv=2)
     k.add(p)
     for sx in (-1, 1):
         p = k.piece("dark", "wheel")
-        p.log((-0.6 + sx * 0.7, 0.2, 0.82), (-0.6 + sx * 0.78, 0.2, 0.82), 0.36, color=DARK, end=PLANK, segs=14, taper=0.0)
+        cart_wheel(p, (x + sx * 0.74, y, ax_z), (1, 0, 0), r, rng=rng)
         k.add(p)
+    # the trestle under the shafts
+    ty = (m @ Vector((0, -reach, 0))).y
+    p = k.piece("wood", "trestle")
+    p.box((x, ty, rest - 0.04), (1.0, 0.1, 0.08), jit(PLANK, 0.06, rng))
+    for sx in (-0.4, 0.4):
+        for sy in (-1, 1):
+            p.log((x + sx, ty + sy * 0.22, FLOOR), (x + sx, ty, rest - 0.06), 0.035, color=DARK, rng=rng, taper=0.0, bow=0.0)
+    k.add(p)
+
+
+def _cart_props(k, w, d):
+    """The cartwright's shop: a cart in for mending; a wheel being built on its stool, spares leant on
+    the back wall; a bench with the drawknife, adze and mallet on it, tools hung over it; a shaving
+    horse; felloes and spokes stacked; a grindstone; the tyring plate with a ring of embers and a
+    tyre on it; a rack of planks; a water barrel."""
+    rng = k.rng
+    _cart(k, -1.3, -0.1, rng)
+    back = d * 0.5 - 0.3 # (the back wall's inside face)
+    side = w * 0.5 - 0.3
+    # spare wheels leant on the back wall
+    for i, (x, r, lean) in enumerate(((-2.15, 0.58, 0.2), (-1.55, 0.6, 0.24), (-0.95, 0.52, 0.18))):
+        up = Vector((0, math.sin(lean), math.cos(lean)))
+        ctr = Vector((x, back - 0.045 - up.y * r, FLOOR + up.z * r + 0.012))
+        p = k.piece("dark", "spare")
+        cart_wheel(p, ctr, Vector((0, math.cos(lean), -math.sin(lean))), r, rng=rng)
+        k.add(p)
+    # the wheel stool and a wheel half built on it, lying flat, its nave in the stool's hole
+    sx0, sy0 = 1.15, -0.3
+    p = k.piece("wood", "stool")
+    p.box((sx0, sy0, FLOOR + 0.42), (1.2, 0.3, 0.1), jit(PLANK, 0.06, rng))
+    for dx in (-0.5, 0.5):
+        for dy in (-1, 1):
+            p.log((sx0 + dx, sy0 + dy * 0.2, FLOOR), (sx0 + dx, sy0 + dy * 0.1, FLOOR + 0.38), 0.035, color=DARK, rng=rng, taper=0.0, bow=0.0)
+    k.add(p)
+    p = k.piece("plank", "new")
+    cart_wheel(p, (sx0, sy0, FLOOR + 0.63), (0, 0, 1), 0.58, felloes=0.5, tyre=False, rng=rng)
+    k.add(p)
+    # the bench along the right wall, the tools on it
+    bx0, by0, bl = side - 0.32, 0.75, 1.8
+    top = FLOOR + 0.85
+    p = k.piece("plank", "bench")
+    p.box((bx0, by0, top - 0.04), (0.62, bl, 0.08), jit(PLANK, 0.05, rng))
+    p.box((bx0 - 0.29, by0, top - 0.14), (0.06, bl, 0.14), jit(PLANK, 0.05, rng)) # (its apron)
+    for dx in (-0.25, 0.25):
+        for dy in (-bl * 0.5 + 0.1, bl * 0.5 - 0.1):
+            p.box((bx0 + dx, by0 + dy, FLOOR + (top - 0.08 - FLOOR) * 0.5), (0.08, 0.08, top - 0.08 - FLOOR), jit(DARK, 0.05, rng))
+    p.box((bx0, by0, FLOOR + 0.2), (0.45, bl - 0.2, 0.06), jit(DARK, 0.05, rng)) # (the shelf)
+    for i in range(3): # (spokes roughed out on it)
+        p.box((bx0 - 0.05 + i * 0.07, by0 - 0.3 + i * 0.05, FLOOR + 0.26), (0.05, 0.55, 0.05), jit(ASH, 0.08, rng))
+    k.add(p)
+    p = k.piece("dark", "tools")
+    z = top + 0.005
+    # the drawknife: a long blade, a handle turned down at each end
+    p.box((bx0 - 0.05, by0 - 0.5, z + 0.01), (0.07, 0.4, 0.015), STEEL)
+    for s in (-1, 1):
+        p.box((bx0 - 0.05, by0 - 0.5 + s * 0.24, z + 0.025), (0.035, 0.12, 0.035), (0.42, 0.3, 0.18))
+    # the adze: a long handle, the curved blade across its end
+    p.box((bx0 + 0.1, by0 + 0.1, z + 0.02), (0.035, 0.6, 0.035), (0.48, 0.35, 0.2))
     for i in range(3):
-        p = k.piece("dark")
-        p.log((1.6, 1.4 - i * 0.12, 0.47), (1.68, 1.4 - i * 0.12, 0.47), 0.36, color=DARK, end=PLANK, segs=14, taper=0.0)
-        k.add(p)
-
-
-
-
-
-
+        p.obox((bx0 + 0.1 + 0.04 * (i - 1), by0 + 0.42 + 0.02 * abs(i - 1), z + 0.02), (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.05, 0.06, 0.03), STEEL)
+    # the mallet
+    cyl(p, (bx0 - 0.1, by0 + 0.55, z + 0.08), (bx0 + 0.08, by0 + 0.55, z + 0.08), 0.075, jit(FELLOE, 0.06, rng), segs=10)
+    p.box((bx0 - 0.01, by0 + 0.75, z + 0.03), (0.035, 0.36, 0.035), (0.48, 0.35, 0.2))
+    # a spokeshave and a brace
+    p.box((bx0 + 0.15, by0 - 0.2, z + 0.015), (0.28, 0.04, 0.03), (0.42, 0.3, 0.18))
+    p.box((bx0 + 0.15, by0 - 0.2, z + 0.035), (0.07, 0.03, 0.015), STEEL)
+    k.add(p)
+    # the vice's screw and chop at the bench's front end
+    p = k.piece("wood", "vice")
+    p.box((bx0 - 0.33, by0 - bl * 0.5 + 0.2, top - 0.2), (0.06, 0.2, 0.38), jit(DARK, 0.05, rng))
+    cyl(p, (bx0 - 0.42, by0 - bl * 0.5 + 0.2, top - 0.1), (bx0 - 0.25, by0 - bl * 0.5 + 0.2, top - 0.1), 0.025, DARK, segs=8)
+    p.box((bx0 - 0.43, by0 - bl * 0.5 + 0.2, top - 0.1), (0.03, 0.26, 0.03), DARK)
+    k.add(p)
+    # tools on pegs on the right wall over the bench: a bow saw, an auger, a square
+    wx = side - 0.005
+    p = k.piece("dark", "hung")
+    for py in (0.25, 0.95, 1.45):
+        p.box((wx - 0.06, py, FLOOR + 1.2), (0.12, 0.03, 0.03), DARK)
+    for dz in (-0.22, 0.22):
+        p.box((wx - 0.1, 0.25, FLOOR + 1.2 + dz), (0.03, 0.03, 0.03), DARK)
+    p.box((wx - 0.1, 0.25, FLOOR + 1.2), (0.025, 0.025, 0.46), (0.48, 0.35, 0.2)) # (the saw's middle bar)
+    for s in (-1, 1):
+        p.box((wx - 0.1, 0.25 + s * 0.3, FLOOR + 1.2), (0.03, 0.03, 0.56), (0.48, 0.35, 0.2)) # (its cheeks)
+    p.box((wx - 0.1, 0.25, FLOOR + 0.93), (0.01, 0.62, 0.04), STEEL) # (the blade)
+    p.box((wx - 0.1, 0.25, FLOOR + 1.47), (0.01, 0.6, 0.01), (0.7, 0.66, 0.55)) # (the cord)
+    p.box((wx - 0.1, 0.95, FLOOR + 1.1), (0.025, 0.025, 0.55), STEEL) # (the auger)
+    p.box((wx - 0.1, 0.95, FLOOR + 1.2), (0.03, 0.3, 0.035), (0.48, 0.35, 0.2))
+    p.box((wx - 0.1, 1.45, FLOOR + 1.05), (0.02, 0.04, 0.35), STEEL) # (the square)
+    p.box((wx - 0.1, 1.55, FLOOR + 0.885), (0.02, 0.24, 0.04), STEEL)
+    k.add(p)
+    # the shaving horse: a bench on splayed legs, a ramp up, the swinging head on its arm
+    hx0, hy0 = 0.15, -1.75
+    p = k.piece("wood", "horse")
+    p.box((hx0, hy0, FLOOR + 0.5), (1.5, 0.22, 0.08), jit(PLANK, 0.05, rng))
+    for dx, dys in ((-0.6, (-1, 1)), (0.6, (0,))):
+        for dy in dys:
+            p.log((hx0 + dx * 1.12, hy0 + dy * 0.22, FLOOR), (hx0 + dx, hy0 + dy * 0.05, FLOOR + 0.47), 0.035, color=DARK, rng=rng, taper=0.0, bow=0.0)
+    rmp = math.radians(22)
+    p.obox((hx0 + 0.35, hy0, FLOOR + 0.54 + 0.2 * math.sin(rmp)), (math.cos(rmp), 0, math.sin(rmp)), (0, 1, 0), (-math.sin(rmp), 0, math.cos(rmp)), (0.5, 0.2, 0.05), jit(PLANK, 0.06, rng))
+    p.box((hx0 + 0.55, hy0, FLOOR + 0.55), (0.06, 0.12, 0.08), jit(DARK, 0.05, rng)) # (the ramp's prop)
+    p.box((hx0 + 0.55, hy0, FLOOR + 0.6), (0.07, 0.05, 0.8), jit(DARK, 0.05, rng)) # (the arm through the bench)
+    p.box((hx0 + 0.55, hy0, FLOOR + 0.98), (0.12, 0.36, 0.1), jit(FELLOE, 0.05, rng)) # (the head)
+    p.box((hx0 + 0.55, hy0, FLOOR + 0.24), (0.06, 0.5, 0.05), jit(DARK, 0.05, rng)) # (the treadle)
+    p.box((hx0 + 0.45, hy0, FLOOR + 0.71), (0.42, 0.05, 0.05), jit(ASH, 0.06, rng)) # (a spoke held under it)
+    k.add(p)
+    # spokes stacked crosswise, felloes in a pile
+    p = k.piece("plank", "spokes")
+    sx1, sy1 = 1.45, 1.25
+    for layer in range(3):
+        along_x = layer % 2 == 0
+        for i in range(5):
+            o = -0.2 + i * 0.1
+            if along_x:
+                p.box((sx1, sy1 + o, FLOOR + 0.03 + layer * 0.055), (0.5, 0.05, 0.05), jit(ASH, 0.08, rng))
+            else:
+                p.box((sx1 + o, sy1, FLOOR + 0.03 + layer * 0.055), (0.05, 0.5, 0.05), jit(ASH, 0.08, rng))
+    k.add(p)
+    p = k.piece("plank", "felloes")
+    for i in range(5):
+        _ring(p, (0.85, 1.05 + 0.03 * (i % 2), FLOOR + 0.04 + i * 0.075), (0, 0, 1), 0.5, 0.075, 0.07, FELLOE, n=24, frac=4 / 24, start=math.pi * 0.25 + i * 0.12, rng=rng)
+    k.add(p)
+    # the grindstone in its frame, a trough under it, a crank
+    gx, gy = 2.05, -1.75
+    p = k.piece("wood", "grindframe")
+    for sx in (-1, 1):
+        p.box((gx + sx * 0.18, gy, FLOOR + 0.35), (0.08, 0.7, 0.08), jit(DARK, 0.05, rng))
+        for sy in (-1, 1):
+            p.box((gx + sx * 0.18, gy + sy * 0.3, FLOOR + 0.2), (0.08, 0.08, 0.4), jit(DARK, 0.05, rng))
+        p.box((gx + sx * 0.18, gy, FLOOR + 0.5), (0.08, 0.1, 0.22), jit(DARK, 0.05, rng))
+    p.box((gx, gy, FLOOR + 0.43), (0.28, 0.5, 0.08), jit(PLANK, 0.05, rng)) # (the trough)
+    cyl(p, (gx - 0.3, gy, FLOOR + 0.66), (gx + 0.3, gy, FLOOR + 0.66), 0.025, IRON, segs=6) # (the spindle)
+    p.box((gx + 0.3, gy, FLOOR + 0.57), (0.03, 0.03, 0.2), IRON) # (the crank)
+    p.box((gx + 0.35, gy, FLOOR + 0.48), (0.1, 0.035, 0.035), (0.48, 0.35, 0.2))
+    k.add(p)
+    p = k.piece("stone", "grindstone")
+    cyl(p, (gx - 0.06, gy, FLOOR + 0.66), (gx + 0.06, gy, FLOOR + 0.66), 0.3, (0.68, 0.62, 0.5), segs=20)
+    k.add(p)
+    # the tyring plate: a round of flat stones, a ring of embers on it, a tyre heating in them
+    tx, ty = -0.1, 1.1
+    p = k.piece("stone", "plate")
+    cyl(p, (tx, ty, FLOOR - 0.02), (tx, ty, FLOOR + 0.05), 0.55, jit((0.4, 0.39, 0.36), 0.05, rng), segs=18)
+    k.add(p)
+    p = k.piece("window", "embers")
+    _ring(p, (tx, ty, FLOOR + 0.08), (0, 0, 1), 0.42, 0.05, 0.1, EMBER, n=16, rng=rng)
+    k.add(p)
+    p = k.piece("dark", "tyre")
+    _ring(p, (tx, ty, FLOOR + 0.14), (0, 0, 1), 0.42, 0.06, 0.03, (0.3, 0.18, 0.12), n=28)
+    for i in range(10):
+        a = i / 10 * math.tau
+        p.box((tx + math.cos(a) * 0.3, ty + math.sin(a) * 0.3, FLOOR + 0.08), (0.12, 0.08, 0.06), CHAR, rot_z=a)
+    k.add(p)
+    # the plank rack against the back wall: bearers, boards stacked with sticks between
+    p = k.piece("plank", "rack")
+    rx, ry, rl = 0.95, back - 0.28, 1.7
+    for dx in (-0.7, 0.0, 0.7):
+        p.box((rx + dx, ry, FLOOR + 0.05), (0.1, 0.5, 0.1), jit(DARK, 0.05, rng))
+    for layer in range(4):
+        z = FLOOR + 0.13 + layer * 0.085
+        for i in range(3):
+            p.box((rx, ry - 0.16 + i * 0.16, z), (rl, 0.15, 0.045), jit(PLANK, 0.1, rng))
+        if layer < 3:
+            for dx in (-0.7, 0.0, 0.7):
+                p.box((rx + dx, ry, z + 0.042), (0.04, 0.48, 0.04), jit(DARK, 0.05, rng))
+    k.add(p)
+    # two felloe patterns and a hub hung on the back wall over the rack
+    p = k.piece("plank", "patterns")
+    for py, (dx, zz) in enumerate(((-0.25, 0.62), (0.35, 0.58))):
+        p.box((rx + dx, back - 0.04, FLOOR + zz + 0.1), (0.03, 0.08, 0.03), DARK)
+        _ring(p, (rx + dx, back - 0.035, FLOOR + zz + 0.55), (0, 1, 0), 0.5, 0.07, 0.04, (0.66, 0.54, 0.36), n=24, frac=3 / 24, start=math.pi * 0.5 - 1.5 * math.tau / 24)
+    k.add(p)
+    barrel(k, -2.35, -1.9, z=FLOOR, r=0.28, h=0.75)
 
 
 # --- work yards ------------------------------------------------------------------------------------
@@ -1973,81 +2240,282 @@ def prism(p, outline, x0, x1, color, axis="x"):
     return faces
 
 
-def spoked_wheel(k, x, y, r, width=0.16):
+def spoked_wheel(k, x, y, r, width=0.16, out=None):
+    """A lorry's wheel, a "wheel" piece of its own: a solid rubber tyre on a steel rim, a wooden
+    felloe, twelve artillery spokes, a steel hub with its flange, bolts and cap on the outer side
+    (`out`: the side it faces, by default away from the middle)."""
+    out = out if out is not None else (1 if x >= 0 else -1)
     p = k.piece("dark", "wheel")
-    cyl(p, (x - width * 0.5, y, r), (x + width * 0.5, y, r), r, RUBBER, segs=20) # (the solid tyre)
-    cyl(p, (x - width * 0.55, y, r), (x + width * 0.55, y, r), r * 0.78, OLIVE_DK, segs=20) # (the felloe)
-    for i in range(10):
-        a = i / 10 * math.tau
-        p.obox((x, y + math.cos(a) * r * 0.4, r + math.sin(a) * r * 0.4), (1, 0, 0), (0, math.cos(a), math.sin(a)), (0, -math.sin(a), math.cos(a)),
-               (0.05, r * 0.78, 0.05), OLIVE_DK)
-    cyl(p, (x - width * 0.7, y, r), (x + width * 0.7, y, r), r * 0.16, STEEL, segs=10) # (the hub)
+    hw = width * 0.5
+    c = (x, y, r)
+    _ring(p, c, (1, 0, 0), r - 0.035, 0.07, width, RUBBER, n=28) # (the solid tyre)
+    for s in (-1, 1): # (its moulded edge)
+        _ring(p, (x + s * hw, y, r), (1, 0, 0), r - 0.05, 0.03, 0.008, (0.11, 0.11, 0.1), n=28)
+    _ring(p, c, (1, 0, 0), r - 0.085, 0.035, width * 0.85, STEEL, n=28) # (the rim)
+    _ring(p, c, (1, 0, 0), r - 0.13, 0.06, width * 0.6, OLIVE_DK, n=24) # (the felloe)
+    r0, r1 = r * 0.16, r - 0.15
+    for i in range(12):
+        a = i / 12 * math.tau
+        rad = Vector((0, math.cos(a), math.sin(a)))
+        tan = Vector((0, -math.sin(a), math.cos(a)))
+        p.obox(Vector(c) + rad * ((r0 + r1) * 0.5), (1, 0, 0), rad, tan, (width * 0.4, r1 - r0, 0.045), OLIVE_DK)
+    cyl(p, (x - hw * 0.8, y, r), (x + hw * 0.8, y, r), r * 0.2, STEEL, segs=12) # (the hub)
+    fx = x + out * hw * 0.8
+    cyl(p, (fx - out * 0.01, y, r), (fx + out * 0.02, y, r), r * 0.3, STEEL, segs=14) # (its flange)
+    for i in range(8):
+        a = i / 8 * math.tau
+        p.box((fx + out * 0.03, y + math.cos(a) * r * 0.24, r + math.sin(a) * r * 0.24), (0.025, 0.03, 0.03), RIVET)
+    cyl(p, (fx, y, r), (fx + out * 0.07, y, r), r * 0.12, IRON, segs=10) # (the cap)
+    # (the same inward, so the piece's middle stays on the axle and it turns true)
+    fi = x - out * hw * 0.8
+    cyl(p, (fi + out * 0.01, y, r), (fi - out * 0.02, y, r), r * 0.3, STEEL, segs=14)
+    cyl(p, (fi, y, r), (fi - out * 0.07, y, r), r * 0.12, IRON, segs=10)
     k.add(p)
+
+
+def leaf_spring(p, x, y0, y1, z_top, n=5):
+    """A leaf spring along Y from y0 to y1, its top leaf at z_top, the shorter leaves under it."""
+    ln = y1 - y0
+    for i in range(n):
+        p.box((x, (y0 + y1) * 0.5, z_top - i * 0.025), (0.07, ln * (1.0 - i * 0.16), 0.022), IRON)
+    p.box((x, (y0 + y1) * 0.5, z_top - n * 0.0125), (0.09, 0.08, n * 0.03 + 0.02), STEEL) # (the clip)
 
 
 def kamyon():
-    """A lorry of the war years: a long louvred bonnet and a flat radiator, an open cab with a canvas
-    roof, a plank bed under an arched canvas tilt on hoops, deep mudguards, solid-tyred spoked
-    wheels (doubled at the back), a spare on the side, a lamp each side of the radiator."""
+    """A lorry of the war years: a long louvred bonnet hinged along its top, a flat radiator with its
+    filler cap, maker's badge and starting handle; an open cab with half doors, a buttoned bench,
+    the steering wheel on a raked column, a framed two-pane screen and a canvas roof on stays; a
+    plank bed with benches down both sides, a tailgate hung on chains, under an arched canvas tilt
+    on hoops roped down to the sides, the back flap rolled up; deep front mudguards sweeping into
+    running boards, a fuel can and a tool box on them; the chassis' rails, cross members and leaf
+    springs, a beam front axle, two driven back axles with their differentials and the shaft to
+    them, solid-tyred spoked wheels (doubled at the back), a spare on the side, a lamp each side of
+    the radiator, the exhaust run back under the frame, a tow hook behind."""
     k = Kit("kamyon")
     rng = k.rng
+    R_FRONT, R_BACK = 0.45, 0.48
+    # --- the chassis: rails, cross members, dumb irons, bumper, springs, axles, the shaft
     p = k.piece("dark", "frame")
     for sx in (-1, 1):
-        p.box((sx * 0.42, 0, 0.78), (0.12, 6.4, 0.22), RUBBER)
-    for y in (-2.6, -0.8, 1.0, 2.6):
-        p.box((0, y, 0.78), (0.95, 0.1, 0.12), RUBBER)
-    p.box((0, 3.12, 0.72), (1.75, 0.14, 0.18), STEEL) # (the bumper)
+        p.box((sx * 0.42, -0.05, 0.78), (0.12, 6.4, 0.22), RUBBER)
+        for i in range(14):
+            p.box((sx * (0.42 + 0.062), -3.0 + i * 0.45, 0.85), (0.01, 0.03, 0.03), RIVET)
+    for y in (-3.2, -2.6, -1.45, -0.3, 1.0, 2.0, 2.95):
+        p.box((0, y, 0.78), (0.74, 0.1, 0.12), RUBBER)
+    p.box((0, 3.2, 0.72), (1.8, 0.12, 0.16), STEEL) # (the bumper)
+    for sx in (-1, 1):
+        p.box((sx * 0.42, 3.17, 0.75), (0.1, 0.1, 0.2), RUBBER) # (the dumb iron's end)
     k.add(p)
+    p = k.piece("dark", "springs")
+    for sx in (-1, 1):
+        leaf_spring(p, sx * 0.42, 2.45 - 0.55, 2.45 + 0.55, 0.655)
+        for yy in (2.45 - 0.55, 2.45 + 0.55):
+            p.box((sx * 0.42, yy, 0.64), (0.06, 0.05, 0.08), STEEL) # (the shackles)
+        for yb in (-2.0, -0.9):
+            leaf_spring(p, sx * 0.42, yb - 0.42, yb + 0.42, 0.655)
+        p.box((sx * 0.42, -1.45, 0.62), (0.08, 0.2, 0.12), STEEL) # (the rocker between the back springs)
+    k.add(p)
+    p = k.piece("dark", "axles")
+    p.box((0, 2.45, 0.47), (1.48, 0.09, 0.1), RUBBER) # (the front axle's beam)
+    for sx in (-1, 1):
+        cyl(p, (sx * 0.74, 2.45, 0.38), (sx * 0.74, 2.45, 0.56), 0.05, STEEL, segs=8) # (its king pins)
+        cyl(p, (sx * 0.72, 2.45, 0.45), (sx * 0.8, 2.45, 0.45), 0.04, STEEL, segs=8)
+    p.box((0, 2.2, 0.5), (1.3, 0.04, 0.04), STEEL) # (the track rod)
+    for sx in (-1, 1):
+        p.box((sx * 0.68, 2.33, 0.5), (0.04, 0.3, 0.04), STEEL) # (the steering arms)
+    for yb in (-2.0, -0.9):
+        cyl(p, (-0.6, yb, R_BACK), (0.6, yb, R_BACK), 0.06, RUBBER, segs=10)
+        cyl(p, (0, yb - 0.14, R_BACK), (0, yb + 0.14, R_BACK), 0.17, RUBBER, segs=14) # (the differential)
+        cyl(p, (0, yb - 0.2, R_BACK), (0, yb - 0.14, R_BACK), 0.11, STEEL, segs=12)
+    p.box((0, 1.05, 0.68), (0.4, 0.5, 0.26), RUBBER) # (the gearbox under the floor)
+    cyl(p, (0, 0.8, 0.62), (0, -0.76, R_BACK), 0.04, STEEL, segs=8) # (the shafts back to the axles)
+    cyl(p, (0, -1.04, R_BACK), (0, -1.86, R_BACK), 0.04, STEEL, segs=8)
+    k.add(p)
+    # --- the bonnet: its sides and rounded top, hinged along the middle, louvred, two catches a side
     p = k.piece("dark", "bonnet")
-    p.box((0, 2.25, 1.32), (0.95, 1.5, 0.62), OLIVE) # its sides
-    prism(p, [(-0.48, 1.6), (0.48, 1.6), (0.4, 1.72), (-0.4, 1.72)], 1.5, 3.0, OLIVE, axis="y") # its top, rounded off
+    p.box((0, 2.25, 1.28), (0.95, 1.5, 0.7), OLIVE)
+    prism(p, [(-0.48, 1.62), (0.48, 1.62), (0.4, 1.74), (-0.4, 1.74)], 1.5, 3.0, OLIVE, axis="y")
+    cyl(p, (0, 1.5, 1.745), (0, 3.0, 1.745), 0.018, OLIVE_DK, segs=6) # (the hinge)
     for sx in (-1, 1):
-        for i in range(6):
-            p.box((sx * 0.48, 1.7 + i * 0.2, 1.38), (0.02, 0.06, 0.32), OLIVE_DK) # (the louvres)
+        p.box((sx * 0.476, 2.25, 1.61), (0.012, 1.48, 0.015), OLIVE_DK) # (where the top lifts)
+        for i in range(7):
+            p.box((sx * 0.48, 1.75 + i * 0.17, 1.38), (0.02, 0.05, 0.3), OLIVE_DK) # (the louvres)
+        for yy in (1.7, 2.8):
+            p.box((sx * 0.485, yy, 1.08), (0.02, 0.05, 0.1), STEEL) # (the catches)
+        p.box((sx * 0.485, 2.25, 0.95), (0.02, 1.5, 0.04), OLIVE_DK) # (the valance's edge)
     k.add(p)
+    # --- the radiator: a shell, the core's grid in it, the cap, the badge, the starting handle
     p = k.piece("dark", "radiator")
-    p.box((0, 3.05, 1.35), (1.0, 0.12, 0.95), STEEL)
+    p.box((0, 3.06, 1.36), (1.0, 0.12, 1.0), STEEL)
+    p.box((0, 3.12, 1.34), (0.82, 0.02, 0.8), INK)
+    for i in range(10):
+        p.box((-0.36 + i * 0.08, 3.13, 1.34), (0.02, 0.02, 0.78), RIVET)
     for i in range(9):
-        p.box((-0.4 + i * 0.1, 3.12, 1.35), (0.03, 0.03, 0.8), RIVET) # (the grille)
-    cyl(p, (0, 3.0, 1.88), (0, 3.0, 1.98), 0.06, STEEL, segs=8) # (the filler cap)
+        p.box((0, 3.13, 0.98 + i * 0.09), (0.8, 0.015, 0.012), RIVET)
+    cyl(p, (0, 3.03, 1.86), (0, 3.03, 1.95), 0.065, BRASS, segs=10) # (the filler cap)
+    p.box((0, 3.03, 1.97), (0.12, 0.03, 0.03), BRASS)
+    cyl(p, (0, 3.12, 1.78), (0, 3.14, 1.78), 0.06, BRASS, segs=10) # (the badge)
+    p.box((0, 3.145, 1.78), (0.08, 0.005, 0.02), BEAM_RED)
+    cyl(p, (0, 3.1, 0.86), (0, 3.35, 0.86), 0.025, STEEL, segs=6) # (the starting handle)
+    p.box((0, 3.36, 0.76), (0.03, 0.03, 0.22), STEEL)
+    cyl(p, (0, 3.36, 0.66), (0, 3.46, 0.66), 0.025, (0.4, 0.3, 0.2), segs=6)
     for sx in (-1, 1):
-        cyl(p, (sx * 0.62, 3.05, 1.45), (sx * 0.62, 3.25, 1.45), 0.12, STEEL, segs=10) # (the lamps)
+        p.box((sx * 0.57, 3.05, 1.45), (0.16, 0.05, 0.05), STEEL) # (the lamp brackets)
+        cyl(p, (sx * 0.68, 2.98, 1.45), (sx * 0.68, 3.18, 1.45), 0.11, RUBBER, segs=12) # (the lamps)
+        cyl(p, (sx * 0.68, 3.17, 1.45), (sx * 0.68, 3.2, 1.45), 0.125, BRASS, segs=12) # (their rims)
+        p.box((sx * 0.68, 3.06, 1.58), (0.04, 0.04, 0.04), RUBBER) # (the chimney)
     k.add(p)
     p = k.piece("window", "lamps")
     for sx in (-1, 1):
-        p.box((sx * 0.62, 3.26, 1.45), (0.18, 0.02, 0.18), (1.0, 0.9, 0.7))
+        cyl(p, (sx * 0.68, 3.19, 1.45), (sx * 0.68, 3.21, 1.45), 0.1, (1.0, 0.9, 0.7), segs=12)
     k.add(p)
+    # --- the mudguards sweeping down into the running boards, their brackets to the rails
     p = k.piece("dark", "guards")
     for sx in (-1, 1):
-        # the front mudguards arched over the wheels, the running board back from them
+        n = 10
+        for i in range(n):
+            a = math.pi * (0.05 + 0.72 * i / (n - 1))
+            p.obox((sx * 0.87, 2.45 + math.cos(a) * 0.6, 0.47 + math.sin(a) * 0.6), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)),
+                   (0.34, 0.22, 0.03), OLIVE)
+        # (the arc's back end swept down into the board)
+        a = math.pi * 0.77
+        e = Vector((2.45 + math.cos(a) * 0.6, 0.47 + math.sin(a) * 0.6))
+        f = Vector((1.75, 0.68))
+        dv = (f - e)
+        p.obox((sx * 0.87, (e.x + f.x) * 0.5, (e.y + f.y) * 0.5), (1, 0, 0), (0, dv.normalized().x, dv.normalized().y), (0, -dv.normalized().y, dv.normalized().x),
+               (0.34, dv.length + 0.06, 0.03), OLIVE)
+        p.box((sx * 0.87, 0.7, 0.67), (0.34, 2.15, 0.035), OLIVE_DK) # (the running board)
         for i in range(6):
-            a = math.pi * (0.1 + 0.8 * i / 5)
-            p.obox((sx * 0.86, 2.45 + math.cos(a) * 0.62, 0.55 + math.sin(a) * 0.62), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)),
-                   (0.34, 0.24, 0.03), OLIVE)
-        p.box((sx * 0.86, 0.6, 0.62), (0.34, 2.6, 0.04), OLIVE_DK)
+            p.box((sx * 0.87, -0.2 + i * 0.36, 0.69), (0.3, 0.02, 0.01), RUBBER) # (its treads)
+        for yy in (-0.15, 0.7, 1.55):
+            p.box((sx * 0.6, yy, 0.67), (0.28, 0.06, 0.04), RUBBER) # (the outriggers to the rail)
+            p.box((sx * 0.48, yy, 0.72), (0.04, 0.06, 0.12), RUBBER)
     k.add(p)
+    # a fuel can on the left board, a tool box on the right
+    p = k.piece("dark", "can")
+    p.box((-0.87, -0.05, 0.92), (0.16, 0.34, 0.46), (0.3, 0.33, 0.22))
+    for dz in (-0.12, 0.0, 0.12):
+        p.box((-0.87, -0.05, 0.92 + dz), (0.17, 0.3, 0.02), (0.24, 0.27, 0.18)) # (its ribs)
+    cyl(p, (-0.87, 0.06, 1.15), (-0.87, 0.06, 1.2), 0.03, STEEL, segs=6)
+    p.box((-0.87, -0.1, 1.17), (0.03, 0.14, 0.03), STEEL) # (the handle)
+    p.box((-0.75, -0.05, 0.92), (0.03, 0.36, 0.03), STEEL) # (the strap round it to the board's edge)
+    p.box((0.87, 0.0, 0.8), (0.3, 0.55, 0.22), OLIVE_DK) # (the tool box)
+    p.box((0.87, 0.0, 0.92), (0.32, 0.57, 0.03), OLIVE)
+    p.box((1.03, 0.0, 0.84), (0.02, 0.08, 0.06), STEEL)
+    k.add(p)
+    # --- the cab: floor, a bench with its cushion and back, the dash, the half doors, the column
     p = k.piece("dark", "cab")
-    p.box((0, 0.95, 1.05), (1.7, 1.1, 0.5), OLIVE) # the seat box
+    p.box((0, 0.95, 0.92), (1.7, 1.15, 0.06), OLIVE_DK) # the floor on the rails
+    p.box((0, 0.72, 1.1), (1.5, 0.55, 0.3), OLIVE) # the seat box
+    p.box((0, 0.42, 1.55), (1.6, 0.06, 1.2), OLIVE) # the back panel
     p.box((0, 1.5, 1.6), (1.6, 0.08, 0.9), OLIVE) # the dash and scuttle
+    p.box((0, 1.46, 1.75), (1.1, 0.02, 0.18), (0.28, 0.2, 0.13)) # (its wooden board)
+    for gx in (-0.2, 0.0, 0.15):
+        cyl(p, (gx, 1.45, 1.76), (gx, 1.44, 1.76), 0.035, BRASS, segs=8) # (gauges)
     for sx in (-1, 1):
-        p.box((sx * 0.8, 0.5, 1.75), (0.06, 0.06, 1.2), OLIVE_DK) # (the roof stays)
-        p.box((sx * 0.8, 1.45, 1.75), (0.06, 0.06, 1.2), OLIVE_DK)
-    cyl(p, (0.35, 1.25, 1.55), (0.35, 1.05, 1.75), 0.2, RUBBER, segs=12) # (the steering wheel)
+        # the half door, a cutaway top, hinges forward, a handle
+        p.box((sx * 0.83, 0.98, 1.24), (0.04, 0.88, 0.6), OLIVE)
+        p.box((sx * 0.83, 0.98, 1.55), (0.05, 0.88, 0.04), OLIVE_DK)
+        for zz in (1.05, 1.4):
+            p.box((sx * 0.855, 1.38, zz), (0.015, 0.14, 0.04), STEEL)
+        p.box((sx * 0.86, 0.62, 1.38), (0.03, 0.1, 0.03), STEEL)
+        p.box((sx * 0.83, 0.47, 1.25), (0.05, 0.1, 0.62), OLIVE) # (the post behind it)
+        # the roof stays and the screen's posts
+        p.box((sx * 0.8, 0.45, 2.2), (0.05, 0.05, 0.36), OLIVE_DK)
+        p.box((sx * 0.78, 1.52, 2.2), (0.05, 0.05, 0.36), OLIVE_DK)
+        # the step under the door
+        p.box((sx * 0.87, 1.0, 0.705), (0.3, 0.35, 0.03), STEEL)
+    p.box((0, 1.52, 2.36), (1.61, 0.06, 0.05), OLIVE_DK) # (the screen's top rail)
+    p.box((0, 1.52, 2.06), (1.61, 0.06, 0.05), OLIVE_DK) # (its bottom rail)
+    p.box((0, 1.52, 2.21), (0.04, 0.05, 0.3), OLIVE_DK) # (the bar between the panes)
+    for sx in (-1, 1):
+        p.box((sx * 0.55, 1.535, 2.36), (0.05, 0.04, 0.04), STEEL) # (the panes' hinges)
+    k.add(p)
+    p = k.piece("cloth", "seat")
+    p.box((0, 0.74, 1.3), (1.45, 0.5, 0.1), (0.3, 0.2, 0.13))
+    p.box((0, 0.5, 1.6), (1.45, 0.1, 0.42), (0.3, 0.2, 0.13))
+    for i in range(5):
+        for zz in (1.5, 1.7):
+            p.box((-0.56 + i * 0.28, 0.44, zz), (0.03, 0.02, 0.03), (0.2, 0.13, 0.08)) # (buttons)
+    k.add(p)
+    p = k.piece("dark", "steering")
+    col0, col1 = Vector((0.38, 1.45, 1.4)), Vector((0.38, 1.12, 1.78))
+    cyl(p, col0, col1, 0.025, RUBBER, segs=8)
+    ax = (col1 - col0).normalized()
+    _ring(p, col1, ax, 0.19, 0.03, 0.03, RUBBER, n=18)
+    a, u, v = _axes(ax)
+    for t in (0.0, math.tau / 3, 2 * math.tau / 3):
+        rad = u * math.cos(t) + v * math.sin(t)
+        p.obox(col1 + rad * 0.095, rad.cross(a), a, rad, (0.02, 0.02, 0.19), STEEL)
+    p.box((0.05, 1.3, 1.0), (0.04, 0.04, 0.12), STEEL) # (the levers)
+    p.obox((0.15, 1.25, 1.05), (1, 0, 0), (0, 0.5, 0.86), (0, -0.86, 0.5), (0.03, 0.03, 0.35), STEEL)
     k.add(p)
     p = k.piece("cloth", "cabroof")
-    p.box((0, 0.95, 2.38), (1.75, 1.35, 0.06), CANVAS)
+    p.box((0, 0.98, 2.41), (1.75, 1.35, 0.06), CANVAS)
+    for sx in (-1, 1):
+        p.box((sx * 0.87, 0.98, 2.36), (0.02, 1.35, 0.1), (0.46, 0.43, 0.32)) # (its valance)
     k.add(p)
     p = k.piece("window", "screen")
-    p.box((0, 1.52, 2.15), (1.4, 0.03, 0.4), GLASS)
+    for sx in (-1, 1):
+        p.box((sx * 0.39, 1.52, 2.21), (0.74, 0.02, 0.26), GLASS)
     k.add(p)
+    # the side's paint on the doors
+    p = k.piece("dark", "mark")
+    for sx in (-1, 1):
+        p.box((sx * 0.855, 0.98, 1.26), (0.01, 0.42, 0.26), (0.82, 0.8, 0.72))
+    k.add(p)
+    # --- the bed (floor, sides, front: the game seats the men on it), the bearers under it
     p = k.piece("plank", "bed")
-    p.box((0, -1.45, 1.0), (2.05, 3.4, 0.1), jit(PLANK, 0.05, rng))
+    for i in range(9):
+        x = -1.025 + (i + 0.5) * 2.05 / 9
+        p.box((x, -1.45, 1.0), (2.05 / 9 - 0.01, 3.4, 0.1), jit(PLANK, 0.05, rng))
     for sx in (-1, 1):
         for i in range(3):
-            p.box((sx * 1.0, -1.45, 1.15 + i * 0.16), (0.05, 3.4, 0.13), jit(PLANK, 0.06, rng))
+            p.box((sx * 1.0, -1.45, 1.13 + i * 0.15), (0.05, 3.4, 0.14), jit(PLANK, 0.06, rng))
     for i in range(3):
-        p.box((0, -3.12, 1.15 + i * 0.16), (2.05, 0.05, 0.13), jit(PLANK, 0.06, rng))
+        p.box((0, 0.225, 1.13 + i * 0.15), (2.05, 0.05, 0.14), jit(PLANK, 0.06, rng))
     k.add(p)
+    p = k.piece("dark", "bearers")
+    for y in (-3.0, -2.2, -1.4, -0.6, 0.15):
+        p.box((0, y, 0.92), (2.05, 0.1, 0.06), OLIVE_DK)
+    for sx in (-1, 1):
+        for y in (-2.9, -1.95, -1.0, -0.05):
+            p.box((sx * 1.035, y, 1.27), (0.035, 0.08, 0.5), OLIVE_DK) # (the side stakes outside)
+            p.box((sx * 1.06, y, 1.1), (0.03, 0.06, 0.04), STEEL) # (the rope hooks)
+    k.add(p)
+    # the benches inside, down both sides
+    p = k.piece("plank", "benches")
+    for sx in (-1, 1):
+        p.box((sx * 0.8, -1.45, 1.42), (0.32, 3.2, 0.05), jit(PLANK, 0.05, rng))
+        for y in (-2.9, -1.9, -0.9, 0.0):
+            p.box((sx * 0.8, y, 1.235), (0.05, 0.05, 0.32), DARK)
+            p.box((sx * 0.885, y, 1.38), (0.16, 0.05, 0.04), DARK) # (bracket to the side)
+    k.add(p)
+    # the tailgate let down on its two chains, hinged at the floor
+    p = k.piece("plank", "tailgate")
+    tg = math.radians(80) # (from upright)
+    hinge = Vector((0, -3.15, 1.05))
+    dn = Vector((0, -math.sin(tg), math.cos(tg)))
+    nrm = Vector((0, math.cos(tg), math.sin(tg)))
+    for i in range(3):
+        p.obox(hinge + dn * (0.08 + i * 0.15), (1, 0, 0), dn, nrm, (2.05, 0.14, 0.05), jit(PLANK, 0.06, rng))
+    for sx in (-0.9, 0.0, 0.9):
+        p.obox(hinge + dn * 0.235, (1, 0, 0), dn, nrm, (0.05, 0.45, 0.06), OLIVE_DK)
+    for sx in (-1, 1):
+        p.box((sx * 0.75, -3.15, 1.03), (0.12, 0.08, 0.06), STEEL) # (the hinges)
+    k.add(p)
+    p = k.piece("dark", "chains")
+    tip = hinge + dn * 0.45
+    for sx in (-1, 1):
+        a = Vector((sx * 1.0, -3.15, 1.55))
+        b = Vector((sx * 1.0, tip.y, tip.z + 0.04))
+        m = 7
+        for i in range(m):
+            c = a.lerp(b, (i + 0.5) / m) - Vector((0, 0, 0.06 * math.sin(math.pi * (i + 0.5) / m)))
+            d = (b - a).normalized()
+            p.obox(c, d, (1, 0, 0), d.cross(Vector((1, 0, 0))), (((b - a).length / m) * 1.15, 0.015, 0.035 if i % 2 else 0.015), IRON)
+    k.add(p)
+    # --- the tilt: hoops off the sides, the canvas over them, ropes down to the hooks, the flap rolled up
     p = k.piece("dark", "hoops")
     for y in (-3.0, -2.0, -1.0, 0.05):
         for i in range(9):
@@ -2060,98 +2528,218 @@ def kamyon():
     arch += [(-1.02, 1.3), (1.02, 1.3)]
     arch = [arch[-1]] + arch[:13] + [arch[-2]]
     prism(p, arch, -3.15, 0.15, jit(CANVAS, 0.04, rng), axis="y")
-    for y in (-2.5, -1.5, -0.5):
-        p.box((0, y, 2.55), (0.3, 0.04, 0.02), (0.4, 0.37, 0.27)) # (the lacing)
+    for y in (-3.0, -2.0, -1.0, 0.05):
+        for i in range(13): # (a darker band where the canvas lies on each hoop)
+            a = math.pi * i / 12
+            p.obox((math.cos(a) * 1.03, y, 1.55 + math.sin(a) * 0.99), (0, 1, 0), (-math.sin(a), 0, math.cos(a)), (math.cos(a), 0, math.sin(a)),
+                   (0.06, 0.27, 0.01), (0.44, 0.41, 0.3))
+    # (the rear flap, rolled up and tied under the top)
+    cyl(p, (-0.85, -3.2, 2.32), (0.85, -3.2, 2.32), 0.09, jit(CANVAS, 0.05, rng), segs=10)
     k.add(p)
+    p = k.piece("cloth", "ropes")
+    rope = (0.5, 0.45, 0.32)
+    for sx in (-1, 1):
+        p.box((sx * 1.03, -1.5, 1.31), (0.02, 3.3, 0.02), rope) # (along the tilt's hem)
+        for y in (-2.9, -1.95, -1.0, -0.05):
+            p.box((sx * 1.055, y + 0.04, 1.2), (0.015, 0.015, 0.24), rope) # (down to the hooks)
+    for xx in (-0.55, 0.55):
+        for i in range(5): # (the ties round the rolled flap)
+            a = i / 5 * math.tau
+            p.obox((xx, -3.2 + math.cos(a) * 0.1, 2.32 + math.sin(a) * 0.1), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)), (0.02, 0.13, 0.012), rope)
+    for y in (-2.5, -1.5, -0.5): # (the lacing over the top)
+        p.box((0, y, 2.535), (0.3, 0.04, 0.02), (0.4, 0.37, 0.27))
+    k.add(p)
+    # --- the spare on the right side, on a bracket to the bed's side
     p = k.piece("dark", "spare")
-    cyl(p, (1.03, -0.1, 0.95), (1.15, -0.1, 0.95), 0.45, RUBBER, segs=18)
-    p.box((1.04, -0.1, 0.95), (0.06, 0.12, 0.12), STEEL) # (its bracket)
+    cyl(p, (1.06, -0.1, 0.95), (1.18, -0.1, 0.95), 0.45, RUBBER, segs=20)
+    cyl(p, (1.06, -0.1, 0.95), (1.18, -0.1, 0.95), 0.36, STEEL, segs=20)
+    cyl(p, (1.07, -0.1, 0.95), (1.17, -0.1, 0.95), 0.32, INK, segs=16)
+    p.box((1.04, -0.1, 0.95), (0.04, 0.12, 0.5), STEEL) # (its bracket)
+    cyl(p, (1.04, -0.1, 0.95), (1.24, -0.1, 0.95), 0.03, STEEL, segs=6) # (the clamp bolt)
     k.add(p)
+    # --- the exhaust: down from the engine, back under the frame on hangers, a silencer, the tail
     p = k.piece("dark", "exhaust")
-    cyl(p, (0.55, -2.9, 0.62), (0.55, -3.35, 0.6), 0.05, RUBBER, segs=8)
+    cyl(p, (0.3, 1.7, 0.9), (0.3, 1.55, 0.6), 0.045, RUBBER, segs=8)
+    cyl(p, (0.3, 1.55, 0.6), (0.3, -3.35, 0.6), 0.045, RUBBER, segs=8)
+    cyl(p, (0.3, 0.1, 0.6), (0.3, -0.55, 0.6), 0.1, RUBBER, segs=10) # (the silencer)
+    for y in (1.0, -1.45, -2.6):
+        p.box((0.36, y, 0.645), (0.12, 0.04, 0.09), STEEL) # (hangers up to the rail)
     k.add(p)
-    spoked_wheel(k, -0.88, 2.45, 0.45)
-    spoked_wheel(k, 0.88, 2.45, 0.45)
+    # --- the tow hook on the back cross member
+    p = k.piece("dark", "hook")
+    p.box((0, -3.3, 0.76), (0.22, 0.1, 0.16), STEEL)
+    cyl(p, (0, -3.33, 0.74), (0, -3.5, 0.74), 0.035, IRON, segs=8)
+    for i in range(6):
+        a = math.pi * (-0.5 + i / 5 * 1.2)
+        p.obox((0, -3.56 + math.cos(a) * 0.06, 0.8 + math.sin(a) * 0.06), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)), (0.04, 0.05, 0.03), IRON)
+    k.add(p)
+    # --- the wheels
+    spoked_wheel(k, -0.88, 2.45, R_FRONT)
+    spoked_wheel(k, 0.88, 2.45, R_FRONT)
     for y in (-2.0, -0.9):
         for sx in (-1, 1):
-            spoked_wheel(k, sx * 0.84, y, 0.48, width=0.14)
-            spoked_wheel(k, sx * 0.66, y, 0.48, width=0.14) # (doubled)
+            spoked_wheel(k, sx * 0.84, y, R_BACK, width=0.14)
+            spoked_wheel(k, sx * 0.66, y, R_BACK, width=0.14, out=-sx) # (doubled, its hub facing in)
     k.finish()
+
+
+TRACK_PITCH = 0.28
+
+
+def _loop_at(pts, s):
+    """The point at arc length `s` round the closed outline `pts` (2-D), and the direction there."""
+    total = sum((Vector(pts[(i + 1) % len(pts)]) - Vector(pts[i])).length for i in range(len(pts)))
+    s = s % total
+    for i in range(len(pts)):
+        a, b = Vector(pts[i]), Vector(pts[(i + 1) % len(pts)])
+        seg = (b - a).length
+        if s <= seg or i == len(pts) - 1:
+            d = (b - a).normalized()
+            return a + d * min(s, seg), d
+        s -= seg
+
+
+def _corner_circle(pts, i, r):
+    """The centre of a circle of radius `r` set into the corner `i` of the outline, touching both sides."""
+    v = Vector(pts[i])
+    e1 = (Vector(pts[i - 1]) - v).normalized()
+    e2 = (Vector(pts[(i + 1) % len(pts)]) - v).normalized()
+    half = math.acos(max(-1.0, min(1.0, e1.dot(e2)))) * 0.5
+    return v + (e1 + e2).normalized() * (r / math.sin(half))
 
 
 def tank():
     """An early tank: the tracks run right round its rhomboid sides (the nose climbing high to take a
     trench), the hull riveted plate between them, a gun in a sponson on each flank, a small cupola
-    on the roof with vision slits, the exhaust and the steering tail behind."""
+    on the roof with vision slits, the exhaust and the steering tail behind. Each track is three
+    pieces, "track0", "track1", "track2", the same links each a third of a link further round the
+    loop: the game shows one at a time, in turn, and the track runs. The drive sprocket at the back
+    corner and the idler at the nose are "wheel" pieces (turned on X)."""
     k = Kit("tank")
     rng = k.rng
     side = [(-3.4, 0.28), (2.2, 0.28), (3.8, 1.55), (3.4, 2.55), (-3.0, 2.55), (-3.9, 1.25)]
+    FX0, FX1 = 1.02, 1.52 # (the track frame, inner and outer face)
     # the track frames, plate inside the loop
     for sx in (-1, 1):
         p = k.piece("dark", "frame")
-        prism(p, side, sx * 1.02, sx * 1.52, STEEL)
+        prism(p, side, sx * FX0, sx * FX1, STEEL)
         k.add(p)
     # the hull between them
     p = k.piece("dark", "hull")
     prism(p, [(-3.0, 0.7), (2.4, 0.7), (3.3, 1.5), (3.0, 2.35), (-2.7, 2.35), (-3.3, 1.3)], -1.02, 1.02, OLIVE)
     k.add(p)
-    # the tracks: link plates all the way round each loop, a gap of ground at the bottom only
+    # the tracks: three phases of the same links round each whole loop, each lying flat on the frame's
+    # edge; every link a cast shoe, a raised grip bar across it and its hinge knuckles at the back
+    perim = sum((Vector(side[(i + 1) % len(side)]) - Vector(side[i])).length for i in range(len(side)))
+    n = max(8, int(round(perim / TRACK_PITCH)))
+    step = perim / n
     for sx in (-1, 1):
-        p = k.piece("dark", "track")
-        pts = side + [side[0]]
-        for i in range(len(pts) - 1):
-            a, b = Vector(pts[i]), Vector(pts[i + 1])
-            n = max(1, int((b - a).length / 0.28))
-            d = (b - a).normalized()
-            nrm = Vector((-d.y, d.x))
+        xc = sx * (FX0 + FX1) * 0.5
+        for ph in range(3):
+            p = k.piece("dark", "track%d" % ph)
             for j in range(n):
-                c = a.lerp(b, (j + 0.5) / n) - nrm * 0.04
-                p.obox((sx * 1.27, c.x, c.y), (1, 0, 0), (0, d.x, d.y), (0, -d.y, d.x), (0.6, 0.24, 0.07), RUBBER if j % 2 else (0.13, 0.12, 0.11))
-                p.box((sx * 1.27, c.x, c.y), (0.62, 0.05, 0.1), RIVET) if j % 2 == 0 else None
+                c, d = _loop_at(side, (j + ph / 3.0) * step)
+                out = Vector((d.y, -d.x)) # (out of the loop)
+                ax = (0, d.x, d.y)
+                az = (0, out.x, out.y)
+                base = c + out * 0.03
+                p.obox((xc, base.x, base.y), (1, 0, 0), ax, az, (0.62, step - 0.04, 0.06), RUBBER)
+                g = c + out * 0.075
+                p.obox((xc, g.x, g.y), (1, 0, 0), ax, az, (0.6, 0.05, 0.035), RIVET) # (the grip bar)
+                h = c + out * 0.03 - d * (step * 0.5 - 0.02)
+                for kx in (-0.22, 0.0, 0.22): # (the hinge knuckles)
+                    p.obox((xc + kx, h.x, h.y), (1, 0, 0), ax, az, (0.1, 0.05, 0.07), (0.13, 0.12, 0.11))
+            k.add(p)
+    # the drive sprocket in the back corner and the idler in the nose, each on a stub axle out of the
+    # frame; and the road wheels' hubs and bolts showing on the frame's face down the bottom run
+    for sx in (-1, 1):
+        for corner, r, teeth in ((5, 0.46, 12), (2, 0.4, 0)):
+            ctr = _corner_circle(side, corner, r)
+            p = k.piece("dark", "wheel")
+            x0 = sx * FX1
+            cyl(p, (x0 - sx * 0.02, ctr.x, ctr.y), (x0 + sx * 0.07, ctr.x, ctr.y), r - 0.04, STEEL, segs=20)
+            if teeth:
+                for t in range(teeth):
+                    a = t / teeth * math.tau
+                    rad = Vector((0, math.cos(a), math.sin(a)))
+                    tan = Vector((0, -math.sin(a), math.cos(a)))
+                    p.obox(Vector((x0 + sx * 0.025, ctr.x, ctr.y)) + rad * (r - 0.02), (1, 0, 0), tan, rad, (0.07, 0.1, 0.12), RIVET)
+            else:
+                for t in range(6): # (the idler's lightening holes)
+                    a = t / 6 * math.tau
+                    cyl(p, (x0 + sx * 0.068, ctr.x + math.cos(a) * r * 0.55, ctr.y + math.sin(a) * r * 0.55),
+                        (x0 + sx * 0.075, ctr.x + math.cos(a) * r * 0.55, ctr.y + math.sin(a) * r * 0.55), 0.07, INK, segs=8)
+            cyl(p, (x0 - sx * 0.02, ctr.x, ctr.y), (x0 + sx * 0.16, ctr.x, ctr.y), 0.12, IRON, segs=10) # (the hub on its stub)
+            for t in range(6):
+                a = t / 6 * math.tau + 0.3
+                p.box((x0 + sx * 0.17, ctr.x + math.cos(a) * 0.08, ctr.y + math.sin(a) * 0.08), (0.03, 0.035, 0.035), RIVET)
+            k.add(p)
+        p = k.piece("dark", "hubs")
+        for i in range(8):
+            y = -2.75 + i * 0.66
+            cyl(p, (sx * (FX1 - 0.01), y, 0.62), (sx * (FX1 + 0.035), y, 0.62), 0.14, IRON, segs=12)
+            for t in range(5):
+                a = t / 5 * math.tau
+                p.box((sx * (FX1 + 0.045), y + math.cos(a) * 0.09, 0.62 + math.sin(a) * 0.09), (0.025, 0.03, 0.03), RIVET)
         k.add(p)
     # rivet rows and plate seams on the frames
     p = k.piece("dark", "rivets")
     for sx in (-1, 1):
-        for row in (0.75, 1.55, 2.3):
+        for row in (1.05, 1.6, 2.3):
             for i in range(16):
                 y = -3.0 + i * 0.38
                 p.box((sx * 1.535, y, row), (0.03, 0.05, 0.05), RIVET)
         for y in (-1.6, 0.2, 1.8):
-            p.box((sx * 1.535, y, 1.45), (0.03, 0.04, 1.9), RIVET)
+            p.box((sx * 1.535, y, 1.62), (0.03, 0.04, 1.5), RIVET)
     k.add(p)
-    # a sponson on each flank, its short gun
+    # a sponson on each flank, a mantlet bolted to its face and the short gun through it
     for sx in (-1, 1):
         p = k.piece("dark", "sponson")
         prism(p, [(-0.9, 0.9), (0.9, 0.9), (0.7, 2.0), (-0.7, 2.0)], sx * 1.52, sx * 2.05, OLIVE)
         k.add(p)
         p = k.piece("dark", "gun")
-        cyl(p, (sx * 2.0, 0.3, 1.45), (sx * 2.0, 1.6, 1.45), 0.08, RUBBER, segs=10)
-        cyl(p, (sx * 2.02, 0.2, 1.45), (sx * 2.02, 0.5, 1.45), 0.16, STEEL, segs=10) # (its mantlet)
+        cyl(p, (sx * 2.04, 0.4, 1.45), (sx * 2.2, 0.4, 1.45), 0.22, STEEL, segs=14) # (its mantlet)
+        cyl(p, (sx * 2.15, 0.4, 1.45), (sx * 2.55, 1.35, 1.45), 0.075, RUBBER, segs=10)
+        cyl(p, (sx * 2.5, 1.23, 1.45), (sx * 2.56, 1.37, 1.45), 0.095, RUBBER, segs=10) # (the muzzle)
         k.add(p)
     # the cupola, slits, hatch
     p = k.piece("dark", "cupola")
     p.box((0, 1.2, 2.65), (1.1, 1.0, 0.6), OLIVE)
+    p.box((0, 1.2, 2.98), (1.2, 1.1, 0.06), OLIVE_DK) # (its lid)
     p.box((0, 1.71, 2.72), (0.7, 0.02, 0.06), (0.02, 0.02, 0.02))
-    p.box((0, -1.5, 2.42), (0.9, 0.9, 0.1), OLIVE_DK) # (the hatch)
+    for sx in (-1, 1):
+        p.box((sx * 0.56, 1.2, 2.72), (0.02, 0.5, 0.06), (0.02, 0.02, 0.02))
+    p.box((0, -1.5, 2.4), (0.9, 0.9, 0.1), OLIVE_DK) # (the hatch)
+    p.box((0, -1.5, 2.47), (0.4, 0.05, 0.05), STEEL) # (its handle)
     k.add(p)
-    # exhaust stacks and the steering tail
+    # the exhaust stacks clamped to the roof, and the steering tail: two booms hinged to the hull's
+    # back, the wheels on an axle between them, a spring off the roof holding them down
     p = k.piece("dark", "tail")
     for sx in (-0.4, 0.4):
-        cyl(p, (sx, -2.2, 2.35), (sx, -2.2, 3.0), 0.09, RUBBER, segs=8)
+        cyl(p, (sx, -2.2, 2.3), (sx, -2.2, 3.0), 0.09, RUBBER, segs=8)
+        p.box((sx, -2.2, 2.4), (0.24, 0.24, 0.1), STEEL) # (its foot clamp)
+        p.box((sx, -2.2, 2.8), (0.22, 0.22, 0.05), STEEL)
+    p.box((0, -2.2, 2.8), (0.8, 0.05, 0.05), STEEL) # (a stay between them)
+    p.box((0, -3.12, 1.0), (1.5, 0.2, 0.3), STEEL) # (the hinge plate on the hull's back)
     for sx in (-1, 1):
-        p.box((sx * 0.5, -4.4, 0.75), (0.1, 1.4, 0.12), STEEL)
+        a, b = Vector((sx * 0.68, -3.1, 1.0)), Vector((sx * 0.68, -4.95, 0.55))
+        dv = (b - a)
+        p.obox((a + b) * 0.5, (1, 0, 0), dv.normalized(), Vector((1, 0, 0)).cross(dv.normalized()), (0.1, dv.length + 0.1, 0.14), STEEL)
+        cyl(p, (sx * 0.62, -4.95, 0.55), (sx * 0.74, -4.95, 0.55), 0.1, IRON, segs=10) # (the axle boss)
+        cyl(p, (sx * 0.5, -2.75, 2.3), (sx * 0.68, -4.1, 0.85), 0.04, IRON, segs=6) # (the spring rod)
+    cyl(p, (-0.62, -4.95, 0.55), (0.62, -4.95, 0.55), 0.05, IRON, segs=8) # (the axle)
     k.add(p)
     for sx in (-1, 1):
         spoked = k.piece("dark", "wheel")
         cyl(spoked, (sx * 0.5 - 0.06, -4.95, 0.55), (sx * 0.5 + 0.06, -4.95, 0.55), 0.55, STEEL, segs=16)
+        cyl(spoked, (sx * 0.5 - 0.1, -4.95, 0.55), (sx * 0.5 + 0.1, -4.95, 0.55), 0.12, IRON, segs=10)
         k.add(spoked)
     # the side's mark: a band of paint on each frame (light: the Centre; the game recolours the rebels')
     p = k.piece("dark", "mark")
     for sx in (-1, 1):
-        p.box((sx * 1.54, 0.4, 1.95), (0.02, 1.0, 0.3), (0.82, 0.8, 0.72))
+        p.box((sx * 1.54, -1.9, 1.9), (0.02, 1.0, 0.3), (0.82, 0.8, 0.72))
     k.add(p)
     k.finish()
-
 
 
 # --- the town's other buildings: the reading room, the smithy, the feldsher's hut, the jail ---------
@@ -2275,37 +2863,331 @@ def sifaci():
     cabin("sifaci", 5.0, 4.0, 7, 1.6, 1.0, windows=[("front", 1.4), ("left", 0.0)], porch_on=True, chimney_at=(-2.5 - 0.45, 0.8), extra=_felcer_extra)
 
 
-def _jail_extra(k, w, d):
-    # iron bars across the windows, iron straps and a bolt on the door, a guard's bench and lamp
+MORTAR = (0.6, 0.58, 0.53)
+DRESSED = (0.66, 0.64, 0.58)
+ROOF_IRON = (0.42, 0.21, 0.15)
+
+
+def stone_walls(k, w, d, top, openings, thick=0.45, course=0.3, band=3):
+    """Rubble-stone walls laid in courses on the plinth, up to `top`: rough blocks of a few sizes in
+    mortar, a little proud and a little skewed, dressed quoins at the corners, a dressed lintel over
+    and a sill under each opening. `openings` as log_walls takes them (bottom and top above the
+    floor). Returns the walls' top."""
+    rng = k.rng
+    z0 = PLINTH_TOP
+    n_courses = int(math.ceil((top - z0) / course - 1e-6))
+    # which courses each opening cuts, and the dressed stones that fill in round it
+    cuts = []
+    for ow, oc, owid, ob, ot in openings:
+        lo, hi = FLOOR + ob, FLOOR + ot
+        cs = [c for c in range(n_courses) if z0 + (c + 1) * course > lo + 1e-6 and z0 + c * course < hi - 1e-6]
+        if z0 + (cs[-1] + 1) * course - hi < 0.15 and cs[-1] + 1 < n_courses:
+            cs.append(cs[-1] + 1)
+        cuts.append((ow, oc, owid, lo, hi, set(cs), z0 + cs[0] * course, z0 + (cs[-1] + 1) * course))
+    walls = {
+        "front": (Vector((1, 0, 0)), Vector((0, -1, 0)), -d * 0.5, (-w * 0.5, w * 0.5)),
+        "back": (Vector((1, 0, 0)), Vector((0, 1, 0)), d * 0.5, (-w * 0.5, w * 0.5)),
+        "left": (Vector((0, 1, 0)), Vector((-1, 0, 0)), -w * 0.5, (-d * 0.5 + thick, d * 0.5 - thick)),
+        "right": (Vector((0, 1, 0)), Vector((1, 0, 0)), w * 0.5, (-d * 0.5 + thick, d * 0.5 - thick)),
+    }
+    up = Vector((0, 0, 1))
+    for wall, (along, out, plane, span) in walls.items():
+        face0 = out * abs(plane) # (a point on the wall's outer face)
+        for b0 in range(0, n_courses, band):
+            p = k.piece("stone", "wall")
+            for c in range(b0, min(b0 + band, n_courses)):
+                zc = z0 + (c + 0.5) * course
+                holes = [(oc - owid * 0.5, oc + owid * 0.5) for ow, oc, owid, lo, hi, cs, a, b in cuts if ow == wall and c in cs]
+                for s0, s1 in _cut(span, holes):
+                    # the mortar bed and the wall's core behind the face stones
+                    mid = (s0 + s1) * 0.5
+                    p.obox(face0 + along * mid - out * (thick * 0.5 + 0.02) + up * zc, along, out, up, (s1 - s0, thick - 0.04, course), jit(MORTAR, 0.03, rng))
+                    # the face stones, running bond
+                    s = s0
+                    first = True
+                    while s < s1 - 0.05:
+                        ln = rng.uniform(0.3, 0.62)
+                        if first:
+                            ln = 0.22 + 0.18 * ((c + (1 if wall in ("left", "right") else 0)) % 2)
+                            first = False
+                        if s1 - (s + ln) < 0.2:
+                            ln = s1 - s
+                        hgt = course - rng.uniform(0.025, 0.05)
+                        col = jit(STONE, 0.14, rng)
+                        if rng.random() < 0.25:
+                            col = (col[0] * 1.06, col[1] * 1.0, col[2] * 0.9) # (a warmer, rustier stone)
+                        tilt = rng.uniform(-0.03, 0.03)
+                        a2 = Matrix.Rotation(tilt, 3, out) @ along
+                        u2 = Matrix.Rotation(tilt, 3, out) @ up
+                        ctr = face0 + along * (s + ln * 0.5) - out * (0.1 - rng.uniform(0.0, 0.025)) + up * (zc + rng.uniform(-0.01, 0.01))
+                        p.obox(ctr, a2, out, u2, (ln - 0.03, 0.2, hgt), col)
+                        s += ln
+            k.add(p)
+    # quoins: dressed blocks at the corners, long on the front and back walls and on the ends in turn
+    p = k.piece("stone", "quoin")
+    for c in range(n_courses):
+        zc = z0 + (c + 0.5) * course
+        long_x = c % 2 == 0
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                lx, ly = (0.6, thick + 0.02) if long_x else (thick + 0.02, 0.6)
+                p.box((sx * (w * 0.5 - lx * 0.5 + 0.015), sy * (d * 0.5 - ly * 0.5 + 0.015), zc), (lx, ly, course - 0.025), jit(DRESSED, 0.05, rng))
+    k.add(p)
+    # lintels and sills
+    p = k.piece("stone", "lintel")
+    for ow, oc, owid, lo, hi, cs, bot, topc in cuts:
+        along, out, plane, span = walls[ow]
+        face0 = out * abs(plane)
+        p.obox(face0 + along * oc - out * (thick * 0.5 - 0.02) + up * (hi + topc) * 0.5, along, out, up, (owid + 0.36, thick + 0.04, topc - hi), jit(DRESSED, 0.04, rng))
+        if lo - bot > 0.01:
+            p.obox(face0 + along * oc - out * (thick * 0.5 - 0.04) + up * (lo + bot) * 0.5, along, out, up, (owid + 0.12, thick + 0.08, lo - bot), jit(DRESSED, 0.04, rng))
+    k.add(p)
+    return z0 + n_courses * course
+
+
+def hip_roof(k, w, d, wall_top, over=0.35, pitch=0.46, color=ROOF_IRON, seam=0.42):
+    """A low hipped roof of painted sheet iron: four slopes on rafters off the walls' outer edge, the
+    sheets' standing seams running down them, rolled caps along the hips and the ridge, a fascia
+    board along the eaves. Returns the ridge's height."""
+    rng = k.rng
+    tp = math.tan(pitch)
+    hw, hd = w * 0.5 + over, d * 0.5 + over
+    eave = wall_top - over * tp
+    rl = hw - hd
+    rz = eave + hd * tp
+    th = 0.06
+
+    def slab(p, pts, col):
+        pts = [Vector(q) for q in pts]
+        nrm = (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+        if nrm.z < 0:
+            pts.reverse()
+            nrm = -nrm
+        bm = p.bm
+        a = [bm.verts.new(q) for q in pts]
+        b = [bm.verts.new(q - nrm * th) for q in pts]
+        faces = [bm.faces.new(a), bm.faces.new(list(reversed(b)))]
+        for i in range(len(pts)):
+            j = (i + 1) % len(pts)
+            faces.append(bm.faces.new([b[i], b[j], a[j], a[i]]))
+        for f in faces:
+            f.normal_update()
+        p._paint(faces, col)
+        return nrm
+
+    base = jit(color, 0.04, rng)
+    seam_c = (base[0] * 0.78, base[1] * 0.78, base[2] * 0.78)
+    for sy in (-1, 1):
+        p = k.piece("shingle", "roof")
+        nrm = slab(p, [(-hw, sy * hd, eave), (hw, sy * hd, eave), (rl, 0, rz), (-rl, 0, rz)], base)
+        dn = Vector((0, sy * math.cos(pitch), -math.sin(pitch)))
+        x = -hw + seam
+        while x < hw - 0.1:
+            ln = (hd if abs(x) <= rl else hd - (abs(x) - rl)) / math.cos(pitch)
+            top = Vector((x, sy * (hd - ln * math.cos(pitch)), eave + ln * math.sin(pitch)))
+            if ln > 0.15:
+                p.obox(top + dn * (ln * 0.5) + nrm * 0.02, (1, 0, 0), dn, nrm, (0.03, ln - 0.06, 0.04), seam_c)
+            x += seam
+        k.add(p)
+    for sx in (-1, 1):
+        p = k.piece("shingle", "roof")
+        nrm = slab(p, [(sx * hw, -hd, eave), (sx * hw, hd, eave), (sx * rl, 0, rz)], base)
+        dn = Vector((sx * math.cos(pitch), 0, -math.sin(pitch)))
+        y = -hd + seam
+        while y < hd - 0.1:
+            ln = (hd - abs(y)) / math.cos(pitch)
+            top = Vector((sx * (hw - ln * math.cos(pitch)), y, eave + ln * math.sin(pitch)))
+            if ln > 0.15:
+                p.obox(top + dn * (ln * 0.5) + nrm * 0.02, (0, 1, 0), dn, nrm, (0.03, ln - 0.06, 0.04), seam_c)
+            y += seam
+        k.add(p)
+    # the ridge and hip caps, the fascia, the rafter ends under the eaves
+    p = k.piece("shingle", "ridge")
+    cap = (base[0] * 0.7, base[1] * 0.7, base[2] * 0.7)
+    cyl(p, (-rl - 0.04, 0, rz + 0.0), (rl + 0.04, 0, rz + 0.0), 0.055, cap, segs=8)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cyl(p, (sx * rl, 0, rz), (sx * hw, sy * hd, eave), 0.05, cap, segs=8)
+    k.add(p)
+    p = k.piece("plank", "fascia")
+    for sy in (-1, 1):
+        p.box((0, sy * (hd - 0.02), eave - th - 0.06), (2 * hw, 0.04, 0.14), jit(DARK, 0.05, rng))
+    for sx in (-1, 1):
+        p.box((sx * (hw - 0.02), 0, eave - th - 0.06), (0.04, 2 * hd - 0.04, 0.14), jit(DARK, 0.05, rng))
+    for sy in (-1, 1):
+        for i in range(9):
+            x = -w * 0.5 + 0.2 + i * (w - 0.4) / 8
+            run = over + 0.05
+            ctr = Vector((x, sy * (d * 0.5 + over * 0.5 - 0.03), wall_top - th - 0.05 - (over * 0.5) * tp))
+            dn = Vector((0, sy * math.cos(pitch), -math.sin(pitch)))
+            p.obox(ctr, (1, 0, 0), dn, Vector((1, 0, 0)).cross(dn) * -sy, (0.07, run / math.cos(pitch), 0.1), jit(DARK, 0.05, rng))
+    k.add(p)
+    return rz
+
+
+def barred_window(k, wall, at, w, d, bottom, height, width, thick=0.45):
+    """A small high window: a dark pane deep in the wall, a grille of iron bars at the face, its
+    bars run up into the lintel and down into the sill."""
+    hx, hy = w * 0.5, d * 0.5
+    if wall in ("front", "back"):
+        s = -1 if wall == "front" else 1
+        along, out = Vector((1, 0, 0)), Vector((0, s, 0))
+        o = Vector((at, s * hy, 0))
+    else:
+        s = -1 if wall == "left" else 1
+        along, out = Vector((0, 1, 0)), Vector((s, 0, 0))
+        o = Vector((s * hx, at, 0))
+    up = Vector((0, 0, 1))
+    zc = FLOOR + bottom + height * 0.5
+    g = k.piece("window")
+    g.obox(o - out * (thick * 0.6) + up * zc, along, out, up, (width + 0.04, 0.04, height + 0.04), (0.16, 0.18, 0.18))
+    k.add(g)
     p = k.piece("dark", "bars")
-    for wall, at in (("left", 0.0), ("right", 0.0), ("back", -1.2), ("back", 1.2)):
-        for i in range(4):
-            off = -0.27 + i * 0.18
-            if wall in ("left", "right"):
-                sx = -1 if wall == "left" else 1
-                p.box((sx * (w * 0.5 + 0.02), at + off, 1.32), (0.03, 0.03, 0.8), IRON)
-            else:
-                p.box((at + off, d * 0.5 + 0.02, 1.32), (0.03, 0.03, 0.8), IRON)
-    for z in (0.75, 1.45, 2.0):
-        p.box((0, -d * 0.5 + 0.08, z), (1.1, 0.04, 0.08), IRON)
-    p.box((0.42, -d * 0.5 + 0.06, 1.15), (0.16, 0.06, 0.08), IRON)
-    k.add(p)
-    p = k.piece("plank", "bench")
-    p.box((1.6, -d * 0.5 - 0.6, 0.5), (1.2, 0.35, 0.06), jit(PLANK, 0.05, k.rng))
-    for sx in (-0.5, 0.5):
-        p.box((1.6 + sx, -d * 0.5 - 0.6, 0.25), (0.06, 0.3, 0.5), DARK)
-    k.add(p)
-    p = k.piece("dark", "bracket")
-    p.box((-1.0, -d * 0.5 - 0.06, 2.36), (0.04, 0.2, 0.04), IRON)
-    p.box((-1.0, -d * 0.5 - 0.15, 2.22), (0.22, 0.16, 0.06), IRON)
-    k.add(p)
-    p = k.piece("window", "lamp")
-    p.box((-1.0, -d * 0.5 - 0.15, 2.07), (0.16, 0.12, 0.24), (1.0, 0.85, 0.55))
+    nb = 4
+    for i in range(nb):
+        t = -width * 0.5 + (i + 0.5) * width / nb
+        p.obox(o - out * 0.08 + along * t + up * zc, along, out, up, (0.03, 0.03, height + 0.16), IRON)
+    for z in (zc - height * 0.18, zc + height * 0.18):
+        p.obox(o - out * 0.06 + up * z, along, out, up, (width + 0.1, 0.012, 0.035), IRON)
     k.add(p)
 
 
 def hapishane():
-    cabin("hapishane", 5.0, 4.0, 8, 1.4, 1.0, windows=[("left", 0.0), ("right", 0.0), ("back", -1.2), ("back", 1.2)], porch_on=False, extra=_jail_extra)
+    """The lock-up: squat walls of rubble stone in mortar with dressed quoins, a low hipped roof of
+    red-painted sheet iron, small high barred windows, a heavy plank door banded in iron with a
+    padlocked hasp and a barred judas hatch, a board over it, a lantern on a bracket, a whitewashed
+    flue, a guard's bench and stool by the door."""
+    w, d = 5.0, 4.0
+    k = Kit("hapishane")
+    rng = k.rng
+    plinth(k, w, d)
+    floor(k, w, d)
+    thick = 0.45
+    door_w, door_h = 1.0, 2.0
+    win = [("left", 0.0), ("right", 0.0), ("back", -1.2), ("back", 1.2), ("front", 1.3)]
+    openings = [("front", 0.0, door_w, -0.12, door_h)] + [(wl, at, 0.55, 1.55, 1.95) for wl, at in win]
+    top = stone_walls(k, w, d, 3.35, openings, thick=thick)
+    for wl, at in win:
+        barred_window(k, wl, at, w, d, 1.55, 0.4, 0.55, thick)
+    ridge = hip_roof(k, w, d, top)
+    # the threshold stone and a step before it
+    p = k.piece("stone", "step")
+    p.box((0, -d * 0.5 + thick * 0.5, (PLINTH_TOP + FLOOR) * 0.5), (door_w, thick, FLOOR - PLINTH_TOP), jit(DRESSED, 0.04, rng))
+    p.box((0, -d * 0.5 - 0.35, 0.12), (door_w + 0.4, 0.5, 0.24), jit(DRESSED, 0.05, rng))
+    k.add(p)
+    # the door frame of squared timber in the opening, the heavy door in it
+    dy = -d * 0.5 + 0.14
+    p = k.piece("dark", "doorframe")
+    for sx in (-1, 1):
+        p.box((sx * (door_w * 0.5 - 0.05), dy + 0.06, FLOOR + door_h * 0.5), (0.1, 0.2, door_h), jit(DARK, 0.05, rng))
+    p.box((0, dy + 0.06, FLOOR + door_h - 0.05), (door_w, 0.2, 0.1), jit(DARK, 0.05, rng))
+    k.add(p)
+    leaf_w, leaf_h = door_w - 0.2, door_h - 0.1
+    p = k.piece("plank", "door")
+    n = 5
+    for i in range(n):
+        bx = -leaf_w * 0.5 + (i + 0.5) * leaf_w / n
+        p.box((bx, dy, FLOOR + leaf_h * 0.5), (leaf_w / n - 0.01, 0.07, leaf_h), jit((0.4, 0.3, 0.2), 0.08, rng))
+    fy = dy - 0.045
+    for zz in (0.25, leaf_h * 0.5, leaf_h - 0.25): # (iron straps, strap hinges running off the left side)
+        p.box((-0.03, fy, FLOOR + zz), (leaf_w + 0.04, 0.02, 0.09), IRON)
+        for i in range(6):
+            p.box((-leaf_w * 0.5 + 0.08 + i * (leaf_w - 0.16) / 5, fy - 0.015, FLOOR + zz), (0.03, 0.015, 0.03), RIVET)
+        p.box((-leaf_w * 0.5 - 0.04, fy + 0.01, FLOOR + zz), (0.06, 0.05, 0.12), IRON) # (the hinge pin's knuckle)
+    diag = math.atan2(leaf_h * 0.5 - 0.25, leaf_w - 0.15)
+    for z0 in (0.25, leaf_h * 0.5):
+        p.obox((0, fy + 0.002, FLOOR + z0 + (leaf_h * 0.5 - 0.25) * 0.5), (math.cos(diag), 0, math.sin(diag)), (0, 1, 0), (-math.sin(diag), 0, math.cos(diag)),
+               (math.hypot(leaf_w - 0.15, leaf_h * 0.5 - 0.25), 0.015, 0.06), IRON)
+    # the judas hatch: a small iron-framed opening, barred, a little shutter hung open beside it
+    hz = FLOOR + 1.5
+    p.box((0, fy - 0.005, hz), (0.26, 0.02, 0.2), IRON)
+    p.box((0, fy - 0.004, hz), (0.2, 0.022, 0.14), (0.05, 0.05, 0.05))
+    for t in (-0.06, 0.0, 0.06):
+        p.box((t, fy - 0.02, hz), (0.015, 0.015, 0.16), IRON)
+    p.box((0.22, fy - 0.02, hz), (0.18, 0.02, 0.16), (0.36, 0.27, 0.18))
+    # the hasp and staple, a heavy padlock hanging from it, a drawbolt
+    p.box((leaf_w * 0.5 - 0.08, fy - 0.01, FLOOR + 1.05), (0.24, 0.025, 0.06), IRON)
+    p.box((leaf_w * 0.5 - 0.06, fy - 0.035, FLOOR + 0.95), (0.13, 0.05, 0.11), (0.2, 0.19, 0.17))
+    cyl(p, (leaf_w * 0.5 - 0.1, fy - 0.035, FLOOR + 1.0), (leaf_w * 0.5 - 0.1, fy - 0.035, FLOOR + 1.06), 0.012, IRON, segs=6)
+    cyl(p, (leaf_w * 0.5 - 0.02, fy - 0.035, FLOOR + 1.0), (leaf_w * 0.5 - 0.02, fy - 0.035, FLOOR + 1.06), 0.012, IRON, segs=6)
+    p.box((0.05, fy - 0.01, FLOOR + 0.62), (0.4, 0.03, 0.05), IRON)
+    p.box((-0.1, fy - 0.035, FLOOR + 0.62), (0.03, 0.03, 0.1), IRON) # (its knob)
+    k.add(p)
+    # the staple on the frame the hasp goes over
+    p = k.piece("dark", "staple")
+    p.box((door_w * 0.5 - 0.05, dy - 0.05, FLOOR + 1.05), (0.06, 0.04, 0.08), IRON)
+    k.add(p)
+    # a board over the door, lettered
+    p = k.piece("plank", "sign")
+    p.box((0, -d * 0.5 - 0.075, 2.64), (1.3, 0.04, 0.18), jit((0.82, 0.8, 0.72), 0.03, rng))
+    p.box((0, -d * 0.5 - 0.065, 2.64), (1.36, 0.04, 0.23), jit(DARK, 0.04, rng))
+    for i in range(7):
+        p.box((-0.54 + i * 0.18, -d * 0.5 - 0.098, 2.64), (0.07, 0.01, 0.1), INK)
+    k.add(p)
+    # the lantern on a scrolled bracket left of the door
+    lx = -1.0
+    p = k.piece("dark", "bracket")
+    p.box((lx, -d * 0.5 - 0.02, 2.5), (0.12, 0.04, 0.22), IRON) # (the wall plate)
+    p.box((lx, -d * 0.5 - 0.2, 2.58), (0.035, 0.36, 0.035), IRON) # (the arm)
+    p.obox((lx, -d * 0.5 - 0.12, 2.47), (0, 0.7, 0.7), (1, 0, 0), (0, -0.7, 0.7), (0.025, 0.025, 0.26), IRON) # (its stay)
+    p.box((lx, -d * 0.5 - 0.34, 2.52), (0.02, 0.02, 0.12), IRON) # (the hook)
+    cx, cy, cz = lx, -d * 0.5 - 0.34, 2.24
+    p.box((cx, cy, cz + 0.2), (0.2, 0.2, 0.04), IRON) # (the lantern's cap)
+    p.box((cx, cy, cz + 0.25), (0.12, 0.12, 0.06), IRON)
+    p.box((cx, cy, cz - 0.16), (0.18, 0.18, 0.04), IRON) # (its base)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.box((cx + sx * 0.08, cy + sy * 0.08, cz + 0.02), (0.02, 0.02, 0.36), IRON)
+    k.add(p)
+    p = k.piece("window", "lamp")
+    p.box((cx, cy, cz + 0.02), (0.14, 0.14, 0.32), (1.0, 0.85, 0.55))
+    k.add(p)
+    # the flue: whitewashed brick up out of the back wall through the roof, a cap on it
+    fx, fy2 = 0.3, d * 0.5 - thick * 0.5
+    ftop = ridge + 0.35
+    z = top - 0.3
+    p = k.piece("stone", "chimney")
+    c = 0
+    while z < ftop - 0.13:
+        p.box((fx, fy2, z + 0.06), (0.5 + (0.01 if c % 2 else 0), 0.5 + (0 if c % 2 else 0.01), 0.12), jit(WHITEWASH, 0.04, rng))
+        z += 0.12
+        c += 1
+    k.add(p)
+    p = k.piece("stone", "chimneytop")
+    p.box((fx, fy2, z + 0.06), (0.62, 0.62, 0.12), jit(WHITEWASH, 0.03, rng))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.box((fx + sx * 0.18, fy2 + sy * 0.18, z + 0.22), (0.12, 0.12, 0.2), jit((0.55, 0.3, 0.22), 0.06, rng))
+    p.box((fx, fy2, z + 0.36), (0.6, 0.6, 0.06), jit(IRON, 0.05, rng))
+    k.add(p)
+    # the guard's bench under the front window, his stool, a water bucket, a rifle leant up by the door
+    p = k.piece("plank", "bench")
+    by = -d * 0.5 - 0.58
+    p.box((1.35, by, 0.46), (1.3, 0.34, 0.06), jit(PLANK, 0.05, rng))
+    for sx in (-0.5, 0.5):
+        p.box((1.35 + sx, by, 0.215), (0.07, 0.28, 0.43), jit(DARK, 0.05, rng))
+    p.box((1.35, by, 0.12), (1.0, 0.05, 0.05), jit(DARK, 0.05, rng))
+    k.add(p)
+    p = k.piece("wood", "stool")
+    sx0, sy0 = -1.55, -d * 0.5 - 0.55
+    cyl(p, (sx0, sy0, 0.42), (sx0, sy0, 0.47), 0.18, jit(PLANK, 0.05, rng), segs=12)
+    for i in range(3):
+        a = i / 3 * math.tau
+        p.log((sx0 + math.cos(a) * 0.17, sy0 + math.sin(a) * 0.17, 0.0), (sx0 + math.cos(a) * 0.1, sy0 + math.sin(a) * 0.1, 0.43), 0.022, color=DARK, rng=rng, taper=0.0, bow=0.0)
+    k.add(p)
+    p = k.piece("wood", "bucket")
+    cyl(p, (-2.05, -d * 0.5 - 0.5, 0.0), (-2.05, -d * 0.5 - 0.5, 0.3), 0.14, jit(PLANK, 0.06, rng), segs=12, taper=-0.15)
+    cyl(p, (-2.05, -d * 0.5 - 0.5, 0.06), (-2.05, -d * 0.5 - 0.5, 0.09), 0.15, IRON, segs=12)
+    cyl(p, (-2.05, -d * 0.5 - 0.5, 0.22), (-2.05, -d * 0.5 - 0.5, 0.25), 0.16, IRON, segs=12)
+    k.add(p)
+    p = k.piece("dark", "rifle")
+    rx, ry = 0.78, -d * 0.5 - 0.12
+    a, b = Vector((rx, -d * 0.5 - 0.42, 0.0)), Vector((rx, -d * 0.5 - 0.03, 1.2))
+    dv = (b - a).normalized()
+    p.obox(a + dv * 0.3, (1, 0, 0), dv, Vector((1, 0, 0)).cross(dv), (0.05, 0.6, 0.1), (0.38, 0.26, 0.15)) # (the stock)
+    p.obox(a + dv * 0.85, (1, 0, 0), dv, Vector((1, 0, 0)).cross(dv), (0.03, 0.55, 0.03), IRON) # (the barrel)
+    k.add(p)
+    k.finish()
 
 
 # --- the defences: a sandbag post, a Maxim nest, barbed wire ----------------------------------------

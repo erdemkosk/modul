@@ -1799,6 +1799,8 @@ func burning_count() -> int:
 
 ## Sets a piece alight (one at random that can burn, if -1). False if nothing would catch.
 func ignite(i := -1) -> bool:
+	if kind in ["kuyu", "fener", "siper", "makineli", "tel"]: # (stone, iron and earth: nothing there to burn)
+		return false
 	if crop and crop.ignite():
 		return true
 	var can: Array[int] = []

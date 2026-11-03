@@ -933,6 +933,11 @@ func dig_trench_part(a: Vector2, b: Vector2, width: float, depth: float, spoil: 
 	var bank_at := half_w + 0.9 # (the bank's crest, out from the middle)
 	_each_sample(lo.x, lo.y, hi.x, hi.y, func(x: float, z: float) -> float:
 		var pt := Vector2(x, z)
+		# only what lies beside this length, not round its ends: the next length digs on from there,
+		# and the two don't both dig the same ground (no pits at the joins)
+		var t := (pt - a).dot(b - a) / maxf((b - a).length_squared(), 0.0001)
+		if t < 0.0 or t >= 1.0:
+			return 0.0
 		var q := Geometry2D.get_closest_point_to_segment(pt, a, b)
 		var off := pt - q
 		var d := off.length()
