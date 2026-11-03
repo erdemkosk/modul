@@ -30,7 +30,6 @@ var _chuff_t := 0.0
 var _whistle: AudioStreamPlayer3D
 var _sparks: GPUParticles3D ## from the stack at night, working hard
 var _lamp: SpotLight3D ## the headlamp, lit after dark
-var _engine_box := AABB()
 var quiet := false ## (the first train, at the start: no whistle over the opening)
 var armour := "" ## an armoured train's side ("merkez", "isyan"): plated over, a gun on its last car, its flag; "" a plain one
 
@@ -83,8 +82,6 @@ func _ready() -> void:
 			first = false
 			if String(mi.name).contains("wheel"):
 				wheels.append([mi, maxf(mi.get_aabb().size.y * 0.5, 0.3)])
-		if kind == "tren_lokomotif":
-			_engine_box = box
 		var half := box.size.z * 0.5
 		_gap.append(back + half)
 		back += half * 2.0 + 0.5
@@ -133,21 +130,8 @@ func _ready() -> void:
 	_sparks.emitting = false
 	_cars[0].add_child(_sparks)
 	_sparks.position = _smoke.position
-	# the headlamp: a brass lamp on the smokebox, its beam down the line after dark
-	var front := Vector3(0, _engine_box.position.y + _engine_box.size.y * 0.6, _engine_box.end.z + 0.1) if _engine_box.size != Vector3.ZERO else Vector3(0, 3.0, 6.0)
-	var bulb := MeshInstance3D.new()
-	var bm := SphereMesh.new()
-	bm.radius = 0.16
-	bm.height = 0.32
-	bulb.mesh = bm
-	var lm := StandardMaterial3D.new()
-	lm.albedo_color = Color(1.0, 0.9, 0.7)
-	lm.emission_enabled = true
-	lm.emission = Color(1.0, 0.85, 0.55)
-	lm.emission_energy_multiplier = 0.0
-	bulb.material_override = lm
-	_cars[0].add_child(bulb)
-	bulb.position = front
+	# the headlamp: the model's own lamp on the smokebox (its glass lit at night with the windows),
+	# and its beam down the line after dark
 	_lamp = SpotLight3D.new()
 	_lamp.light_color = Color(1.0, 0.86, 0.6)
 	_lamp.light_energy = 0.0
@@ -156,9 +140,8 @@ func _ready() -> void:
 	_lamp.light_volumetric_fog_energy = 1.5
 	_lamp.shadow_enabled = false
 	_cars[0].add_child(_lamp)
-	_lamp.position = front + Vector3(0, 0, 0.2)
+	_lamp.position = Vector3(0, 3.35, 5.2)
 	_lamp.rotation = Vector3(-0.08, PI, 0) # (pointing down +z, the way it runs)
-	_lamp.set_meta("bulb", lm)
 	_whistle = AudioStreamPlayer3D.new()
 	_whistle.stream = load("res://assets/audio/war/whistle.wav") as AudioStream
 	_whistle.max_distance = 900.0
@@ -327,7 +310,6 @@ func _process(dt: float) -> void:
 	var dark := Weather.night_now
 	_sparks.emitting = dark > 0.5 and absf(_v) > 1.5
 	_lamp.light_energy = dark * 6.0
-	(_lamp.get_meta("bulb") as StandardMaterial3D).emission_energy_multiplier = dark * 8.0
 	if absf(_v) > 0.3:
 		_chuff_t -= dt
 		if _chuff_t <= 0.0:

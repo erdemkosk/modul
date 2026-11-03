@@ -49,6 +49,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT = os.path.join(ROOT, "assets", "buildings")
 
 FLOOR = 0.47
+YARD_FLOOR = 0.37 # (a yard's ground is at 0.35: what stands on it, there)
 PLINTH_TOP = 0.35
 
 # --- colours --------------------------------------------------------------------------------------
@@ -1172,6 +1173,8 @@ def _cart_props(k, w, d):
     for sx in (-1, 1):
         p.box((-0.6 + sx * 0.58, 0.0, 1.3), (0.05, 1.6, 0.4), jit(PLANK, 0.06, k.rng))
     p.box((-0.6, -1.25, 1.05), (0.06, 1.0, 0.06), DARK)
+    p.box((-0.6, 0.2, 0.86), (1.62, 0.08, 0.08), DARK) # (the axle, the wheels on its ends)
+    p.box((-0.6, 0.2, 0.96), (0.1, 0.1, 0.14), DARK)
     k.add(p)
     for sx in (-1, 1):
         p = k.piece("dark", "wheel")
@@ -1329,6 +1332,7 @@ def heap(k, x, y, rx, ry, h, color):
 def kesim():
     """The felling camp's yard: logs come in on shoulders, go up on the sawhorse and are sawn
     there; the raw logs in a deck at the back, sawdust underfoot, the tools under a lean-to."""
+    FLOOR = YARD_FLOOR # (a yard: its things on its own ground, not up on a floor)
     w, d = 7.0, 6.0
     k = Kit("oduncu")
     yard_pad(k, w, d, floor="sawdust")
@@ -1380,6 +1384,7 @@ def kesim():
 def tas_ocagi():
     """The stone yard: rough blocks come in and are dressed on the bench with mallet and chisel; a
     tripod derrick to lift them, the rough ones heaped at the back, the dressed ones stacked."""
+    FLOOR = YARD_FLOOR # (a yard: its things on its own ground, not up on a floor)
     w, d = 7.0, 6.0
     k = Kit("tasci")
     yard_pad(k, w, d, top=(0.4, 0.36, 0.3), floor="chips")
@@ -1432,11 +1437,14 @@ def tas_ocagi():
 def toplayici():
     """The gatherers' hut: an open shelter of drying racks hung with berries, a sorting table out
     front, baskets about."""
+    FLOOR = YARD_FLOOR # (a yard: its things on its own ground, not up on a floor)
     w, d = 6.0, 5.0
     k = Kit("toplayici")
     yard_pad(k, w, d)
     lean_to(k, -2.4, 2.4, 0.4, 2.2, 2.5, 2.0)
     p = k.piece("wood", "rack")
+    for sx in (-1, 1): # (its own posts, so it stands)
+        p.log((sx * 2.3, 1.3, FLOOR - 0.05), (sx * 2.3, 1.3, FLOOR + 2.15), 0.05, rng=k.rng, taper=0.0)
     for z in (1.0, 1.5, 2.0):
         p.log((-2.3, 1.3, FLOOR + z), (2.3, 1.3, FLOOR + z), 0.03, rng=k.rng)
         for i in range(18):
@@ -1475,6 +1483,7 @@ def camur_ocagi():
     """The mud pit: mud dug from the wet ground is trodden with straw in a framed pit, pressed into
     moulds on the table out front and laid out to dry under a thatched shelter at the back left; the
     straw heaped by it, a barrel of water, puddles about."""
+    FLOOR = YARD_FLOOR # (a yard: its things on its own ground)
     w, d = 6.0, 5.0
     k = Kit("camur")
     rng = k.rng
@@ -1650,7 +1659,27 @@ def wheelset(k, y, r, color=INK, rim=IRON):
         cyl(p, (x - 0.07, y, r), (x + 0.07, y, r), r, color, segs=18)
         cyl(p, (x - 0.08, y, r), (x - 0.02, y, r), r * 1.06, rim, segs=18) # (the flange)
         cyl(p, (x - 0.12, y, r), (x + 0.12, y, r), r * 0.18, IRON, segs=8) # (the hub)
+        n = 12 if r > 0.6 else 8
+        for i in range(n): # (the spokes, standing proud of the web)
+            a = i / n * math.tau
+            p.obox((x + sx * 0.075, y + math.cos(a) * r * 0.48, r + math.sin(a) * r * 0.48), (1, 0, 0), (0, math.cos(a), math.sin(a)), (0, -math.sin(a), math.cos(a)),
+                   (0.03, r * 0.8, 0.05), rim)
+        if r > 0.6: # (the crank boss and its counterweight)
+            p.box((x + sx * 0.09, y + r * 0.45, r), (0.05, 0.22, 0.22), rim)
+            p.obox((x + sx * 0.09, y - r * 0.4, r + 0.15), (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.04, r * 0.7, r * 0.35), color)
         k.add(p)
+
+
+def buffers(k, y, s):
+    """Buffers and a coupling hook at a car's end (`s` -1 front, 1 back)."""
+    p = k.piece("dark", "buffers")
+    p.box((0, y, 1.0), (2.3, 0.18, 0.32), BEAM_RED)
+    for sx in (-1, 1):
+        cyl(p, (sx * 0.6, y, 1.0), (sx * 0.6, y + s * 0.38, 1.0), 0.07, IRON, segs=8)
+        cyl(p, (sx * 0.6, y + s * 0.36, 1.0), (sx * 0.6, y + s * 0.42, 1.0), 0.18, IRON, segs=12)
+    p.box((0, y + s * 0.25, 0.95), (0.12, 0.4, 0.1), IRON)
+    p.box((0, y + s * 0.45, 0.92), (0.08, 0.08, 0.16), IRON)
+    k.add(p)
 
 
 def bogie(k, y):
@@ -1658,6 +1687,10 @@ def bogie(k, y):
     p.box((0, y, 0.55), (1.9, 2.3, 0.22), IRON)
     for sx in (-1, 1):
         p.box((sx * 0.95, y, 0.45), (0.12, 2.2, 0.35), INK)
+        for sy in (-0.85, 0.85): # (axle boxes)
+            p.box((sx * 1.02, y + sy, 0.45), (0.12, 0.28, 0.3), IRON)
+        for i in range(4): # (the leaf spring between them)
+            p.box((sx * 1.02, y, 0.68 - i * 0.04), (0.1, 1.2 - i * 0.22, 0.035), IRON)
     k.add(p)
     wheelset(k, y - 0.85, 0.45)
     wheelset(k, y + 0.85, 0.45)
@@ -1718,6 +1751,32 @@ def lokomotif():
         p.box((sx * 0.62, 2.08, 3.0), (0.55, 0.05, 0.55), GLASS)
         p.box((sx * 1.26, 3.6, 3.0), (0.05, 0.9, 0.6), GLASS)
     k.add(p)
+    # running boards along the boiler, handrails on stanchions, steam pipes down to the cylinders,
+    # sand pipes to the wheels, the smokebox door's brass plate and dogs, a coupling hook and lamp irons
+    p = k.piece("dark", "boards")
+    for sx in (-1, 1):
+        p.box((sx * 1.05, -1.2, 1.32), (0.38, 6.4, 0.05), INK)
+        p.box((sx * 1.24, -1.2, 1.4), (0.03, 6.4, 0.12), BRASS)
+        for y in (-3.9, -2.6, -1.3, 0.0, 1.3):
+            cyl(p, (sx * 0.8, y, 2.35), (sx * 0.92, y, 2.35), 0.025, IRON, segs=6)
+        cyl(p, (sx * 0.92, -4.1, 2.35), (sx * 0.92, 1.6, 2.35), 0.022, BRASS, segs=6)
+        p.obox((sx * 0.62, -3.35, 2.25), (0, 0.55, -0.83), (1, 0, 0), (0, 0.83, 0.55), (1.3, 0.12, 0.12), INK) # (the steam pipe)
+        for y in (-1.3, 0.6):
+            p.obox((sx * 0.55, y - 0.3, 2.0), (0, 0.2, -0.98), (1, 0, 0), (0, 0.98, 0.2), (1.25, 0.04, 0.04), IRON) # (sand pipes)
+        cyl(p, (sx * 0.6, 2.05, 3.7), (sx * 0.6, 2.05, 4.0), 0.04, BRASS, segs=6) # (cab grab rails)
+        for i in range(3): # (cab steps)
+            p.box((sx * 1.15, 2.3, 0.55 + i * 0.32), (0.3, 0.35, 0.04), IRON)
+    k.add(p)
+    p = k.piece("stone", "front")
+    cyl(p, (0, -5.1, 2.6), (0, -5.06, 2.6), 0.16, BRASS, segs=12) # (the number plate)
+    p.box((0, -5.09, 2.35), (0.08, 0.04, 0.4), BRASS) # (the door's handle)
+    for a in range(6):
+        aa = a / 6 * math.tau
+        p.box((math.cos(aa) * 0.62, -5.07, 2.35 + math.sin(aa) * 0.62), (0.08, 0.04, 0.08), IRON) # (the dogs)
+    p.box((0, -5.3, 0.95), (0.12, 0.35, 0.1), IRON) # (the coupling hook)
+    for sx in (-0.7, 0.7):
+        p.box((sx, -5.12, 1.4), (0.12, 0.12, 0.12), IRON) # (lamp irons)
+    k.add(p)
     for y in (-1.3, 0.6, 2.5):
         wheelset(k, y, 0.82, color=INK)
     wheelset(k, -3.9, 0.45)
@@ -1740,6 +1799,19 @@ def tender():
     for i in range(26):
         p.stone((rng.uniform(-0.9, 0.9), rng.uniform(-1.9, 0.5), 2.85 + rng.uniform(0, 0.25)), (0.5, 0.45, 0.3), color=(0.05, 0.05, 0.05), rng=rng)
     k.add(p)
+    # a tool box on the top, the water filler, a ladder up the back, grab rails
+    p = k.piece("dark", "fittings")
+    p.box((0, 2.55, 2.95), (1.8, 0.5, 0.35), INK)
+    cyl(p, (0.7, 1.9, 2.67), (0.7, 1.9, 2.9), 0.25, IRON, segs=12)
+    for sx in (-0.3, 0.3):
+        p.box((sx, 2.92, 1.8), (0.04, 0.04, 1.6), IRON)
+    for i in range(5):
+        p.box((0, 2.92, 1.15 + i * 0.32), (0.64, 0.04, 0.04), IRON)
+    for sx in (-1, 1):
+        cyl(p, (sx * 1.32, -2.0, 1.4), (sx * 1.32, -2.0, 2.5), 0.025, BRASS, segs=6)
+        cyl(p, (sx * 1.32, 2.8, 1.4), (sx * 1.32, 2.8, 2.5), 0.025, BRASS, segs=6)
+    k.add(p)
+    buffers(k, 3.0, 1)
     bogie(k, -1.7)
     bogie(k, 1.9)
     k.finish()
@@ -1773,6 +1845,25 @@ def vagon():
             p.box((sx * 0.75, sy * 5.05, 2.15), (0.7, 0.04, 0.05), IRON)
         p.box((0, sy * 4.42, 2.0), (0.75, 0.05, 1.8), (0.2, 0.14, 0.09)) # (the door)
     k.add(p)
+    # window frames, a brass band along the side, footboards and steps, lamps and vents on the roof
+    p = k.piece("dark", "trim")
+    for i in range(7):
+        y = -3.3 + i * 1.1
+        for sx in (-1, 1):
+            p.box((sx * 1.4, y, 2.95), (0.03, 0.75, 0.05), (0.85, 0.82, 0.7))
+            p.box((sx * 1.4, y, 2.15), (0.03, 0.75, 0.05), (0.85, 0.82, 0.7))
+    for sx in (-1, 1):
+        p.box((sx * 1.4, 0, 3.15), (0.03, 8.6, 0.08), BRASS)
+        p.box((sx * 1.5, 0, 0.98), (0.25, 8.4, 0.05), IRON) # (the footboard)
+        for sy in (-1, 1):
+            for i in range(2):
+                p.box((sx * 1.3, sy * 4.75, 0.55 + i * 0.25), (0.35, 0.4, 0.04), IRON) # (the steps up to the platforms)
+    for y in (-3.0, -1.0, 1.0, 3.0):
+        cyl(p, (0, y, 3.82), (0, y, 4.02), 0.14, IRON, segs=10) # (roof lamps)
+        p.box((0, y + 0.5, 3.88), (0.3, 0.2, 0.12), IRON) # (vents)
+    k.add(p)
+    buffers(k, -5.0, -1)
+    buffers(k, 5.0, 1)
     bogie(k, -3.4)
     bogie(k, 3.4)
     k.finish()
@@ -1796,6 +1887,21 @@ def yuk():
         for dz in (-0.7, 0.0, 0.7):
             p.box((sx * 1.44, 0.0, 2.05 + dz), (0.03, 1.55, 0.06), IRON)
     k.add(p)
+    # diagonal iron braces across the boards, ladders at the corners, a roof walk, the seal on the door
+    p = k.piece("dark", "braces")
+    for sx in (-1, 1):
+        for y0, s in ((-3.2, 1), (-1.2, -1), (1.2, 1), (3.2, -1)):
+            if abs(y0) < 1.0:
+                continue
+            p.obox((sx * 1.42, y0 + s * 0.0 - (0.55 if y0 < 0 else -0.55) * 0.0, 2.15), (0, 0.6, 0.8), (1, 0, 0), (0, -0.8, 0.6), (2.5, 0.03, 0.08), IRON)
+        for sy in (-1, 1):
+            for i in range(6):
+                p.box((sx * 1.2, sy * 3.84, 1.3 + i * 0.35), (0.4, 0.03, 0.04), IRON) # (corner ladders)
+        p.box((sx * 1.45, 0.82, 2.05), (0.04, 0.08, 0.14), (0.75, 0.15, 0.1)) # (the seal)
+    p.box((0, 0, 3.4), (0.5, 7.6, 0.05), jit(PLANK, 0.05, k.rng)) # (the roof walk)
+    k.add(p)
+    buffers(k, -4.1, -1)
+    buffers(k, 4.1, 1)
     bogie(k, -2.7)
     bogie(k, 2.7)
     k.finish()
@@ -1958,7 +2064,8 @@ def kamyon():
         p.box((0, y, 2.55), (0.3, 0.04, 0.02), (0.4, 0.37, 0.27)) # (the lacing)
     k.add(p)
     p = k.piece("dark", "spare")
-    cyl(p, (1.12, -0.1, 0.95), (1.24, -0.1, 0.95), 0.45, RUBBER, segs=18)
+    cyl(p, (1.03, -0.1, 0.95), (1.15, -0.1, 0.95), 0.45, RUBBER, segs=18)
+    p.box((1.04, -0.1, 0.95), (0.06, 0.12, 0.12), STEEL) # (its bracket)
     k.add(p)
     p = k.piece("dark", "exhaust")
     cyl(p, (0.55, -2.9, 0.62), (0.55, -3.35, 0.6), 0.05, RUBBER, segs=8)
@@ -2082,7 +2189,7 @@ def _okuma_extra(k, w, d):
     # a stack of newspapers tied up by the door
     p = k.piece("cloth", "papers")
     for i in range(4):
-        p.box((-w * 0.5 + 0.9, -d * 0.5 - 0.5, 0.52 + i * 0.07), (0.5, 0.36, 0.06), (0.85, 0.82, 0.72), rot_z=i * 0.15)
+        p.box((-w * 0.5 + 0.9, -d * 0.5 - 0.02, FLOOR + 0.04 + i * 0.07), (0.5, 0.36, 0.06), (0.85, 0.82, 0.72), rot_z=i * 0.15)
     k.add(p)
 
 
@@ -2188,8 +2295,12 @@ def _jail_extra(k, w, d):
     for sx in (-0.5, 0.5):
         p.box((1.6 + sx, -d * 0.5 - 0.6, 0.25), (0.06, 0.3, 0.5), DARK)
     k.add(p)
+    p = k.piece("dark", "bracket")
+    p.box((-1.0, -d * 0.5 - 0.06, 2.36), (0.04, 0.2, 0.04), IRON)
+    p.box((-1.0, -d * 0.5 - 0.15, 2.22), (0.22, 0.16, 0.06), IRON)
+    k.add(p)
     p = k.piece("window", "lamp")
-    p.box((-1.0, -d * 0.5 - 0.15, 2.2), (0.18, 0.12, 0.24), (1.0, 0.85, 0.55))
+    p.box((-1.0, -d * 0.5 - 0.15, 2.07), (0.16, 0.12, 0.24), (1.0, 0.85, 0.55))
     k.add(p)
 
 
