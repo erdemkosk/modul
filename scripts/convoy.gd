@@ -80,6 +80,8 @@ func _place() -> void:
 	if path.size() < 2:
 		return
 	for c: Dictionary in _cars:
+		if c.get("wreck", false):
+			continue
 		var node: Node3D = c.node
 		var s := _s - float(c.back) if _state != "leaving" else _s + float(c.back)
 		var xf := _at(s)
@@ -107,16 +109,73 @@ func _process(dt: float) -> void:
 			_s = maxf(_s - v * dt, 0.0)
 			moved = was - _s
 			if _s <= 0.01:
+				# (the wrecks stay where they were left, burnt out)
+				for c: Dictionary in _cars:
+					if c.get("wreck", false) and is_instance_valid(c.node):
+						var xf: Transform3D = (c.node as Node3D).global_transform
+						remove_child(c.node)
+						village.add_child(c.node)
+						(c.node as Node3D).global_transform = xf
 				gone.emit()
 				queue_free()
 				return
 	if moved > 0.0:
 		_place()
+		_mines()
 		for c: Dictionary in _cars:
 			for w: Node3D in c.wheels:
 				w.rotate_object_local(Vector3.RIGHT, moved / 0.47)
 		_crush()
 	_engine.pitch_scale = 1.0 if moved > 0.0 else 0.7
+
+
+## A mine under one of them: a truck blown and burning where it stands, a tank's track torn off
+## (it goes no further); the rest halt, and come off it shooting.
+func _mines() -> void:
+	if village.mines.is_empty():
+		return
+	for c: Dictionary in _cars:
+		if c.get("wreck", false):
+			continue
+		var node: Node3D = c.node
+		if village.mine_under(node.global_position, 2.0):
+			c.wreck = true
+			var black := StandardMaterial3D.new()
+			black.albedo_color = Color(0.06, 0.055, 0.05)
+			black.roughness = 1.0
+			for n in node.find_children("*", "MeshInstance3D", true, false):
+				if c.get("kind", "") == "truck" or randf() < 0.5:
+					(n as MeshInstance3D).material_override = black
+			var fire := FireFx.flames()
+			fire.amount = 24
+			node.add_child(fire)
+			fire.position = Vector3(0, 1.6, 0)
+			var smoke := FireFx.smoke(false)
+			smoke.amount = 40
+			smoke.lifetime = 8.0
+			node.add_child(smoke)
+			smoke.position = Vector3(0, 2.0, 0)
+			if c.get("kind", "") == "tank":
+				node.rotation.z = 0.12 # (down on the torn track)
+				gun = null
+			village.message.emit("%s mayına bastı! %s" % ["Tank" if c.get("kind", "") == "tank" else "Bir kamyon",
+				"Paleti koptu, olduğu yerde kaldı." if c.get("kind", "") == "tank" else "Havaya uçtu, yanıyor."], "good")
+			# the column stops here, and its men come for whoever did it
+			_state = "halted"
+			path = path.slice(0, maxi(2, int(_s / 2.0) + 1))
+			lay_short()
+			if not _cars.all(func(x: Dictionary) -> bool: return x.get("wreck", false)):
+				village.convoy_attacks(self)
+			return
+
+
+## The road cut short where they stopped (the way back out from here).
+func lay_short() -> void:
+	_len.resize(path.size())
+	_len[0] = 0.0
+	for k in range(1, path.size()):
+		_len[k] = _len[k - 1] + path[k].distance_to(path[k - 1])
+	_s = _len[_len.size() - 1]
 
 
 ## The trees in the way: down under the lead, with a crack.

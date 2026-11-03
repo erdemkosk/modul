@@ -1309,6 +1309,26 @@ func _grow_saplings(dt: float) -> void:
 			s.remove_meta("rotting"))
 
 
+## A free pair of hands to a marked trench: there with a spade, a stint's digging.
+func _plan_trench(v: Villager) -> bool:
+	if trenches.is_empty():
+		return false
+	var t := trench_to_dig(v.position)
+	if t.is_empty():
+		return false
+	t.digger = v
+	var c := Vector3((t.a.x + t.b.x) * 0.5, 0, (t.a.y + t.b.y) * 0.5)
+	var side := Vector3(t.b.y - t.a.y, 0, -(t.b.x - t.a.x)).normalized() * 1.0
+	var at := c + side
+	at.y = nav.height(at.x, at.z)
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": 8.0, "anim": "dig", "face": c},
+		{"t": "do", "f": func() -> bool:
+			t.digger = null
+			dig_on(t, 0.25 * v.knack("insa"))
+			return true}], "Hendek kazıyor")
+	return true
+
+
 ## A shoveller's next stint: out to the line, the nearest stretch to the workshop give or take, a
 ## while at the snow, the drift that much less.
 const SHOVEL := 0.006 ## of the drift, a stint

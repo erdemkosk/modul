@@ -19,7 +19,7 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
 			only = a.trim_prefix("--only=").split(",")
-	for k: String in BuildingDefs.DEFS.keys() + ["kes", "kesme", "tuzak"]:
+	for k: String in BuildingDefs.DEFS.keys() + ["kes", "kesme", "tuzak", "mayin", "hendek"]:
 		if only.is_empty() or k in only:
 			_kinds.append(k)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
@@ -163,6 +163,84 @@ func _take_line(kind: String) -> void:
 				st.position = Vector3(cos(a) * (0.2 + (k % 3) * 0.25), 0.3, sin(a) * (0.2 + (k % 3) * 0.25))
 				st.rotation = Vector3(0.15, a, 0)
 				n.add_child(st)
+		"mayin": # (a round iron mine half dug in, its pressure plate up, a red-ragged stick by it)
+			var earth := StandardMaterial3D.new()
+			earth.albedo_color = Color(0.3, 0.22, 0.15)
+			var iron := StandardMaterial3D.new()
+			iron.albedo_color = Color(0.25, 0.26, 0.22)
+			iron.metallic = 0.6
+			var mound := MeshInstance3D.new()
+			var mm := SphereMesh.new()
+			mm.radius = 1.0
+			mm.height = 0.3
+			mound.mesh = mm
+			mound.material_override = earth
+			n.add_child(mound)
+			var case := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.55
+			cm.bottom_radius = 0.6
+			cm.height = 0.3
+			case.mesh = cm
+			case.material_override = iron
+			case.position.y = 0.15
+			n.add_child(case)
+			var plate := MeshInstance3D.new()
+			var pm2 := CylinderMesh.new()
+			pm2.top_radius = 0.18
+			pm2.bottom_radius = 0.18
+			pm2.height = 0.12
+			plate.mesh = pm2
+			plate.material_override = iron
+			plate.position.y = 0.36
+			n.add_child(plate)
+			var stick := MeshInstance3D.new()
+			var sm2 := CylinderMesh.new()
+			sm2.top_radius = 0.03
+			sm2.bottom_radius = 0.03
+			sm2.height = 1.4
+			stick.mesh = sm2
+			stick.material_override = wood
+			stick.position = Vector3(1.0, 0.7, 0)
+			n.add_child(stick)
+			var rag := MeshInstance3D.new()
+			var rm := BoxMesh.new()
+			rm.size = Vector3(0.02, 0.25, 0.4)
+			rag.mesh = rm
+			var red := StandardMaterial3D.new()
+			red.albedo_color = Color(0.75, 0.12, 0.08)
+			rag.material_override = red
+			rag.position = Vector3(1.0, 1.3, 0.2)
+			n.add_child(rag)
+		"hendek": # (a trench cut in the earth, its spoil heaped along one lip, a spade in it)
+			var earth := StandardMaterial3D.new()
+			earth.albedo_color = Color(0.3, 0.22, 0.15)
+			var dark := StandardMaterial3D.new()
+			dark.albedo_color = Color(0.12, 0.09, 0.06)
+			for s in [-1.0, 1.0]:
+				var lip := MeshInstance3D.new()
+				var lm := BoxMesh.new()
+				lm.size = Vector3(3.2, 0.35 if s > 0 else 0.15, 0.7)
+				lip.mesh = lm
+				lip.material_override = earth
+				lip.position = Vector3(0, 0.15, s * 0.75)
+				n.add_child(lip)
+			var floor := MeshInstance3D.new()
+			var fm := BoxMesh.new()
+			fm.size = Vector3(3.2, 0.05, 0.8)
+			floor.mesh = fm
+			floor.material_override = dark
+			n.add_child(floor)
+			var haft := MeshInstance3D.new()
+			var hm := CylinderMesh.new()
+			hm.top_radius = 0.03
+			hm.bottom_radius = 0.03
+			hm.height = 1.2
+			haft.mesh = hm
+			haft.material_override = wood
+			haft.position = Vector3(0.8, 0.55, 0.1)
+			haft.rotation.z = 0.5
+			n.add_child(haft)
 		"yol":
 			for k in 7:
 				var pl := MeshInstance3D.new()
@@ -196,7 +274,7 @@ func _take(kind: String) -> void:
 	if kind in ["kes", "kesme"]:
 		await _take_order(kind)
 		return
-	if kind in ["sur", "kapi", "yol", "tuzak"]:
+	if kind in ["sur", "kapi", "yol", "tuzak", "mayin", "hendek"]:
 		await _take_line(kind)
 		return
 	var b := Building.new()

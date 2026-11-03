@@ -211,6 +211,8 @@ func cover_near(p: Vector3, reach := 5.0) -> Vector3:
 
 
 func is_cover(p: Vector3) -> bool:
+	if not trenches.is_empty() and in_trench(p):
+		return true
 	for k in 8:
 		var a := k * TAU / 8.0
 		if not nav.is_open(p + Vector3(cos(a), 0, sin(a)) * 1.4):

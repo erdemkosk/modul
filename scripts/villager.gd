@@ -1327,7 +1327,7 @@ func die() -> void:
 func _process(dt: float) -> void:
 	if dead:
 		return
-	if team == 1 and not down and not village.traps.is_empty():
+	if team == 1 and not down and (not village.traps.is_empty() or not village.mines.is_empty()):
 		_trap_t -= dt
 		if _trap_t <= 0.0:
 			_trap_t = 0.15

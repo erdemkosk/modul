@@ -84,6 +84,8 @@ var saplings := {} ## prop index -> {node, left (s till it's a tree)}
 
 var billets: Array[Dictionary] = [] ## logs lying where a tree was bucked: {node, camp, claimed}
 var traps: Array = [] ## stake pits: {at: Vector3, armed: bool, node: Node3D}
+var mines: Array = [] ## land mines: {at: Vector3, node: Node3D} (gone once they go off)
+var trenches: Array = [] ## {a: Vector2, b: Vector2, done: float 0..1} a 3 m length each, dug by the free hands
 var downed_outlaws: Array[Villager] = [] ## outlaws lying wounded after a fight: to be taken to a jail, or to bleed out
 var cut_marks := {} ## prop index -> 1: marked to be felled (KES), 2: urgently (ACİL KES: everyone drops their work for it)
 var _marks_mm: MultiMeshInstance3D ## an orange band round each marked trunk
@@ -1929,8 +1931,193 @@ func _show_trap(t: Dictionary) -> void:
 	t.node = n
 
 
+## Land mines buried across `area` (one every MINE_GAP), or one at a click. Each takes MINE_COST
+## from the stores (iron for the case, coal for the powder). How many were laid.
+const MINE_COST := {"demir": 1, "komur": 1}
+const MINE_GAP := 5.0
+
+
+func lay_mines(area: Rect2) -> int:
+	if not knows("patlayici"):
+		message.emit("Önce okuma odasında Patlayıcılar araştırılmalı", "info")
+		return 0
+	var spots: Array[Vector3] = []
+	if area.size.x < 1.5 and area.size.y < 1.5:
+		spots.append(Vector3(area.get_center().x, 0, area.get_center().y))
+	else:
+		var x := area.position.x + MINE_GAP * 0.5
+		while x < area.end.x:
+			var z := area.position.y + MINE_GAP * 0.5
+			while z < area.end.y:
+				spots.append(Vector3(x, 0, z))
+				z += MINE_GAP
+			x += MINE_GAP
+	var n := 0
+	for p in spots:
+		if mines.any(func(m: Dictionary) -> bool: return Vector2(m.at.x - p.x, m.at.z - p.z).length() < MINE_GAP * 0.6):
+			continue
+		if not nav.is_ground_open(p):
+			continue
+		if not pay(MINE_COST, p):
+			break
+		p.y = nav.height(p.x, p.z)
+		var m := {"at": p, "node": null}
+		_show_mine(m)
+		mines.append(m)
+		n += 1
+	return n
+
+
+## A mine as it looks: a little mound of turned earth, a stick marking it (for the town's own).
+func _show_mine(m: Dictionary) -> void:
+	var node := Node3D.new()
+	add_child(node)
+	node.position = m.at
+	var earth := StandardMaterial3D.new()
+	earth.albedo_color = Color(0.22, 0.17, 0.11)
+	var mound := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.35
+	sm.height = 0.12
+	sm.radial_segments = 8
+	sm.rings = 3
+	mound.mesh = sm
+	mound.material_override = earth
+	node.add_child(mound)
+	var stick := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.012
+	cm.bottom_radius = 0.015
+	cm.height = 0.6
+	stick.mesh = cm
+	stick.material_override = Building.material("wood")
+	stick.position = Vector3(0.45, 0.3, 0)
+	node.add_child(stick)
+	var rag := MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(0.01, 0.1, 0.16)
+	rag.mesh = rm
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.7, 0.12, 0.08)
+	rag.material_override = red
+	rag.position = Vector3(0.45, 0.55, 0.08)
+	node.add_child(rag)
+	m.node = node
+
+
+## A mine under `p` (within `r` m): it goes off. Whether one did.
+func mine_under(p: Vector3, r: float) -> bool:
+	for m: Dictionary in mines:
+		if Vector2(m.at.x - p.x, m.at.z - p.z).length() < r:
+			_blow(m)
+			return true
+	return false
+
+
+## The blast: a flash and a crash, earth thrown up and a crater left, anyone close cut down
+## (the nearer the worse), the ground scorched.
+func _blow(m: Dictionary) -> void:
+	mines.erase(m)
+	if is_instance_valid(m.node):
+		(m.node as Node).queue_free()
+	var at: Vector3 = m.at
+	raids._flash(at + Vector3.UP * 0.5, "war/shell")
+	raids._flash(at + Vector3.UP * 1.2, "")
+	for k in 8:
+		raids._impact(at + Vector3(randf_range(-1.8, 1.8), 0.05, randf_range(-1.8, 1.8)))
+	terrain.dig_crater(at, 1.4, 0.5)
+	terrain.commit_digs()
+	nav.scorch(at, 2.5, 1.0)
+	var all: Array[Villager] = []
+	all.append_array(villagers)
+	all.append_array(raids.raiders)
+	all.append_array(raids.camp_men)
+	for v in all:
+		if is_instance_valid(v) and not v.dead:
+			var d := v.position.distance_to(at)
+			if d < 4.5:
+				v.hurt(70.0 * (1.0 - d / 4.5) + 10.0)
+
+
+## A trench marked from `a` to `b`, in 3 m lengths for the free hands to dig. How many lengths.
+func mark_trench(a: Vector2, b: Vector2) -> int:
+	var len := a.distance_to(b)
+	if len < 2.0:
+		return 0
+	var n := maxi(1, int(len / 3.0))
+	for k in n:
+		var p0 := a.lerp(b, float(k) / n)
+		var p1 := a.lerp(b, float(k + 1) / n)
+		trenches.append({"a": p0, "b": p1, "done": 0.0, "node": null})
+		_show_trench(trenches[-1])
+	return n
+
+
+## A length marked out (pegs and a string) or, dug, the trench itself in the ground.
+func _show_trench(t: Dictionary) -> void:
+	if is_instance_valid(t.node):
+		(t.node as Node).queue_free()
+	t.node = null
+	if float(t.done) >= 1.0:
+		return
+	var node := Node3D.new()
+	add_child(node)
+	var a3 := Vector3(t.a.x, 0, t.a.y)
+	var b3 := Vector3(t.b.x, 0, t.b.y)
+	a3.y = nav.height(a3.x, a3.z)
+	b3.y = nav.height(b3.x, b3.z)
+	var line := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.02, 0.02, a3.distance_to(b3))
+	line.mesh = lm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.85, 0.8, 0.6)
+	line.material_override = m
+	node.add_child(line)
+	line.global_position = (a3 + b3) * 0.5 + Vector3.UP * 0.25
+	line.look_at(b3 + Vector3.UP * 0.25, Vector3.UP)
+	t.node = node
+
+
+## The next length to dig for a free pair of hands, nearest first.
+func trench_to_dig(p: Vector3) -> Dictionary:
+	var best := {}
+	var bd := 120.0
+	for t: Dictionary in trenches:
+		if float(t.done) >= 1.0 or t.get("digger") != null and is_instance_valid(t.get("digger")):
+			continue
+		var c := Vector3((t.a.x + t.b.x) * 0.5, p.y, (t.a.y + t.b.y) * 0.5)
+		var d := c.distance_to(p)
+		if d < bd:
+			bd = d
+			best = t
+	return best
+
+
+## A length dug a stint further; finished, the ground's cut down into it.
+func dig_on(t: Dictionary, by: float) -> void:
+	t.done = minf(float(t.done) + by, 1.0)
+	if float(t.done) >= 1.0:
+		terrain.dig_trench(t.a, t.b, 1.3, 0.85)
+		terrain.commit_digs()
+		_show_trench(t)
+
+
+## Down in a dug trench at `p`: cover.
+func in_trench(p: Vector3) -> bool:
+	for t: Dictionary in trenches:
+		if float(t.done) >= 1.0:
+			var q := Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), t.a, t.b)
+			if q.distance_to(Vector2(p.x, p.z)) < 0.9:
+				return true
+	return false
+
+
 ## An outlaw at `p`: a set pit it's stepped into springs on it (hurt, and slowed for good: it limps).
 func spring_trap(r: Villager) -> void:
+	if not mines.is_empty() and mine_under(r.position, 0.9):
+		message.emit("Bir düşman mayına bastı!", "good")
+		return
 	for t: Dictionary in traps:
 		if not t.armed:
 			continue

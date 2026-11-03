@@ -15,10 +15,12 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
-	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak"]]]
+	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak", "mayin", "hendek"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
+	"mayin": {"name": "Mayın", "gives": "düşmanı, kamyonu, tankı uçurur", "needs": "patlayici", "desc": "Bir alan sürükle ya da bir yere tıkla: toprağa gizli kara mayınları gömülür (mayın başı 1 demir, 1 kömür; 5 m arayla). Üstüne basan firari ya da asker, üstünden geçen kamyon ya da tank havaya uçar; tankın paleti kopar, yerinde kalır. Köylüler yerini bilir, basmaz."},
+	"hendek": {"name": "Hendek", "gives": "milise siper", "desc": "Bir çizgi sürükle: boştaki köylüler kürekle bir siper hendeği kazar. Hendekteki milis siperdedir: onu vurmak iki kat zor. Bedava, emek ister."},
 	"tuzak": {"name": "Tuzak", "gives": "firariyi yaralar, yavaşlatır", "desc": "Bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları kazılır (çukur başı 2 odun). Üstünden geçen firari yaralanır, topallar; çukur bozulur. Aynı yere yeniden TUZAK verince bozulanlar kurulur. Köylüler yerini bilir, düşmez."}}
 const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1). Nothing needs a key: what the selected thing can do
@@ -476,7 +478,7 @@ func _build_button(kind: String, k: int) -> Button:
 		gives += " · %d kişi" % int(def.slots)
 	var give := Ui.label(col, gives, 11, Ui.GOOD, "head")
 	var cost := Ui.label(col, "bedava" if ORDERS.has(kind) else BuildingDefs.cost_text(kind), 11, Ui.DIM, "head")
-	var needs := "" if ORDERS.has(kind) else str(def.get("needs", ""))
+	var needs := str(def.get("needs", ""))
 	if needs != "":
 		b.set_meta("needs", needs)
 		b.tooltip_text = "KİLİTLİ: okuma odasında %s araştırılınca açılır.\n\n%s" % [BuildingDefs.TECHS[needs].name, def.desc]

@@ -90,7 +90,7 @@ static func save(game: Node) -> bool:
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "camp": [game.raids.camp_at.x, game.raids.camp_at.y, game.raids.camp_at.z, game.raids.camp_men.size(), game.raids.camp_known] if game.raids.camp_at != Vector3.INF else [], "season_days": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "graves": v.cemetery.graves.duplicate() if v.cemetery else [], "cemetery": [v.cemetery._plot.x, v.cemetery._plot.y, v.cemetery._plot.z, v.cemetery._yaw] if v.cemetery and v.cemetery._plot != Vector3.INF else [], "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "convoy_next": v.convoy_next, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "graves": v.cemetery.graves.duplicate() if v.cemetery else [], "cemetery": [v.cemetery._plot.x, v.cemetery._plot.y, v.cemetery._plot.z, v.cemetery._yaw] if v.cemetery and v.cemetery._plot != Vector3.INF else [], "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "convoy_next": v.convoy_next, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "mines": v.mines.map(func(m: Dictionary) -> Array: return [m.at.x, m.at.y, m.at.z]), "trenches": v.trenches.map(func(t: Dictionary) -> Array: return [t.a.x, t.a.y, t.b.x, t.b.y, t.done]), "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -335,6 +335,19 @@ static func restore(game: Node, d: Dictionary) -> void:
 	for r: String in d.get("selling", []):
 		v.selling.append(r)
 	v.study_pts = float(d.get("study_pts", 0.0))
+	for m: Array in d.get("mines", []):
+		var mm := {"at": Vector3(m[0], m[1], m[2]), "node": null}
+		v._show_mine(mm)
+		v.mines.append(mm)
+	for t: Array in d.get("trenches", []):
+		var tt := {"a": Vector2(t[0], t[1]), "b": Vector2(t[2], t[3]), "done": float(t[4]), "node": null}
+		v.trenches.append(tt)
+		if float(t[4]) >= 1.0:
+			v.terrain.dig_trench(tt.a, tt.b, 1.3, 0.85)
+		else:
+			v._show_trench(tt)
+	if not v.trenches.is_empty():
+		v.terrain.commit_digs()
 	for t: Array in d.get("traps", []):
 		var tr := {"at": Vector3(float(t[0]), float(t[1]), float(t[2])), "armed": bool(t[3]), "node": null}
 		v.traps.append(tr)

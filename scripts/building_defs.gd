@@ -89,6 +89,7 @@ const TECHS := {
 	"madencilik": {"name": "Madencilik", "pts": 60.0, "desc": "Atölye demir ve kömür damarlarından da çıkarabilir (kartında ÜRET: DEMİR, KÖMÜR)."},
 	"dekovil": {"name": "Dekovil", "pts": 70.0, "after": "telgraf", "desc": "Dar hatlı yan hat: atölyelere ve depolara ray döşenir (demir ve odun ister). Tren yükünü oradan doğrudan alır, perona taşımak gerekmez."},
 	"kar_sabani": {"name": "Kar Sabanı", "pts": 50.0, "after": "telgraf", "desc": "Lokomotiflere kar sabanı: hatta kar daha yavaş birikir, her tren çoğunu temizler; hat ancak çok derin karda kapanır."},
+	"patlayici": {"name": "Patlayıcılar", "pts": 70.0, "after": "madencilik", "desc": "Kara mayını döşenebilir (EMİRLER > MAYIN): kömür tozu ve demir kapta barut. Üstüne basan düşman da, kamyon da, tank da havaya uçar; köylüler yerini bilir."},
 	"makineli": {"name": "Makineli tüfek", "pts": 110.0, "after": "demircilik", "desc": "Maxim yuvası kurulabilir: kum torbası çember içinde bir makineli tüfek. Dikenli tel ile birlikte kasabayı kaleye çevirir."},
 	"demircilik": {"name": "Demircilik", "pts": 90.0, "after": "madencilik", "desc": "Demirci kurulabilir: demir ve kömürden tüfek ve fişek döver."},
 }

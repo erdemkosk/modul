@@ -379,7 +379,7 @@ func load_game() -> void:
 # --- Placing ----------------------------------------------------------------------------------------
 
 ## The orders drawn on the ground as a box dragged out with the mouse (not buildings).
-const AREA_ORDERS := {"kes": "KES: bir alan sürükle ya da bir ağaca tıkla: herkes işini bırakıp önce bunları keser · sağ tık / Esc: bitir",
+const AREA_ORDERS := {"mayin": "MAYIN: bir alan sürükle ya da bir yere tıkla: gizli kara mayınları (mayın başı 1 demir, 1 kömür) · sağ tık / Esc: bitir", "hendek": "HENDEK: bir çizgi sürükle: boştaki köylüler siper hendeği kazar · sağ tık / Esc: bitir", "kes": "KES: bir alan sürükle ya da bir ağaca tıkla: herkes işini bırakıp önce bunları keser · sağ tık / Esc: bitir",
 	"tuzak": "TUZAK: bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları (çukur başı 2 odun; bozulanı yeniden kurar) · sağ tık / Esc: bitir",
 	"kesme": "KESME: bir alan sürükle, içindeki ağaçların kesim işareti kalksın · sağ tık / Esc: bitir",
 	"alan": "ALAN ÇİZ: bu işyerinin işçileri yalnızca sürüklediğin alanda çalışsın · sağ tık / Esc: vazgeç"}
@@ -1003,7 +1003,7 @@ func _update_drag() -> void:
 	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
 	if to == null:
 		return
-	var color: Color = {"tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
+	var color: Color = {"mayin": Color(0.8, 0.25, 0.1, 0.25), "hendek": Color(0.35, 0.25, 0.15, 0.3), "tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
 	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
 
 
@@ -1015,8 +1015,12 @@ func _area_done(to: Variant) -> void:
 	if from == null or to == null:
 		return
 	var rect := _rect(from, to)
+	if _placing == "hendek": # (a line, not a box)
+		var n := village.mark_trench(Vector2(from.x, from.z), Vector2(to.x, to.z))
+		hud.toast("%d m hendek kazılacak" % (n * 3) if n > 0 else "Hendek o kadar kısa olamaz", "good" if n > 0 else "info")
+		return
 	if rect.size.x < 1.0 or rect.size.y < 1.0:
-		if _placing == "tuzak": # (a click: one pit there)
+		if _placing in ["tuzak", "mayin"]: # (a click: one pit, one mine there)
 			rect = Rect2(Vector2(to.x - 0.3, to.z - 0.3), Vector2(0.6, 0.6))
 		elif _placing in ["kes", "kesme"]: # (a click, not a drag: the one tree there)
 			var i := village.find_prop(to, 4.0, "tree")
@@ -1030,6 +1034,9 @@ func _area_done(to: Variant) -> void:
 		"kes": # (marked to be felled first: everyone drops their work for it)
 			var n := village.mark_trees(rect, true, true)
 			hud.toast("%d ağaç kesilecek: herkes işini bırakıp gidiyor" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
+		"mayin":
+			var n := village.lay_mines(rect)
+			hud.toast("%d mayın gömüldü" % n if n > 0 else "Mayın gömülemedi (demir ya da kömür yok, ya da yer uygun değil)", "good" if n > 0 else "info")
 		"tuzak":
 			var n := village.lay_traps(rect)
 			hud.toast("%d kazık tuzağı kuruldu" % n if n > 0 else "Tuzak kurulamadı (odun yok ya da yer uygun değil)", "good" if n > 0 else "info")
