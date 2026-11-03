@@ -10,6 +10,7 @@ global uniform float weather_wetness;
 uniform float roughness_base = 0.92;
 uniform vec3 daub = vec3(0.78, 0.69, 0.53); // a house's mud plaster over its logs
 uniform float daub_k = 0.0;
+instance uniform float weathering = 0.0; // the years on it (Building.age): greyed, streaked, mossed low down
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -36,6 +37,16 @@ void fragment() {
 	// (the plaster's own patchiness: thicker here, worn thin there so the log shows through)
 	float worn = vnoise(wp * vec3(1.6, 3.5, 1.6)) * 0.6 + vnoise(wp * 9.0) * 0.4;
 	c = mix(c, daub * (0.86 + 0.28 * grain), daub_k * mix(0.6, 1.0, smoothstep(0.25, 0.6, worn)));
+	// The years: the wood silvered grey, rain streaks down the faces, moss low down and on the tops.
+	if (weathering > 0.01) {
+		float lum = dot(c, vec3(0.3, 0.55, 0.15));
+		c = mix(c, vec3(lum) * vec3(0.92, 0.9, 0.86), weathering * 0.5);
+		float streak = smoothstep(0.55, 0.9, vnoise(wp * vec3(7.0, 0.35, 7.0)));
+		c *= 1.0 - weathering * 0.28 * streak * (1.0 - up);
+		float low = 1.0 - smoothstep(0.0, 1.4, wp.y - NODE_POSITION_WORLD.y);
+		float moss = smoothstep(0.5, 0.78, vnoise(wp * 1.4) * 0.7 + grain * 0.3) * clamp(low * 0.8 + up * 0.5, 0.0, 1.0) * weathering;
+		c = mix(c, vec3(0.2, 0.26, 0.11) * (0.8 + 0.4 * grain), moss * 0.65);
+	}
 	c *= mix(1.0, 0.7, weather_wetness * (1.0 - snow));
 	ALBEDO = mix(c, vec3(0.92, 0.94, 0.97), snow);
 	ROUGHNESS = mix(roughness_base * mix(1.0, 0.55, weather_wetness), 0.75, snow);

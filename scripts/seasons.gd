@@ -80,6 +80,7 @@ func force(s: int) -> void:
 
 
 var _autumn := -1.0
+var _flowers := -1.0
 var _ice := 0.0 ## how far the water's frozen over (0..1)
 var _ice_set := -1.0
 
@@ -98,6 +99,11 @@ func _process(dt: float) -> void:
 	if absf(_ice - _ice_set) > 0.005:
 		_ice_set = _ice
 		RenderingServer.global_shader_parameter_set(&"water_frozen", _ice)
+	# The meadow's flowers: coming in spring, at their best into the summer, gone by autumn.
+	var fl := (smoothstep(0.0, 0.6, float(day_in(village.day)) / float(LENGTHS[0])) if season == 0 else (1.0 - float(day_in(village.day)) / float(LENGTHS[1]) * 0.6 if season == 1 else 0.0))
+	if absf(fl - _flowers) > 0.01:
+		_flowers = fl
+		RenderingServer.global_shader_parameter_set(&"season_flowers", fl)
 	var s := of_day(village.day, offset)
 	if s != season:
 		var first := season < 0

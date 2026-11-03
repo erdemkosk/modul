@@ -50,6 +50,10 @@ season_autumn={
 "type": "float",
 "value": 0.0
 }
+season_flowers={
+"type": "float",
+"value": 0.0
+}
 water_frozen={
 "type": "float",
 "value": 0.0

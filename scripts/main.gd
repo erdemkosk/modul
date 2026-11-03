@@ -154,6 +154,11 @@ func _ready() -> void:
 	critters.weather = weather
 	add_child(critters)
 	critters.process_mode = Node.PROCESS_MODE_PAUSABLE
+	var wild := Wildlife.new()
+	wild.village = village
+	wild.nav = nav
+	add_child(wild)
+	wild.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.92

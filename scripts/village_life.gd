@@ -203,9 +203,16 @@ func _dry_bricks(t: float) -> void:
 ## The town as the season has it: icicles on the houses' eaves and fur hats on heads in the winter.
 func dress_for_season() -> void:
 	var cold := seasons != null and seasons.winter()
+	# (the town's doing well: fed, in good heart, and a name up the line: the houses get their paint)
+	var heart := 0.0
+	for v in villagers:
+		heart += v.mood
+	heart /= maxf(villagers.size(), 1.0)
+	var well := heart >= 55.0 and int(stock.get("yiyecek", 0)) >= 40 and day >= 6
 	for b in buildings:
 		if b.def.role == "house":
 			b.set_icicles(cold)
+			b.set_trim(well)
 	for v in villagers:
 		v.dress_warm(cold)
 
@@ -217,6 +224,9 @@ func _morning() -> void:
 	_train_morning()
 	_news_morning()
 	_armoured_morning()
+	for b in buildings:
+		if b.state == "done":
+			b.grow_old()
 	dress_for_season()
 	for y in yards:
 		if is_instance_valid(y):

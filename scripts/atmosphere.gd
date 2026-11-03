@@ -29,6 +29,7 @@ var _flock := Vector3.ZERO
 var _flock_to := Vector3.ZERO
 var _flock_t := 0.0
 var _butterflies: GPUParticles3D
+var _leaves: GPUParticles3D ## autumn: leaves coming down off the birches round the camera
 var _breath: GPUParticles3D
 var _chips: GPUParticles3D
 var _puff_t := 0.0
@@ -82,6 +83,8 @@ void fragment() {
 	_make_birds()
 	_butterflies = _make_butterflies()
 	add_child(_butterflies)
+	_leaves = _make_leaves()
+	add_child(_leaves)
 	_breath = _puffer(Color(0.92, 0.94, 0.97, 0.35), 0.35, 1.6, Vector3(0, 0.25, 0))
 	add_child(_breath)
 	_chips = _puffer(Color(0.86, 0.74, 0.52, 0.9), 0.06, 0.9, Vector3(0, -6.0, 0))
@@ -171,6 +174,9 @@ func _process(dt: float) -> void:
 	var day := not weather.is_night() and weather.rain_intensity < 0.3 and weather.snow_intensity < 0.3
 	_butterflies.emitting = day and season in [0, 1] and weather.temperature > 12.0 and cam.dist < 120.0
 	_butterflies.global_position = Vector3(cam.focus.x, cam.focus.y + 0.6, cam.focus.z)
+	_leaves.emitting = season == 2 and weather.rain_intensity < 0.6 and cam.dist < 140.0
+	_leaves.global_position = Vector3(cam.focus.x, cam.focus.y + 14.0, cam.focus.z)
+	(_leaves.process_material as ParticleProcessMaterial).gravity = Vector3(Weather.wind_now.x * 0.35, -0.9, Weather.wind_now.z * 0.35)
 	_puff_t += dt
 	if _puff_t > 0.35:
 		_puff_t = 0.0
@@ -229,6 +235,51 @@ func _puffer(color: Color, size: float, life: float, gravity: Vector3) -> GPUPar
 	p.visibility_aabb = AABB(Vector3(-2000, -500, -2000), Vector3(4000, 2000, 4000))
 	p.local_coords = false
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return p
+
+
+## Leaves twirling down in the autumn, gold and rust, drifting with the wind.
+func _make_leaves() -> GPUParticles3D:
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(45, 4, 45)
+	pm.gravity = Vector3(0, -0.9, 0)
+	pm.initial_velocity_min = 0.0
+	pm.initial_velocity_max = 0.4
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 1.6
+	pm.turbulence_noise_scale = 4.0
+	pm.turbulence_influence_min = 0.15
+	pm.turbulence_influence_max = 0.35
+	pm.angle_min = 0.0
+	pm.angle_max = 360.0
+	pm.angular_velocity_min = -180.0
+	pm.angular_velocity_max = 180.0
+	pm.scale_min = 0.7
+	pm.scale_max = 1.4
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.4, 0.75, 1.0])
+	g.colors = PackedColorArray([Color(0.85, 0.62, 0.12), Color(0.78, 0.36, 0.1), Color(0.6, 0.18, 0.08), Color(0.7, 0.55, 0.2)])
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_initial_ramp = gt
+	var p := GPUParticles3D.new()
+	p.amount = 140
+	p.lifetime = 16.0
+	p.preprocess = 8.0
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.11, 0.08)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.billboard_keep_scale = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = m
+	p.draw_pass_1 = q
+	p.visibility_aabb = AABB(Vector3(-50, -30, -50), Vector3(100, 40, 100))
+	p.local_coords = false
+	p.emitting = false
 	return p
 
 

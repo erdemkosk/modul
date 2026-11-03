@@ -1896,6 +1896,8 @@ func _on_finished(b: Building) -> void:
 		_house_people()
 		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
+	if b.repaired:
+		b.freshen()
 	if b.kind == "silahlik" and not b.has_meta("stocked"):
 		b.set_meta("stocked", true)
 		b.arms = 2

@@ -521,6 +521,75 @@ func show_laundry(on: bool) -> void:
 	_laundry.visible = on
 
 
+## The years on it: a day older each morning, the wood greying and the moss coming (a mending
+## takes most of it off again).
+var age := 0.0 ## days standing
+
+
+func grow_old(days := 1.0) -> void:
+	age += days
+	_weather_show()
+
+
+func freshen() -> void:
+	age *= 0.35
+	_weather_show()
+
+
+func _weather_show() -> void:
+	var w := clampf(age / 36.0, 0.0, 0.85)
+	for p in pieces:
+		if p.mesh and p.mesh.material_override is ShaderMaterial:
+			p.mesh.set_instance_shader_parameter(&"weathering", w)
+
+
+## Painted shutters on its windows, once the town's doing well (a house's): a pair each, the paint
+## each house's own.
+var _shutters: Node3D
+
+
+func set_trim(on: bool) -> void:
+	if not on or state != "done" or def.role != "house":
+		if _shutters:
+			_shutters.visible = false
+		return
+	if _shutters == null:
+		_shutters = Node3D.new()
+		add_child(_shutters)
+		var paints := [Color(0.18, 0.38, 0.32), Color(0.2, 0.3, 0.5), Color(0.55, 0.16, 0.12), Color(0.85, 0.82, 0.72), Color(0.3, 0.45, 0.2)]
+		var m := StandardMaterial3D.new()
+		m.albedo_color = paints[hash(get_instance_id()) % paints.size()]
+		m.roughness = 0.8
+		var white := StandardMaterial3D.new()
+		white.albedo_color = Color(0.9, 0.88, 0.82)
+		for p in pieces:
+			if p.stuff != "window" or not p.alive:
+				continue
+			var bb := p.aabb
+			var c := bb.get_center()
+			var thin_x := bb.size.x < bb.size.z # (which way the wall runs: shutters go along it)
+			var w := (bb.size.z if thin_x else bb.size.x) * 0.5
+			for s in [-1.0, 1.0]:
+				var sh := MeshInstance3D.new()
+				var sm := BoxMesh.new()
+				sm.size = Vector3(0.06, bb.size.y * 1.05, w) if thin_x else Vector3(w, bb.size.y * 1.05, 0.06)
+				sh.mesh = sm
+				sh.material_override = m
+				var off := Vector3(0, 0, s * (w + 0.05)) if thin_x else Vector3(s * (w + 0.05), 0, 0)
+				var out := Vector3(signf(c.x) * 0.06, 0, 0) if thin_x else Vector3(0, 0, signf(c.z) * 0.06)
+				sh.position = c + off + out
+				_shutters.add_child(sh)
+			# a carved board over it
+			var top := MeshInstance3D.new()
+			var tm := BoxMesh.new()
+			tm.size = Vector3(0.08, 0.12, bb.size.z + 0.5) if thin_x else Vector3(bb.size.x + 0.5, 0.12, 0.08)
+			top.mesh = tm
+			top.material_override = white
+			top.position = c + Vector3(0, bb.size.y * 0.5 + 0.12, 0) + (Vector3(signf(c.x) * 0.08, 0, 0) if thin_x else Vector3(0, 0, signf(c.z) * 0.08))
+			_shutters.add_child(top)
+	_shutters.visible = true
+
+
 ## Icicles hung along the eaves in the winter (a house's): little cones of ice along the roof's low
 ## front and back edges.
 var _icicles: MultiMeshInstance3D

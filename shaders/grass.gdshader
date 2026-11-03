@@ -39,10 +39,13 @@ global uniform vec4 campfire_clear_b;
 global uniform float weather_wetness;
 global uniform float weather_snow;
 global uniform float weather_ice;
+global uniform float season_flowers; // spring into summer: the meadow in flower (Seasons)
+global uniform float season_autumn;
 
 varying float v_h;
 varying vec3 v_col;
 varying vec3 v_root;
+varying vec4 v_flower; // a flowering clump: the bloom's colour at its blade tips (a: whether)
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -163,6 +166,13 @@ void vertex() {
 	v_col = mix(v_col, vec3(0.4, 0.34, 0.19) * (0.85 + 0.3 * tone), dry);
 	v_col = mix(v_col, vec3(0.4, 0.37, 0.18), smoothstep(0.72, 1.0, vnoise(xz * 0.07)) * 0.55); // going to seed
 	v_col *= 1.0 + gust * 0.12; // the gust turns the paler underside to the light
+	// Autumn: the meadow goes over to straw and rust.
+	v_col = mix(v_col, vec3(0.42, 0.33, 0.15) * (0.85 + 0.3 * tone), season_autumn * 0.55 * (1.0 - dry));
+	// In flower: a clump here and there tipped with white, yellow, blue or purple, in drifts.
+	float bloom = step(hash12(cell + 9.1), season_flowers * 0.24 * smoothstep(0.2, 0.6, vnoise(xz * 0.05 + 3.0)) * (1.0 - dry));
+	float pick = hash12(cell + 17.7);
+	vec3 petal = pick < 0.3 ? vec3(0.95, 0.94, 0.88) : (pick < 0.55 ? vec3(0.95, 0.8, 0.2) : (pick < 0.8 ? vec3(0.45, 0.5, 0.9) : vec3(0.7, 0.35, 0.75)));
+	v_flower = vec4(petal, bloom * scale);
 	// The ground colour round the root, so the blades grow out of it (the terrain's meadow tones).
 	v_root = ground_c * 0.85; // the ground itself round the root: blades grow out of it
 	v_root = mix(v_root, vec3(0.3, 0.25, 0.17), dry);
@@ -176,6 +186,7 @@ void vertex() {
 
 void fragment() {
 	vec3 c = mix(v_root, v_col, smoothstep(0.0, 0.6, v_h)) * mix(0.95, 1.12, v_h);
+	c = mix(c, v_flower.rgb, v_flower.a * smoothstep(0.6, 0.85, v_h));
 	c *= mix(1.0, 0.65, weather_wetness * (1.0 - weather_ice));
 	c = mix(c, vec3(0.68, 0.72, 0.76), weather_ice * 0.6 * smoothstep(0.2, 1.0, v_h)); // hoarfrost on the blades
 	ALBEDO = c;

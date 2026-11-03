@@ -1094,6 +1094,40 @@ func get_down() -> void:
 	position.y = village.ground_at(position) if village.has_method("ground_at") else nav.height(position.x, position.z)
 
 
+## What the body says of how it's doing, laid over its moves: the head turned to whoever it's talking
+## with (or to anyone close by, now and then), a limp on a hurt or lost leg, a shiver in the cold
+## without a fire, the back bent when it's low.
+var _look_t := 0.0
+var _look_at := Vector3.INF
+
+
+func _body_mood(walking: bool) -> void:
+	var pose: TownsfolkPose = _body.pose
+	pose.walking = walking
+	_look_t -= get_process_delta_time()
+	if _look_t <= 0.0:
+		_look_t = randf_range(1.5, 4.0)
+		_look_at = Vector3.INF
+		if not walking and team == 0 and not sleeping:
+			var who: Villager = null
+			var bd := 6.0 if _anim == "chat" else 4.0
+			for o: Villager in village.villagers:
+				if o != self and not o.dead and not o.sleeping:
+					var d := o.position.distance_to(position)
+					if d < bd:
+						bd = d
+						who = o
+			if who and (_anim == "chat" or randf() < 0.5):
+				_look_at = who.position + Vector3.UP * 1.55
+	pose.look_at = _look_at
+	var leg_hurt := "tek_bacak" in scars or wounds.any(func(w: Dictionary) -> bool: return str(w.part).ends_with("bacak"))
+	pose.limp = move_toward(pose.limp, 1.0 if leg_hurt else (0.4 if hp < max_hp * 0.5 else 0.0), 0.02)
+	var freezing: bool = village.weather.temperature < -2.0 and not sleeping and inside == null and not has_trait("sibir")
+	pose.shiver = move_toward(pose.shiver, 1.0 if freezing and not walking else 0.0, 0.02)
+	_body.cold = village.weather.temperature < 0.0
+	pose.slump = move_toward(pose.slump, 1.0 if mood < 25.0 else 0.0, 0.01)
+
+
 ## In the winter, a fur hat (the women keep their kerchiefs) and a scarf; out of it, as before.
 func dress_warm(on: bool) -> void:
 	if _body and team == 0 and not is_child:
@@ -1958,6 +1992,7 @@ func _animate(dt: float, walking: bool) -> void:
 	if _body:
 		if _lantern and _lantern.visible:
 			_lantern.global_basis = Basis.IDENTITY # (it hangs from the hand, upright)
+		_body_mood(walking)
 		_body.drive(_anim, walking, _speed_now, _rate(), carry_res if carry_n > 0 else "", vehicle, _rifle,
 			{"arm_l": arm_l, "arm_r": arm_r, "el": el, "er": er, "lean": lean, "twist": twist, "kn": kn})
 		return

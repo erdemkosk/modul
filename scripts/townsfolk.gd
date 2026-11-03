@@ -97,6 +97,7 @@ func build(kind: String, rng: RandomNumberGenerator) -> void:
 	grip_ik = TownsfolkGrip.new()
 	skeleton.add_child(grip_ik)
 	_kind = kind
+	_seed = rng.randi() % 97
 	_dress(kind, rng)
 	# A man's build varies: a little taller or shorter, broader or leaner (a woman smaller).
 	var tall := rng.randf_range(0.94, 1.03) if kind != "woman" else rng.randf_range(0.9, 0.96)
@@ -372,6 +373,18 @@ static func _tex(file: String) -> Texture2D:
 	return _textures[file]
 
 
+var cold := false ## (set by the villager: in the cold, the arms are folded more often)
+var _seed := 0
+
+
+## Standing about: mostly the plain stand, now and then the arms folded (often in the cold).
+func _idle_clip() -> String:
+	var beat := int(Time.get_ticks_msec() / 7000 + _seed) % 6
+	if cold:
+		return "ual/UalIdleFoldArms" if beat != 0 else "Idle"
+	return "ual/UalIdleFoldArms" if beat == 3 else "Idle"
+
+
 func play(clip: String, speed := 1.0, blend := 0.25) -> void:
 	if _dead:
 		return
@@ -410,10 +423,12 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 	else:
 		match anim:
 			"idle", "look", "stretch":
-				clip = "RifleIdle" if armed else "Idle"
+				clip = "RifleIdle" if armed else _idle_clip()
 				procedural = anim != "idle"
 			"chat":
-				clip = "ual/UalIdleTalking"
+				# (talking with the hands, now and then a nod or a shake of the head)
+				var beat := int(Time.get_ticks_msec() / 6000 + _seed) % 5
+				clip = ["ual/UalIdleTalking", "ual/UalIdleTalking", "SoldierTalk", "ual/UalIdleNo", "ual/UalIdleTalking"][beat]
 			"sit":
 				clip = "CrouchIdle"
 			"eat":
