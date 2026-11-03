@@ -594,6 +594,7 @@ func set_trim(on: bool) -> void:
 ## front and back edges.
 var _icicles: MultiMeshInstance3D
 var _coal_smoke := false
+var _dust_ms := 0
 
 
 func set_icicles(on: bool) -> void:
@@ -1953,6 +1954,14 @@ func _drop(p: Piece, push: Vector3) -> void:
 	rb.linear_velocity = push + Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
 	rb.angular_velocity = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 0.8
 	p.debris = rb
+	# something big coming down: dust where it lands (once a second at most, per building)
+	var now := Time.get_ticks_msec()
+	if p.ext.length() > 1.6 and now - _dust_ms > 900:
+		_dust_ms = now
+		var heavy := clampf(p.ext.length() / 4.0, 0.6, 1.6)
+		get_tree().create_timer(0.8, false).timeout.connect(func() -> void:
+			if is_instance_valid(rb):
+				FireFx.dust(rb.get_parent(), rb.global_position, heavy))
 	var tw := rb.create_tween() # (its own: gone with it if it's cleared first)
 	tw.tween_interval(12.0)
 	tw.tween_callback(rb.set.bind("freeze", true))

@@ -54,8 +54,25 @@ func jump_to(p: Vector3) -> void:
 	focus = p
 
 
+## A blast felt: the view jolts, `amount` (0..1) the harder the nearer, and settles.
+var _shake := 0.0
+
+
+func shake(at: Vector3, power: float) -> void:
+	var d := at.distance_to(global_position)
+	_shake = maxf(_shake, clampf(power * (1.0 - d / 140.0), 0.0, 1.0))
+
+
 func _process(dt: float) -> void:
 	var real_dt := dt / maxf(Engine.time_scale, 0.01) # (it pans as fast at any game speed)
+	if _shake > 0.001:
+		_shake = maxf(_shake - real_dt * 2.2, 0.0)
+		var k := _shake * _shake * 0.35
+		h_offset = randf_range(-k, k)
+		v_offset = randf_range(-k, k)
+	elif h_offset != 0.0 or v_offset != 0.0:
+		h_offset = 0.0
+		v_offset = 0.0
 	var move := Vector2.ZERO
 	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
 		move.y += 1.0

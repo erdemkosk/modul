@@ -905,8 +905,7 @@ func _turret_shots(dt: float) -> void:
 	at.y = nav.height(at.x, at.z)
 	get_tree().create_timer(0.25, false).timeout.connect(func() -> void:
 		_flash(at + Vector3.UP * 0.5, "war/shell")
-		for k in 4:
-			_impact(at + Vector3(randf_range(-1.5, 1.5), 0.05, randf_range(-1.5, 1.5)))
+		FireFx.explosion(self, at, 0.7)
 		for v in town_folk():
 			if not v.dead and v.team == 0 and v.position.distance_to(at) < 3.5:
 				v.hurt(randf_range(18.0, 30.0) * (0.5 if v.in_cover else 1.0)))

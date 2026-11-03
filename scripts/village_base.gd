@@ -2179,8 +2179,7 @@ func _blow(m: Dictionary) -> void:
 	var at: Vector3 = m.at
 	raids._flash(at + Vector3.UP * 0.5, "war/shell")
 	raids._flash(at + Vector3.UP * 1.2, "")
-	for k in 8:
-		raids._impact(at + Vector3(randf_range(-1.8, 1.8), 0.05, randf_range(-1.8, 1.8)))
+	FireFx.explosion(self, at, 1.0)
 	terrain.dig_crater(at, 1.4, 0.5)
 	terrain.commit_digs()
 	nav.scorch(at, 2.5, 1.0)
