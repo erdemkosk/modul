@@ -2046,6 +2046,267 @@ def tank():
     k.finish()
 
 
+
+# --- the town's other buildings: the reading room, the smithy, the feldsher's hut, the jail ---------
+
+def _sign(k, w, d, text_len=1.4, z=2.65):
+    """A board over the door (the lettering's dark strokes painted on it)."""
+    p = k.piece("plank", "sign")
+    p.box((0, -d * 0.5 - 0.2, z), (text_len, 0.05, 0.36), jit(PLANK, 0.04, k.rng))
+    for i in range(6):
+        p.box((-text_len * 0.4 + i * text_len * 0.16, -d * 0.5 - 0.23, z), (0.06, 0.01, 0.2), INK)
+    k.add(p)
+
+
+def _okuma_extra(k, w, d):
+    _sign(k, w, d, 1.8)
+    # a table on the porch with books open on it, a bench, a lamp hung under the porch roof
+    p = k.piece("plank", "table")
+    p.box((1.3, -d * 0.5 - 1.0, 0.95), (1.3, 0.6, 0.06), jit(PLANK, 0.05, k.rng))
+    for sx in (-0.55, 0.55):
+        for sy in (-0.22, 0.22):
+            p.box((1.3 + sx, -d * 0.5 - 1.0 + sy, 0.71), (0.06, 0.06, 0.48), DARK)
+    p.box((1.3, -d * 0.5 - 1.6, 0.68), (1.3, 0.3, 0.05), jit(PLANK, 0.05, k.rng))
+    k.add(p)
+    p = k.piece("cloth", "books")
+    for i, c in enumerate([(0.55, 0.15, 0.1), (0.2, 0.3, 0.5), (0.3, 0.4, 0.2), (0.6, 0.5, 0.3)]):
+        p.box((0.9 + i * 0.25, -d * 0.5 - 1.0, 1.0 + (i % 2) * 0.04), (0.2, 0.28, 0.05 + (i % 2) * 0.04), c, rot_z=i * 0.3)
+    p.box((1.6, -d * 0.5 - 1.05, 1.0), (0.36, 0.26, 0.02), (0.9, 0.86, 0.75)) # (one lying open)
+    k.add(p)
+    p = k.piece("window", "lamp")
+    p.box((-1.0, -d * 0.5 - 1.1, 2.1), (0.16, 0.16, 0.22), (1.0, 0.85, 0.55))
+    k.add(p)
+    p = k.piece("dark")
+    p.box((-1.0, -d * 0.5 - 1.1, 2.45), (0.02, 0.02, 0.45), IRON)
+    k.add(p)
+    # a stack of newspapers tied up by the door
+    p = k.piece("cloth", "papers")
+    for i in range(4):
+        p.box((-w * 0.5 + 0.9, -d * 0.5 - 0.5, 0.52 + i * 0.07), (0.5, 0.36, 0.06), (0.85, 0.82, 0.72), rot_z=i * 0.15)
+    k.add(p)
+
+
+def okuma():
+    cabin("okuma", 6.0, 5.0, 8, 1.8, 1.0, windows=[("front", -1.9), ("front", 1.9), ("left", 0.0), ("right", 0.0)],
+          chimney_at=(3.0 + 0.5, 1.2), extra=_okuma_extra)
+
+
+def _smith_props(k, w, d):
+    # the forge: a fieldstone hearth with glowing coals, a stone stack up through the roof, leather
+    # bellows on a frame; an anvil on a stump, a quench tub, tongs and hammers, iron bars, shoes on the wall
+    p = k.piece("stone", "forge")
+    for i in range(14):
+        a = i / 14 * math.tau
+        p.stone((-1.3 + math.cos(a) * 0.55, 0.9 + math.sin(a) * 0.45, FLOOR + 0.35), (0.4, 0.34, 0.5), rng=k.rng)
+    p.box((-1.3, 0.9, FLOOR + 0.35), (1.1, 0.9, 0.7), jit(STONE, 0.05, k.rng))
+    for i in range(10):
+        p.stone((-1.3 + k.rng.uniform(-0.25, 0.25), 1.2, FLOOR + 1.0 + i * 0.32), (0.55, 0.5, 0.34), rng=k.rng)
+    k.add(p)
+    p = k.piece("window", "coals") # (stuff "window": it glows at night)
+    for i in range(8):
+        p.box((-1.3 + k.rng.uniform(-0.3, 0.3), 0.85 + k.rng.uniform(-0.2, 0.2), FLOOR + 0.74), (0.14, 0.12, 0.06), (1.0, 0.45, 0.12))
+    k.add(p)
+    p = k.piece("cloth", "bellows")
+    p.obox((-2.05, 0.9, FLOOR + 0.8), (0, 1, 0), (0.8, 0, 0.6), (-0.6, 0, 0.8), (0.6, 0.7, 0.3), (0.35, 0.22, 0.12))
+    k.add(p)
+    p = k.piece("log", "stump")
+    p.log((0.6, -0.3, FLOOR), (0.6, -0.3, FLOOR + 0.6), 0.32, rng=k.rng, taper=0.0)
+    k.add(p)
+    p = k.piece("dark", "anvil")
+    p.box((0.6, -0.3, FLOOR + 0.68), (0.32, 0.22, 0.16), IRON)
+    p.box((0.6, -0.3, FLOOR + 0.84), (0.56, 0.24, 0.12), IRON)
+    p.obox((0.98, -0.3, FLOOR + 0.84), (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.22, 0.12, 0.08), IRON) # (the horn)
+    p.box((0.65, -0.55, FLOOR + 0.95), (0.4, 0.04, 0.04), DARK) # (a hammer laid by it)
+    p.box((0.48, -0.55, FLOOR + 0.95), (0.1, 0.08, 0.08), IRON)
+    k.add(p)
+    barrel(k, 1.6, 0.3, r=0.35, h=0.6) # (the quench tub)
+    p = k.piece("dark", "bars")
+    for i in range(6):
+        p.box((1.7, -1.2 + i * 0.07, FLOOR + 0.05 + (i % 2) * 0.05), (1.4, 0.04, 0.04), IRON)
+    for i in range(5):
+        p.obox((-0.8 + i * 0.35, d * 0.5 - 0.25, 1.8), (1, 0, 0), (0, 0, 1), (0, -1, 0), (0.18, 0.18, 0.02), IRON) # (shoes on the back wall)
+    k.add(p)
+
+
+def demirci():
+    shed("demirci", 5.0, 4.0, _smith_props)
+
+
+def _felcer_extra(k, w, d):
+    # a pole with a white flag and a green cross on it, a line of bandages drying, a stretcher leant on
+    # the wall, herb bundles under the eave, a bench
+    p = k.piece("wood", "pole")
+    p.log((w * 0.5 + 0.7, -d * 0.5 - 0.6, 0.0), (w * 0.5 + 0.7, -d * 0.5 - 0.6, 4.4), 0.05, rng=k.rng, taper=0.1)
+    k.add(p)
+    p = k.piece("cloth", "flag")
+    fx = w * 0.5 + 0.7 + 0.55
+    p.box((fx, -d * 0.5 - 0.6, 3.9), (1.0, 0.02, 0.7), (0.92, 0.9, 0.86))
+    p.box((fx, -d * 0.5 - 0.62, 3.9), (0.6, 0.02, 0.16), (0.15, 0.45, 0.2)) # (a green cross: the healer's sign)
+    p.box((fx, -d * 0.5 - 0.62, 3.9), (0.16, 0.02, 0.5), (0.15, 0.45, 0.2))
+    k.add(p)
+    p = k.piece("cloth", "bandages")
+    p.box((-w * 0.5 - 1.2, 0.0, 1.75), (0.02, 2.6, 0.02), DARK)
+    for i in range(6):
+        p.box((-w * 0.5 - 1.2, -1.1 + i * 0.44, 1.5), (0.02, 0.14, 0.5), (0.92, 0.9, 0.85))
+    k.add(p)
+    p = k.piece("wood")
+    for yy in (-1.3, 1.3):
+        p.box((-w * 0.5 - 1.2, yy, 0.9), (0.06, 0.06, 1.8), DARK)
+    k.add(p)
+    p = k.piece("cloth", "stretcher")
+    p.obox((w * 0.5 + 0.25, 0.6, 1.0), (0, 1, 0), (0.95, 0, 0.3), (-0.3, 0, 0.95), (0.6, 0.06, 1.9), (0.5, 0.47, 0.36))
+    for sy in (-0.3, 0.3):
+        p.obox((w * 0.5 + 0.25, 0.6 + sy, 1.0), (0, 1, 0), (0.95, 0, 0.3), (-0.3, 0, 0.95), (0.05, 0.05, 2.2), DARK)
+    k.add(p)
+    p = k.piece("thatch", "herbs")
+    for i in range(6):
+        p.obox((-w * 0.5 + 0.6 + i * 0.7, -d * 0.5 - 0.35, 2.15), (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.16, 0.16, 0.45), (0.45, 0.5, 0.25) if i % 2 else (0.55, 0.45, 0.3))
+    k.add(p)
+
+
+def sifaci():
+    cabin("sifaci", 5.0, 4.0, 7, 1.6, 1.0, windows=[("front", 1.4), ("left", 0.0)], porch_on=True, chimney_at=(-2.5 - 0.45, 0.8), extra=_felcer_extra)
+
+
+def _jail_extra(k, w, d):
+    # iron bars across the windows, iron straps and a bolt on the door, a guard's bench and lamp
+    p = k.piece("dark", "bars")
+    for wall, at in (("left", 0.0), ("right", 0.0), ("back", -1.2), ("back", 1.2)):
+        for i in range(4):
+            off = -0.27 + i * 0.18
+            if wall in ("left", "right"):
+                sx = -1 if wall == "left" else 1
+                p.box((sx * (w * 0.5 + 0.02), at + off, 1.32), (0.03, 0.03, 0.8), IRON)
+            else:
+                p.box((at + off, d * 0.5 + 0.02, 1.32), (0.03, 0.03, 0.8), IRON)
+    for z in (0.75, 1.45, 2.0):
+        p.box((0, -d * 0.5 + 0.08, z), (1.1, 0.04, 0.08), IRON)
+    p.box((0.42, -d * 0.5 + 0.06, 1.15), (0.16, 0.06, 0.08), IRON)
+    k.add(p)
+    p = k.piece("plank", "bench")
+    p.box((1.6, -d * 0.5 - 0.6, 0.5), (1.2, 0.35, 0.06), jit(PLANK, 0.05, k.rng))
+    for sx in (-0.5, 0.5):
+        p.box((1.6 + sx, -d * 0.5 - 0.6, 0.25), (0.06, 0.3, 0.5), DARK)
+    k.add(p)
+    p = k.piece("window", "lamp")
+    p.box((-1.0, -d * 0.5 - 0.15, 2.2), (0.18, 0.12, 0.24), (1.0, 0.85, 0.55))
+    k.add(p)
+
+
+def hapishane():
+    cabin("hapishane", 5.0, 4.0, 8, 1.4, 1.0, windows=[("left", 0.0), ("right", 0.0), ("back", -1.2), ("back", 1.2)], porch_on=False, extra=_jail_extra)
+
+
+# --- the defences: a sandbag post, a Maxim nest, barbed wire ----------------------------------------
+
+SACK = (0.5, 0.44, 0.31)
+
+
+def sandbag(p, x, y, z, rot, rng, length=0.62):
+    """A sack of earth: a fat block, its ends pinched in, a tie at one end."""
+    c = jit(SACK, 0.08, rng)
+    a = Vector((math.cos(rot), math.sin(rot), 0))
+    b = Vector((-math.sin(rot), math.cos(rot), 0))
+    p.obox((x, y, z), a, b, (0, 0, 1), (length * 0.8, 0.34, 0.2), c)
+    for s in (-1, 1):
+        q = Vector((x, y, z)) + a * s * length * 0.42
+        p.obox(tuple(q), a, b, (0, 0, 1), (length * 0.12, 0.26, 0.15), c)
+    q = Vector((x, y, z)) + a * length * 0.52
+    p.obox(tuple(q), a, b, (0, 0, 1), (0.05, 0.1, 0.06), (0.35, 0.3, 0.2))
+
+
+def siper():
+    k = Kit("siper")
+    rng = k.rng
+    p = k.piece("sand", "bags")
+    for c in range(3):
+        z = 0.11 + c * 0.2
+        for i in range(5):
+            x = -1.2 + i * 0.6 + (0.3 if c % 2 else 0.0)
+            if x > 1.25:
+                continue
+            sandbag(p, x, -0.65, z, rng.uniform(-0.06, 0.06), rng)
+        for sx in (-1, 1):
+            for j in range(2):
+                sandbag(p, sx * 1.32, -0.1 + j * 0.6 - (0.25 if c % 2 else 0.0), z, math.pi * 0.5 + rng.uniform(-0.06, 0.06), rng)
+    k.add(p)
+    p = k.piece("sand", "ground")
+    p.box((0, 0, 0.01), (3.0, 2.0, 0.02), (0.3, 0.24, 0.16))
+    k.add(p)
+    crate(k, 0.7, 0.55, 0.0, 0.4)
+    k.finish()
+
+
+def makineli():
+    k = Kit("makineli")
+    rng = k.rng
+    p = k.piece("sand", "bags")
+    for c in range(4):
+        z = 0.11 + c * 0.2
+        for i in range(9):
+            if c == 3 and i == 4:
+                continue # (the embrasure)
+            a = math.radians(-120 + i * 30 + (15 if c % 2 else 0))
+            sandbag(p, math.sin(a) * 1.25, -math.cos(a) * 1.25, z, a, rng)
+    k.add(p)
+    p = k.piece("sand", "platform")
+    p.box((0, 0.15, 0.18), (1.0, 1.1, 0.36), (0.36, 0.28, 0.19))
+    k.add(p)
+    # the Maxim on its wheeled mount: a fluted water jacket, the barrel, the receiver and its spade
+    # grips, the shield, a belt of rounds feeding from a box
+    p = k.piece("dark", "gun")
+    cyl(p, (0, -0.05, 0.95), (0, -0.82, 0.95), 0.09, (0.26, 0.28, 0.22), segs=14)
+    for i in range(6):
+        cyl(p, (0, -0.12 - i * 0.12, 0.95), (0, -0.15 - i * 0.12, 0.95), 0.1, (0.18, 0.19, 0.16), segs=14)
+    cyl(p, (0, -0.82, 0.95), (0, -1.15, 0.95), 0.025, (0.12, 0.12, 0.12), segs=8)
+    p.box((0, 0.12, 0.95), (0.2, 0.36, 0.2), (0.2, 0.21, 0.18))
+    for sx in (-0.08, 0.08):
+        p.box((sx, 0.34, 0.92), (0.03, 0.12, 0.1), (0.35, 0.25, 0.15))
+    p.box((0, 0.0, 0.78), (0.08, 0.08, 0.2), (0.18, 0.18, 0.16))
+    k.add(p)
+    p = k.piece("dark", "shield")
+    p.obox((0, -0.3, 1.0), (1, 0, 0), (0, 0.97, 0.25), (0, -0.25, 0.97), (0.62, 0.03, 0.55), (0.25, 0.27, 0.21))
+    k.add(p)
+    p = k.piece("dark", "belt")
+    for i in range(10):
+        p.box((0.16 + i * 0.03, 0.1 + i * 0.04, 0.9 - i * 0.04), (0.03, 0.05, 0.08), (0.72, 0.56, 0.26))
+    k.add(p)
+    crate(k, 0.5, 0.55, 0.36, 0.3)
+    p = k.piece("dark", "frame")
+    p.box((0, 0.05, 0.72), (0.5, 0.9, 0.06), (0.2, 0.21, 0.18))
+    p.box((0, 0.6, 0.6), (0.06, 0.6, 0.06), (0.2, 0.21, 0.18)) # (the trail)
+    k.add(p)
+    for sx in (-1, 1):
+        p = k.piece("dark", "wheel")
+        cyl(p, (sx * 0.32 - 0.03, -0.05, 0.6), (sx * 0.32 + 0.03, -0.05, 0.6), 0.22, (0.15, 0.15, 0.13), segs=14)
+        k.add(p)
+    k.finish()
+
+
+def tel():
+    k = Kit("tel")
+    rng = k.rng
+    # knife-rests: crossed stakes at either end and in the middle, the wire strung between, barbed,
+    # and a coil of it sagging along the foot
+    for x in (-1.8, 0.0, 1.8):
+        p = k.piece("wood")
+        for s in (-1, 1):
+            p.log((x, s * 0.45, 0.0), (x, -s * 0.45, 1.25), 0.05, rng=rng, taper=0.1)
+        k.add(p)
+    p = k.piece("dark", "wire")
+    for z, yy in ((0.35, 0.2), (0.65, 0.0), (0.95, -0.15)):
+        p.box((0, yy, z), (3.8, 0.012, 0.012), (0.25, 0.24, 0.22))
+        for i in range(30):
+            x = -1.85 + i * 0.128
+            p.obox((x, yy, z), (0, 0.7, 0.7), (0, -0.7, 0.7), (1, 0, 0), (0.06, 0.008, 0.008), (0.25, 0.24, 0.22))
+    for i in range(40): # (the coil)
+        a = i / 40 * math.tau * 9
+        x = -1.85 + i / 40 * 3.7
+        p.obox((x, math.cos(a) * 0.32, 0.34 + math.sin(a) * 0.3), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)), (0.11, 0.01, 0.01), (0.3, 0.29, 0.27))
+    k.add(p)
+    k.finish()
+
+
 BUILDERS = {
     "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
     "meydan": meydan, "silahlik": silahlik, "istasyon": istasyon,
@@ -2053,6 +2314,8 @@ BUILDERS = {
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,
     "ev_oda": ev_oda, "ev_soba": ev_soba,
     "kamyon": kamyon, "tank": tank,
+    "okuma": okuma, "demirci": demirci, "sifaci": sifaci, "hapishane": hapishane,
+    "siper": siper, "makineli": makineli, "tel": tel,
     "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
 }
 
