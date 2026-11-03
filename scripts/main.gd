@@ -424,6 +424,8 @@ func start_placing(kind: String) -> void:
 func stop_placing() -> void:
 	_placing = ""
 	_drag_from = null
+	if _marks_mm:
+		_marks_mm.visible = false
 	if _drag_box:
 		_drag_box.visible = false
 	_road_pts.clear()
@@ -1119,6 +1121,47 @@ func _update_drag() -> void:
 		return
 	var color: Color = {"mayin": Color(0.8, 0.25, 0.1, 0.25), "hendek": Color(0.35, 0.25, 0.15, 0.3), "tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
 	_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
+	_spot_marks(_rect(_drag_from, to) if _placing in ["mayin", "tuzak"] else Rect2())
+
+
+## While a box is dragged for mines or pits: a marker where each would go, green if it can, red if
+## not (water, a cliff, a building, one there already).
+var _marks_mm: MultiMeshInstance3D
+
+
+func _spot_marks(rect: Rect2) -> void:
+	if _marks_mm == null:
+		var disc := CylinderMesh.new()
+		disc.top_radius = 0.45
+		disc.bottom_radius = 0.45
+		disc.height = 0.06
+		disc.radial_segments = 12
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		disc.material = m
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = disc
+		mm.instance_count = 400
+		_marks_mm = MultiMeshInstance3D.new()
+		_marks_mm.multimesh = mm
+		_marks_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_marks_mm)
+	if rect.size == Vector2.ZERO:
+		_marks_mm.visible = false
+		return
+	var spots: Array = village.lay_spots(rect, village.MINE_GAP if _placing == "mayin" else village.TRAP_GAP, _placing)
+	var mm := _marks_mm.multimesh
+	var n := mini(spots.size(), mm.instance_count)
+	mm.visible_instance_count = n
+	for i in n:
+		var e: Array = spots[i]
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, (e[0] as Vector3) + Vector3.UP * 0.08))
+		mm.set_instance_color(i, Color(0.3, 0.95, 0.35, 0.75) if str(e[1]) == "" else Color(1.0, 0.25, 0.2, 0.75))
+	_marks_mm.visible = true
 
 
 func _area_done(to: Variant) -> void:
@@ -1126,6 +1169,8 @@ func _area_done(to: Variant) -> void:
 	_drag_from = null
 	if _drag_box:
 		_drag_box.visible = false
+	if _marks_mm:
+		_marks_mm.visible = false
 	if from == null or to == null:
 		return
 	var rect := _rect(from, to)

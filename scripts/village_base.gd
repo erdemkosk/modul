@@ -2068,34 +2068,59 @@ const MINE_COST := {"demir": 1, "komur": 1}
 const MINE_GAP := 5.0
 
 
-func lay_mines(area: Rect2) -> int:
-	if not knows("patlayici"):
-		message.emit("Önce okuma odasında Patlayıcılar araştırılmalı", "info")
-		return 0
+## Where mines (or pits, `gap` apart) would go across `area` (one at a click), each [spot, why not]
+## ("" if it can): not in water or on a cliff, not under a building, not on top of another. The woods
+## are fine.
+func lay_spots(area: Rect2, gap: float, kind: String) -> Array:
 	var spots: Array[Vector3] = []
 	if area.size.x < 1.5 and area.size.y < 1.5:
 		spots.append(Vector3(area.get_center().x, 0, area.get_center().y))
 	else:
-		var x := area.position.x + MINE_GAP * 0.5
+		var x := area.position.x + gap * 0.5
 		while x < area.end.x:
-			var z := area.position.y + MINE_GAP * 0.5
+			var z := area.position.y + gap * 0.5
 			while z < area.end.y:
 				spots.append(Vector3(x, 0, z))
-				z += MINE_GAP
-			x += MINE_GAP
-	var n := 0
+				z += gap
+			x += gap
+	var out: Array = []
 	for p in spots:
-		if mines.any(func(m: Dictionary) -> bool: return Vector2(m.at.x - p.x, m.at.z - p.z).length() < MINE_GAP * 0.6):
-			continue
-		if not nav.is_ground_open(p):
-			continue
-		if not pay(MINE_COST, p):
-			break
 		p.y = nav.height(p.x, p.z)
+		var why := ""
+		var k := nav.shut_kind(p)
+		if k == 1:
+			why = "su ya da yar"
+		elif k == 2:
+			why = "bina var"
+		elif p.y < terrain.lake_level + 0.2:
+			why = "su"
+		elif kind == "tuzak" and nav.on_road(p):
+			why = "yol"
+		elif (mines if kind == "mayin" else traps).any(func(m: Dictionary) -> bool: return Vector2(m.at.x - p.x, m.at.z - p.z).length() < gap * 0.6 and (kind == "mayin" or m.armed)):
+			why = "zaten var"
+		out.append([p, why])
+	return out
+
+
+func lay_mines(area: Rect2) -> int:
+	if not knows("patlayici"):
+		message.emit("Önce okuma odasında Patlayıcılar araştırılmalı", "info")
+		return 0
+	var n := 0
+	var short := false
+	for e: Array in lay_spots(area, MINE_GAP, "mayin"):
+		if str(e[1]) != "":
+			continue
+		var p: Vector3 = e[0]
+		if not pay(MINE_COST, p):
+			short = true
+			break
 		var m := {"at": p, "node": null}
 		_show_mine(m)
 		mines.append(m)
 		n += 1
+	if short:
+		message.emit("Demir ya da kömür bitti: %d mayın gömülebildi (mayın başı %s)." % [n, BuildingDefs.cost_text_of(MINE_COST)], "info")
 	return n
 
 

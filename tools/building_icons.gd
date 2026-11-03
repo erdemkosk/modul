@@ -60,34 +60,121 @@ func _take_all() -> void:
 ## The orders' pictures (the build bar's EMİRLER): a spruce with the marker over it, orange to fell it,
 ## grey to let it stand.
 func _take_order(kind: String) -> void:
-	var tree := (load("res://assets/nature/spruce_a.glb") as PackedScene).instantiate() as Node3D
-	_vp.add_child(tree)
-	var cone := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 1.6
-	cm.bottom_radius = 0.0
-	cm.height = 2.8
-	cm.radial_segments = 4
-	cone.mesh = cm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(1.0, 0.45, 0.08) if kind == "kes" else Color(0.55, 0.6, 0.66)
-	m.emission_enabled = kind == "kes"
-	m.emission = Color(1.0, 0.4, 0.05)
-	m.emission_energy_multiplier = 0.4
-	cone.material_override = m
-	var box := AABB()
-	var first := true
-	for mi: Node in tree.find_children("*", "MeshInstance3D", true, false):
-		var bb := (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
-		box = bb if first else box.merge(bb)
-		first = false
-	cone.position = Vector3(0, box.end.y + 2.2, 0)
-	cone.rotation.y = 0.785
-	_vp.add_child(cone)
-	box = box.merge(AABB(cone.position - Vector3(1.6, 1.4, 1.6), Vector3(3.2, 2.8, 3.2)))
+	# close on a trunk: the lower boughs over it, a red ribbon tied round it, and for KES an axe bitten
+	# into its side; for KESME the same tree with the ribbon struck through by a big red cross
+	var n := Node3D.new()
+	_vp.add_child(n)
+	var bark := StandardMaterial3D.new()
+	bark.albedo_color = Color(0.36, 0.26, 0.18)
+	bark.roughness = 1.0
+	var needles := StandardMaterial3D.new()
+	needles.albedo_color = Color(0.16, 0.32, 0.18)
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.85, 0.15, 0.08)
+	red.emission_enabled = true
+	red.emission = Color(0.6, 0.08, 0.03)
+	red.emission_energy_multiplier = 0.3
+	var ground := StandardMaterial3D.new()
+	ground.albedo_color = Color(0.3, 0.26, 0.17)
+	var g := MeshInstance3D.new()
+	var gm := CylinderMesh.new()
+	gm.top_radius = 1.6
+	gm.bottom_radius = 1.6
+	gm.height = 0.1
+	g.mesh = gm
+	g.material_override = ground
+	n.add_child(g)
+	var trunk := MeshInstance3D.new()
+	var tm := CylinderMesh.new()
+	tm.top_radius = 0.32
+	tm.bottom_radius = 0.42
+	tm.height = 3.4
+	tm.radial_segments = 12
+	trunk.mesh = tm
+	trunk.material_override = bark
+	trunk.position.y = 1.7
+	n.add_child(trunk)
+	for k in 3: # (the lowest boughs)
+		var c := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.1
+		cm.bottom_radius = 1.5 - k * 0.35
+		cm.height = 1.1
+		cm.radial_segments = 8
+		c.mesh = cm
+		c.material_override = needles
+		c.position.y = 3.0 + k * 0.7
+		n.add_child(c)
+	var rib := MeshInstance3D.new()
+	var rm := CylinderMesh.new()
+	rm.top_radius = 0.41
+	rm.bottom_radius = 0.41
+	rm.height = 0.22
+	rm.radial_segments = 16
+	rib.mesh = rm
+	rib.material_override = red
+	rib.position.y = 1.55
+	n.add_child(rib)
+	for s in [-1.0, 1.0]: # (its ends hanging)
+		var tail := MeshInstance3D.new()
+		var tl := BoxMesh.new()
+		tl.size = Vector3(0.1, 0.55, 0.03)
+		tail.mesh = tl
+		tail.material_override = red
+		tail.position = Vector3(0.2 * s + 0.15, 1.25, 0.42)
+		tail.rotation.z = s * 0.25
+		n.add_child(tail)
+	if kind == "kes":
+		var iron := StandardMaterial3D.new()
+		iron.albedo_color = Color(0.55, 0.56, 0.58)
+		iron.metallic = 0.7
+		iron.roughness = 0.35
+		var haft := MeshInstance3D.new()
+		var hm := CylinderMesh.new()
+		hm.top_radius = 0.045
+		hm.bottom_radius = 0.05
+		hm.height = 1.3
+		haft.mesh = hm
+		haft.material_override = bark
+		haft.position = Vector3(0.6, 0.75, 0.62)
+		haft.rotation = Vector3(0, -0.6, 1.15)
+		n.add_child(haft)
+		var head := MeshInstance3D.new()
+		var am := BoxMesh.new()
+		am.size = Vector3(0.36, 0.26, 0.06)
+		head.mesh = am
+		head.material_override = iron
+		head.position = Vector3(0.25, 0.95, 0.45)
+		head.rotation = Vector3(0, -0.6, 1.15)
+		n.add_child(head)
+		var chips := StandardMaterial3D.new()
+		chips.albedo_color = Color(0.85, 0.7, 0.48)
+		for k in 6:
+			var ch := MeshInstance3D.new()
+			var chm := BoxMesh.new()
+			chm.size = Vector3(0.12, 0.03, 0.08)
+			ch.mesh = chm
+			ch.material_override = chips
+			ch.position = Vector3(0.5 + k * 0.12, 0.07, 0.3 + (k % 3) * 0.15)
+			ch.rotation.y = k * 1.1
+			n.add_child(ch)
+	else:
+		var white := StandardMaterial3D.new()
+		white.albedo_color = Color(0.92, 0.9, 0.85)
+		white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		for s in [-1.0, 1.0]:
+			var bar := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.22, 2.4, 0.06)
+			bar.mesh = bm
+			bar.material_override = white
+			bar.position = Vector3(0, 1.6, 0.75)
+			bar.rotation.z = s * 0.75
+			n.add_child(bar)
+	var box := AABB(Vector3(-1.6, 0, -1.6), Vector3(3.2, 3.6, 3.2))
 	var centre := box.get_center()
-	var dir := Vector3(0.78, 0.25, 1.0).normalized()
-	var dist := box.size.y * 0.5 / tan(deg_to_rad(_cam.fov * 0.5)) * 1.15
+	var dir := Vector3(0.78, 0.35, 1.0).normalized()
+	var dist := box.size.y * 0.5 / tan(deg_to_rad(_cam.fov * 0.5)) * 1.05
 	_cam.look_at_from_position(centre + dir * dist, centre)
 	await process_frame
 	await process_frame
@@ -95,8 +182,7 @@ func _take_order(kind: String) -> void:
 	await RenderingServer.frame_post_draw
 	_vp.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
 	print("icons: wrote %s" % kind)
-	tree.queue_free()
-	cone.queue_free()
+	n.queue_free()
 	await process_frame
 
 
@@ -140,107 +226,160 @@ func _take_line(kind: String) -> void:
 					leaf.position = Vector3(s * 0.45, 1.0, 0.25)
 					leaf.rotation.y = s * 0.5
 					n.add_child(leaf)
-		"tuzak": # (a pit of turned earth, sharpened stakes in it)
+		"tuzak", "mayin", "hendek": # (a block of ground cut away, so the depth shows)
+			var turf := StandardMaterial3D.new()
+			turf.albedo_color = Color(0.3, 0.42, 0.18)
 			var earth := StandardMaterial3D.new()
-			earth.albedo_color = Color(0.3, 0.22, 0.15)
-			var pit := MeshInstance3D.new()
-			var pm := CylinderMesh.new()
-			pm.top_radius = 1.0
-			pm.bottom_radius = 1.0
-			pm.height = 0.05
-			pit.mesh = pm
-			pit.material_override = earth
-			n.add_child(pit)
-			for k in 9:
-				var a := k * TAU / 9.0
-				var st := MeshInstance3D.new()
-				var sm := CylinderMesh.new()
-				sm.top_radius = 0.0
-				sm.bottom_radius = 0.06
-				sm.height = 0.7
-				st.mesh = sm
-				st.material_override = wood
-				st.position = Vector3(cos(a) * (0.2 + (k % 3) * 0.25), 0.3, sin(a) * (0.2 + (k % 3) * 0.25))
-				st.rotation = Vector3(0.15, a, 0)
-				n.add_child(st)
-		"mayin": # (a round iron mine half dug in, its pressure plate up, a red-ragged stick by it)
-			var earth := StandardMaterial3D.new()
-			earth.albedo_color = Color(0.3, 0.22, 0.15)
+			earth.albedo_color = Color(0.36, 0.26, 0.17)
+			var deep := StandardMaterial3D.new()
+			deep.albedo_color = Color(0.12, 0.09, 0.06)
 			var iron := StandardMaterial3D.new()
-			iron.albedo_color = Color(0.25, 0.26, 0.22)
+			iron.albedo_color = Color(0.3, 0.31, 0.27)
 			iron.metallic = 0.6
-			var mound := MeshInstance3D.new()
-			var mm := SphereMesh.new()
-			mm.radius = 1.0
-			mm.height = 0.3
-			mound.mesh = mm
-			mound.material_override = earth
-			n.add_child(mound)
-			var case := MeshInstance3D.new()
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.55
-			cm.bottom_radius = 0.6
-			cm.height = 0.3
-			case.mesh = cm
-			case.material_override = iron
-			case.position.y = 0.15
-			n.add_child(case)
-			var plate := MeshInstance3D.new()
-			var pm2 := CylinderMesh.new()
-			pm2.top_radius = 0.18
-			pm2.bottom_radius = 0.18
-			pm2.height = 0.12
-			plate.mesh = pm2
-			plate.material_override = iron
-			plate.position.y = 0.36
-			n.add_child(plate)
-			var stick := MeshInstance3D.new()
-			var sm2 := CylinderMesh.new()
-			sm2.top_radius = 0.03
-			sm2.bottom_radius = 0.03
-			sm2.height = 1.4
-			stick.mesh = sm2
-			stick.material_override = wood
-			stick.position = Vector3(1.0, 0.7, 0)
-			n.add_child(stick)
-			var rag := MeshInstance3D.new()
-			var rm := BoxMesh.new()
-			rm.size = Vector3(0.02, 0.25, 0.4)
-			rag.mesh = rm
+			iron.roughness = 0.45
 			var red := StandardMaterial3D.new()
-			red.albedo_color = Color(0.75, 0.12, 0.08)
-			rag.material_override = red
-			rag.position = Vector3(1.0, 1.3, 0.2)
-			n.add_child(rag)
-		"hendek": # (a trench cut in the earth, its spoil heaped along one lip, a spade in it)
-			var earth := StandardMaterial3D.new()
-			earth.albedo_color = Color(0.3, 0.22, 0.15)
-			var dark := StandardMaterial3D.new()
-			dark.albedo_color = Color(0.12, 0.09, 0.06)
-			for s in [-1.0, 1.0]:
-				var lip := MeshInstance3D.new()
-				var lm := BoxMesh.new()
-				lm.size = Vector3(3.2, 0.35 if s > 0 else 0.15, 0.7)
-				lip.mesh = lm
-				lip.material_override = earth
-				lip.position = Vector3(0, 0.15, s * 0.75)
-				n.add_child(lip)
-			var floor := MeshInstance3D.new()
-			var fm := BoxMesh.new()
-			fm.size = Vector3(3.2, 0.05, 0.8)
-			floor.mesh = fm
-			floor.material_override = dark
-			n.add_child(floor)
-			var haft := MeshInstance3D.new()
-			var hm := CylinderMesh.new()
-			hm.top_radius = 0.03
-			hm.bottom_radius = 0.03
-			hm.height = 1.2
-			haft.mesh = hm
-			haft.material_override = wood
-			haft.position = Vector3(0.8, 0.55, 0.1)
-			haft.rotation.z = 0.5
-			n.add_child(haft)
+			red.albedo_color = Color(0.82, 0.14, 0.08)
+			var slabs: Array = [[Vector3(3.2, 0.7, 3.2), Vector3(0, -0.35, 0)]]
+			if kind == "hendek":
+				slabs = [[Vector3(3.2, 0.7, 1.1), Vector3(0, -0.35, -1.05)], [Vector3(3.2, 0.7, 1.1), Vector3(0, -0.35, 1.05)]]
+			for sl: Array in slabs:
+				var b := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = sl[0]
+				b.mesh = bm
+				b.material_override = earth
+				b.position = sl[1]
+				n.add_child(b)
+				var t := MeshInstance3D.new()
+				var tbm := BoxMesh.new()
+				tbm.size = Vector3((sl[0] as Vector3).x, 0.08, (sl[0] as Vector3).z)
+				t.mesh = tbm
+				t.material_override = turf
+				t.position = (sl[1] as Vector3) + Vector3(0, 0.37, 0)
+				n.add_child(t)
+			match kind:
+				"tuzak":
+					var hole := MeshInstance3D.new()
+					var hm := CylinderMesh.new()
+					hm.top_radius = 0.95
+					hm.bottom_radius = 0.95
+					hm.height = 0.1
+					hole.mesh = hm
+					hole.material_override = deep
+					hole.position.y = 0.03
+					n.add_child(hole)
+					for k in 10:
+						var a := k * TAU / 10.0
+						var rim := MeshInstance3D.new()
+						var rmm := SphereMesh.new()
+						rmm.radius = 0.28
+						rmm.height = 0.25
+						rim.mesh = rmm
+						rim.material_override = earth
+						rim.position = Vector3(cos(a) * 1.1, 0.1, sin(a) * 1.1)
+						n.add_child(rim)
+					for k in 9:
+						var a := k * TAU / 9.0 + 0.2
+						var r := 0.15 + (k % 3) * 0.25
+						var st := MeshInstance3D.new()
+						var sm := CylinderMesh.new()
+						sm.top_radius = 0.0
+						sm.bottom_radius = 0.07
+						sm.height = 0.9
+						st.mesh = sm
+						st.material_override = wood
+						st.position = Vector3(cos(a) * r, 0.4, sin(a) * r)
+						st.rotation = Vector3(0.12, a, 0)
+						n.add_child(st)
+				"mayin":
+					var mound := MeshInstance3D.new()
+					var mm := SphereMesh.new()
+					mm.radius = 1.0
+					mm.height = 0.4
+					mound.mesh = mm
+					mound.material_override = earth
+					mound.position.y = 0.05
+					n.add_child(mound)
+					var case := MeshInstance3D.new()
+					var cm := CylinderMesh.new()
+					cm.top_radius = 0.5
+					cm.bottom_radius = 0.58
+					cm.height = 0.32
+					case.mesh = cm
+					case.material_override = iron
+					case.position.y = 0.3
+					n.add_child(case)
+					for k in 3: # (the horns of its fuses)
+						var a := k * TAU / 3.0
+						var horn := MeshInstance3D.new()
+						var hm2 := CylinderMesh.new()
+						hm2.top_radius = 0.05
+						hm2.bottom_radius = 0.07
+						hm2.height = 0.25
+						horn.mesh = hm2
+						horn.material_override = iron
+						horn.position = Vector3(cos(a) * 0.25, 0.55, sin(a) * 0.25)
+						n.add_child(horn)
+					var stick := MeshInstance3D.new()
+					var stm := CylinderMesh.new()
+					stm.top_radius = 0.035
+					stm.bottom_radius = 0.035
+					stm.height = 1.6
+					stick.mesh = stm
+					stick.material_override = wood
+					stick.position = Vector3(1.05, 0.8, 0.3)
+					n.add_child(stick)
+					var rag := MeshInstance3D.new()
+					var rgm := BoxMesh.new()
+					rgm.size = Vector3(0.03, 0.35, 0.55)
+					rag.mesh = rgm
+					rag.material_override = red
+					rag.position = Vector3(1.05, 1.42, 0.58)
+					n.add_child(rag)
+				"hendek":
+					var floor := MeshInstance3D.new()
+					var fm := BoxMesh.new()
+					fm.size = Vector3(3.2, 0.06, 1.0)
+					floor.mesh = fm
+					floor.material_override = deep
+					floor.position.y = -0.62
+					n.add_child(floor)
+					for s in [-1.0, 1.0]: # (planks shoring the walls)
+						for k in 4:
+							var pl := MeshInstance3D.new()
+							var pm := BoxMesh.new()
+							pm.size = Vector3(3.2, 0.14, 0.04)
+							pl.mesh = pm
+							pl.material_override = wood
+							pl.position = Vector3(0, -0.5 + k * 0.17, s * 0.49)
+							n.add_child(pl)
+					var heap := MeshInstance3D.new()
+					var hpm := SphereMesh.new()
+					hpm.radius = 1.0
+					hpm.height = 0.7
+					heap.mesh = hpm
+					heap.material_override = earth
+					heap.position = Vector3(0, 0.15, -1.25)
+					heap.scale = Vector3(1.6, 1.0, 0.55)
+					n.add_child(heap)
+					var haft := MeshInstance3D.new()
+					var hfm := CylinderMesh.new()
+					hfm.top_radius = 0.035
+					hfm.bottom_radius = 0.035
+					hfm.height = 1.3
+					haft.mesh = hfm
+					haft.material_override = wood
+					haft.position = Vector3(0.9, 0.25, 0.75)
+					haft.rotation.z = 0.45
+					n.add_child(haft)
+					var blade := MeshInstance3D.new()
+					var blm := BoxMesh.new()
+					blm.size = Vector3(0.26, 0.34, 0.03)
+					blade.mesh = blm
+					blade.material_override = iron
+					blade.position = Vector3(1.18, -0.3, 0.75)
+					blade.rotation.z = 0.45
+					n.add_child(blade)
 		"yol":
 			for k in 7:
 				var pl := MeshInstance3D.new()
