@@ -17,6 +17,7 @@ const SPEED := 4.5 ## m/s on the move (a tank holds them to 2.6)
 var village: Village
 var side := "merkez"
 var tank := false
+var ally := false ## a friendly side's men, called by telegraph (Village.call_help)
 var path := PackedVector3Array()
 var _len := PackedFloat32Array()
 var _cars: Array[Dictionary] = [] ## {node, back (m behind the lead), wheels, len}
@@ -209,6 +210,9 @@ func _crush() -> void:
 ## the men come off shooting).
 func _halt() -> void:
 	var lead: Node3D = _cars[0].node
+	if ally:
+		village.relief_arrives(self)
+		return
 	if village.standing(side) <= Village.HOSTILE:
 		village.convoy_attacks(self)
 		return

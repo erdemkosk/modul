@@ -835,6 +835,13 @@ func test_event(what: String) -> void:
 					raids.make_camp(p, 4, false)
 					raids._camp_found("")
 					return
+		"help":
+			if is_instance_valid(v.relief):
+				hud.toast("Yardım zaten burada", "info")
+				return
+			if v.standing(side) < Village.FRIENDLY:
+				v._shift(side, Village.FRIENDLY + 15 - v.standing(side))
+			v._send_relief(side)
 		"beg":
 			raids.next_day = v.day + 1
 			raids._asked_for = -1

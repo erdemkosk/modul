@@ -60,6 +60,7 @@ var camp_known := false ## found: seen from a tower, by someone working near, or
 var _camp_node: Node3D
 var _camp_day := -1
 var _camp_t := 0.0
+var allies: Array[Villager] = [] ## a friendly side's soldiers fighting beside the town (called by telegraph)
 var guns: Array[Node3D] = [] ## a convoy's tank guns, fired while its men are at the town
 var soldiers := "" ## the band now on the town is a side's soldiers ("" outlaws): by day as well
 var hud: Node ## (for asking: the band sends one ahead to ask for food first)
@@ -398,6 +399,10 @@ func _to_arms() -> void:
 	if hud and Engine.time_scale > 1.0:
 		hud.game.set_speed(1.0)
 		message.emit("Çatışma başladı: hız 1x. Milis emrinde: seç, sağ tıkla mevzi göster.", "bad")
+	for side: String in Village.SIDES:
+		if village.help_why_not(side) == "":
+			message.emit("%s dost: TELGRAF'tan yardım isteyebilirsin." % Village.SIDES[side], "info")
+			break
 	for v: Villager in village.villagers:
 		if v.dead or v.down or v.is_child or not v.militia or v.drafted or v.has_trait("no_rifle"):
 			continue
@@ -454,6 +459,15 @@ func _towers() -> Array[Building]:
 	for b in village.buildings:
 		if b.state == "done" and b.def.role == "tower":
 			out.append(b)
+	return out
+
+
+## The town and whoever's fighting beside it: what the raiders go for.
+func town_folk() -> Array[Villager]:
+	var out: Array[Villager] = village.villagers.duplicate()
+	for a in allies:
+		if is_instance_valid(a) and not a.dead:
+			out.append(a)
 	return out
 
 
@@ -612,7 +626,7 @@ func _think() -> void:
 func _think_shooter(r: Villager) -> void:
 	var foe: Villager = null
 	var bd := r.ranged
-	for v in village.villagers:
+	for v in town_folk():
 		if v.dead or v.down or v.sleeping or v.perched:
 			continue
 		var d := v.position.distance_to(r.position)
@@ -681,7 +695,7 @@ func _shoot_lamp(r: Villager) -> void:
 func _victim_near(p: Vector3, reach: float) -> Villager:
 	var best: Villager = null
 	var bd := reach
-	for v in village.villagers:
+	for v in town_folk():
 		if v.dead or v.sleeping or v.perched or v.down:
 			continue
 		var d := v.position.distance_to(p)
@@ -695,7 +709,7 @@ func _victim_near(p: Vector3, reach: float) -> Villager:
 func _guarded(p: Vector3) -> bool:
 	if not village.is_lit(p):
 		return false
-	for v in village.villagers:
+	for v in town_folk():
 		if not v.dead and not v.down and not v.sleeping and v.ranged > 0.0 and v.position.distance_to(p) < 30.0:
 			return true
 	return false
@@ -876,7 +890,7 @@ func _turret_shots(dt: float) -> void:
 	var gun: Vector3 = muzzles.pick_random()
 	var foe: Villager = null
 	var bd := 90.0
-	for v in village.villagers:
+	for v in town_folk():
 		if v.dead or v.down or v.sleeping or v.team != 0:
 			continue
 		var d := v.position.distance_to(gun)
@@ -893,7 +907,7 @@ func _turret_shots(dt: float) -> void:
 		_flash(at + Vector3.UP * 0.5, "war/shell")
 		for k in 4:
 			_impact(at + Vector3(randf_range(-1.5, 1.5), 0.05, randf_range(-1.5, 1.5)))
-		for v in village.villagers:
+		for v in town_folk():
 			if not v.dead and v.team == 0 and v.position.distance_to(at) < 3.5:
 				v.hurt(randf_range(18.0, 30.0) * (0.5 if v.in_cover else 1.0)))
 

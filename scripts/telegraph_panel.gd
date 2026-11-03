@@ -26,6 +26,7 @@ var _sounder: AudioStreamPlayer
 var _status: Label
 var _train_btn: Button
 var _announce: Button
+var _help_btns := {} ## side -> its YARDIM İSTE button
 var _sell_btns := {}
 
 
@@ -63,6 +64,20 @@ func _ready() -> void:
 			return
 		send("TREN ISTIYORUZ STOP ACELE STOP", "ALINDI STOP TREN YARIN GELIR STOP"))
 	_train_btn.tooltip_text = "Hatta telgraf çekilir: tren yarın gelir, gecikmez"
+	Ui.label(right, "YARDIM İSTE  (dost tarafa: +%d ve üstü)" % Village.FRIENDLY, 13, Ui.ACCENT, "head")
+	var help := HBoxContainer.new()
+	help.add_theme_constant_override("separation", 4)
+	right.add_child(help)
+	for side: String in Village.SIDES:
+		var sd := side
+		_help_btns[sd] = _button(help, "%s'E" % Ui.upper(str(Village.SIDES[sd])), func() -> void:
+			var why: String = game.village.call_help(sd)
+			if why != "":
+				game.hud.toast(why, "bad")
+				return
+			send("ACIL YARDIM STOP KASABA TEHLIKEDE STOP ASKER GONDERIN STOP", "ALINDI STOP BIRLIK TOPLANIYOR STOP IKI SAATE YOLDA STOP")
+			refresh())
+		_help_btns[sd].tooltip_text = "Asker gönderirler (yaklaşık %d saat sonra yola çıkarlar); kasabanın yanında çatışmaya girerler. Bedeli: o tarafın gözünde -%d itibar." % [int(Village.HELP_HOURS), Village.HELP_COST]
 	Ui.label(right, "ANA KARA", 13, Ui.ACCENT, "head")
 	_announce = _button(right, "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver", func() -> void:
 		var why: String = game.village.announce()
@@ -182,6 +197,10 @@ func refresh() -> void:
 	_status.text = "%s\nKasa %d mirka · %s%s" % [line, v.rubles, v.standing_text(),
 		(" · her trenle %d göçmen (boş yatak kadar)" % v.settlers_due()) if v.announced else " · köy henüz bildirilmedi: göçmen gelmiyor"]
 	_train_btn.disabled = is_instance_valid(v.train) or v.express or due <= 1 or v.line_shut()
+	for side: String in _help_btns:
+		var why: String = v.help_why_not(side)
+		(_help_btns[side] as Button).disabled = why != ""
+		(_help_btns[side] as Button).text = "%s'E%s" % [Ui.upper(str(Village.SIDES[side])), "" if why == "" else " · " + why]
 	_announce.disabled = v.announced
 	_announce.text = "KÖY BİLDİRİLDİ: göçmenler trenle geliyor" if v.announced else "KÖYÜ BİLDİR: kurulduğumuzu Zarovya merkezine haber ver"
 	for r: String in _sell_btns:

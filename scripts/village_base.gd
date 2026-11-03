@@ -108,6 +108,9 @@ var armoured: Train ## (the armoured train standing at the station, if one is)
 var armoured_next := 7 ## the first day one may come
 var convoy: Convoy ## a side's trucks (and maybe a tank) come by road, if there are
 var convoy_next := 9 ## the first day they may
+var relief: Convoy ## a friendly side's men on their way or here, called by telegraph
+var help_ready := 0 ## the day a side may be asked again
+var _help_coming := "" ## (a side asked, the column not yet set out)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
@@ -779,6 +782,129 @@ func _armoured_in(st: Building, side: String) -> void:
 		leave.call()
 
 
+## Help by telegraph: a side that thinks well of the town (FRIENDLY) sends men when asked, but not
+## at once (HELP_HOURS for them to muster and come), and it's a favour: their goodwill goes down by
+## HELP_COST. They fight beside the town till the fight's over (or a day, if there's none), then go.
+const HELP_HOURS := 2.0
+const HELP_COST := 12
+
+
+## Why the side can't be asked just now ("" if it can).
+func help_why_not(side: String) -> String:
+	if not knows("telgraf"):
+		return "Önce telgraf"
+	if standing(side) < FRIENDLY:
+		return "%s yeterince dost değil (+%d gerek)" % [SIDES[side], FRIENDLY]
+	if _help_coming != "" or is_instance_valid(relief):
+		return "Yardım zaten yolda"
+	if day < help_ready:
+		return "%d gün sonra yeniden istenebilir" % (help_ready - day)
+	if stores().is_empty():
+		return "Kasaba yok"
+	return ""
+
+
+func call_help(side: String) -> String:
+	var why := help_why_not(side)
+	if why != "":
+		return why
+	_shift(side, -HELP_COST)
+	help_ready = day + 3
+	_help_coming = side
+	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * HELP_HOURS / 24.0
+	message.emit("%s'e telgraf çekildi: askerler toplanıyor, ~%d saat içinde yola çıkacaklar. (%s)" % [SIDES[side], int(HELP_HOURS), standing_text()], "good")
+	get_tree().create_timer(secs, false).timeout.connect(func() -> void:
+		_help_coming = ""
+		_send_relief(side))
+	return ""
+
+
+func _send_relief(side: String) -> void:
+	var home: Vector3 = stores()[0].global_position
+	# from the side the trouble's coming from if there is any, else anywhere open
+	var toward := Vector3.ZERO
+	if raids.active:
+		toward = (raids.origin() - home)
+		toward.y = 0.0
+	for k in 30:
+		var dir := toward.normalized() if toward.length() > 1.0 and k < 10 else Vector3(cos(randf() * TAU), 0, sin(randf() * TAU))
+		dir = dir.rotated(Vector3.UP, randf_range(-0.5, 0.5)) if k < 10 else dir
+		var from := home + dir * 240.0
+		var to := home + dir * 30.0
+		var ok := 0
+		for i in 41:
+			var p := from.lerp(to, i / 40.0)
+			if nav.height(p.x, p.z) > terrain.lake_level + 0.5 and nav.is_ground_open(p):
+				ok += 1
+		if ok < 34:
+			continue
+		relief = Convoy.new()
+		relief.village = self
+		relief.side = side
+		relief.ally = true
+		relief.tank = standing(side) >= FRIENDLY + 20
+		add_child(relief)
+		relief.lay(from, to)
+		relief.gone.connect(func() -> void: relief = null)
+		message.emit("%s askerleri yolda: kamyonlar %s yönünden geliyor." % [SIDES[side], Raids._compass(dir)], "good")
+		return
+	message.emit("Yardım kasabaya yol bulamadı.", "bad")
+
+
+## The relief come: its men down off the trucks and to posts facing the trouble, fighting beside
+## the town (raids.allies); when it's over (or a day on, if nothing comes), back up and away.
+func relief_arrives(c: Convoy) -> void:
+	var n := 8 if c.tank else 6
+	var at := c.halt_point()
+	for k in n:
+		var a := Villager.new()
+		a.village = self
+		a.nav = nav
+		a.team = 0
+		a.tunic_color = Color(0.36, 0.38, 0.27) if c.side == "merkez" else Color(0.3, 0.1, 0.08)
+		add_child(a)
+		var p := at + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
+		p.y = nav.height(p.x, p.z)
+		a.position = p
+		a.held = "rifle"
+		a.armed = true
+		a.ammo = 40
+		a.ranged = 45.0
+		a.attack = 28.0
+		a.max_hp = 100.0
+		a.hp = 100.0
+		a.fighter = true
+		a.militia = true
+		a.display_name = "%s askeri" % SIDES[c.side]
+		a.arm_with("rifle")
+		a.died.connect(func(_d: Villager) -> void: raids.allies.erase(a))
+		raids.allies.append(a)
+		call("hold_at", a, call("default_post", a))
+	if c.gun:
+		pass # (their tank's gun's for the enemy: it stands guard where it halted)
+	message.emit("%s askerleri geldi: mevzilere geçiyorlar." % SIDES[c.side], "good")
+	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
+	for v in villagers:
+		if not v.dead:
+			v.think("relief", "%s yardıma geldi" % SIDES[c.side], 6.0, day_s * 0.5)
+	var leave_after := func() -> void:
+		for a in raids.allies.duplicate():
+			if is_instance_valid(a):
+				raids.allies.erase(a)
+				a.queue_free()
+		if is_instance_valid(c):
+			c.leave()
+		message.emit("Yardıma gelen askerler dönüyor.", "info")
+	if raids.active:
+		raids.ended.connect(func() -> void: get_tree().create_timer(20.0, false).timeout.connect(leave_after), CONNECT_ONE_SHOT)
+	else:
+		get_tree().create_timer(day_s, false).timeout.connect(func() -> void:
+			if raids.active:
+				raids.ended.connect(leave_after, CONNECT_ONE_SHOT)
+			else:
+				leave_after.call())
+
+
 ## By road: a side's convoy now and then, out of the woods to the town's edge (Convoy). Not in the
 ## deep snow; never while an armoured train or another convoy's about.
 func _convoy_morning() -> void:
@@ -825,7 +951,7 @@ func send_convoy(side: String, with_tank: bool) -> void:
 
 
 ## The officer at the town: what his side wants, and the town's answer.
-func convoy_demands(c: Convoy) -> void:
+func convoy_demands(c: Convoy, tries := 0) -> void:
 	var side := c.side
 	var name: String = SIDES[side]
 	var other := "isyan" if side == "merkez" else "merkez"
@@ -868,17 +994,21 @@ func convoy_demands(c: Convoy) -> void:
 			message.emit("Subay söylendi ama yarısını alıp gitti. (%s)" % standing_text(), "good")
 			c.leave()
 		else:
-			_shift(side, -10)
+			_shift(side, -8)
 			message.emit("Subay pazarlığa kızdı.", "bad")
-			_convoy_refused(c, 0.6)})
+			_convoy_refused(c, 0.35)})
+	# talking: up to three goes, each one trying the officer's patience a little more
 	opts.append(talk_option(func() -> void:
 		_shift(side, 2)
 		c.leave(), func() -> void:
-		_shift(side, -10)
-		_convoy_refused(c, 0.5 + (0.15 if c.tank else 0.0))))
+		_shift(side, -4)
+		if tries < 2:
+			convoy_demands(c, tries + 1)
+		else:
+			_convoy_refused(c, 0.35 + (0.1 if c.tank else 0.0)), tries))
 	opts.append({"label": "REDDET", "f": func() -> void:
-		_shift(side, -18)
-		_convoy_refused(c, 0.35 + (0.3 if standing(side) < 0 else 0.0) + (0.15 if c.tank else 0.0))})
+		_shift(side, -15)
+		_convoy_refused(c, 0.2 + (0.25 if standing(side) < 0 else 0.0) + (0.1 if c.tank else 0.0))})
 	if hud:
 		hud.ask("KONVOY · %s" % Ui.upper(name), body, opts)
 	else:
@@ -910,6 +1040,7 @@ func convoy_attacks(c: Convoy) -> void:
 		for v in villagers:
 			if not v.dead:
 				v.think("repelled", "Askerleri püskürttük", 8.0, day_s)
+		convoy_next = maxi(convoy_next, day + 8) # (it cost them: they'll think twice before the next)
 		if is_instance_valid(c):
 			if c.gun:
 				raids.guns.erase(c.gun)
@@ -934,13 +1065,13 @@ func talk_odds(v: Villager) -> float:
 
 ## The option a question card offers for it: "İKNA ET (Name · İkna 6, %57)"; `won` if they're talked
 ## round, `lost` if not. The talker learns from it either way.
-func talk_option(won: Callable, lost: Callable) -> Dictionary:
+func talk_option(won: Callable, lost: Callable, tries := 0) -> Dictionary:
 	var v := best_talker()
 	if v == null:
 		return {"label": "İKNA ET", "ok": false, "f": func() -> void: pass}
-	var odds := talk_odds(v)
+	var odds := talk_odds(v) * (1.0 - 0.12 * tries) # (each go at it, they're a little harder to move)
 	var first := v.display_name.split(" ")[0]
-	return {"label": "İKNA ET (%s · %%%d)" % [first, roundi(odds * 100.0)],
+	return {"label": ("İKNA ET (%s · %%%d)" if tries == 0 else "YENİDEN DENE (%s · %%%d)") % [first, roundi(odds * 100.0)],
 		"tip": "%s konuşmaya çıkar (İkna %d). Başarırsa bir şey vermeden giderler; başaramazsa kızarlar." % [v.display_name, int(v.skill("ikna"))],
 		"f": func() -> void:
 			if is_instance_valid(v):
