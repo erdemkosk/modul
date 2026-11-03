@@ -114,6 +114,7 @@ var _help_coming := "" ## (a side asked, the column not yet set out)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
+var grass_fires: GrassFires ## fire in the grass (round a burning building)
 var cemetery: Cemetery ## (made with the first grave)
 var hud: Node ## (for the telegraph's news that wants an answer: ask)
 var _news_card: Control
@@ -190,6 +191,9 @@ func _ready() -> void:
 	name = "Village"
 	_stumps = Node3D.new()
 	add_child(_stumps)
+	grass_fires = GrassFires.new()
+	grass_fires.village = self
+	add_child(grass_fires)
 
 
 # --- Starting out -----------------------------------------------------------------------------------

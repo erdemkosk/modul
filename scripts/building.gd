@@ -1859,7 +1859,8 @@ func _process(dt: float) -> void:
 	var t := _fire_t
 	_fire_t = 0.0
 	var any := false
-	var rain := Weather.rain_now
+	# rain puts a fire out quickly, falling snow (or snow lying on the roof) quicker still
+	var rain := clampf(maxf(Weather.rain_now, maxf(Weather.snow_now * 1.3, Weather.snow_cover_now * 0.7)), 0.0, 1.0)
 	for p in pieces:
 		if p.wet > 0.0:
 			p.wet -= t
@@ -1869,7 +1870,7 @@ func _process(dt: float) -> void:
 		var st: Dictionary = BuildingDefs.STUFF[p.stuff]
 		p.burn += t
 		p.hp -= p.max_hp * t / float(st.burn)
-		if rain > 0.25 and randf() < rain * 0.025 * t * 4.0:
+		if rain > 0.1 and randf() < rain * 0.35 * t * (1.4 if Weather.snow_now > 0.2 or Weather.snow_cover_now > 0.4 else 1.0):
 			p.burn = 0.0
 			p.wet = 20.0
 			continue
@@ -1879,7 +1880,7 @@ func _process(dt: float) -> void:
 		for n in p.near:
 			var q := pieces[n]
 			if q.alive and q.built and q.burn <= 0.0 and q.wet <= 0.0 and BuildingDefs.STUFF[q.stuff].burns:
-				if randf() < float(BuildingDefs.STUFF[q.stuff].catch) * t * 2.5 * (1.0 - rain * 0.6):
+				if randf() < float(BuildingDefs.STUFF[q.stuff].catch) * t * 2.5 * (1.0 - rain * 0.85):
 					q.burn = 0.01
 		if p.hp <= 0.0:
 			_break(p)

@@ -424,7 +424,7 @@ func _test_plate() -> void:
 	for line: Array in [
 			[["TANKLI KONVOY", "convoy_tank", "Merkez ya da isyancı konvoyu, tankıyla, hemen yola çıkar"], ["KONVOY", "convoy", "Kamyonlu konvoy (tanksız)"], ["DÜŞMAN KONVOY", "convoy_hostile", "Kasabaya düşman bir tarafın tanklı konvoyu: sormadan saldırır"]],
 			[["ZIRHLI TREN", "armoured", "Bir tarafın zırhlı treni istasyona gelir"], ["DÜŞMAN TREN", "armoured_hostile", "Düşman zırhlı tren: askerleri inip saldırır"], ["FİRARİ KAMPI", "camp", "Ormanda bulunmuş bir firari kampı"], ["KAPIDA FİRARİ", "beg", "Firariler yiyecek istemeye gelir"]],
-			[["YARDIM GELSİN", "help", "Dost bir tarafın askerleri hemen yola çıkar (beklemeden)"], ["TELGRAF HABERİ", "news", "Rastgele bir telgraf haberi"], ["POSTA", "mail", "Trenle posta gelmiş gibi mektuplar"], ["HER ŞEYİ AÇ", "techs", "Bütün araştırmalar bilinir"], ["+ KAYNAK", "stock", "Her maldan 100, kasaya 200 mirka"]]]:
+			[["YARDIM GELSİN", "help", "Dost bir tarafın askerleri hemen yola çıkar (beklemeden)"], ["TELGRAF HABERİ", "news", "Rastgele bir telgraf haberi"], ["POSTA", "mail", "Trenle posta gelmiş gibi mektuplar"], ["HEPSİNİ SÖNDÜR", "douse", "Yanan her şey söner"], ["HER ŞEYİ AÇ", "techs", "Bütün araştırmalar bilinir"], ["+ KAYNAK", "stock", "Her maldan 100, kasaya 200 mirka"]]]:
 		var r := HBoxContainer.new()
 		r.add_theme_constant_override("separation", 4)
 		col.add_child(r)

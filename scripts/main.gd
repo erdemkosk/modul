@@ -425,6 +425,7 @@ func start_placing(kind: String) -> void:
 
 func stop_placing() -> void:
 	_placing = ""
+	_show_guide(Vector3.INF, Vector3.INF)
 	_drag_from = null
 	if _marks_mm:
 		_marks_mm.visible = false
@@ -472,6 +473,8 @@ func _update_ghost() -> void:
 		if not is_equal_approx(turned, _ghost_yaw):
 			_ghost_yaw = turned
 			_ghost_reason = "x"
+	if not Input.is_key_pressed(KEY_ALT):
+		p = _line_up(_placing, p, _ghost_yaw)
 	if p.distance_to(_ghost_pos) < 0.01 and _ghost_reason != "x":
 		return
 	_ghost_pos = p
@@ -485,6 +488,77 @@ func _update_ghost() -> void:
 		else:
 			hud.set_hint(reason, true)
 	_ghost_reason = reason
+
+
+## Placing beside a building facing the same way (or square to it): pulled into line with it, its
+## front on the same line and an even 2 m between their walls when it's near that, a brass guide
+## line drawn between them while it holds. Alt held: no pulling.
+var _guide: MeshInstance3D
+
+
+func _line_up(kind: String, p: Vector3, yaw: float) -> Vector3:
+	var sz: Vector2 = BuildingDefs.DEFS[kind].size
+	if BuildingDefs.DEFS[kind].role in ["farm", "light", "wall", "gate", "road", "obstacle"]:
+		_show_guide(Vector3.INF, Vector3.INF)
+		return p
+	var best: Building = null
+	var bd := 18.0
+	for b in village.buildings:
+		if b.state == "gone" or b.state == "ghost" or b.def.role in ["farm", "light", "square"]:
+			continue
+		var d := b.global_position.distance_to(p)
+		if d < bd and absf(angle_difference(fposmod(b.global_rotation.y - yaw + PI * 0.25, PI * 0.5) - PI * 0.25, 0.0)) < 0.05:
+			bd = d
+			best = b
+	if best == null:
+		_show_guide(Vector3.INF, Vector3.INF)
+		return p
+	var bs: Vector2 = best.def.size
+	var local := best.global_transform.affine_inverse() * p
+	var snapped := false
+	# beside it (along its x): the fronts in a line, an even gap between the walls
+	var half_x := bs.x * 0.5 + sz.x * 0.5
+	if absf(local.z) < 1.6 and absf(absf(local.x) - (half_x + 2.0)) < 1.6:
+		local.z = (bs.y * 0.5) - (sz.y * 0.5) # (fronts flush: the doors on one line)
+		local.x = signf(local.x) * (half_x + 2.0)
+		snapped = true
+	# behind or in front (along its z): side by side in a column, the same gap
+	var half_z := bs.y * 0.5 + sz.y * 0.5
+	if not snapped and absf(local.x) < 1.6 and absf(absf(local.z) - (half_z + 2.0)) < 1.6:
+		local.x = 0.0
+		local.z = signf(local.z) * (half_z + 2.0)
+		snapped = true
+	if not snapped:
+		_show_guide(Vector3.INF, Vector3.INF)
+		return p
+	var out := best.global_transform * local
+	out.y = p.y
+	_show_guide(best.global_position, out)
+	return out
+
+
+func _show_guide(a: Vector3, b: Vector3) -> void:
+	if _guide == null:
+		_guide = MeshInstance3D.new()
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(1.0, 0.8, 0.35, 0.8)
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.12, 0.05, 1.0)
+		bm.material = m
+		_guide.mesh = bm
+		_guide.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_guide)
+	if a == Vector3.INF or _ghost == null:
+		_guide.visible = false
+		return
+	a.y = village.nav.height(a.x, a.z) + 0.15
+	b.y = village.nav.height(b.x, b.z) + 0.15
+	_guide.visible = true
+	_guide.global_position = (a + b) * 0.5
+	_guide.look_at(b, Vector3.UP)
+	_guide.scale = Vector3(1, 1, a.distance_to(b))
 
 
 ## Which way a building at `p` would face by itself: beside a road, its door square onto the road
@@ -856,6 +930,21 @@ func test_event(what: String) -> void:
 		"mail":
 			if v.depot():
 				v._mail(v.depot())
+		"douse":
+			v.grass_fires.douse_all()
+			var n := 0
+			for b in v.buildings:
+				if b.is_burning():
+					n += 1
+					for p in b.pieces:
+						if p.burn > 0.0:
+							p.burn = 0.0
+							p.wet = 30.0
+					if b.crop:
+						b.crop.burning = 0.0
+						for f in b.crop._flames:
+							f.emitting = false
+			hud.toast("%d bina söndürüldü" % n, "good")
 		"techs":
 			for t: String in BuildingDefs.TECHS:
 				if not v.knows(t):
@@ -1003,6 +1092,25 @@ func test_build() -> void:
 			continue
 		village._let_go(b)
 		n += 1
+	# the palisades every stretch up, broken gates mended, the trenches dug
+	for w in village.walls:
+		if not is_instance_valid(w):
+			continue
+		var raised := false
+		for st in w.stretches():
+			if w.left_in(st) > 0:
+				w.raise(st)
+				raised = true
+		for g in w.gates:
+			if is_instance_valid(g) and g.broken:
+				g.mend()
+				raised = true
+		if raised:
+			n += 1
+	for t: Dictionary in village.trenches:
+		if float(t.done) < 1.0:
+			village.dig_on(t, 1.0)
+			n += 1
 	hud.toast("%d inşaat bitirildi" % n if n > 0 else "Yapımda bir şey yok", "good" if n > 0 else "info")
 
 

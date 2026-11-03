@@ -1033,7 +1033,7 @@ func _buck(i: int, base: Vector3, fall: Vector3, height: float, radius: float, c
 		mi.material_override = Building.material("log")
 		add_child(mi)
 		mi.global_transform = Transform3D(Basis.looking_at(fall, Vector3.UP) * Basis(Vector3.RIGHT, PI * 0.5), c)
-		billets.append({"node": mi, "camp": camp, "claimed": null})
+		billets.append({"node": mi, "camp": camp, "claimed": null, "day": day})
 	# the slash: a few branches where the crown came down, rotting away after a while
 	var slash := StandardMaterial3D.new()
 	slash.albedo_color = Color(0.2, 0.27, 0.13)

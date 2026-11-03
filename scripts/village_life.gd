@@ -200,6 +200,42 @@ func _dry_bricks(t: float) -> void:
 			b.dry(t, rate)
 
 
+## Left lying out, things spoil: logs bucked and never fetched rot where they lie after a few days;
+## what's heaped in a workshop's yard and never carried in goes off by the day (food fast, herbs and
+## bandages soon, wood slowly in the wet); stone, iron and coal keep. What went, said once a morning.
+const ROT := {"yiyecek": 0.25, "ot": 0.2, "odun": 0.06, "kerpic": 0.0, "camur": 0.15}
+const LOGS_ROT_DAYS := 3
+
+
+func _rot_morning() -> void:
+	var lost := {}
+	for i in range(billets.size() - 1, -1, -1):
+		var bl: Dictionary = billets[i]
+		if bl.get("claimed") == null and day - int(bl.get("day", day)) >= LOGS_ROT_DAYS:
+			if is_instance_valid(bl.node):
+				(bl.node as Node).queue_free()
+			billets.remove_at(i)
+			lost["kütük"] = int(lost.get("kütük", 0)) + 1
+	var wet := weather.wetness > 0.4 or Weather.rain_now > 0.2
+	for b in buildings:
+		if b.state != "done" or b.def.role in ["store", "house"] or b.goods.is_empty():
+			continue
+		for r: String in b.goods.keys():
+			var k := float(ROT.get(r, 0.0)) * (1.6 if wet and r == "odun" else 1.0)
+			if k <= 0.0:
+				continue
+			var n := int(b.goods[r])
+			var gone := mini(n, maxi(1, int(round(n * k)))) if n > 0 else 0
+			if gone > 0:
+				b.take_goods(r, gone)
+				lost[str(BuildingDefs.RES_NAMES.get(r, r)).to_lower()] = int(lost.get(str(BuildingDefs.RES_NAMES.get(r, r)).to_lower(), 0)) + gone
+	if not lost.is_empty():
+		var parts: Array[String] = []
+		for k: String in lost:
+			parts.append("%d %s" % [lost[k], k])
+		message.emit("Dışarıda kalanlar çürüdü: %s (atölye yığınları depoya taşınmalı)." % ", ".join(parts), "info")
+
+
 ## The town as the season has it: icicles on the houses' eaves and fur hats on heads in the winter.
 func dress_for_season() -> void:
 	var cold := seasons != null and seasons.winter()
@@ -225,6 +261,7 @@ func _morning() -> void:
 	_news_morning()
 	_armoured_morning()
 	_convoy_morning()
+	_rot_morning()
 	for b in buildings:
 		if b.state == "done":
 			b.grow_old()
@@ -268,6 +305,24 @@ func _morning() -> void:
 		message.emit("Gece %d kişi soğuk evde üşüdü. Evlere yakacak odun taşınmalı." % cold, "bad")
 
 
+## The open ground between two buildings' walls (their footprints, turned as they stand).
+func _wall_gap(a: Building, b: Building) -> float:
+	var best := INF
+	for pair: Array in [[a, b], [b, a]]:
+		var x: Building = pair[0]
+		var y: Building = pair[1]
+		var sz: Vector2 = y.def.size
+		var inv := y.global_transform.affine_inverse()
+		var xs: Vector2 = x.def.size
+		for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1), Vector2(0, 0)]:
+			var corner: Vector3 = x.global_transform * Vector3(c.x * xs.x * 0.5, 0, c.y * xs.y * 0.5)
+			var l := inv * corner
+			var dx := maxf(absf(l.x) - sz.x * 0.5, 0.0)
+			var dz := maxf(absf(l.z) - sz.y * 0.5, 0.0)
+			best = minf(best, Vector2(dx, dz).length())
+	return best
+
+
 func _fires(t: float) -> void:
 	var wind := Weather.wind_now
 	for b in buildings:
@@ -284,15 +339,19 @@ func _fires(t: float) -> void:
 			for k: String in b.goods:
 				var lost := int(ceil(float(b.goods[k]) * 0.0015 * mini(n, 8) * t))
 				b.take_goods(k, lost)
+		# to a neighbour only if it's close: wall to wall within a metre and a half, or a few metres more
+		# straight downwind in a strong wind (sparks carried); never across open ground
+		var wet := clampf(maxf(Weather.rain_now, maxf(Weather.snow_now * 1.3, Weather.snow_cover_now * 0.7)), 0.0, 1.0)
 		for o in buildings:
 			if o == b or o.state == "gone" or o.is_burning():
 				continue
-			var gap := b.global_position.distance_to(o.global_position) - b.radius - o.radius
-			if gap > 5.0:
-				continue
+			var gap := _wall_gap(b, o)
 			var dir := (o.global_position - b.global_position).normalized()
 			var downwind := clampf(Vector2(wind.x, wind.z).dot(Vector2(dir.x, dir.z)) / 6.0, -0.5, 1.5)
-			var chance := 0.0035 * mini(n, 8) * (1.0 + downwind) * clampf(1.0 - gap / 5.0, 0.15, 1.0) * (1.0 - Weather.rain_now * 0.7) * t
+			var reach := 1.5 + (2.5 * downwind if wind.length() > 6.0 and downwind > 0.3 else 0.0)
+			if gap > reach:
+				continue
+			var chance := 0.0035 * mini(n, 8) * (1.0 + downwind) * clampf(1.0 - gap / maxf(reach, 0.1), 0.15, 1.0) * (1.0 - wet * 0.9) * t
 			if randf() < chance and o.ignite():
 				message.emit("Yangın %s binasına sıçradı!" % o.display_name(), "bad")
 

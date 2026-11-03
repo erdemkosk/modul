@@ -77,7 +77,10 @@ func bury(v: Villager) -> void:
 	var at := lay(v.display_name, int(village.day))
 	if at == Vector3.INF:
 		return
-	village.message.emit("%s mezarlığa gömüldü." % v.display_name, "info")
+	var who := v.display_name # (the dead are freed soon: what's needed of them, kept now)
+	var first := who.split(" ")[0]
+	var fam := v.family
+	village.message.emit("%s mezarlığa gömüldü." % who, "info")
 	Ambience.funeral(at)
 	if village.raids and village.raids.active:
 		return
@@ -85,15 +88,15 @@ func bury(v: Villager) -> void:
 	for o: Villager in village.villagers:
 		if o.dead or o.down or o.is_child or o.drafted or o.sleeping or o.leaving:
 			continue
-		if o.family != v.family and (n >= 3 or not (o.plan.is_empty() or o.idle)):
+		if o.family != fam and (n >= 3 or not (o.plan.is_empty() or o.idle)):
 			continue
 		var spot := at + Basis(Vector3.UP, _yaw) * Vector3(randf_range(-1.6, 1.6), 0, -1.6 - randf_range(0.0, 1.0))
 		spot.y = village.ground_at(spot)
 		o.abort()
-		var close := o.family == v.family
+		var close := o.family == fam
 		o.give([{"t": "go", "to": spot}, {"t": "work", "time": randf_range(14.0, 22.0), "anim": "idle", "face": at},
 			{"t": "do", "f": func() -> bool:
-				o.think("funeral", "%s cenazesine katıldı" % v.display_name.split(" ")[0], 6.0 if close else 3.0, maxf(village.weather.day_length_minutes * 60.0, 60.0))
+				o.think("funeral", "%s cenazesine katıldı" % first, 6.0 if close else 3.0, maxf(village.weather.day_length_minutes * 60.0, 60.0))
 				return true}], "Cenazede")
 		if not close:
 			n += 1
