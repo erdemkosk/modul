@@ -130,6 +130,7 @@ var _flames: Array[GPUParticles3D] = []
 var _smoke: GPUParticles3D
 var _embers: GPUParticles3D
 var _light: OmniLight3D
+var _ash: GPUParticles3D ## flakes of ash drifting down round a fire
 var _sound: AudioStreamPlayer3D
 var _sound_t := 0.0
 var _fire_t := 0.0
@@ -597,19 +598,65 @@ var _coal_smoke := false
 var _dust_ms := 0
 
 
+## The roof's low edges, where icicles hang: for each roof piece, the line its lowest points run
+## along (both edges of a ridged roof, the outer one of a lean-to), from its own mesh, so none hang
+## in the air where there is no eave (under a window, between a roof and its porch).
+func _eaves() -> Array:
+	var out := []
+	for p in pieces:
+		if p.stuff != "shingle" or not p.alive or p.mesh_res == null:
+			continue
+		var faces := p.mesh_res.get_faces()
+		if faces.is_empty():
+			continue
+		var xf := p.xf * p.mesh_local
+		var lo := INF
+		var pts: Array[Vector3] = []
+		for v in faces:
+			var w := xf * v
+			pts.append(w)
+			lo = minf(lo, w.y)
+		var hi := -INF
+		for w in pts:
+			hi = maxf(hi, w.y)
+		if hi - lo < 0.25:
+			continue # (a flat piece, a ridge cap: no eave of its own)
+		var low: Array[Vector3] = []
+		for w in pts:
+			if w.y < lo + 0.12:
+				low.append(w)
+		# the line the low points run along: the longer way of their spread, split by the other way
+		var mn := Vector3(INF, 0, INF)
+		var mx := Vector3(-INF, 0, -INF)
+		for w in low:
+			mn = Vector3(minf(mn.x, w.x), 0, minf(mn.z, w.z))
+			mx = Vector3(maxf(mx.x, w.x), 0, maxf(mx.z, w.z))
+		var along_x := mx.x - mn.x >= mx.z - mn.z
+		var groups := {} # (the across coordinate, to 0.3 m: one eave each)
+		for w in low:
+			var key := int(roundf((w.z if along_x else w.x) / 0.3))
+			if not groups.has(key):
+				groups[key] = [w, w]
+			var g: Array = groups[key]
+			if (w.x if along_x else w.z) < ((g[0] as Vector3).x if along_x else (g[0] as Vector3).z):
+				g[0] = w
+			if (w.x if along_x else w.z) > ((g[1] as Vector3).x if along_x else (g[1] as Vector3).z):
+				g[1] = w
+		for key in groups:
+			var g: Array = groups[key]
+			if (g[0] as Vector3).distance_to(g[1]) > 0.6:
+				out.append(g)
+	return out
+
+
 func set_icicles(on: bool) -> void:
 	if not on or state != "done":
 		if _icicles:
 			_icicles.visible = false
 		return
 	if _icicles == null:
-		var roof := AABB()
-		var first := true
-		for p in pieces:
-			if p.stuff == "shingle" and p.alive:
-				roof = p.aabb if first else roof.merge(p.aabb)
-				first = false
-		if first:
+		var eaves := _eaves()
+		if eaves.is_empty():
 			return
 		var cone := CylinderMesh.new()
 		cone.top_radius = 0.035
@@ -625,13 +672,19 @@ func set_icicles(on: bool) -> void:
 		cone.material = ice
 		var spots: Array[Transform3D] = []
 		var k := 0
-		var x := roof.position.x + 0.2
-		while x < roof.end.x - 0.2:
-			for z in [roof.position.z + 0.05, roof.end.z - 0.05]:
-				var len := 0.5 + 0.9 * absf(sin(k * 2.39 + z))
-				spots.append(Transform3D(Basis.from_scale(Vector3(1, len, 1)), Vector3(x, roof.position.y - 0.2 * len, z)))
+		for e in eaves:
+			var a: Vector3 = e[0]
+			var b: Vector3 = e[1]
+			var run := a.distance_to(b)
+			var s := 0.2
+			while s < run - 0.2:
+				var at := a.lerp(b, s / run)
+				var len := 0.5 + 0.9 * absf(sin(k * 2.39 + at.z + at.x))
+				spots.append(Transform3D(Basis.from_scale(Vector3(1, len, 1)), at + Vector3.DOWN * 0.2 * len))
 				k += 1
-			x += 0.32 + 0.12 * absf(sin(k * 1.7))
+				s += 0.32 + 0.12 * absf(sin(k * 1.7))
+		if spots.is_empty():
+			return
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = cone
@@ -1394,6 +1447,7 @@ func set_lit(on: bool) -> void:
 			_glow.distance_fade_length = 60.0
 		else:
 			_glow.position = Vector3(0, 1.6, (def.size as Vector2).y * 0.5 + 0.8)
+			call_deferred("_window_pools")
 			_glow.omni_range = 8.0
 			_glow.light_energy = 0.9
 			_glow.light_volumetric_fog_energy = 0.4
@@ -1403,6 +1457,53 @@ func set_lit(on: bool) -> void:
 		add_child(_glow)
 	if _glow:
 		_glow.visible = on
+
+
+## The light of a house's lit windows lying out on the ground in front of each (snow, mud, the
+## yard): a soft warm pool from the wall outward, one a window, shown while the house is lit.
+static var _pool_tex: Texture2D
+
+
+func _window_pools() -> void:
+	if _glow == null:
+		return
+	if _pool_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(0, 0, 0, 1))
+		g.add_point(0.45, Color(0.4, 0.4, 0.4, 1))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.0)
+		gt.fill_to = Vector2(0.5, 1.0)
+		gt.width = 64
+		gt.height = 64
+		_pool_tex = gt
+	for p in pieces:
+		if p.stuff != "window" or not p.alive:
+			continue
+		var bb := p.aabb
+		var c := bb.get_center()
+		if c.y > 3.2:
+			continue # (a gable's little window: too high to throw a pool)
+		var thin_x := bb.size.x < bb.size.z
+		var out := Vector3(signf(c.x), 0, 0) if thin_x else Vector3(0, 0, signf(c.z))
+		var w := maxf(bb.size.z if thin_x else bb.size.x, 0.5)
+		var d := Decal.new()
+		d.texture_emission = _pool_tex
+		d.emission_energy = 1.6
+		d.modulate = Color(1.0, 0.68, 0.36)
+		d.albedo_mix = 0.0
+		d.size = Vector3(w * 2.4, 2.4, 3.2)
+		d.rotation.y = atan2(out.x, out.z)
+		d.upper_fade = 0.3
+		d.lower_fade = 0.3
+		d.distance_fade_enabled = true
+		d.distance_fade_begin = 150.0
+		d.distance_fade_length = 40.0
+		_glow.add_child(d)
+		d.position = Vector3(c.x, 0.4, c.z) + out * 1.85 - _glow.position # (under the house's own light: shown and hidden with it)
 
 
 ## The watch's lantern: hung up under a lookout tower's roof while someone's up there, or by a
@@ -1439,6 +1540,104 @@ func set_watch_light(on: bool) -> void:
 		_watch.visible = on
 	if def.role == "tower":
 		lit = on
+
+
+## A lookout tower's own torches: one lashed up at each corner of the platform's rail, burning
+## all night, a pool of light round the tower's foot and out over the ground it watches.
+var _torches: Array[Node3D] = []
+
+
+func set_torches(on: bool) -> void:
+	if on and _torches.is_empty():
+		var top := 9.4 # (the platform, build_buildings.py's kule)
+		var wood := StandardMaterial3D.new()
+		wood.albedo_color = Color(0.22, 0.15, 0.09)
+		var head := StandardMaterial3D.new()
+		head.albedo_color = Color(1.0, 0.7, 0.35)
+		head.emission_enabled = true
+		head.emission = Color(1.0, 0.55, 0.2)
+		head.emission_energy_multiplier = 5.0
+		for sx in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				var t := Node3D.new()
+				t.position = Vector3(sx * 2.2, top + 0.6, sz * 2.2)
+				t.rotation = Vector3(sz * 0.25, 0.0, -sx * 0.25) # (leaning out over the rail)
+				var stick := MeshInstance3D.new()
+				var cm := CylinderMesh.new()
+				cm.top_radius = 0.035
+				cm.bottom_radius = 0.03
+				cm.height = 1.0
+				cm.radial_segments = 6
+				stick.mesh = cm
+				stick.material_override = wood
+				t.add_child(stick)
+				var pitch := MeshInstance3D.new()
+				var pm := CylinderMesh.new()
+				pm.top_radius = 0.07
+				pm.bottom_radius = 0.05
+				pm.height = 0.2
+				pm.radial_segments = 6
+				pitch.mesh = pm
+				pitch.material_override = head
+				pitch.position = Vector3.UP * 0.55
+				t.add_child(pitch)
+				var f := FireFx.flames()
+				f.amount = 10
+				f.lifetime = 0.6
+				f.local_coords = false
+				var m := f.process_material as ParticleProcessMaterial
+				m.emission_box_extents = Vector3(0.05, 0.05, 0.05)
+				m.scale_min = 0.18
+				m.scale_max = 0.3
+				m.initial_velocity_min = 0.3
+				m.initial_velocity_max = 0.7
+				m.gravity = Vector3(Weather.wind_now.x * 0.4, 1.5, Weather.wind_now.z * 0.4)
+				f.position = Vector3.UP * 0.65
+				t.add_child(f)
+				var l := OmniLight3D.new()
+				l.light_color = Color(1.0, 0.6, 0.28)
+				l.omni_range = 16.0
+				l.light_energy = 2.2
+				l.omni_attenuation = 0.8
+				l.light_volumetric_fog_energy = 0.5
+				l.shadow_enabled = false
+				l.distance_fade_enabled = true
+				l.distance_fade_begin = 200.0
+				l.distance_fade_length = 60.0
+				l.position = Vector3.UP * 0.8
+				l.set_meta("flicker", randf() * 10.0)
+				t.add_child(l)
+				add_child(t)
+				_torches.append(t)
+		# and one light thrown down on the ground round the foot, with shadows (the legs, the folk)
+		var g := OmniLight3D.new()
+		g.light_color = Color(1.0, 0.62, 0.3)
+		g.position = Vector3(0, top + 1.2, 0)
+		g.omni_range = 30.0
+		g.light_energy = 2.4
+		g.omni_attenuation = 0.7
+		g.light_volumetric_fog_energy = 0.3
+		g.shadow_enabled = true
+		g.distance_fade_enabled = true
+		g.distance_fade_begin = 220.0
+		g.distance_fade_length = 60.0
+		add_child(g)
+		_torches.append(g)
+	for t in _torches:
+		t.visible = on
+		for c in t.get_children():
+			if c is GPUParticles3D:
+				(c as GPUParticles3D).emitting = on
+
+
+## (A torch's light trembling with its flame.)
+func _flicker_torches() -> void:
+	var now := Time.get_ticks_msec() * 0.001
+	for t in _torches:
+		for c in t.get_children():
+			if c is OmniLight3D and c.has_meta("flicker"):
+				var k: float = c.get_meta("flicker")
+				(c as OmniLight3D).light_energy = 2.2 * (0.85 + 0.1 * sin(now * 13.0 + k) + 0.06 * sin(now * 31.0 + k * 2.3))
 
 
 ## The square's evening fire: flames in the pit, its light, a little smoke.
@@ -1853,6 +2052,8 @@ func _process(dt: float) -> void:
 		return
 	if not _doors.is_empty():
 		_swing_doors(dt)
+	if not _torches.is_empty() and _torches[0].visible:
+		_flicker_torches()
 
 	_fire_t += dt
 	if _fire_t < 0.25:
@@ -2015,6 +2216,8 @@ func _fire_fx() -> void:
 		add_child(_smoke)
 		_embers = FireFx.embers()
 		add_child(_embers)
+		_ash = FireFx.ash()
+		add_child(_ash)
 		_light = OmniLight3D.new()
 		_light.light_color = Color(1.0, 0.55, 0.22)
 		_light.omni_range = 18.0
@@ -2036,6 +2239,9 @@ func _fire_fx() -> void:
 	(_embers.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(sz.x * 0.35, 0.5, sz.y * 0.35)
 	_embers.amount_ratio = clampf(0.2 + lit.size() * 0.1, 0.2, 1.0)
 	_embers.emitting = true
+	_ash.position = Vector3(0, top + 3.0, 0) + Vector3(Weather.wind_now.x, 0, Weather.wind_now.z) * 1.2
+	_ash.amount_ratio = clampf(0.25 + lit.size() * 0.1, 0.25, 1.0)
+	_ash.emitting = true
 	_light.position = mid + Vector3.UP * 0.8
 	_light.set_meta("energy", clampf(1.5 + lit.size() * 0.5, 1.5, 6.0))
 	for k in MAX_FLAMES:
@@ -2067,6 +2273,8 @@ func _stop_fx() -> void:
 		_smoke.emitting = false
 	if _embers:
 		_embers.emitting = false
+	if _ash:
+		_ash.emitting = false
 	if _light:
 		_light.light_energy = 0.0
 		_light.remove_meta("energy")

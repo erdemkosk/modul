@@ -15,6 +15,7 @@ static var volume := 0.8 ## 0..1, all the sound
 static var fullscreen := true ## (full screen by default; AYARLAR can make it a window)
 static var window := Vector2i.ZERO ## the window's size (zero: most of the screen)
 static var ui_scale := 0.0
+static var guide_off := false ## FIRST STEPS closed, or done with
 static var edge_pan := true
 static var folk_open := false ## the townsfolk strip unfolded (folded at each start)
 static var _loaded := false
@@ -33,6 +34,7 @@ static func load_settings() -> void:
 	window = cf.get_value("s", "window", window)
 	ui_scale = float(cf.get_value("s", "ui_scale", ui_scale))
 	edge_pan = bool(cf.get_value("s", "edge_pan", edge_pan))
+	guide_off = bool(cf.get_value("s", "guide_off", guide_off))
 
 
 static func save_settings() -> void:
@@ -43,6 +45,7 @@ static func save_settings() -> void:
 	cf.set_value("s", "ui_scale", ui_scale)
 	cf.set_value("s", "edge_pan", edge_pan)
 	cf.set_value("s", "folk_open", folk_open)
+	cf.set_value("s", "guide_off", guide_off)
 	cf.save(PATH)
 
 
@@ -71,7 +74,9 @@ static func ui_factor(window_height := 0) -> float:
 	var h := float(window_height if window_height > 0 else DisplayServer.window_get_size().y)
 	var screen := DisplayServer.screen_get_scale(DisplayServer.window_get_current_screen())
 	var f := maxf(1.0, maxf(minf(screen, h / 720.0), h / 1080.0))
-	return clampf(snappedf(f, 0.25), 1.0, 3.0)
+	# (to the screen's own proportion, not down to a quarter step: a 1440-row screen is drawn just as
+	# a 1080-row one, a third bigger, not a quarter)
+	return clampf(snappedf(f, 1.0 / 12.0), 1.0, 3.0)
 
 
 ## Put on: the sound's loudness, the window (full screen, or its size, centred), how big the menus

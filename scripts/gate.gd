@@ -1,9 +1,11 @@
 class_name Gate
 extends Node3D
 ## A gate in a palisade: two stout posts and a beam over them, two leaves of planks on battens that
-## swing inward on their hinges. Open by day; shut at night and when the alarm goes, but it opens
-## for one of the town coming up to it (unless an outlaw's close by). An outlaw who meets it shut
-## hacks at it (Villager._walk); beaten in, its leaves hang off their hinges and it stays open.
+## swing inward on their hinges. Shut as a rule; it opens for one of the town going through (unless
+## an outlaw's close by) and shuts behind them. Locked (the bar dropped across it, by order) it opens
+## for no one: the townsfolk know it and go round by another, or wait at it if there's none. An
+## outlaw who meets it shut hacks at it (Villager._walk), locked or not; beaten in, its leaves hang
+## off their hinges and it stays open.
 ## (Its frame: the wall runs along x, -z is the way out of the town.)
 
 const HP := 160.0
@@ -12,10 +14,13 @@ const WIDTH := 3.0
 var wall: Wall
 var hp := HP
 var broken := false
-var is_open := true
+var is_open := false
+var locked := false ## barred by order: shut to everyone
+var _bar: Node3D ## the bar across it
 var _leaves: Array[Node3D] = []
 var _inward := 1.0 ## which way the leaves swing: toward the town
 var _hold := 0.0 ## s it stays open for someone going through
+var _train := 0.0 ## s it stays open for a train
 var _t := 0.0
 
 
@@ -76,7 +81,51 @@ func _ready() -> void:
 	if not stores.is_empty():
 		var to: Vector3 = (stores[0] as Node3D).global_position - global_position
 		_inward = 1.0 if to.dot(global_basis.z) > 0.0 else -1.0
-	_swing(true, 0.01)
+	_swing(false, 0.01)
+	# the bar dropped across the leaves on the town's side, in its two iron brackets
+	_bar = Node3D.new()
+	var bar := MeshInstance3D.new()
+	var barm := BoxMesh.new()
+	barm.size = Vector3(WIDTH + 0.5, 0.2, 0.18)
+	bar.mesh = barm
+	bar.material_override = log
+	_bar.add_child(bar)
+	for sx in [-1.0, 1.0]:
+		var br := MeshInstance3D.new()
+		var brm := BoxMesh.new()
+		brm.size = Vector3(0.1, 0.34, 0.26)
+		br.mesh = brm
+		br.material_override = dark
+		br.position = Vector3(sx * 0.75, 0, 0)
+		_bar.add_child(br)
+	_bar.position = Vector3(0, 1.45, 0.17 * _inward)
+	_bar.visible = locked
+	add_child(_bar)
+
+
+## Barred or unbarred, by order. Barred, its gap's as good as stakes to the way-finding: the
+## townsfolk take another gate if there is one.
+func set_locked(on: bool) -> void:
+	if locked == on:
+		return
+	locked = on
+	if _bar:
+		_bar.visible = on
+	if wall:
+		wall.nav.set_wall(wall.gate_cells(self), on and not broken)
+	if on and is_open and not broken:
+		_hold = 0.0
+		_swing(false)
+	Ambience.knock(global_position + Vector3.UP, 0.8)
+
+
+## A train coming through: it stands open for it, whoever else is about.
+func pass_train(time := 6.0) -> void:
+	if broken or locked:
+		return
+	_train = maxf(_train, time)
+	if not is_open:
+		_swing(true)
 
 
 ## How far the leaves stand open (0 shut .. 1 open).
@@ -95,24 +144,26 @@ func think(dt: float) -> void:
 		return
 	_t += dt
 	_hold -= dt
+	_train -= dt
+	if _train > 0.0:
+		return
 	if _t < 0.3:
 		return
 	_t = 0.0
+	if locked:
+		return
 	var v: Node = wall.village
 	var raids: Raids = v.raids
-	var danger := raids != null and raids.active
-	var near_foe := false
-	if raids:
-		var r := raids.nearest_raider(global_position, 28.0)
-		near_foe = r != null
+	var near_foe := raids != null and raids.nearest_raider(global_position, 16.0) != null
 	var own := false
 	for x: Villager in v.villagers:
-		if not x.dead and not x.down and not x.sleeping and x.position.distance_to(global_position) < 5.5:
+		# (one on the move and close: not whoever's working by it)
+		if not x.dead and not x.down and not x.sleeping and x._path_i < x._path.size() and x.position.distance_to(global_position) < 5.0:
 			own = true
 			break
 	if own and not near_foe:
-		_hold = 3.0
-	var want: bool = _hold > 0.0 or (not danger and not v.weather.is_night())
+		_hold = 2.5
+	var want: bool = _hold > 0.0 and not near_foe
 	if want != is_open:
 		_swing(want)
 		Ambience.knock(global_position + Vector3.UP, 0.7)
@@ -134,8 +185,11 @@ func hit(dmg: float) -> void:
 		for i in _leaves.size():
 			var tw := _leaves[i].create_tween()
 			tw.tween_property(_leaves[i], "rotation", Vector3(_inward * 0.4 * (1 + i), (-1.0 if i == 0 else 1.0) * -_inward * 1.2, 0.3 * (i * 2 - 1)), 0.5)
-		if wall and wall.village:
-			wall.village.message.emit("Firariler sur kapısını kırdı!", "bad")
+		if wall:
+			if locked:
+				wall.nav.set_wall(wall.gate_cells(self), false) # (beaten in: open to all, barred or not)
+			if wall.village:
+				wall.village.message.emit("Firariler sur kapısını kırdı!", "bad")
 
 
 ## Mended (a builder's hands): whole again.
@@ -144,7 +198,9 @@ func mend() -> void:
 	hp = HP
 	for l in _leaves:
 		l.rotation = Vector3.ZERO
-	_swing(is_open, 0.01)
+	_swing(false, 0.01)
+	if locked and wall:
+		wall.nav.set_wall(wall.gate_cells(self), true)
 
 
 ## Shut and whole, standing in an outlaw's way.

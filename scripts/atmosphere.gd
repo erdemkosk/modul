@@ -21,6 +21,10 @@ var village: Village
 var photo := false
 var sepia := false ## (the photograph an old one)
 var _grade := Color(1, 1, 1) ## the season's cast, eased toward
+var _grade_s := Color(1, 1, 1) ## (its shadows')
+var _glow := 0.0 ## a fire's glow on the sky, 0..1
+var _glow_want := 0.0
+var _glow_t := 0.0
 
 var _attrs: CameraAttributesPractical
 var _vignette: ColorRect
@@ -50,8 +54,10 @@ func _ready() -> void:
 	sh.code = """shader_type canvas_item;
 uniform sampler2D screen : hint_screen_texture, filter_linear_mipmap;
 uniform float amount = 0.4;
-uniform vec3 tint = vec3(1.0);
+uniform vec3 tint = vec3(1.0); // the highlights' cast
+uniform vec3 shade = vec3(1.0); // the shadows' cast
 uniform float tint_amt = 0.0;
+uniform vec3 glow = vec3(0.0); // a town burning: orange on the sky, thrown up from below
 uniform float sepia = 0.0;
 uniform float t = 0.0;
 float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -59,9 +65,16 @@ void fragment() {
 	vec2 uv = SCREEN_UV;
 	float d = length((UV - 0.5) * vec2(1.0, 0.8)) * 1.45;
 	vec3 c = texture(screen, uv).rgb;
-	// the season's cast: multiplied in the mid-tones, the highlights kept
+	// the season's grade: the shadows toned one way, the lights another (winter's blue shade and
+	// cold white, autumn's brown and gold, the night's ink blue), a gentle S of contrast
 	float lum = dot(c, vec3(0.299, 0.587, 0.114));
-	c = mix(c, c * tint, tint_amt * (1.0 - smoothstep(0.6, 1.0, lum)));
+	vec3 cast = mix(shade, tint, smoothstep(0.02, 0.6, lum));
+	cast /= max(dot(cast, vec3(0.299, 0.587, 0.114)), 0.01); // (a shift of hue only: the night no darker for it)
+	c = mix(c, c * cast, tint_amt * (1.0 - smoothstep(0.75, 1.1, lum) * 0.6));
+	vec3 cc = clamp(c, 0.0, 1.0);
+	c = mix(c, cc * cc * (3.0 - 2.0 * cc), 0.18 * tint_amt);
+	// fire: the sky above it orange, more toward the top of the view, the dark lit most
+	c += glow * (0.35 + 0.65 * (1.0 - uv.y)) * (1.0 - smoothstep(0.2, 0.9, lum) * 0.6);
 	if (sepia > 0.0) {
 		// an old plate: soft toward the edges, toned brown, faded, grained, a scratch or two
 		vec3 soft = textureLod(screen, uv, 2.5).rgb;
@@ -85,7 +98,7 @@ void fragment() {
 	add_child(_butterflies)
 	_leaves = _make_leaves()
 	add_child(_leaves)
-	_breath = _puffer(Color(0.92, 0.94, 0.97, 0.35), 0.35, 1.6, Vector3(0, 0.25, 0))
+	_breath = _puffer(Color(0.93, 0.95, 0.98, 0.5), 0.3, 1.8, Vector3(0, 0.22, 0))
 	add_child(_breath)
 	_chips = _puffer(Color(0.86, 0.74, 0.52, 0.9), 0.06, 0.9, Vector3(0, -6.0, 0))
 	add_child(_chips)
@@ -157,12 +170,33 @@ func _process(dt: float) -> void:
 	sm.set_shader_parameter("sepia", 1.0 if photo and sepia else 0.0)
 	sm.set_shader_parameter("t", Time.get_ticks_msec() / 1000.0)
 	# the season's cast, the night's blue
-	var want: Color = [Color(0.94, 1.03, 0.93), Color(1.06, 1.0, 0.86), Color(1.07, 0.93, 0.8), Color(0.88, 0.95, 1.08)][season]
-	want = want.lerp(Color(0.82, 0.9, 1.12), weather._night_factor() * 0.7)
-	want = want.lerp(Color(1.08, 0.96, 0.84), golden * 0.6)
-	_grade = _grade.lerp(want, clampf(dt * 0.5, 0.0, 1.0))
+	var night := weather._night_factor()
+	var want: Color = [Color(0.98, 1.03, 0.95), Color(1.06, 1.01, 0.88), Color(1.1, 0.96, 0.78), Color(0.95, 0.99, 1.07)][season]
+	want = want.lerp(Color(0.86, 0.92, 1.12), night * 0.75)
+	want = want.lerp(Color(1.12, 0.96, 0.8), golden * 0.6)
+	var want_s: Color = [Color(0.92, 1.0, 1.02), Color(0.95, 0.97, 1.05), Color(0.98, 0.87, 0.8), Color(0.8, 0.9, 1.16)][season]
+	want_s = want_s.lerp(Color(0.6, 0.72, 1.2), night * 0.8) # (the night's ink blue)
+	want_s = want_s.lerp(Color(0.9, 0.86, 1.0), golden * 0.4)
+	var k := clampf(dt * 0.5, 0.0, 1.0)
+	_grade = _grade.lerp(want, k)
+	_grade_s = _grade_s.lerp(want_s, k)
 	sm.set_shader_parameter("tint", Vector3(_grade.r, _grade.g, _grade.b))
-	sm.set_shader_parameter("tint_amt", 0.55)
+	sm.set_shader_parameter("shade", Vector3(_grade_s.r, _grade_s.g, _grade_s.b))
+	sm.set_shader_parameter("tint_amt", 0.0 if photo and sepia else 0.75)
+	# a fire in the town: its glow on the sky, the brighter the more is burning and the nearer, the
+	# night more than the day
+	_glow_t -= dt
+	if _glow_t <= 0.0:
+		_glow_t = 0.5
+		var heat := 0.0
+		for b in village.buildings:
+			if b.state != "gone" and b.is_burning():
+				var d := b.global_position.distance_to(cam.focus)
+				heat += float(b.burning_count()) * 0.12 / (1.0 + d / 80.0)
+		_glow_want = clampf(heat, 0.0, 1.0)
+	_glow = move_toward(_glow, _glow_want, dt * 0.25)
+	var gl := Color(1.0, 0.42, 0.12) * _glow * lerpf(0.06, 0.2, night)
+	sm.set_shader_parameter("glow", Vector3(gl.r, gl.g, gl.b))
 	# Focus: close in, the far distance softly out of focus.
 	var close := clampf(1.0 - (cam.dist - 16.0) / 70.0, 0.0, 1.0)
 	_attrs.dof_blur_far_enabled = close > 0.05 or photo
@@ -186,15 +220,27 @@ func _process(dt: float) -> void:
 ## Smoke of breath in the cold, and sawdust and chips flying where the work is: from those near the
 ## camera.
 func _puffs() -> void:
-	var cold := weather.temperature < 3.0
+	# breath: below 5 degrees, a puff every breath (a breath's own rhythm each, quicker at work or
+	# running), more and longer in the bitter cold
+	var cold := clampf((5.0 - weather.temperature) / 15.0, 0.0, 1.0)
+	var now := Time.get_ticks_msec() * 0.001
 	for v in village.villagers:
 		if v.dead or v.sleeping or not v.visible:
 			continue
-		if v.global_position.distance_to(cam.focus) > 45.0:
+		if v.global_position.distance_to(cam.focus) > 70.0:
 			continue
 		var fwd := -v.global_basis.z
-		if cold and randf() < 0.3:
-			_emit(_breath, v.global_position + Vector3.UP * 1.72 + fwd * 0.18, fwd * 0.3 + Vector3.UP * 0.1)
+		if cold > 0.0 and v.inside == null:
+			var pace := 1.0 if v._anim in ["walk", "idle", "sit", ""] else 1.7
+			var ph := fmod(now * pace / 2.4 + float(v.get_instance_id() % 997) * 0.137, 1.0)
+			if ph < 0.35 / 2.4 * pace + 0.02 and randf() < 0.35 + cold * 0.65:
+				var mouth := v.global_position + Vector3.UP * (1.72 * v.scale.y) + fwd * 0.16
+				_emit(_breath, mouth, fwd * (0.35 + 0.2 * cold) + Vector3.UP * 0.05)
+				var ox: Node3D = v._ox_head
+				if ox and is_instance_valid(ox) and ox.is_visible_in_tree():
+					var nose := ox.global_position - ox.global_basis.z * 0.8 + Vector3.DOWN * 0.1
+					_emit(_breath, nose, -ox.global_basis.z * 0.5 + Vector3.DOWN * 0.1)
+					_emit(_breath, nose, -ox.global_basis.z * 0.45 + Vector3.DOWN * 0.05)
 		var anim: String = v._anim
 		if anim in ["saw", "chisel", "chop", "limb", "mine"] and v.plan.size() > 0:
 			for k in 3:

@@ -103,7 +103,7 @@ func _ready() -> void:
 	sell.tooltip_text = "İşaretli mallar tren gelince satılır; her maldan %d kalır" % Village.KEEP
 	right.add_child(sell)
 	for r: String in Village.PRICES:
-		_sell_btns[r] = _button(sell, "%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])], func() -> void:
+		_sell_btns[r] = _button(sell, "", func() -> void:
 			var v: Village = game.village
 			if r in v.selling:
 				v.selling.erase(r)
@@ -111,7 +111,66 @@ func _ready() -> void:
 				v.selling.append(r)
 				send("SATILIK %s STOP" % _plain(BuildingDefs.RES_NAMES[r]), "")
 			refresh())
-		_sell_btns[r].tooltip_text = "%s: tane başı %d %s. İşaretliyse tren gelince fazlası satılır (her maldan %d kalır)." % [BuildingDefs.RES_NAMES[r], int(Village.PRICES[r]), Village.COIN, Village.KEEP]
+		_sell_btns[r].tooltip_text = "%s: fiyat her trende değişir, kışın odun ve kömür pahalanır. İşaretliyse tren gelince fazlası satılır (her maldan %d kalır)." % [BuildingDefs.RES_NAMES[r], Village.KEEP]
+	_heading(right, "Trenle getir")
+	var buy := HFlowContainer.new()
+	buy.add_theme_constant_override("h_separation", 6)
+	buy.add_theme_constant_override("v_separation", 4)
+	right.add_child(buy)
+	for r: String in Trade.BUY:
+		_buy_btns[r] = _button(buy, "", func() -> void:
+			game.village.trade.send_for(r)
+			send("%d %s GONDERIN STOP" % [Trade.LOT, _plain(BuildingDefs.RES_NAMES[r])], "")
+			refresh())
+		_buy_btns[r].tooltip_text = "Tıklayınca %d tane sipariş edilir, para tren gelince ödenir" % Trade.LOT
+	_order_line = Ui.label(right, "", 13, Ui.P_INK, "type")
+	# the contracts on a slip of their own, under the tape
+	var deals_form := PanelContainer.new()
+	deals_form.add_theme_stylebox_override("panel", Ui.sheet("slip"))
+	deals_form.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(deals_form)
+	var deals_col := VBoxContainer.new()
+	deals_col.add_theme_constant_override("separation", 4)
+	deals_form.add_child(deals_col)
+	_heading(deals_col, "Sözleşmeler")
+	_deals = VBoxContainer.new()
+	_deals.add_theme_constant_override("separation", 6)
+	deals_col.add_child(_deals)
+
+
+var _buy_btns := {}
+var _order_line: Label
+var _deals: VBoxContainer
+var _deals_sig := ""
+
+
+## The contracts on the form: those offered, to take or leave; those taken on, what's left to send.
+func _fill_deals() -> void:
+	var tr: Trade = game.village.trade
+	var sig := str(tr.offers) + str(tr.active)
+	if sig == _deals_sig:
+		return
+	_deals_sig = sig
+	for c in _deals.get_children():
+		c.queue_free()
+	if tr.offers.is_empty() and tr.active.is_empty():
+		Ui.label(_deals, "Şimdilik sipariş yok.", 13, Ui.P_DIM, "type")
+	for c: Dictionary in tr.offers:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		_deals.add_child(row)
+		var l := Ui.label(row, "%s: %s\n%d. güne · %d %s · itibar +%d" % [Village.SIDES[c.side], Trade.goods_text(c.goods), int(c.due), int(c.pay), Village.COIN, int(c.rep)], 13, Ui.P_INK, "type")
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var deal := c
+		_button(row, "KABUL", func() -> void:
+			tr.accept(deal)
+			send("SOZLESME KABUL STOP", "ALINDI STOP %d GUNE KADAR BEKLIYORUZ STOP" % maxi(int(deal.due) - game.village.day, 0))
+			refresh())
+		_button(row, "RET", func() -> void:
+			tr.refuse(deal)
+			refresh())
+	for c: Dictionary in tr.active:
+		Ui.label(_deals, "✓ %s: kalan %s (%d gün)" % [Village.SIDES[c.side], Trade.goods_text(c.left), maxi(int(c.due) - game.village.day, 0)], 13, Ui.P_BLUE, "type")
 
 
 ## A heading on the form, printed small, a dotted line run out after it.
@@ -237,7 +296,16 @@ func refresh() -> void:
 	for r: String in _sell_btns:
 		var on := r in v.selling
 		(_sell_btns[r] as Button).add_theme_stylebox_override("normal", Ui.ink_box(Ui.P_INK, 0.0, 0.55, on))
-		(_sell_btns[r] as Button).text = ("✓ " if on else "") + "%s %d" % [Ui.upper(BuildingDefs.RES_NAMES[r]), int(Village.PRICES[r])]
+		(_sell_btns[r] as Button).text = ("✓ " if on else "") + "%s %d%s" % [Ui.upper(BuildingDefs.RES_NAMES[r]), v.trade.price(r), v.trade.trend(r)]
+	for r: String in _buy_btns:
+		(_buy_btns[r] as Button).text = "%s %d%s" % [Ui.upper(BuildingDefs.RES_NAMES[r]), v.trade.buy_price(r), v.trade.trend(r)]
+	var want: Array[String] = []
+	var cost := 0
+	for r: String in v.trade.order:
+		want.append("%d %s" % [int(v.trade.order[r]), str(BuildingDefs.RES_NAMES[r]).to_lower()])
+		cost += int(v.trade.order[r]) * v.trade.buy_price(r)
+	_order_line.text = "Siparişte: %s (~%d %s)" % [", ".join(want), cost, Village.COIN] if not want.is_empty() else ""
+	_fill_deals()
 
 
 ## The key: a wooden base, the brass lever on its pivot, its knob, the contact under it; down while a

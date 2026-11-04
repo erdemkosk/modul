@@ -492,6 +492,8 @@ static var _all: Array[Villager] = []
 static var _grid := {}
 static var _grid_frame := -1
 const ROOM := 0.62 ## m between two, at least
+var _pressed := 0.0 ## s it has been pressed up against someone while trying to walk on
+var _let_by := 0.0 ## s left that it slips past the others (a jam it couldn't step out of)
 
 
 func _enter_tree() -> void:
@@ -508,6 +510,9 @@ func _keeps_room() -> bool:
 
 
 func _make_room(dt: float, walking: bool) -> void:
+	if _let_by > 0.0:
+		_let_by -= dt
+		return
 	var f := Engine.get_process_frames()
 	if f != _grid_frame:
 		_grid_frame = f
@@ -537,10 +542,23 @@ func _make_room(dt: float, walking: bool) -> void:
 					d = Vector2(cos(get_instance_id() % 628 * 0.01), sin(get_instance_id() % 628 * 0.01))
 					len = 0.01
 				push += d / len * (ROOM - len)
+				if walking:
+					# two meeting: each steps to its own side of the other (the two going round,
+					# not leaning into each other face to face for ever)
+					push += Vector2(-d.y, d.x) / len * (ROOM - len) * 1.4
 	if push == Vector2.ZERO:
+		_pressed = 0.0
 		return
+	if walking:
+		_pressed += dt
+		if _pressed > 1.5: # (still jammed: let it slip by for a moment)
+			_pressed = 0.0
+			_let_by = 1.2
+			return
 	var by := push * minf(dt * (6.0 if walking else 2.5), 0.5)
 	var to := position + Vector3(by.x, 0, by.y)
+	if not nav.is_open(to) and nav.is_open(position) and walking:
+		_pressed += dt * 2.0 # (a wall behind it: the jam ends sooner)
 	if nav.is_open(to) or not nav.is_open(position):
 		position.x = to.x
 		position.z = to.z
@@ -1442,6 +1460,11 @@ func _process(dt: float) -> void:
 			if _path.is_empty(): # (the way's still being found)
 				_anim = "idle"
 				_animate(dt, false)
+			elif team == 0 and _path_i == 0 and _way_barred():
+				# no way there but through the stakes or a barred gate: it doesn't set out at all,
+				# it stays where it is and thinks again in a while
+				abort()
+				give([{"t": "work", "time": STAY_IN, "anim": "idle"}], "Kapılar kilitli, burada bekliyor", null, true)
 			elif _walk(dt):
 				plan.pop_front()
 				_path = PackedVector3Array()
@@ -1505,6 +1528,49 @@ func _process(dt: float) -> void:
 			plan.pop_front()
 
 
+## One of the town come up against a barred gate or the stakes with no way round: it stands and
+## waits a little (a gate may be unbarred), then gives it up and finds something else to do.
+const BARRED_WAIT := 6.0
+const STAY_IN := 12.0 ## s before one shut in (or out) tries for somewhere again
+
+
+## Whether its way crosses a standing wall or a barred gate anywhere along it.
+func _way_barred() -> bool:
+	if not village.has_method("barred_at"):
+		return false
+	for i in range(_path.size() - 1):
+		if not village.barred_at(_path[i], _path[i + 1]).is_empty():
+			return true
+	return not _path.is_empty() and not village.barred_at(position, _path[0]).is_empty()
+
+
+var _barred_t := 0.0
+static var _barred_said := -999.0
+
+
+func _barred(dt: float) -> bool:
+	if not village.has_method("barred_at"):
+		return false
+	var bar: Dictionary = village.barred_at(position, _path[_path_i])
+	if bar.is_empty():
+		_barred_t = 0.0
+		return false
+	var at: Vector3 = (bar.gate as Node3D).global_position if bar.has("gate") else bar.at
+	_face(at, dt)
+	_anim = "idle"
+	job = "Kapı kilitli, bekliyor" if bar.has("gate") else "Sur yolu kesiyor"
+	_animate(dt, false)
+	_barred_t += dt
+	var now := Time.get_ticks_msec() * 0.001
+	if now - _barred_said > 90.0:
+		_barred_said = now
+		village.message.emit("Kapı kilitli: %s geçemiyor" % display_name.split(" ")[0] if bar.has("gate") else "%s surdan geçemiyor: kapı gerek" % display_name.split(" ")[0], "bad")
+	if _barred_t > BARRED_WAIT:
+		_barred_t = 0.0
+		abort.call_deferred()
+	return true
+
+
 ## A stretch of its walk; true once it's there.
 func _walk(dt: float) -> bool:
 	in_cover = false
@@ -1529,6 +1595,8 @@ func _walk(dt: float) -> bool:
 			job = "Suru kırıyor"
 			_animate(dt, false)
 			return false
+	if team == 0 and _barred(dt):
+		return false
 	var worn := nav.worn(position)
 	var speed := 2.9 * (1.0 + 0.8 * worn * (1.0 - 0.75 * Weather.wet_now)) # (a trodden path: up to 80% quicker going)
 	speed *= 0.82 if carry_n > 0 else 1.0

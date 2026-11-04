@@ -10,6 +10,7 @@ const MAX_DIST := 460.0
 const EDGE := 4.0 ## px from the window's edge that pans
 const LIMIT := 960.0 ## how far from the map's middle the focus may go, m
 
+var hold_keys := false ## (something being placed: Q and E are its, not the view's)
 var terrain: WorldTerrain
 var focus := Vector3.ZERO
 var yaw := 0.6
@@ -95,9 +96,9 @@ func _process(dt: float) -> void:
 				move.y += 1.0
 			elif m.y > r.y - EDGE:
 				move.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_Q):
+	if Input.is_physical_key_pressed(KEY_Q) and not hold_keys:
 		yaw += real_dt * 1.5
-	if Input.is_physical_key_pressed(KEY_E):
+	if Input.is_physical_key_pressed(KEY_E) and not hold_keys:
 		yaw -= real_dt * 1.5
 	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var right := fwd.cross(Vector3.UP)

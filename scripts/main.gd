@@ -29,6 +29,8 @@ var critters: Critters
 var selected: Building
 var selected_villager: Villager
 var selected_wall: Wall
+var selected_gate: Gate
+var _gate_ghost: MeshInstance3D
 var group: Array[Villager] = [] ## the townsfolk chosen together (Shift+click), the first is selected_villager
 var _rings: Array[MeshInstance3D] = []
 
@@ -269,6 +271,9 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		match k.physical_keycode:
+			KEY_Q:
+				if _ghost:
+					rotate_ghost(-15.0) # (R turns it one way, Q the other)
 			KEY_ENTER, KEY_KP_ENTER:
 				if _placing in ["yol", "sur"] and _road_pts.size() >= 2:
 					_road_finish()
@@ -461,7 +466,34 @@ func start_placing(kind: String) -> void:
 	hud.set_hint("%s: %s · R çevir · Sağ tık iptal" % [BuildingDefs.DEFS[kind].name, BuildingDefs.cost_text(kind)])
 
 
+## The gate about to be set: a block where it would stand, snapped to the wall, green or red.
+func _update_gate_ghost() -> void:
+	if _gate_ghost == null:
+		_gate_ghost = MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(Gate.WIDTH + 0.5, 3.6, 0.5)
+		_gate_ghost.mesh = bm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_gate_ghost.material_override = mat
+		add_child(_gate_ghost)
+	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
+	var hit: Dictionary = village.gate_spot(to) if to != null else {}
+	_gate_ghost.visible = not hit.is_empty()
+	if hit.is_empty():
+		return
+	var at: Vector3 = hit.at
+	at.y = village.nav.height(at.x, at.z) + 1.8
+	var dir: Vector3 = hit.dir
+	_gate_ghost.global_transform = Transform3D(Basis.looking_at(dir.cross(Vector3.UP), Vector3.UP), at)
+	(_gate_ghost.material_override as StandardMaterial3D).albedo_color = Color(0.3, 0.85, 0.35, 0.45) if hit.why == "" else Color(0.9, 0.25, 0.15, 0.45)
+
+
 func stop_placing() -> void:
+	if _gate_ghost:
+		_gate_ghost.visible = false
+	_hide_measure()
 	_placing = ""
 	_show_guide(Vector3.INF, Vector3.INF)
 	_drag_from = null
@@ -513,16 +545,24 @@ func _update_ghost() -> void:
 			_ghost_reason = "x"
 	if not Input.is_key_pressed(KEY_ALT):
 		p = _line_up(_placing, p, _ghost_yaw)
+		if _placing == "kule": # (a watchtower near a palisade stands on its line: a corner tower)
+			var on: Dictionary = village.gate_spot(p)
+			if not on.is_empty():
+				p.x = on.at.x
+				p.z = on.at.z
+				var d: Vector3 = on.dir
+				_ghost_yaw = atan2(d.x, d.z)
 	if p.distance_to(_ghost_pos) < 0.01 and _ghost_reason != "x":
 		return
 	_ghost_pos = p
 	_ghost.global_transform = Transform3D(Basis(Vector3.UP, _ghost_yaw), Vector3(p.x, village.base_height(_placing, p, _ghost_yaw), p.z))
+	_measure(_placing, p, _ghost_yaw)
 	var reason := village.check(_placing, p, _ghost_yaw)
 	if reason != _ghost_reason:
 		_ghost.set_ghost(true, reason == "")
 		var def: Dictionary = BuildingDefs.DEFS[_placing]
 		if reason == "":
-			hud.set_hint("%s: %s · %s · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing), "R çevir" if _yaw_manual else "kapısı kasabaya dönük (R: elle çevir)"])
+			hud.set_hint("%s: %s · %s · Alt: hizasız · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing), "R / Q çevir" if _yaw_manual else "kapısı kasabaya dönük (R / Q: elle çevir)"])
 		else:
 			hud.set_hint(reason, true)
 	_ghost_reason = reason
@@ -554,17 +594,25 @@ func _line_up(kind: String, p: Vector3, yaw: float) -> Vector3:
 	var bs: Vector2 = best.def.size
 	var local := best.global_transform.affine_inverse() * p
 	var snapped := false
+	# The gap between the walls: houses far enough apart that their yards fit side by side; and
+	# along a row already started, the row's own gap again, so the street keeps an even step.
+	var houses: bool = BuildingDefs.DEFS[kind].role == "house" and best.def.role == "house"
+	var gap := Yard.SIDE * 2.0 + 0.4 if houses else 2.0
+	var row := _row_gap(best)
+	if row > 0.0:
+		gap = maxf(row, gap)
 	# beside it (along its x): the fronts in a line, an even gap between the walls
 	var half_x := bs.x * 0.5 + sz.x * 0.5
-	if absf(local.z) < 1.6 and absf(absf(local.x) - (half_x + 2.0)) < 1.6:
+	if absf(local.z) < 2.5 and absf(absf(local.x) - (half_x + gap)) < 2.5:
 		local.z = (bs.y * 0.5) - (sz.y * 0.5) # (fronts flush: the doors on one line)
-		local.x = signf(local.x) * (half_x + 2.0)
+		local.x = signf(local.x) * (half_x + gap)
 		snapped = true
-	# behind or in front (along its z): side by side in a column, the same gap
+	# behind or in front (along its z): side by side in a column (houses: room for both yards)
 	var half_z := bs.y * 0.5 + sz.y * 0.5
-	if not snapped and absf(local.x) < 1.6 and absf(absf(local.z) - (half_z + 2.0)) < 1.6:
+	var col_gap := (Yard.BACK + Yard.FRONT + 0.4) if houses else 2.0
+	if not snapped and absf(local.x) < 2.0 and absf(absf(local.z) - (half_z + col_gap)) < 2.0:
 		local.x = 0.0
-		local.z = signf(local.z) * (half_z + 2.0)
+		local.z = signf(local.z) * (half_z + col_gap)
 		snapped = true
 	if not snapped:
 		_show_guide(Vector3.INF, Vector3.INF)
@@ -573,6 +621,105 @@ func _line_up(kind: String, p: Vector3, yaw: float) -> Vector3:
 	out.y = p.y
 	_show_guide(best.global_position, out)
 	return out
+
+
+## The gap between `b`'s wall and the next building's along its row (same way, fronts in line), or
+## 0 with none: a street's step, for the next to keep.
+func _row_gap(b: Building) -> float:
+	var bs: Vector2 = b.def.size
+	for o in village.buildings:
+		if o == b or o.state == "gone" or o.state == "ghost":
+			continue
+		if absf(angle_difference(o.global_rotation.y, b.global_rotation.y)) > 0.05:
+			continue
+		var l := b.global_transform.affine_inverse() * o.global_position
+		var os: Vector2 = o.def.size
+		if absf((l.z + os.y * 0.5) - bs.y * 0.5) > 0.4: # (its front on the same line)
+			continue
+		var g := absf(l.x) - bs.x * 0.5 - os.x * 0.5
+		if g > 0.5 and g < 14.0:
+			return g
+	return 0.0
+
+
+## Thin lines from the ghost's walls to its nearest neighbours' with how far it is, in metres:
+## green with room, yellow tight (under 2 m), red very close (under 1 m).
+var _gaps: Array = [] ## [line MeshInstance3D, Label3D]
+
+
+func _measure(kind: String, p: Vector3, yaw: float) -> void:
+	var sz: Vector2 = BuildingDefs.DEFS[kind].size
+	var mine := village._rect_poly(p, yaw, Rect2(-sz * 0.5, sz))
+	var near: Array = []
+	for o in village.buildings:
+		if o.state == "gone" or o.state == "ghost":
+			continue
+		if o.global_position.distance_to(p) > 30.0:
+			continue
+		var os: Vector2 = o.def.size
+		var their := village._rect_poly(o.global_position, o.global_rotation.y, Rect2(-os * 0.5, os))
+		var best := [INF, Vector2.ZERO, Vector2.ZERO]
+		for pair in [[mine, their], [their, mine]]:
+			var a: PackedVector2Array = pair[0]
+			var b: PackedVector2Array = pair[1]
+			for q in a:
+				for k in b.size():
+					var c := Geometry2D.get_closest_point_to_segment(q, b[k], b[(k + 1) % b.size()])
+					if q.distance_to(c) < float(best[0]):
+						best = [q.distance_to(c), q, c] if pair[0] == mine else [q.distance_to(c), c, q]
+		if float(best[0]) < 20.0:
+			near.append(best)
+	near.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	while _gaps.size() < 3:
+		var line := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.06, 0.03, 1.0)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.material = m
+		line.mesh = bm
+		line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(line)
+		var tag := Label3D.new()
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		tag.fixed_size = true
+		tag.pixel_size = 0.0008
+		tag.font_size = 30
+		tag.outline_size = 8
+		tag.font = Ui.font("type_bold")
+		add_child(tag)
+		_gaps.append([line, tag])
+	for i in _gaps.size():
+		var line: MeshInstance3D = _gaps[i][0]
+		var tag: Label3D = _gaps[i][1]
+		line.visible = i < near.size()
+		tag.visible = i < near.size()
+		if i >= near.size():
+			continue
+		var d: float = near[i][0]
+		var a2: Vector2 = near[i][1]
+		var b2: Vector2 = near[i][2]
+		var a := Vector3(a2.x, village.nav.height(a2.x, a2.y) + 0.25, a2.y)
+		var b := Vector3(b2.x, village.nav.height(b2.x, b2.y) + 0.25, b2.y)
+		var col := Color(0.55, 0.95, 0.55) if d >= 2.0 else (Color(1.0, 0.85, 0.3) if d >= 1.0 else Color(1.0, 0.4, 0.3))
+		((line.mesh as BoxMesh).material as StandardMaterial3D).albedo_color = Color(col, 0.9)
+		if a.distance_to(b) > 0.05:
+			line.global_position = (a + b) * 0.5
+			line.look_at(b, Vector3.UP)
+			line.scale = Vector3(1, 1, a.distance_to(b))
+		else:
+			line.visible = false
+		tag.global_position = (a + b) * 0.5 + Vector3.UP * 0.6
+		tag.text = "%.1f m" % d
+		tag.modulate = col
+
+
+func _hide_measure() -> void:
+	for g in _gaps:
+		(g[0] as Node3D).visible = false
+		(g[1] as Node3D).visible = false
 
 
 func _show_guide(a: Vector3, b: Vector3) -> void:
@@ -697,7 +844,7 @@ func _road_finish() -> void:
 	if _placing == "sur":
 		var w := village.lay_wall(_road_pts, _road_dir)
 		if w:
-			hud.toast("Sur çizildi: %d kazık, %d kapı · kasabalılar dikecek" % [w.line.size(), w.gates.size()], "good")
+			hud.toast("Sur çizildi: %d kazık · kasabalılar dikecek · kapıyı sen koy (SUR KAPISI)" % w.line.size(), "good")
 		_road_pts.clear()
 		_road_dir = Vector3.ZERO
 		return
@@ -769,6 +916,13 @@ func _pick(at: Vector2, add := false) -> void:
 		if p != null:
 			for w in village.walls:
 				if is_instance_valid(w):
+					for g in w.gates:
+						if is_instance_valid(g) and g.global_position.distance_to(p) < 2.6:
+							select(null)
+							selected_gate = g
+							return
+			for w in village.walls:
+				if is_instance_valid(w):
 					var n := w.nearest(p)
 					if not n.is_empty() and float(n.dist) < 2.0:
 						select(null)
@@ -819,6 +973,7 @@ func select(b: Building) -> void:
 	selected = b
 	selected_villager = null
 	selected_wall = null
+	selected_gate = null
 	group.clear()
 
 
@@ -1085,6 +1240,14 @@ func _order(at: Vector2) -> void:
 				v.give([{"t": "fight", "foe": foe, "give_up": 60.0}], "Saldırıyor")
 		hud.toast("Hedef: %d kişi ona ateş edecek" % drafted.size(), "info")
 		return
+	# cover under it (sandbags, a trench, the palisade): they take it, side by side
+	if not drafted.is_empty():
+		var cv := _cover_under(at)
+		if not cv.is_empty():
+			for i in drafted.size():
+				village.take_cover(drafted[i], cv, i, drafted.size())
+			hud.toast("%d kişi siper alıyor" % drafted.size() if drafted.size() > 1 else "%s siper alıyor" % drafted[0].display_name.split(" ")[0], "good")
+			return
 	# a raider's body or a downed foe, for the one in hand: searched, or taken prisoner
 	if drafted.size() >= 1 and village.controlled(drafted[0]):
 		var near := _body_under(at)
@@ -1272,6 +1435,74 @@ func _make_cursors() -> void:
 
 
 ## A dead raider or one lying downed, near the screen point `at`.
+## The cover under the mouse at `at` (Village.cover_at), or empty.
+func _cover_under(at: Vector2) -> Dictionary:
+	var to: Variant = cam.ground_under(at)
+	if to == null:
+		return {}
+	return village.cover_at(to, _building_under(at))
+
+
+## The pointer as what a right-click would do with folk in hand: a sight over a foe, a shield over
+## cover; else the plain one.
+static var _cursors := {}
+var _cursor := ""
+
+
+func _update_cursor() -> void:
+	var want := ""
+	if _ghost == null and _placing == "":
+		var any := false
+		for v in _chosen():
+			if v.drafted and not v.down:
+				any = true
+				break
+		if any:
+			var at := get_viewport().get_mouse_position()
+			if _raider_under(at):
+				want = "sight"
+			elif not _cover_under(at).is_empty():
+				want = "shield"
+	if want == _cursor:
+		return
+	_cursor = want
+	if want == "":
+		Input.set_custom_mouse_cursor(null)
+		return
+	Input.set_custom_mouse_cursor(_cursor_tex(want), Input.CURSOR_ARROW, Vector2(16, 16))
+
+
+## The two pointers, drawn once: a sight (a ring and its ticks, red), a shield (brass, a cross on it).
+static func _cursor_tex(kind: String) -> Texture2D:
+	if _cursors.has(kind):
+		return _cursors[kind]
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var ink := Color(0.12, 0.08, 0.05, 1.0)
+	for y in 32:
+		for x in 32:
+			var d := Vector2(x - 15.5, y - 15.5)
+			if kind == "sight":
+				var r := d.length()
+				var ring := absf(r - 10.0) < 1.3
+				var tick := (absf(d.x) < 1.0 and r > 6.0 and r < 15.5) or (absf(d.y) < 1.0 and r > 6.0 and r < 15.5)
+				if ring or tick:
+					img.set_pixel(x, y, Color(0.9, 0.2, 0.15))
+				elif absf(r - 10.0) < 2.4 or (absf(d.x) < 2.0 and r > 5.0 and r < 15.5) or (absf(d.y) < 2.0 and r > 5.0 and r < 15.5):
+					img.set_pixel(x, y, ink)
+			else:
+				# a heater shield: flat top, the sides curving to a point
+				var u := (y - 3.0) / 26.0
+				var w := 12.0 * (1.0 if u < 0.45 else cos((u - 0.45) / 0.55 * PI * 0.5))
+				if u >= 0.0 and u <= 1.0 and absf(d.x) <= w:
+					var edge := absf(d.x) > w - 1.8 or u < 0.07
+					var cross := absf(d.x) < 1.2 or absf(y - 12.0) < 1.2
+					img.set_pixel(x, y, ink if edge else (Color(0.55, 0.38, 0.18) if cross else Color(0.86, 0.68, 0.36)))
+	var tex := ImageTexture.create_from_image(img)
+	_cursors[kind] = tex
+	return tex
+
+
 func _body_under(at: Vector2) -> Villager:
 	var best: Villager = null
 	var bd := 28.0
@@ -1415,7 +1646,56 @@ func strengthen_wall() -> void:
 	hud.toast("Sur güçlendirildi: kalın kütükler, taş temel", "good")
 
 
+## The chosen gate barred, or unbarred.
+func toggle_gate_lock() -> void:
+	if selected_gate and is_instance_valid(selected_gate):
+		selected_gate.set_locked(not selected_gate.locked)
+		hud.toast("Kapı kilitlendi: kimse geçemez" if selected_gate.locked else "Kapının kilidi açıldı", "good")
+		if selected_gate.locked:
+			_count_shut_out()
+
+
+## Every gate of the town barred, or unbarred.
+func lock_all_gates(on: bool) -> void:
+	var n := 0
+	for w in village.walls:
+		if is_instance_valid(w):
+			for g in w.gates:
+				if is_instance_valid(g):
+					g.set_locked(on)
+					n += 1
+	hud.toast("%d kapı kilitlendi" % n if on else "%d kapının kilidi açıldı" % n, "good")
+	if on:
+		_count_shut_out()
+
+
+## Who the barring has left cut off from the stores, said a moment later (the way-finding's grid
+## takes its changes between searches).
+func _count_shut_out() -> void:
+	await get_tree().create_timer(0.6).timeout
+	var st: Array = village.stores()
+	if st.is_empty():
+		return
+	var to: Vector3 = (st[0] as Node3D).global_position
+	var n := 0
+	for v: Villager in village.villagers:
+		if v.dead or v.inside != null:
+			continue
+		var way: PackedVector3Array = village.nav.find_path(v.position, to)
+		for i in range(way.size() - 1):
+			if not village.barred_at(way[i], way[i + 1]).is_empty():
+				n += 1
+				break
+	if n > 0:
+		hud.toast("%d kişi kapıların dışında kaldı: açılana dek giremezler" % n, "bad")
+
+
 func demolish_selected() -> void:
+	if selected_gate and is_instance_valid(selected_gate):
+		selected_gate.wall.remove_gate(selected_gate)
+		village.add_anywhere("odun", 3, selected_gate.global_position)
+		selected_gate = null
+		return
 	if selected_wall and is_instance_valid(selected_wall):
 		var up := 0
 		for k in selected_wall.built:
@@ -1749,6 +2029,8 @@ func ignite_selected() -> void:
 func _process(_dt: float) -> void:
 	if _titled or _loading:
 		return
+	cam.hold_keys = _ghost != null # (placing: Q and E turn the building, not the view)
+	_update_cursor()
 	# The first train in: the view rides with it till it stops at the platform.
 	if village.arriving and is_instance_valid(village.train) and not village.train.is_standing() and not _cam_free:
 		cam.focus = cam.focus.lerp(village.train.engine_at(), 0.08)
@@ -1758,7 +2040,7 @@ func _process(_dt: float) -> void:
 	if _placing in ["yol", "sur"]: # (the palisade's stakes shown to the mouse as the road's planks are)
 		_update_road_line()
 	elif _placing == "kapi":
-		pass
+		_update_gate_ghost()
 	elif AREA_ORDERS.has(_placing):
 		_update_drag()
 	elif _placing != "":
@@ -1767,6 +2049,9 @@ func _process(_dt: float) -> void:
 	if selected_villager and is_instance_valid(selected_villager) and not selected_villager.dead and selected_villager.visible:
 		_ring.visible = true
 		_ring.global_transform = Transform3D(Basis().scaled(Vector3(0.7, 0.4, 0.7)), selected_villager.global_position + Vector3.UP * 0.08)
+	elif selected_gate and is_instance_valid(selected_gate):
+		_ring.visible = true
+		_ring.global_transform = Transform3D(Basis().scaled(Vector3(3.0, 0.6, 3.0)), selected_gate.global_position + Vector3.UP * 0.5)
 	elif selected and is_instance_valid(selected) and selected.state != "gone":
 		_ring.visible = true
 		var r := selected.radius + 0.8

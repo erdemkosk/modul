@@ -4,7 +4,8 @@ extends Node3D
 ## points it was laid out by, like a road), following the ground. Laid out, it's only a line of
 ## pale marks; the townsfolk raise it a stretch at a time (RAISE stakes, an odun for every WOOD_PER),
 ## and each stretch shuts its cells to walking (Nav.set_wall: dear to cross, so the way round
-## through a gate is taken). Its gates (Gate) stand in gaps left for them. An outlaw who comes up
+## through a gate is taken; the townsfolk never go through the stakes, Villager._barred). It's laid
+## with no gate: they're set in by hand (Village.add_gate_at), in gaps left for them. An outlaw who comes up
 ## against it hacks at the stakes till they fall and he's through; a breach is mended by raising
 ## those stakes again. A torch set to it takes, but slowly: green logs rammed into damp ground burn
 ## a stake through in the better part of a minute, the fire creeping along to its neighbours only
@@ -620,6 +621,7 @@ func pull_down() -> void:
 	nav.set_wall(cells, false)
 	for g in gates:
 		if is_instance_valid(g):
+			g.set_locked(false)
 			g.queue_free()
 	queue_free()
 
@@ -659,6 +661,36 @@ func add_gate(k: int) -> Gate:
 	nav.set_wall(cells, false)
 	redraw()
 	return g
+
+
+## The stakes within `r` of `p` taken out for good (a tower stands on the line in their place).
+func clear_under(p: Vector3, r: float) -> void:
+	var cells: Array[Vector2i] = []
+	for k in line.size():
+		if Vector2(line[k].x - p.x, line[k].z - p.z).length() < r and built[k] != 2:
+			if built[k] == 1:
+				cells.append(Nav.cell_of(line[k]))
+			built[k] = 2
+	if not cells.is_empty():
+		nav.set_wall(cells, false)
+	redraw()
+
+
+## The cells of `g`'s gap.
+func gate_cells(g: Gate) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for j in line.size():
+		if g.global_position.distance_to(line[j]) < GAP:
+			cells.append(Nav.cell_of(line[j]))
+	return cells
+
+
+## `g` taken out: the stakes of its gap are to be raised again.
+func remove_gate(g: Gate) -> void:
+	g.set_locked(false)
+	gates.erase(g)
+	g.queue_free()
+	redraw()
 
 
 func _process(dt: float) -> void:

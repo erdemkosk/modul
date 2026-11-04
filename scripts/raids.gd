@@ -1190,11 +1190,55 @@ func _impact(at: Vector3) -> void:
 		_dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(_dust)
 	var snowy := Weather.snow_cover_now > 0.3
+	_mark(at, snowy)
 	var c := Color(0.85, 0.88, 0.92, 0.8) if snowy else Color(0.55, 0.48, 0.38, 0.75)
 	for k in 5:
 		var vel := Vector3(randf_range(-1.2, 1.2), randf_range(1.5, 3.5), randf_range(-1.2, 1.2))
 		_dust.emit_particle(Transform3D(Basis.IDENTITY, at), vel, c, Color(1, 1, 1, 1),
 			GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY | GPUParticles3D.EMIT_FLAG_COLOR)
+
+
+## Where shots struck, left in the ground: a little dark pit in the snow with the earth thrown up
+## round it (a scuff in the dirt otherwise), lasting some minutes and then fading. The oldest go
+## first past MARKS.
+const MARKS := 160
+var _marks: Array[Decal] = []
+static var _mark_tex: Texture2D
+
+
+func _mark(at: Vector3, snowy: bool) -> void:
+	if _mark_tex == null:
+		var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+		for y in 32:
+			for x in 32:
+				var dv := Vector2(x - 15.5, y - 15.5)
+				var rr := dv.length() / 15.5 * (1.0 + 0.25 * sin(atan2(dv.y, dv.x) * 5.0 + x * 0.3))
+				var a := 1.0 - smoothstep(0.15, 1.0, rr)
+				var core := 1.0 - smoothstep(0.0, 0.35, rr)
+				img.set_pixel(x, y, Color(lerpf(0.42, 0.12, core), lerpf(0.36, 0.1, core), lerpf(0.3, 0.08, core), a * 0.85))
+		_mark_tex = ImageTexture.create_from_image(img)
+	var d := Decal.new()
+	d.texture_albedo = _mark_tex
+	var s := randf_range(0.25, 0.45) * (1.3 if snowy else 1.0)
+	d.size = Vector3(s, 0.6, s)
+	d.rotation.y = randf() * TAU
+	d.modulate = Color(1, 1, 1, 0.95) if snowy else Color(0.8, 0.75, 0.7, 0.6)
+	d.distance_fade_enabled = true
+	d.distance_fade_begin = 90.0
+	d.distance_fade_length = 30.0
+	add_child(d)
+	d.global_position = at
+	_marks.append(d)
+	while _marks.size() > MARKS:
+		var o: Decal = _marks.pop_front()
+		if is_instance_valid(o):
+			o.queue_free()
+	var tw := d.create_tween()
+	tw.tween_interval(240.0)
+	tw.tween_property(d, "modulate:a", 0.0, 60.0)
+	tw.tween_callback(func() -> void:
+		_marks.erase(d)
+		d.queue_free())
 
 
 ## An arrow loosed from `from` at `foe` (by `by`): no flash, hardly a sound, so the archer isn't

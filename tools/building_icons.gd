@@ -2,9 +2,13 @@ extends SceneTree
 ## The build bar's pictures: every building put up whole in a little studio of its own and taken
 ## from the front right, a little above, on a clear background (its buried plinth left out).
 ##
-##   godot --path . -s res://tools/building_icons.gd [-- --only=ev,ambar]
+##   godot --path . -s res://tools/building_icons.gd [-- --only=ev,ambar] [--passes=<dir>]
 ##
 ## Output: assets/ui/icons/<kind>.png (the HUD shows them if they're there).
+## With --passes: instead, for the build bar's engraved plates (tools/ink_plates.py), each one drawn
+## square and flat on (an orthographic, axonometric view, as a draughtsman's plate), lit hard from
+## the upper left: <dir>/<kind>_c.png its colours, <dir>/<kind>_n.png its surfaces (RG which way
+## each faces, B how far off), the creases and edges the ink lines are found from.
 
 const OUT := "res://assets/ui/icons/"
 const SIZE := Vector2i(256, 176)
@@ -12,6 +16,10 @@ const SIZE := Vector2i(256, 176)
 var _vp: SubViewport
 var _cam: Camera3D
 var _kinds: Array = []
+var _passes := "" ## (--passes: the folder the plates' passes go to)
+var _sun: DirectionalLight3D
+var _env: Environment
+var _surf: ShaderMaterial
 
 
 func _initialize() -> void:
@@ -19,12 +27,14 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
 			only = a.trim_prefix("--only=").split(",")
+		if a.begins_with("--passes="):
+			_passes = a.trim_prefix("--passes=")
 	for k: String in BuildingDefs.DEFS.keys() + ["kes", "kesme", "tuzak", "mayin", "hendek"]:
 		if only.is_empty() or k in only:
 			_kinds.append(k)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	_vp = SubViewport.new()
-	_vp.size = SIZE
+	_vp.size = SIZE if _passes == "" else Vector2i(1024, 1024)
 	_vp.own_world_3d = true
 	_vp.transparent_bg = true
 	_vp.msaa_3d = Viewport.MSAA_8X
@@ -36,6 +46,21 @@ func _initialize() -> void:
 	env.ambient_light_color = Color("#b8b0a0")
 	env.ambient_light_energy = 0.75
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	_env = env
+	if _passes != "":
+		# the plates: a hard key light, little fill, so the shaded sides read dark enough to hatch
+		env.ambient_light_energy = 0.42
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		DirAccess.make_dir_recursive_absolute(_passes)
+		var sh := Shader.new()
+		sh.code = "shader_type spatial;
+render_mode unshaded, cull_disabled;
+void fragment() {
+	vec3 n = normalize(NORMAL) * (FRONT_FACING ? 1.0 : -1.0);
+	ALBEDO = vec3(n.x * 0.5 + 0.5, n.y * 0.5 + 0.5, clamp(-VERTEX.z / 400.0, 0.0, 1.0));
+}"
+		_surf = ShaderMaterial.new()
+		_surf.shader = sh
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
@@ -45,6 +70,11 @@ func _initialize() -> void:
 	sun.rotation_degrees = Vector3(-42, 30, 0)
 	sun.shadow_enabled = true
 	_vp.add_child(sun)
+	_sun = sun
+	if _passes != "":
+		sun.light_energy = 2.1
+		sun.rotation_degrees = Vector3(-48, -28, 0) # (from the upper left, over the viewer's shoulder)
+		sun.directional_shadow_max_distance = 300.0
 	_cam = Camera3D.new()
 	_cam.fov = 28.0
 	_vp.add_child(_cam)
@@ -176,12 +206,7 @@ func _take_order(kind: String) -> void:
 	var dir := Vector3(0.78, 0.35, 1.0).normalized()
 	var dist := box.size.y * 0.5 / tan(deg_to_rad(_cam.fov * 0.5)) * 1.05
 	_cam.look_at_from_position(centre + dir * dist, centre)
-	await process_frame
-	await process_frame
-	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-	await RenderingServer.frame_post_draw
-	_vp.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
-	print("icons: wrote %s" % kind)
+	await _snap(kind, n)
 	n.queue_free()
 	await process_frame
 
@@ -399,12 +424,7 @@ func _take_line(kind: String) -> void:
 	var centre := box.get_center()
 	var dir := Vector3(0.78, 0.62, 1.0).normalized()
 	_cam.look_at_from_position(centre + dir * box.size.length() * 0.5 / tan(deg_to_rad(_cam.fov * 0.5)) * 0.95, centre)
-	await process_frame
-	await process_frame
-	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-	await RenderingServer.frame_post_draw
-	_vp.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
-	print("icons: wrote %s" % kind)
+	await _snap(kind, n)
 	n.queue_free()
 	await process_frame
 
@@ -421,6 +441,8 @@ func _take(kind: String) -> void:
 	_vp.add_child(b)
 	b.complete_now()
 	b.set_ghost(false)
+	if kind == "tarla":
+		_furrows(b)
 	var box := AABB()
 	var first := true
 	for p in b.pieces:
@@ -439,12 +461,105 @@ func _take(kind: String) -> void:
 	var radius := box.size.length() * 0.5
 	var dist := radius / tan(deg_to_rad(_cam.fov * 0.5)) * 0.92
 	_cam.look_at_from_position(centre + dir * dist, centre)
+	await _snap(kind, b)
+	b.queue_free()
+	await process_frame
+
+
+## The picture taken of `n` as the camera now stands: the icon, or (--passes) the plate's two passes,
+## the camera turned orthographic along the same line and closed on the thing's box.
+func _snap(kind: String, n: Node3D) -> void:
+	if _passes == "":
+		await _render()
+		_vp.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
+		print("icons: wrote %s" % kind)
+		return
+	for k in 6: # (a building merges its pieces into one mesh after a frame or two: let it)
+		await process_frame
+	for ps: Node in n.find_children("*", "GPUParticles3D", true, false):
+		(ps as GPUParticles3D).visible = false # (no smoke on a plate)
+	var box := AABB()
+	var first := true
+	var meshes: Array[MeshInstance3D] = []
+	for mi: Node in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if not m.is_visible_in_tree() or m.mesh == null:
+			continue
+		meshes.append(m)
+		var bb := m.global_transform * m.get_aabb()
+		box = bb if first else box.merge(bb)
+		first = false
+	var fwd := -_cam.global_basis.z
+	if box.size.y < 0.2 * maxf(box.size.x, box.size.z): # (a flat thing, a field: looked at from higher up)
+		fwd = (fwd + Vector3.DOWN * 0.9).normalized()
+	var centre := box.get_center()
+	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_cam.size = box.size.length() * 1.02
+	_cam.near = 0.5
+	_cam.far = 600.0
+	_cam.look_at_from_position(centre - fwd * 150.0, centre)
+	_sun.directional_shadow_max_distance = 300.0
+	await _render()
+	_vp.get_texture().get_image().save_png(_passes.path_join(kind + "_c.png"))
+	var kept: Array = []
+	for m in meshes:
+		kept.append(m.material_override)
+		m.material_override = _surf
+	await _render()
+	_vp.get_texture().get_image().save_png(_passes.path_join(kind + "_n.png"))
+	for i in meshes.size():
+		if is_instance_valid(meshes[i]):
+			meshes[i].material_override = kept[i]
+	_cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+	print("plates: wrote %s" % kind)
+
+
+func _render() -> void:
 	await process_frame
 	await process_frame
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
-	var img := _vp.get_texture().get_image()
-	img.save_png(ProjectSettings.globalize_path(OUT + kind + ".png"))
-	print("icons: wrote %s" % kind)
-	b.queue_free()
-	await process_frame
+
+
+## A field's ploughed ground for its picture: dark earth inside the fence, ridged in rows, a green
+## sprout every so often along them (a field put up fresh is bare, which reads as nothing).
+func _furrows(b: Node3D) -> void:
+	var sz: Vector2 = BuildingDefs.DEFS["tarla"].size
+	var earth := StandardMaterial3D.new()
+	earth.albedo_color = Color(0.5, 0.38, 0.25)
+	var ridge := StandardMaterial3D.new()
+	ridge.albedo_color = Color(0.64, 0.5, 0.33)
+	var green := StandardMaterial3D.new()
+	green.albedo_color = Color(0.42, 0.62, 0.2)
+	var soil := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(sz.x - 0.4, 0.08, sz.y - 0.4)
+	soil.mesh = sm
+	soil.material_override = earth
+	soil.position.y = 0.04
+	b.add_child(soil)
+	var rows := int((sz.x - 1.0) / 1.25)
+	for i in rows:
+		var x := -sz.x * 0.5 + 1.0 + i * 1.25
+		var r := MeshInstance3D.new()
+		var rm := PrismMesh.new()
+		rm.size = Vector3(0.75, 0.32, sz.y - 0.8)
+		r.mesh = rm
+		r.material_override = ridge
+		r.position = Vector3(x, 0.24, 0)
+		b.add_child(r)
+		var z := -sz.y * 0.5 + 0.8
+		var k := 0
+		while z < sz.y * 0.5 - 0.6:
+			var sp := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.38
+			cm.bottom_radius = 0.04
+			cm.height = 0.7
+			cm.radial_segments = 5
+			sp.mesh = cm
+			sp.material_override = green
+			sp.position = Vector3(x, 0.72, z + fmod(i * 0.37, 0.5))
+			b.add_child(sp)
+			z += 2.4
+			k += 1

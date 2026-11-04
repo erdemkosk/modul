@@ -215,6 +215,74 @@ func cover_near(p: Vector3, reach := 5.0) -> Vector3:
 	return p
 
 
+## The cover at `p`, if any: a sandbag wall ({post}), a trench ({trench}), a palisade ({wall, at}).
+func cover_at(p: Vector3, b: Building = null) -> Dictionary:
+	if b and is_instance_valid(b) and b.kind == "siper" and b.state == "done":
+		return {"post": b}
+	for o in buildings:
+		if o.kind == "siper" and o.state == "done" and o.global_position.distance_to(p) < 2.6:
+			return {"post": o}
+	if not trenches.is_empty() and in_trench(p):
+		return {"trench": p}
+	for w in walls:
+		if not is_instance_valid(w):
+			continue
+		var n := w.nearest(p)
+		if not n.is_empty() and float(n.dist) < 1.8 and w.built[int(n.k)] == 1:
+			return {"wall": w, "at": n.at}
+	return {}
+
+
+## Where the `i`-th of `n` takes cover `c` (cover_at): behind a sandbag wall from the danger, side by
+## side along it, down on the ground; a place along a trench; the palisade's walkway (or at its foot).
+func cover_spot(c: Dictionary, i: int, n: int, v: Villager) -> Vector3:
+	if c.has("post"):
+		var b: Building = c.post
+		var sz: Vector2 = b.def.size
+		# the danger: the nearest foe, else where the band comes from, else the wall's own front
+		var threat := b.global_position + b.global_basis.z * 10.0
+		if raids:
+			var foe := raids.nearest_raider(b.global_position, 250.0)
+			if foe:
+				threat = foe.position
+			elif raids.active:
+				threat = raids.origin()
+		var d := threat - b.global_position
+		d.y = 0.0
+		var zx := b.global_basis.z
+		var xx := b.global_basis.x
+		var along_z := absf(d.dot(zx)) >= absf(d.dot(xx)) # (the wall's long face square to the danger)
+		var out: Vector3 = (-zx if d.dot(zx) > 0.0 else zx) if along_z else (-xx if d.dot(xx) > 0.0 else xx)
+		var side: Vector3 = xx if along_z else zx
+		var half: float = (sz.y if along_z else sz.x) * 0.5
+		var span: float = (sz.x if along_z else sz.y)
+		var off := (float(i) - (n - 1) * 0.5) * minf(1.0, span / maxf(n, 1))
+		var spot: Vector3 = b.global_position + out * (half + 0.55) + side * off
+		spot.y = ground_at(spot)
+		return spot
+	if c.has("trench"):
+		var t := trench_post(c.trench, v)
+		return t if t != Vector3.INF else c.trench
+	if c.has("wall"):
+		var sp := (c.wall as Wall).walk_spot(c.at)
+		if not sp.is_empty():
+			return sp.down
+	return v.position
+
+
+## `v` (in hand) to take cover `c` as the `i`-th of `n`: the armed hold it and shoot from it.
+func take_cover(v: Villager, c: Dictionary, i: int, n: int) -> void:
+	var spot := cover_spot(c, i, n, v)
+	v.focus = null
+	v.abort()
+	if v.armed:
+		hold_at(v, spot)
+		return
+	v.give([{"t": "go", "to": spot}, {"t": "do", "f": func() -> bool:
+		v.in_cover = true
+		return true}, {"t": "work", "time": 3.0, "anim": "sit"}], "Siper alıyor")
+
+
 func is_cover(p: Vector3) -> bool:
 	if not trenches.is_empty() and in_trench(p):
 		return true

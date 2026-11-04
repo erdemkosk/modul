@@ -122,6 +122,36 @@ static func embers() -> GPUParticles3D:
 	return p
 
 
+## Ash: grey flakes lifted off a fire and drifting down round it, downwind, slowly, turning as
+## they fall (on the snow they read grey on white).
+static func ash() -> GPUParticles3D:
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(9, 2, 9)
+	pm.direction = Vector3.DOWN
+	pm.spread = 40.0
+	pm.initial_velocity_min = 0.2
+	pm.initial_velocity_max = 0.6
+	pm.gravity = Vector3(Weather.wind_now.x * 0.3, -0.45, Weather.wind_now.z * 0.3)
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 1.5
+	pm.turbulence_noise_scale = 3.0
+	pm.angular_velocity_min = -180.0
+	pm.angular_velocity_max = 180.0
+	pm.scale_min = 0.5
+	pm.scale_max = 1.3
+	pm.color_ramp = _ramp([Color(0.3, 0.29, 0.28, 0.0), Color(0.34, 0.33, 0.32, 0.9), Color(0.4, 0.39, 0.38, 0.8), Color(0.45, 0.44, 0.43, 0.0)], [0.0, 0.1, 0.8, 1.0])
+	var p := GPUParticles3D.new()
+	p.amount = 90
+	p.lifetime = 9.0
+	p.local_coords = false
+	p.process_material = pm
+	p.draw_pass_1 = _quad(0.07, false)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_aabb = AABB(Vector3(-40, -30, -40), Vector3(80, 60, 80))
+	return p
+
+
 ## A blast at `at` (`size` 1 a mine, less a shell): a fireball that swells and goes, a ring of dust
 ## running out over the ground, earth and stones flung up and falling back, a column of dirty smoke
 ## left rising; the view shaken if it's near. Everything frees itself.

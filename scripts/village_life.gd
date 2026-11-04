@@ -124,6 +124,7 @@ func _hearths(t: float) -> void:
 				if is_instance_valid(w) and (w as Villager).perched == b:
 					up = true
 			b.set_watch_light(night and up)
+			b.set_torches(night) # (its own torches, burning all night, watched or not)
 			continue
 		if b.def.role == "barracks" and b.state == "done":
 			var manned := not b.workers.is_empty()
@@ -265,6 +266,23 @@ func dress_for_season() -> void:
 		v.dress_warm(cold)
 
 
+## A house its family's outgrown: if the stores can spare it, they add a room themselves.
+func _rooms_morning() -> void:
+	var cost: Dictionary = BuildingDefs.UPGRADES["oda"].cost
+	for b in buildings:
+		if b.def.role != "house" or b.state != "done" or b.level >= 2 or b.upgrading != "" or b.residents.size() < b.beds():
+			continue
+		if not b.residents.any(func(o: Villager) -> bool: return is_instance_valid(o) and o.is_child):
+			continue
+		var can := true
+		for r: String in cost:
+			if int(stock.get(r, 0)) < int(cost[r]) + 10: # (not the last of it)
+				can = false
+		if can and call("upgrade", b, "oda") == "":
+			message.emit("%s dar geldi, aile büyüdü: arkasına oda ekleniyor." % b.display_name(), "good")
+			return
+
+
 func _morning() -> void:
 	_births()
 	call("_prison_morning") # (village_defense.gd)
@@ -273,6 +291,8 @@ func _morning() -> void:
 	_news_morning()
 	_armoured_morning()
 	_convoy_morning()
+	trade.morning()
+	_rooms_morning()
 	_rot_morning()
 	for b in buildings:
 		if b.state == "done":

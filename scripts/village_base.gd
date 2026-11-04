@@ -112,6 +112,7 @@ var relief: Convoy ## a friendly side's men on their way or here, called by tele
 var help_ready := 0 ## the day a side may be asked again
 var _help_coming := "" ## (a side asked, the column not yet set out)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
+var trade := Trade.new(self) ## the market, the contracts, what's sent for
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
 var grass_fires: GrassFires ## fire in the grass (round a burning building)
@@ -238,7 +239,7 @@ const CALL_PRICE := 30 ## mirka to wire for a train tomorrow (TREN ÇAĞIR)
 ## What the train buys, a ruble or a few each; of what's marked to be sold, KEEP of each stays
 ## behind; a train takes LOAD at most. Every ruble earned is that much more repute up the line: the
 ## better the town's thought of, the more settlers each train brings out to it (once it's announced).
-const PRICES := {"odun": 1, "tas": 1, "kerpic": 2, "komur": 3, "demir": 4}
+const PRICES := {"odun": 1, "tas": 1, "yiyecek": 2, "kerpic": 2, "komur": 3, "demir": 4}
 const KEEP := 30
 const LOAD := 150
 const SETTLERS_PER := 50 ## repute for each settler more a train brings (two at the least)
@@ -464,11 +465,12 @@ func _train_in(st: Building) -> void:
 	drift *= 0.2 if knows("kar_sabani") else 0.6 # (the engine's plough throws some of it off)
 	_settlers_off(st)
 	_mail(st)
+	trade.arrive(st)
 	next_train = day + 3 + randi() % 4
 	# It stands a while: what's to be sold is carried to the platform meanwhile, and goes on as it leaves.
 	var secs := maxf(weather.day_length_minutes * 60.0, 60.0) * LOAD_HOURS / 24.0
 	loading_until = clock + secs
-	if not selling.is_empty():
+	if not trade.to_load().is_empty():
 		message.emit("Tren perona yanaştı: %d saat bekleyecek. Satılacak mallar perona taşınmalı." % int(LOAD_HOURS), "info")
 	var tr := train
 	get_tree().create_timer(secs, false).timeout.connect(func() -> void:
@@ -1128,33 +1130,39 @@ func platform() -> Array[Building]:
 ## and the side lines), the workshops' piles there first, never the stores below KEEP of each, LOAD
 ## at most; paid for.
 func _sell(_st: Building) -> void:
-	var room := LOAD
 	var earned := 0
 	var sold: Array[String] = []
 	var spare := stock
 	var on := platform()
 	on.sort_custom(func(a: Building, b: Building) -> bool: return a.def.role != "store" and b.def.role == "store")
+	var room := trade.load_train(on, LOAD) # (what's contracted first)
 	for r in selling:
-		var n := 0
-		for b in on:
-			var want := mini(room - n, int(b.goods.get(r, 0)))
-			if b.def.role == "store":
-				want = mini(want, int(spare.get(r, 0)) - KEEP)
-			if want <= 0:
-				continue
-			var got := b.take_goods(r, want)
-			if b.def.role == "store":
-				spare[r] = int(spare.get(r, 0)) - got
-			n += got
+		var n := take_platform(r, room, on, spare)
 		if n <= 0:
 			continue
 		room -= n
-		earned += n * int(PRICES[r])
+		earned += n * trade.price(r)
 		sold.append("%d %s" % [n, BuildingDefs.RES_NAMES[r].to_lower()])
 	if earned > 0:
 		rubles += earned
 		repute += earned
 		message.emit("Trene yüklendi: %s. Kasaya %d %s girdi." % [", ".join(sold), earned, COIN], "good")
+
+
+## As much as `limit` of `r` taken from the platform `on` (never the stores below KEEP).
+func take_platform(r: String, limit: int, on: Array[Building], spare: Dictionary) -> int:
+	var n := 0
+	for b in on:
+		var want := mini(limit - n, int(b.goods.get(r, 0)))
+		if b.def.role == "store":
+			want = mini(want, int(spare.get(r, 0)) - KEEP)
+		if want <= 0:
+			continue
+		var got := b.take_goods(r, want)
+		if b.def.role == "store":
+			spare[r] = int(spare.get(r, 0)) - got
+		n += got
+	return n
 
 
 ## A side line from the main line to `b`: straight, from its door to the nearest of the main line.
@@ -1794,7 +1802,43 @@ func check(kind: String, pos: Vector3, yaw: float) -> String:
 			return "Su ya da uçurum"
 		if not nav.can_build(Nav.center_of(c)):
 			return "Başka bir binaya çok yakın"
+	# A house's yard (its garden, outbuildings, fence) needs its room: never into another's yard or
+	# another building, and nothing built in a house's yard.
+	var role := str(BuildingDefs.DEFS[kind].role)
+	if role in ["road", "wall", "gate"]:
+		return ""
+	var mine := _rect_poly(pos, yaw, Rect2(-sz * 0.5, sz))
+	var mine_yard := _rect_poly(pos, yaw, yard_rect(sz)) if role == "house" else PackedVector2Array()
+	for o in buildings:
+		if o.state == "gone" or o.state == "ghost" or o.def.role in ["farm"]:
+			continue
+		var os: Vector2 = o.def.size
+		var their := _rect_poly(o.global_position, o.global_rotation.y, Rect2(-os * 0.5, os).grow(0.3))
+		var their_yard := _rect_poly(o.global_position, o.global_rotation.y, yard_rect(os)) if o.def.role == "house" else PackedVector2Array()
+		if not mine_yard.is_empty():
+			if not their_yard.is_empty() and not Geometry2D.intersect_polygons(mine_yard, their_yard).is_empty():
+				return "Bahçesi komşu evin bahçesine giriyor: biraz uzağa koy"
+			if not Geometry2D.intersect_polygons(mine_yard, their).is_empty():
+				return "Bahçesi %s binasına giriyor: biraz uzağa koy" % o.display_name()
+		elif not their_yard.is_empty() and not Geometry2D.intersect_polygons(mine, their_yard).is_empty():
+			return "Bir evin bahçesine giriyor"
 	return ""
+
+
+## A house's yard round it, in its own x, z (Yard: the garden behind, a little either side and in
+## front), a hand's breadth shrunk so yards can share a fence.
+static func yard_rect(sz: Vector2) -> Rect2:
+	return Rect2(-sz.x * 0.5 - Yard.SIDE, -sz.y * 0.5 - Yard.BACK, sz.x + Yard.SIDE * 2.0, sz.y + Yard.BACK + Yard.FRONT).grow(-0.15)
+
+
+## `rect` (in a building's own x, z) at `pos` turned `yaw`, as a polygon on the map's x, z.
+static func _rect_poly(pos: Vector3, yaw: float, rect: Rect2) -> PackedVector2Array:
+	var b := Basis(Vector3.UP, yaw)
+	var out := PackedVector2Array()
+	for c in [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]:
+		var w := pos + b * Vector3(c.x, 0, c.y)
+		out.append(Vector2(w.x, w.z))
+	return out
 
 
 ## The height a building sits at: the highest of its corners (its plinth takes up the rest).
@@ -1835,6 +1879,10 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	b.ruined.connect(_on_ruined)
 	buildings.append(b)
 	b.begin()
+	if b.def.role == "tower":
+		for w in walls:
+			if is_instance_valid(w):
+				w.clear_under(pos, (b.def.size as Vector2).length() * 0.5 + 0.4)
 	return b
 
 
@@ -1882,7 +1930,7 @@ func _clear_ground(kind: String, pos: Vector3, yaw: float) -> void:
 func ground_at(p: Vector3) -> float:
 	var g := nav.height(p.x, p.z)
 	for b in buildings:
-		if b.state == "ghost" or b.state == "gone" or b.def.role in ["farm", "light"]:
+		if b.state == "ghost" or b.state == "gone" or b.def.role in ["farm", "light"] or b.kind in ["siper", "tel", "makineli"]:
 			continue
 		var d := Vector2(p.x - b.global_position.x, p.z - b.global_position.z)
 		if d.length() > b.radius + (10.0 if b.kind == "istasyon" else 3.0):
@@ -2719,8 +2767,7 @@ static func _catmull(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, t: floa
 
 
 ## A palisade laid out through `pts` (bent smoothly as a road is): its stakes marked out, to be raised
-## by the townsfolk. Where it crosses a road a gate's set in; with no road crossed, one gate on the
-## side toward the store. Returns it.
+## by the townsfolk. No gate comes with it: they're set in by hand (add_gate_at). Returns it.
 func lay_wall(pts: Array, start_dir := Vector3.ZERO) -> Wall:
 	var line := road_curve(pts, start_dir)
 	if line.size() < 4:
@@ -2729,37 +2776,125 @@ func lay_wall(pts: Array, start_dir := Vector3.ZERO) -> Wall:
 	w.setup(line, self, nav)
 	add_child(w)
 	walls.append(w)
-	var lines := road_lines()
-	var k := 0
-	while k < line.size():
-		if _road_dist(line[k], lines) < 1.0:
-			var a := k
-			while k < line.size() and _road_dist(line[k], lines) < 1.0:
-				k += 1
-			w.add_gate((a + k - 1) / 2)
-			k += int(Wall.GAP * 2.0 / Wall.STEP)
-		k += 1
-	if w.gates.is_empty():
-		var st := _nearest(stores(), line[line.size() / 2])
-		var at: Vector3 = st.global_position if st else line[line.size() / 2]
-		w.add_gate(int(w.nearest(at).k))
 	return w
 
 
-## A gate set into the palisade nearest `p` (within 3 m): 6 odun. Why not ("" done).
-func add_gate_at(p: Vector3) -> String:
+## What lies across a stretch of rail from `a` to `b`: a gate ({gate}, barred or not) or standing
+## stakes ({wall}); empty if the way's clear. (Train: it opens a gate, stops short of the rest.)
+func rail_block(a: Vector3, b: Vector3) -> Dictionary:
+	var p := Vector2(a.x, a.z)
+	var q := Vector2(b.x, b.z)
+	for w in walls:
+		if not is_instance_valid(w):
+			continue
+		for g in w.gates:
+			if is_instance_valid(g):
+				var side := g.global_basis.x * (Wall.GAP + 1.6) # (the rail near enough its middle)
+				var u := g.global_position - side
+				var v := g.global_position + side
+				if Geometry2D.segment_intersects_segment(p, q, Vector2(u.x, u.z), Vector2(v.x, v.z)) != null:
+					return {"gate": g}
+		var n := w.line.size()
+		for k in n:
+			var j := (k + 1) % n # (a ring's two ends count as joined if they're close)
+			if w.built[k] != 1 or w.built[j] != 1 or (j == 0 and w.line[k].distance_to(w.line[0]) > 1.5):
+				continue
+			var e := Vector2(w.line[k].x, w.line[k].z)
+			if absf(e.x - p.x) > 30.0 or absf(e.y - p.y) > 30.0:
+				continue
+			if Geometry2D.segment_intersects_segment(p, q, e, Vector2(w.line[j].x, w.line[j].z)) != null:
+				return {"wall": w}
+	return {}
+
+
+## What stops one of the town going from `from` to `to`: a barred gate or standing stakes, the stretch
+## walked actually crossing them ({gate} / {wall, at}; empty if nothing). (Cheap unless it's by a wall:
+## the grid knows its cells.)
+func barred_at(from: Vector3, to: Vector3) -> Dictionary:
+	if walls.is_empty():
+		return {}
+	var a := Vector2(from.x, from.z)
+	var c := Vector2(to.x, to.z)
+	# (a stretch of a way can run long: every cell near it looked at, a step of a cell at a time)
+	var near := false
+	var steps := maxi(ceili(a.distance_to(c) / 1.0), 1)
+	for i in steps + 1:
+		var q := a.lerp(c, float(i) / steps)
+		for off: Vector2 in [Vector2.ZERO, Vector2(1.5, 0), Vector2(-1.5, 0), Vector2(0, 1.5), Vector2(0, -1.5)]:
+			if nav.on_wall(Vector3(q.x + off.x, 0, q.y + off.y)):
+				near = true
+				break
+		if near:
+			break
+	if not near:
+		return {}
+	var lo := Vector2(minf(a.x, c.x), minf(a.y, c.y)) - Vector2(1, 1)
+	var hi := Vector2(maxf(a.x, c.x), maxf(a.y, c.y)) + Vector2(1, 1)
+	for w in walls:
+		if not is_instance_valid(w):
+			continue
+		for g in w.gates:
+			if is_instance_valid(g) and g.locked and not g.broken:
+				var side := g.global_basis.x * Wall.GAP
+				var p := g.global_position - side
+				var q := g.global_position + side
+				if Geometry2D.segment_intersects_segment(a, c, Vector2(p.x, p.z), Vector2(q.x, q.z)) != null:
+					return {"gate": g}
+		for k in w.line.size() - 1:
+			if w.built[k] != 1 or w.built[k + 1] != 1:
+				continue
+			var p := Vector2(w.line[k].x, w.line[k].z)
+			if p.x < lo.x or p.y < lo.y or p.x > hi.x or p.y > hi.y:
+				continue
+			# (the way-finding's cells are coarser than a gate: a way through one may graze the stakes
+			# beside it, and that's going through the gate)
+			var by_gate := false
+			for g in w.gates:
+				if is_instance_valid(g) and (not g.locked or g.broken) and g.global_position.distance_to(w.line[k]) < Wall.GAP + 1.6:
+					by_gate = true
+			if by_gate:
+				continue
+			if Geometry2D.segment_intersects_segment(a, c, p, Vector2(w.line[k + 1].x, w.line[k + 1].z)) != null:
+				return {"wall": w, "at": w.line[k]}
+		# a ring: its two ends brought together count as joined
+		var e0 := w.line[0]
+		var e1 := w.line[w.line.size() - 1]
+		if w.built[0] == 1 and w.built[w.line.size() - 1] == 1 and e0.distance_to(e1) < 1.5:
+			if Geometry2D.segment_intersects_segment(a, c, Vector2(e0.x, e0.z), Vector2(e1.x, e1.z)) != null:
+				return {"wall": w, "at": e0}
+	return {}
+
+
+## The palisade spot nearest `p` a gate could go (within 3 m): {wall, at, dir, k, why} (why: "" if it can),
+## or empty.
+func gate_spot(p: Vector3) -> Dictionary:
 	var best: Wall = null
 	var hit := {}
 	for w in walls:
+		if not is_instance_valid(w):
+			continue
 		var n := w.nearest(p)
 		if not n.is_empty() and float(n.dist) < 3.0 and (hit.is_empty() or float(n.dist) < float(hit.dist)):
 			hit = n
 			best = w
 	if best == null:
-		return "Bir surun üstüne koy"
+		return {}
+	hit.wall = best
+	hit.why = ""
 	for g in best.gates:
 		if g.global_position.distance_to(hit.at) < Wall.GAP * 2.2:
-			return "Orada zaten bir kapı var"
+			hit.why = "Orada zaten bir kapı var"
+	return hit
+
+
+## A gate set into the palisade nearest `p`, on it or at its end: 6 odun. Why not ("" done).
+func add_gate_at(p: Vector3) -> String:
+	var hit := gate_spot(p)
+	if hit.is_empty():
+		return "Bir surun üstüne ya da ucuna koy"
+	if hit.why != "":
+		return hit.why
+	var best: Wall = hit.wall
 	var st := store_with("odun", p)
 	if st == null or int(st.goods.get("odun", 0)) < 6:
 		return "Depoda 6 odun yok"

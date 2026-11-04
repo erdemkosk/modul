@@ -41,6 +41,7 @@ global uniform float weather_snow;
 global uniform float weather_ice;
 global uniform float season_flowers; // spring into summer: the meadow in flower (Seasons)
 global uniform float season_autumn;
+global uniform float season_bare; // late autumn into winter: the meadow dead, flat and straw-coloured
 
 varying float v_h;
 varying vec3 v_col;
@@ -125,7 +126,9 @@ void vertex() {
 	bool soft = texelFetch(soft_mask, sc, 0).r > 0.5 || max(sm.r, sm.g) > 0.4; // nothing grows in mud or churned ground
 	float tall = mix(0.75, 1.5, patchy) * (0.75 + 0.55 * hash12(cell + 9.7));
 	float scale = (h3 < density * 1.8 && !soft && ground > lake_level + 0.3) ? fade * tall : 0.0;
-	scale *= 1.0 - weather_snow * 0.7;
+	// Snow lying: the tufts go under it (the tallest last), none left showing green through a full cover.
+	scale *= 1.0 - smoothstep(0.15 + 0.25 * hash12(cell + 5.1), 0.55 + 0.2 * hash12(cell + 5.1), weather_snow);
+	scale *= 1.0 - season_bare * 0.45; // dead grass lies down
 	// Cleared round a fire someone built (Campfire): trodden flat and burnt off.
 	scale *= smoothstep(campfire_clear_a.w, campfire_clear_a.w + 0.8, distance(xz, campfire_clear_a.xz));
 	scale *= smoothstep(campfire_clear_b.w, campfire_clear_b.w + 0.8, distance(xz, campfire_clear_b.xz));
@@ -168,6 +171,8 @@ void vertex() {
 	v_col *= 1.0 + gust * 0.12; // the gust turns the paler underside to the light
 	// Autumn: the meadow goes over to straw and rust.
 	v_col = mix(v_col, vec3(0.42, 0.33, 0.15) * (0.85 + 0.3 * tone), season_autumn * 0.55 * (1.0 - dry));
+	// Winter: the meadow dead, pale straw and grey-brown, not green.
+	v_col = mix(v_col, mix(vec3(0.46, 0.4, 0.28), vec3(0.33, 0.28, 0.2), tone), season_bare * 0.85);
 	// In flower: a clump here and there tipped with white, yellow, blue or purple, in drifts.
 	float bloom = step(hash12(cell + 9.1), season_flowers * 0.24 * smoothstep(0.2, 0.6, vnoise(xz * 0.05 + 3.0)) * (1.0 - dry));
 	float pick = hash12(cell + 17.7);
@@ -175,7 +180,7 @@ void vertex() {
 	v_flower = vec4(petal, bloom * scale);
 	// The ground colour round the root, so the blades grow out of it (the terrain's meadow tones).
 	v_root = ground_c * 0.85; // the ground itself round the root: blades grow out of it
-	v_root = mix(v_root, vec3(0.3, 0.25, 0.17), dry);
+	v_root = mix(v_root, vec3(0.3, 0.25, 0.17), max(dry, season_bare * 0.8));
 	// Rounded normals: each blade leans its normal out from the clump's centre and up, so the
 	// clump shades like a tuft, not a sheet.
 	vec3 out_dir = vec3(v.x, 0.0, v.z);

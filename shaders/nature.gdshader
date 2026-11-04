@@ -30,6 +30,7 @@ global uniform vec3 weather_wind;
 global uniform float weather_wetness;
 global uniform float weather_snow;
 global uniform float season_autumn; // 0 green .. 1 the autumn's colours (Seasons)
+global uniform float season_bare; // 0 in leaf .. 1 the broadleaf trees bare for the winter (Seasons)
 global uniform vec3 props_lod_center;
 global uniform vec4 view_focus; // xyz: what the view is on (your machine); w: 1 when there is one
 
@@ -146,6 +147,17 @@ void fragment() {
 			}
 		}
 	}
+	// The leaves coming down: from late autumn into the winter the broadleaf crowns thin, a twig's
+	// worth at a time (cells of the crown, not a dither), each tree in its own time, till only a
+	// few dead ones hang on; in the spring they come back. (The shadow goes with them.)
+	if (leaf > 0.5 && broadleaf > 0.5 && season_bare > 0.001) {
+		vec3 q = floor(w_pos * 1.7);
+		float h = hash12(q.xz + q.y * 7.13);
+		float gone = clamp(season_bare * 1.2 - fract(v_pick * 5.31) * 0.2, 0.0, 0.93);
+		if (h < gone) {
+			discard;
+		}
+	}
 	if ((leaf > 0.5 || sway > 0.5) && !shadow_pass) {
 		// A crown the camera's come into (leaves and branches have nothing to stop it; the trunk does):
 		// dissolved round the lens, gone within 1.5 m, whole again by 4.5, not a wall of leaf and
@@ -159,6 +171,9 @@ void fragment() {
 	vec3 c = albedo * COLOR.rgb;
 	if (leaf > 0.5) {
 		c = crown_colour(v_pick) * mix(0.92, 1.08, v_tint);
+		if (broadleaf > 0.5) {
+			c = mix(c, vec3(0.36, 0.24, 0.12), smoothstep(0.3, 0.8, season_bare)); // the last ones dead and brown
+		}
 		c *= mix(0.5, 1.12, smoothstep(0.1, 0.95, v_hf)); // dark under the crown, light at the top
 	} else {
 		// Bark, rock, wood: the model's own colour, a touch warmer and cleaner.

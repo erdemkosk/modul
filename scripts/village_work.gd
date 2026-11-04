@@ -193,7 +193,7 @@ func _plan_platform(v: Villager) -> bool:
 	if st == null or st.room() <= 0:
 		return false
 	var have := stock
-	for r in selling:
+	for r in trade.to_load():
 		if int(have.get(r, 0)) - KEEP - int(st.goods.get(r, 0)) <= 0:
 			continue
 		var from: Building = null
@@ -1123,7 +1123,7 @@ func _plan_cart(v: Villager) -> void:
 			continue
 		if is_instance_valid(b.pile_claim) and b.pile_claim != v:
 			continue
-		if b.spur and b.biggest_good() in selling: # (piled by the rails for the train: left there)
+		if b.spur and b.biggest_good() in trade.to_load(): # (piled by the rails for the train: left there)
 			continue
 		var n := b.goods_total()
 		if n > most:

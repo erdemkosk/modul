@@ -2182,12 +2182,28 @@ def _station_extra(k, w, d):
         p.box((0, y, 0.92), (w + 6.0, 0.25, 0.08), jit(PLANK, 0.07, k.rng))
     p.box((0, -d * 0.5 - 1.8, 0.45), (w + 6.0, 3.3, 0.8), jit(STONE, 0.04, k.rng))
     k.add(p)
+    # the canopy slopes down to the wall; its posts reach right up under it, a beam along their tops
+    # carrying it, braces from post to beam, a plate on the wall for its other edge
+    cy, cz = -d * 0.5 - 1.6, 3.85
+    py = -d * 0.5 - 2.6
+    under = cz + (cy - py) * 0.25 / 0.97 - 0.05 # (the canopy's underside above the posts)
     for x in (-w * 0.5 - 2.0, -w * 0.25, w * 0.25, w * 0.5 + 2.0):
         p = k.piece("log")
-        p.log((x, -d * 0.5 - 2.6, 0.95), (x, -d * 0.5 - 2.6, 3.6), 0.09, rng=k.rng)
+        p.log((x, py, 0.95), (x, py, under - 0.14), 0.09, rng=k.rng)
         k.add(p)
+        p = k.piece("dark", "brace")
+        for sx in (-1, 1):
+            if abs(x + sx * 0.6) < w * 0.5 + 2.4:
+                p.obox((x + sx * 0.3, py, under - 0.55), (0.7, 0, 0.7), (0, 1, 0), (-0.7, 0, 0.7) if sx > 0 else (0.7, 0, 0.7), (0.9, 0.08, 0.08), DARK)
+        k.add(p)
+    p = k.piece("log", "beam")
+    p.log((-w * 0.5 - 2.4, py, under - 0.07), (w * 0.5 + 2.4, py, under - 0.07), 0.08, rng=k.rng, taper=0.0)
+    k.add(p)
+    p = k.piece("dark", "plate")
+    p.box((0, -d * 0.5 - 0.06, cz - 1.65 * 0.25 / 0.97 - 0.1), (w + 0.2, 0.12, 0.14), DARK)
+    k.add(p)
     p = k.piece("shingle", "canopy")
-    p.obox((0, -d * 0.5 - 1.6, 3.85), (1, 0, 0), (0, 0.97, -0.25), (0, 0.25, 0.97), (w + 5.0, 3.4, 0.08), jit(PLANK, 0.05, k.rng))
+    p.obox((0, cy, cz), (1, 0, 0), (0, 0.97, -0.25), (0, 0.25, 0.97), (w + 5.0, 3.4, 0.08), jit(PLANK, 0.05, k.rng))
     k.add(p)
     p = k.piece("dark", "sign")
     p.box((0, -d * 0.5 - 2.6, 3.25), (2.6, 0.08, 0.45), (0.92, 0.9, 0.82))

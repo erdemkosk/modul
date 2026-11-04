@@ -546,6 +546,41 @@ func set_wall(cells: Array[Vector2i], on: bool) -> void:
 			continue
 		_wall[i] = 1 if on else 0
 		_grid(c, false, _base[i] * COST_SCALE * (400.0 if on else (0.3 if _road[i] == 1 else 1.0)))
+	for c in cells:
+		_seal_diagonals(c)
+
+
+## A wall running aslant goes cell to cell by the corners, and the way-finding's diagonal steps would
+## slip between two such cells without touching either: the cell at the corner is made as dear.
+var _sealed := {} ## cell index -> true: dear only for that
+
+
+func _seal_diagonals(c: Vector2i) -> void:
+	for d: Vector2i in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+		var o := c + d
+		if o.x < 0 or o.y < 0 or o.x >= N or o.y >= N or c.x < 0 or c.y < 0 or c.x >= N or c.y >= N:
+			continue
+		var both := _wall[c.y * N + c.x] == 1 and _wall[o.y * N + o.x] == 1
+		for f: Vector2i in [Vector2i(o.x, c.y), Vector2i(c.x, o.y)]:
+			var i := f.y * N + f.x
+			if _wall[i] == 1 or _shut[i] != 0:
+				continue
+			var hold := both and _wall[(c.y * N + o.x) if f == Vector2i(c.x, o.y) else (o.y * N + c.x)] != 1
+			if both and f == Vector2i(c.x, o.y) and _wall[c.y * N + o.x] != 1:
+				hold = false # (one corner's enough: the other)
+			if hold:
+				_sealed[i] = true
+				_grid(f, false, _base[i] * COST_SCALE * 400.0)
+			elif _sealed.has(i):
+				var still := false
+				for e: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var a := f + e
+					var q: Vector2i = f + Vector2i(e.y, e.x)
+					if a.x >= 0 and a.y >= 0 and q.x >= 0 and q.y >= 0 and a.x < N and a.y < N and q.x < N and q.y < N and _wall[a.y * N + a.x] == 1 and _wall[q.y * N + q.x] == 1:
+						still = true
+				if not still:
+					_sealed.erase(i)
+					_grid(f, false, _base[i] * COST_SCALE * (0.3 if _road[i] == 1 else 1.0))
 
 
 func on_wall(p: Vector3) -> bool:

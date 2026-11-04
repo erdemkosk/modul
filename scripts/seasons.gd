@@ -81,6 +81,7 @@ func force(s: int) -> void:
 
 var _autumn := -1.0
 var _flowers := -1.0
+var _bare := -1.0
 var _ice := 0.0 ## how far the water's frozen over (0..1)
 var _ice_set := -1.0
 
@@ -93,6 +94,13 @@ func _process(dt: float) -> void:
 	if absf(want - _autumn) > 0.01:
 		_autumn = want
 		RenderingServer.global_shader_parameter_set(&"season_autumn", want)
+	# The leaves coming down and the meadow dying back: from the autumn's second half, bare all
+	# winter, in leaf again over the spring's first days (nature/grass.gdshader's season_bare).
+	var frac := float(day_in(village.day)) / float(LENGTHS[maxi(season, 0)])
+	var bare := smoothstep(0.45, 1.0, frac) * 0.85 if season == 2 else (minf(1.0, 0.85 + frac * 0.6) if season == 3 else (clampf(1.0 - frac * 2.5, 0.0, 1.0) if season == 0 else 0.0))
+	if absf(bare - _bare) > 0.01:
+		_bare = bare
+		RenderingServer.global_shader_parameter_set(&"season_bare", bare)
 	# The river and the lake: ice comes over them as the winter's cold sets in, and goes in the thaw.
 	var ice_want := 1.0 if season == 3 and weather.temperature < -3.0 else (0.0 if weather.temperature > 1.0 else _ice)
 	_ice = move_toward(_ice, ice_want, dt / 90.0)

@@ -25,6 +25,9 @@ var _wheels: Array = [] ## per car: [wheel node, radius]
 var _s := 0.0 ## the engine's front, m along the line
 var _v := 0.0
 var _state := "coming" ## coming, standing, going
+var _bar_s := INF ## m along the line where something across it stops the engine's front (a wall, a barred gate)
+var _bar_t := 0.0
+var _bar_said := false
 var _smoke: GPUParticles3D
 var _chuff_t := 0.0
 var _whistle: AudioStreamPlayer3D
@@ -275,14 +278,50 @@ func _place() -> void:
 		_cars[i].global_transform = Transform3D(Basis.looking_at(-dir.normalized(), Vector3.UP), p + Vector3.UP * TOP)
 
 
+## The line ahead looked over: a gate on it is opened for the train; a palisade across it, or a gate
+## barred, and the train will stop short of it and stand till the way's clear.
+func _look_ahead() -> void:
+	_bar_s = INF
+	var v: Node = get_parent()
+	if v == null or not v.has_method("rail_block") or v.walls.is_empty():
+		return
+	var reach := _s + 90.0
+	var k := 1
+	while k < line.size() and _len[k] < _s - 2.0:
+		k += 1
+	while k < line.size() and _len[k - 1] < reach:
+		var hit: Dictionary = v.rail_block(line[k - 1], line[k])
+		if not hit.is_empty():
+			var g: Gate = hit.get("gate")
+			if g == null or (g.locked and not g.broken):
+				_bar_s = maxf(_len[k - 1] - 5.0, _s)
+				if not _bar_said and _s > _bar_s - 40.0:
+					_bar_said = true
+					v.message.emit("Tren önündeki sura dayandı: geçmesi için kapı koy ya da kilidi aç", "bad")
+					_whistle.play()
+				return
+			if _len[k - 1] - _s < 40.0:
+				g.pass_train()
+		k += 1
+	_bar_said = false
+
+
 func _process(dt: float) -> void:
 	var was := _s
+	if _state != "standing":
+		_bar_t -= dt
+		if _bar_t <= 0.0:
+			_bar_t = 0.4
+			_look_ahead()
 	match _state:
 		"coming":
-			var left := stop_at - _s
+			var end := minf(stop_at, _bar_s)
+			var left := end - _s
 			_v = minf(minf(_v + 1.2 * dt, MAX_SPEED), sqrt(maxf(2.0 * BRAKE * left, 0.0)) + 0.15)
-			_s = minf(_s + _v * dt, stop_at)
-			if _s >= stop_at - 0.01:
+			_s = minf(_s + _v * dt, end)
+			if _bar_s < stop_at and _s >= _bar_s - 0.01:
+				_v = 0.0 # (stopped short: it waits there, and comes on when the way's clear)
+			elif _s >= stop_at - 0.01:
 				_state = "standing"
 				_v = 0.0
 				if not quiet:
@@ -295,7 +334,11 @@ func _process(dt: float) -> void:
 		"going":
 			# on, the way it was going, out of the valley
 			_v = minf(_v + 0.7 * dt, MAX_SPEED * 1.4)
-			_s += _v * dt
+			if _bar_s < INF:
+				_v = minf(_v, sqrt(maxf(2.0 * BRAKE * (_bar_s - _s), 0.0)))
+				_s = minf(_s + _v * dt, _bar_s)
+			else:
+				_s += _v * dt
 			if _s - _gap[_gap.size() - 1] >= length() - 3.0:
 				queue_free()
 				return

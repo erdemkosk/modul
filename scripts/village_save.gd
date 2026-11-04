@@ -85,12 +85,12 @@ static func save(game: Node) -> bool:
 			var gs: Array = []
 			for g in w.gates:
 				if is_instance_valid(g):
-					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken])
+					gs.append([g.global_position.x, g.global_position.z, g.hp, g.broken, g.locked])
 			return {"line": pts, "built": Array(w.built), "gates": gs, "level": w.level}),
 		"version": VERSION, "raid_level": game.raids.level, "day": v.day, "hour": game.weather.hour, "clock": v.clock,
 		"raid_next": game.raids.next_day, "camp": [game.raids.camp_at.x, game.raids.camp_at.y, game.raids.camp_at.z, game.raids.camp_men.size(), game.raids.camp_known] if game.raids.camp_at != Vector3.INF else [], "season_days": game.seasons.offset, "cut": RutStore.cut.duplicate(),
 		"churned": RutStore.churned.duplicate(), "ruts": RutStore.ruts.duplicate(), "rocks": v.rock_left.duplicate(),
-		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "graves": v.cemetery.graves.duplicate() if v.cemetery else [], "cemetery": [v.cemetery._plot.x, v.cemetery._plot.y, v.cemetery._plot.z, v.cemetery._yaw] if v.cemetery and v.cemetery._plot != Vector3.INF else [], "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "convoy_next": v.convoy_next, "help_ready": v.help_ready, "express": v.express, "selling": v.selling.duplicate(), "studying": v.studying, "study_pts": v.study_pts, "mines": v.mines.map(func(m: Dictionary) -> Array: return [m.at.x, m.at.y, m.at.z]), "trenches": v.trenches.map(func(t: Dictionary) -> Array: return [t.a.x, t.a.y, t.b.x, t.b.y, t.done, float(t.get("w", 1.3))]), "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
+		"bush": bush, "stumps": stumps, "buildings": bl, "people": people, "next_train": v.next_train, "announced": v.announced, "graves": v.cemetery.graves.duplicate() if v.cemetery else [], "cemetery": [v.cemetery._plot.x, v.cemetery._plot.y, v.cemetery._plot.z, v.cemetery._yaw] if v.cemetery and v.cemetery._plot != Vector3.INF else [], "drift": v.drift, "known": v.known.duplicate(), "rubles": v.rubles, "repute": v.repute, "rebels": v.rebels, "armoured_next": v.armoured_next, "convoy_next": v.convoy_next, "help_ready": v.help_ready, "express": v.express, "selling": v.selling.duplicate(), "trade": v.trade.save(), "studying": v.studying, "study_pts": v.study_pts, "mines": v.mines.map(func(m: Dictionary) -> Array: return [m.at.x, m.at.y, m.at.z]), "trenches": v.trenches.map(func(t: Dictionary) -> Array: return [t.a.x, t.a.y, t.b.x, t.b.y, t.done, float(t.get("w", 1.3))]), "traps": v.traps.map(func(t: Dictionary) -> Array: return [t.at.x, t.at.y, t.at.z, t.armed]), "cut_marks": v.cut_marks.keys(), "cut_urgent": v.cut_marks.keys().filter(func(i: int) -> bool: return int(v.cut_marks[i]) >= 2),
 		"wear": nav.wear.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD), "wear_size": nav.wear.size() * 4,
 		"scorch": nav._scorched.duplicate(),
 		"cam": [cam.focus.x, cam.focus.y, cam.focus.z, cam.yaw, cam.dist],
@@ -166,6 +166,8 @@ static func restore(game: Node, d: Dictionary) -> void:
 		for gd: Array in wd.get("gates", []):
 			var g := w.add_gate(int(w.nearest(Vector3(float(gd[0]), 0, float(gd[1]))).k))
 			g.hp = float(gd[2])
+			if gd.size() > 4 and bool(gd[4]):
+				g.set_locked(true)
 			if bool(gd[3]):
 				g.hit(99999.0)
 		var bl: Array = wd.get("built", [])
@@ -335,6 +337,7 @@ static func restore(game: Node, d: Dictionary) -> void:
 	v.express = bool(d.get("express", false))
 	for r: String in d.get("selling", []):
 		v.selling.append(r)
+	v.trade.restore(d.get("trade", {}))
 	v.study_pts = float(d.get("study_pts", 0.0))
 	for m: Array in d.get("mines", []):
 		var mm := {"at": Vector3(m[0], m[1], m[2]), "node": null}
