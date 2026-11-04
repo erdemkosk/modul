@@ -76,7 +76,7 @@ func morning() -> void:
 	for c: Dictionary in offers.duplicate():
 		if day > int(c.ends):
 			offers.erase(c)
-	if day >= next_offer and offers.size() < MAX_OPEN and v.depot() != null and not v.line_shut():
+	if v.knows("telgraf") and day >= next_offer and offers.size() < MAX_OPEN and v.depot() != null and not v.line_shut():
 		next_offer = day + 3 + randi() % 3
 		var c := _new_contract()
 		offers.append(c)

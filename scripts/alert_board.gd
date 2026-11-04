@@ -14,8 +14,9 @@ const STEPS := [
 	["Ev kur", "KASABA > KÜTÜK EV: kış gelmeden herkese yatak"],
 	["Odun kes", "ÜRETİM > ATÖLYE: odun için kur, işçi ata"],
 	["Yiyecek bul", "ÜRETİM > TARLA ya da toplayıcı atölyesi"],
-	["Köyü bildir", "İstasyona tıkla > TELGRAF > KÖYÜ BİLDİR: göçmenler gelsin"],
-	["Sözleşme al", "TELGRAF: bir tarafın sözleşmesini kabul et, mallarını trene yükle"],
+	["Telgrafı araştır", "KASABA > OKUMA ODASI kur, işçi ata; istasyona tıkla > TELGRAFI ARAŞTIR. Telgraf yoksa tren gelmez"],
+	["Köyü bildir", "İstasyona tıkla > TELGRAFHANE > KÖYÜ BİLDİR: göçmenler gelsin"],
+	["Sözleşme al", "TELGRAFHANE: bir tarafın sözleşmesini kabul et, mallarını trene yükle"],
 	["Korun", "SAVUNMA > GÖZCÜ KULESİ ya da SİLAHLIK: baskın gelmeden"],
 ]
 var _guide: PanelContainer
@@ -83,7 +84,7 @@ func _steps_done() -> Array[bool]:
 	for b in v.buildings:
 		if b.kind in BuildingDefs.WORKSHOP_KINDS and b.state == "done" and not b.workers.is_empty():
 			work = true
-	return [not v.arriving, has.call(["ev"]), work, has.call(["tarla", "toplayici"]), v.announced,
+	return [not v.arriving, has.call(["ev"]), work, has.call(["tarla", "toplayici"]), v.knows("telgraf"), v.announced,
 		not v.trade.active.is_empty() or v.rubles > 80, has.call(["kule", "silahlik"])]
 
 
@@ -166,7 +167,7 @@ func _troubles() -> Array:
 		out.append(["%d işyeri boş" % nidle, "Kartından işçi ata", idle.global_position, false])
 	if crowded:
 		out.append(["Ev dolu: oda ekle", "Karttaki ODA EKLE ile büyüt (malzeme varsa kendileri de ekler)", crowded.global_position, false])
-	if not v.trade.offers.is_empty():
+	if v.knows("telgraf") and not v.trade.offers.is_empty():
 		out.append(["%d yeni sözleşme" % v.trade.offers.size(), "İstasyonun telgrafından kabul et", v.station_at(), false])
 	for c: Dictionary in v.trade.active:
 		if int(c.due) - v.day <= 3:
