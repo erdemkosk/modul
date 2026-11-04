@@ -1960,7 +1960,35 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 		for w in walls:
 			if is_instance_valid(w):
 				w.clear_under(pos, (b.def.size as Vector2).length() * 0.5 + 0.4)
+	if kind in BuildingDefs.CHAINED and not loading:
+		join_chains()
 	return b
+
+
+## Lengths of wire that meet share a stake: the one of the two leaves its own off.
+func join_chains() -> void:
+	var ends: Array = [] # ([length, which end, where])
+	for b in buildings:
+		if b.kind == "tel" and b.state != "gone":
+			var axis: Vector3 = b.global_basis * Vector3.RIGHT
+			for sgn: float in [1.0, -1.0]:
+				ends.append([b, sgn, b.global_position + axis * sgn * float(b.def.size.x) * 0.5])
+	var cut := {}
+	for e: Array in ends:
+		var b: Building = e[0]
+		for o: Array in ends:
+			var n: Building = o[0]
+			if n == b or Vector2((e[2] as Vector3).x - (o[2] as Vector3).x, (e[2] as Vector3).z - (o[2] as Vector3).z).length() > 0.8:
+				continue
+			if b.get_instance_id() > n.get_instance_id():
+				if not cut.has(b):
+					cut[b] = []
+				cut[b].append(e[1])
+	for b in buildings:
+		if b.kind == "tel" and b.state != "gone":
+			var t: Array[float] = []
+			t.assign(cut.get(b, []))
+			b.trim_ends(t)
 
 
 ## How far round a building of each sort the woods are cleared (m past its walls), the trees cut
@@ -2618,6 +2646,7 @@ func _unplace(b: Building) -> void:
 			for n in buildings:
 				if n != b and n.kind == b.kind and n.state != "gone" and n.global_position.distance_to(b.global_position) < 8.0:
 					nav.set_building(n.cells, true)
+			call_deferred("join_chains")
 	if b.has_meta("litter") and is_instance_valid(b.get_meta("litter")):
 		(b.get_meta("litter") as Node).queue_free()
 

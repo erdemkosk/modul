@@ -388,3 +388,4 @@ static func restore(game: Node, d: Dictionary) -> void:
 	game.cam.dist = clampf(float(c[4]), 40.0, 90.0)
 	game.cam._dist_to = game.cam.dist
 	v.loading = false
+	v.join_chains()

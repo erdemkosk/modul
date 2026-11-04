@@ -26,6 +26,9 @@ extends Node3D
 signal finished(b: Building)
 signal ruined(b: Building)
 
+var _trimmed: Array[float] = []
+
+
 class Piece:
 	var spec: Dictionary
 	var xf := Transform3D.IDENTITY ## where it is in the building
@@ -1089,8 +1092,26 @@ func _shadow() -> GeometryInstance3D.ShadowCastingSetting:
 
 ## A piece into its place: from the builder's hands (`from`, in the building) or lowered from above,
 ## turning true as it settles, the dust thrown up where it lands, the knock of it.
+## Wire: the stakes at the ends of the length (+1, -1 along its x) left off, where the next length's
+## do for both (Village.join_chains).
+func trim_ends(ends: Array[float]) -> void:
+	_trimmed = ends
+	for p in pieces:
+		var off := _trims(p)
+		p.mesh.visible = p.built and not off
+		p.shape.disabled = off or not p.built
+
+
+func _trims(p: Piece) -> bool:
+	var x := p.aabb.get_center().x
+	var lim := float(def.size.x) * 0.5 - 0.25
+	return (x > lim and 1.0 in _trimmed) or (x < -lim and -1.0 in _trimmed)
+
+
 func _put_up(p: Piece, animate: bool, from := Vector3.INF) -> void:
 	p.built = true
+	if _trims(p):
+		return
 	p.mesh.visible = true
 	p.mesh.material_override = _look(p)
 	p.mesh.cast_shadow = _shadow()

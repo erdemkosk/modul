@@ -78,7 +78,7 @@ const DEFS := {
 		"desc": "Körük, örs, ocak. Demirci depodan demir ve kömür alıp tüfek (3 demir, 2 kömür) ve fişek (1 demir, 1 kömürden 10 fişek) döver, silahlığa taşır."},
 	"siper": {"name": "Kum torbası mevzi", "size": Vector2(3, 2), "cost": {"tas": 3, "odun": 1}, "time": 8.0, "role": "post",
 		"desc": "Toprak doldurulmuş çuvallardan alçak bir duvar. Tehlike çanında milis, firarilerin geldiği yöne en yakın mevzinin arkasına geçer: siperdeki adamı vurmak iki kat zordur."},
-	"tel": {"name": "Dikenli tel", "size": Vector2(4, 1), "cost": {"odun": 2, "demir": 1}, "time": 4.0, "role": "obstacle",
+	"tel": {"name": "Dikenli tel", "size": Vector2(3.8, 1), "cost": {"odun": 2, "demir": 1}, "time": 4.0, "role": "obstacle",
 		"desc": "Çarpı kazıklara gerilmiş dikenli tel. Kimse içinden geçemez: firarileri dolaşmaya, siperlerin ve lambaların önünden geçmeye zorlar."},
 	"makineli": {"name": "Maxim yuvası", "size": Vector2(3, 3), "cost": {"odun": 4, "tas": 6, "demir": 8}, "time": 24.0, "role": "mg", "slots": 2, "needs": "makineli",
 		"station": Vector3(0, 0, -0.9),
@@ -282,13 +282,13 @@ static func recipe(kind: String) -> Array[Dictionary]:
 					for k in 2:
 						_p(out, "box", Vector3(0.36, 0.22, 0.58), Vector3(sx * 1.32, 0.11 + c * 0.22, 0.05 - k * 0.6 + (0.25 if c % 2 == 1 else 0.0)), "sand", Vector3(0, float((k * 5 + c) % 7) - 3.0, 0))
 		"tel": # (crossed stakes, the wire strung between, a coil along the bottom)
-			for x in [-2.0, 0.0, 2.0]: # (the end stakes on the very end: the next length shares them)
+			for x in [-1.8, 0.0, 1.8]:
 				for s in [-1.0, 1.0]:
 					_p(out, "box", Vector3(0.07, 1.3, 0.07), Vector3(x, 0.55, 0), "wood", Vector3(0, 0, s * 32.0))
 			for h in [0.35, 0.65, 0.95]:
-				_p(out, "box", Vector3(4.0, 0.015, 0.015), Vector3(0, h, 0), "dark")
+				_p(out, "box", Vector3(3.8, 0.015, 0.015), Vector3(0, h, 0), "dark")
 			for k in 12:
-				_p(out, "box", Vector3(0.015, 0.4, 0.015), Vector3(-1.84 + k * 0.335, 0.2, 0.0), "dark", Vector3(fmod(k * 30.0, 180.0) - 90.0, 0, 35.0))
+				_p(out, "box", Vector3(0.015, 0.4, 0.015), Vector3(-1.75 + k * 0.32, 0.2, 0.0), "dark", Vector3(fmod(k * 30.0, 180.0) - 90.0, 0, 35.0))
 		"makineli": # (a ring of sandbags open at the back, the Maxim on its wheeled mount, its shield, a box of belts)
 			for c in 4:
 				for k in 9:
