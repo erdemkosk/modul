@@ -13,7 +13,7 @@ extends RefCounted
 
 ## What each brings, in a few words (the build bar's buttons).
 const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına kova", "fener": "geceye ışık",
-	"meydan": "akşam ateşi · çan", "istasyon": "depo · tren", "tarla": "60 yiyecek/hasat",
+	"meydan": "akşam ateşi · çan", "istasyon": "tren durur · telgraf", "kamp": "ucuz çatı · 150 yük", "tarla": "60 yiyecek/hasat",
 	"oduncu": "odun · taş · çamur · yemiş",
 	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
 	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yara sarar · sargı", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
@@ -31,7 +31,11 @@ const DEFS := {
 	"meydan": {"name": "Meydan", "size": Vector2(10, 10), "cost": {"odun": 8, "tas": 12}, "time": 30.0, "role": "square",
 		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar, köşede kasabanın çanı. Akşamları ateş yakılır; başında oturan kasabalının morali yükselir, çocuklar orada oynar. Çan sabah işbaşını, akşam paydosu çalar; baskında tehlike çanı çalınınca kasabanın her yerindeki herkes saklanır. Meydan yoksa firariyi ancak yakınındakiler fark eder."},
 	"istasyon": {"name": "İstasyon", "size": Vector2(7, 5), "cost": {"odun": 30, "tas": 6}, "time": 30.0, "role": "store", "holds": 200,
-		"desc": "Demiryolunun ucu, kasabanın ilk deposu (200 yük alır). Trenle gelenler burada indi; mallar burada durur."},
+		"desc": "Rayın yanına kurulur. Tren artık burada durur, göçmen getirir, mal alır; telgraf da buradan çalışır. Depo olarak 200 yük alır."},
+	"yigin": {"name": "Yük yığını", "size": Vector2(6, 4), "cost": {}, "time": 0.0, "role": "store", "holds": 1000, "open": true,
+		"desc": "Trenin rayın yanına bıraktığı sandıklar ve çuvallar. Üstünde çatı yok: yiyecek ve odun açıkta yavaş yavaş bozulur, yağmurda daha hızlı. Bir depo kurulunca köylüler yığını oraya taşır, boşalınca kaldırılır."},
+	"kamp": {"name": "Kamp deposu", "size": Vector2(6, 5), "cost": {"odun": 10}, "time": 14.0, "role": "store", "holds": 150,
+		"desc": "Direkler ve bir çatı: 150 yük alır, altındakiler bozulmaz. İstediğin yere kur; yükü köylüler sırtlarında taşır, yani yer seçimi önemli."},
 	"sur": {"name": "Kazık sur", "size": Vector2(1, 1), "cost": {"odun": 1}, "time": 0.0, "role": "wall",
 		"desc": "Sivri kütüklerden çit: nokta nokta çiz, kasabalılar parça parça diker (4 kazığa bir odun). Kapı kendiliğinden konmaz: SUR KAPISI ile sen koyarsın, kapısız surdan kasabalılar geçemez. Firariler ancak kırarak geçer."},
 	"kapi": {"name": "Sur kapısı", "size": Vector2(3, 1), "cost": {"odun": 6}, "time": 0.0, "role": "gate",
@@ -235,6 +239,20 @@ static func recipe(kind: String) -> Array[Dictionary]:
 		"ev":
 			_hall(out, 6.0, 5.0, 2.3, 1.8, "log", "shingle", 1.0)
 			_p(out, "box", Vector3(0.6, 5.2, 0.6), Vector3(1.9, 3.0, -1.7), "stone")
+		"yigin": # (crates and sacks as they came off the boxcar, a heap of planks, nothing over them)
+			for k in 5:
+				_p(out, "box", Vector3(0.9, 0.8, 0.8), Vector3(-2.2 + k * 1.05, 0.4, -0.9 + (k % 2) * 0.2), "plank", Vector3(0, k * 13.0, 0))
+			for k in 3:
+				_p(out, "box", Vector3(0.85, 0.7, 0.75), Vector3(-1.3 + k * 1.1, 1.15, -0.85), "wood", Vector3(0, 20.0 - k * 17.0, 0))
+			for k in 4:
+				_p(out, "cyl", Vector3(0.7, 0.75, 0.7), Vector3(-1.9 + k * 0.85, 0.38, 0.8), "cloth")
+			for k in 4:
+				_p(out, "xcyl", Vector3(2.6, 0.22, 0.22), Vector3(1.5, 0.12 + (k / 3) * 0.2, 0.5 + (k % 3) * 0.26), "log")
+		"kamp": # (posts and a roof, sacks and crates under it)
+			_shed(out, 6.0, 5.0, "plank", "cloth")
+			for k in 3:
+				_p(out, "box", Vector3(0.8, 0.7, 0.8), Vector3(-1.5 + k * 1.0, 0.35, 1.2), "plank")
+			_p(out, "cyl", Vector3(0.7, 0.75, 0.7), Vector3(1.9, 0.38, 1.3), "cloth")
 		"ambar":
 			_hall(out, 9.0, 7.0, 3.0, 2.6, "log", "shingle", 2.2)
 			for k in 3:

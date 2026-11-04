@@ -165,7 +165,7 @@ func _draw() -> void:
 	var v: Village = game.village
 	if v == null:
 		return
-	if _paper == null:
+	if _paper == null or (not whole and _store_at().distance_to(_home) > 120.0): # (the town's moved)
 		_home = _store_at()
 		_bake()
 	var frame := PackedVector2Array([Vector2.ZERO, Vector2(side, 0), Vector2(side, side), Vector2(0, side)])

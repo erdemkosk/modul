@@ -10,13 +10,18 @@ var _t := 0.0
 var _at: Array = [] ## where each strip's click goes (INF: nowhere)
 
 const STEPS := [
-	["Yükü indir", "Trenle gelenler yükü istasyona taşısın"],
+	["Yükü indir", "Trenle gelenler yükü rayın yanına yığsın"],
+	["Depo kur", "G: haritaya bak, yerini seç.
+     KASABA > KAMP DEPOSU: yük oraya taşınır"],
 	["Ev kur", "KASABA > KÜTÜK EV: kış gelmeden herkese yatak"],
 	["Odun kes", "ÜRETİM > ATÖLYE: odun için kur, işçi ata"],
 	["Yiyecek bul", "ÜRETİM > TARLA ya da toplayıcı atölyesi"],
-	["Telgrafı araştır", "KASABA > OKUMA ODASI kur, işçi ata; istasyona tıkla > TELGRAFI ARAŞTIR. Telgraf yoksa tren gelmez"],
-	["Köyü bildir", "İstasyona tıkla > TELGRAFHANE > KÖYÜ BİLDİR: göçmenler gelsin"],
-	["Sözleşme al", "TELGRAFHANE: bir tarafın sözleşmesini kabul et, mallarını trene yükle"],
+	["Telgrafı araştır", "KASABA > OKUMA ODASI kur, işçi ata, T: Telgraf.
+     Telgraf yoksa tren gelmez"],
+	["İstasyon kur", "TAŞIMA > İSTASYON: rayın yanına. Tren orada durur"],
+	["Köyü bildir", "İstasyon > TELGRAFHANE > KÖYÜ BİLDİR: göçmenler gelsin"],
+	["Sözleşme al", "TELGRAFHANE: bir sözleşmeyi kabul et,
+     mallarını trene yükle"],
 	["Korun", "SAVUNMA > GÖZCÜ KULESİ ya da SİLAHLIK: baskın gelmeden"],
 ]
 var _guide: PanelContainer
@@ -84,7 +89,7 @@ func _steps_done() -> Array[bool]:
 	for b in v.buildings:
 		if b.kind in BuildingDefs.WORKSHOP_KINDS and b.state == "done" and not b.workers.is_empty():
 			work = true
-	return [not v.arriving, has.call(["ev"]), work, has.call(["tarla", "toplayici"]), v.knows("telgraf"), v.announced,
+	return [not v.arriving, has.call(["kamp", "ambar"]), has.call(["ev"]), work, has.call(["tarla", "toplayici"]), v.knows("telgraf"), v.depot() != null, v.announced,
 		not v.trade.active.is_empty() or v.rubles > 80, has.call(["kule", "silahlik"])]
 
 
@@ -149,6 +154,9 @@ func _troubles() -> Array:
 			homeless += 1
 	if bleed:
 		out.append(["%d yaralı" % hurt, "Feldşer ya da sargı gerek", bleed.global_position, true])
+	for s in v.stores():
+		if s.def.get("open", false) and s.goods_total() > 0 and not v.arriving:
+			out.append(["Yük açıkta bozuluyor", "KAMP DEPOSU kur: köylüler yığını oraya taşır", s.global_position, true])
 	if homeless > 0 and not v.arriving:
 		out.append(["%d kişi evsiz" % homeless, "Ev kur: dışarıda yatanlar üşür, morali düşer", Vector3.INF, false])
 	var crowded: Building = null

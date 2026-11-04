@@ -14,8 +14,8 @@ extends CanvasLayer
 
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
-const CATS := [["KASABA", ["ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
-	["TAŞIMA", ["yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak", "mayin", "hendek"]]]
+const CATS := [["KASABA", ["kamp", "ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
+	["TAŞIMA", ["istasyon", "yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak", "mayin", "hendek"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
@@ -2126,7 +2126,7 @@ func _process(dt: float) -> void:
 	_pop.text = "%d/%d (%d)" % [v.villagers.size(), v.beds(), v.free_count()]
 	_purse.text = "%d m" % v.rubles
 	var due := v.next_train - v.day
-	if not v.knows("telgraf"):
+	if not v.knows("telgraf") or v.depot() == null:
 		_train_stat.text = "—"
 	elif v.line_shut():
 		_train_stat.text = "Kapalı"

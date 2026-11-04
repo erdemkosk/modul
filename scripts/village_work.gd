@@ -281,6 +281,46 @@ func _plan_haul(v: Villager) -> bool:
 	return true
 
 
+## What's still lying out by the rails carried under a roof, the food first. False if there's none,
+## or no roof to take it to.
+func _plan_clear_pile(v: Villager) -> bool:
+	var from: Building = null
+	for b in stores():
+		if b.def.get("open", false) and b.goods_total() > 0:
+			from = b
+			break
+	if from == null:
+		return false
+	var to := store_room(from.global_position)
+	if to == null or to.def.get("open", false):
+		return false
+	var r := ""
+	for k: String in ["yiyecek", "ot", "odun", "camur", "kerpic", "tas", "komur", "demir"]:
+		if int(from.goods.get(k, 0)) > 0:
+			r = k
+			break
+	if r == "":
+		return false
+	if v.idle:
+		v.abort()
+	var n := from.take_goods(r, mini(v.capacity(r), maxi(to.room(), 1)))
+	v.owed = {"res": r, "n": n, "store": from}
+	v.give([{"t": "go", "to": from.door() + Vector3(randf_range(-2, 2), 0, randf_range(0.5, 2))},
+		{"t": "work", "time": 0.7, "anim": "gather", "face": from.global_position},
+		{"t": "do", "f": func() -> bool:
+			v.set_carry(r, n)
+			return true}] + _go_in(to, v) + [
+		{"t": "do", "f": func() -> bool:
+			v.owed = {}
+			v.set_carry("", 0)
+			if is_instance_valid(to) and to.state == "done":
+				to.add_goods(r, n)
+			else:
+				add_anywhere(r, n, v.position)
+			return true}] + _go_out(to, v), "Yığından taşıyor: %s" % str(BuildingDefs.RES_NAMES[r]).to_lower(), to)
+	return true
+
+
 ## Build at a site whose stuff has come. False if there's none.
 ## A palisade's next stretch: the wood for it from the store (an odun for every Wall.WOOD_PER
 ## stakes), carried out, the stakes stood up and rammed in.
@@ -1117,7 +1157,7 @@ func _plan_farm(v: Villager, b: Building) -> void:
 
 ## A carter's next run: a cartload to a building site, else the biggest pile to the store.
 func _plan_cart(v: Villager) -> void:
-	if _plan_haul(v) or _plan_firewood(v):
+	if _plan_haul(v) or _plan_clear_pile(v) or _plan_firewood(v):
 		return
 	var best: Building = null
 	var most := 3

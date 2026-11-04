@@ -206,6 +206,7 @@ func _dry_bricks(t: float) -> void:
 ## bandages soon, wood slowly in the wet); stone, iron and coal keep. What went, said once a morning.
 const ROT := {"yiyecek": 0.25, "ot": 0.2, "odun": 0.06, "kerpic": 0.0, "camur": 0.15}
 const LOGS_ROT_DAYS := 3
+const OPEN_ROT := 0.3 ## the heap by the rails: crated and sacked, it goes off this much slower (twice that in the wet)
 
 
 func _rot_morning() -> void:
@@ -231,10 +232,13 @@ func _rot_morning() -> void:
 		message.emit("Yanık enkaz temizlendi (%d bina)." % cleared, "info")
 	var wet := weather.wetness > 0.4 or Weather.rain_now > 0.2
 	for b in buildings:
-		if b.state != "done" or b.def.role in ["store", "house"] or b.goods.is_empty():
+		var open: bool = b.def.get("open", false)
+		if b.state != "done" or (b.def.role in ["store", "house"] and not open) or b.goods.is_empty():
 			continue
 		for r: String in b.goods.keys():
 			var k := float(ROT.get(r, 0.0)) * (1.6 if wet and r == "odun" else 1.0)
+			if open:
+				k *= OPEN_ROT * (2.0 if wet else 1.0)
 			if k <= 0.0:
 				continue
 			var n := int(b.goods[r])
@@ -246,7 +250,13 @@ func _rot_morning() -> void:
 		var parts: Array[String] = []
 		for k: String in lost:
 			parts.append("%d %s" % [lost[k], k])
-		message.emit("Dışarıda kalanlar çürüdü: %s (atölye yığınları depoya taşınmalı)." % ", ".join(parts), "info")
+		message.emit("Dışarıda kalanlar çürüdü: %s (yığınlar depoya taşınmalı)." % ", ".join(parts), "info")
+	# the heap by the rails, all carried off, cleared away
+	for b in buildings.duplicate():
+		if b.def.get("open", false) and b.state == "done" and b.goods_total() == 0 and not arriving and stores().size() > 1:
+			_unplace(b)
+			b.demolish()
+			message.emit("Rayın yanındaki yük yığını boşaldı.", "info")
 
 
 ## The town as the season has it: icicles on the houses' eaves and fur hats on heads in the winter.

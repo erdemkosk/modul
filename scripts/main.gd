@@ -187,7 +187,7 @@ func _ready() -> void:
 	village.hud = hud
 	seasons.message.connect(hud.toast)
 	if saved.is_empty():
-		hud.toast("Kasaba kuruldu. Önce bir Kesim kampı ve bir Toplayıcı kur (ÜRETİM). F1: tuşlar", "info")
+		hud.toast("Tren sizi rayın yanına bırakacak. G: haritaya bak, yerini seç, KAMP DEPOSU kur. F1: tuşlar", "info")
 	else:
 		await screen.step("Kasabalılar yerine dönüyor", 0.93)
 		VillageSave.restore(self, saved)
@@ -569,6 +569,12 @@ func _update_ghost() -> void:
 				p.z = on.at.z
 				var d: Vector3 = on.dir
 				_ghost_yaw = atan2(d.x, d.z)
+	if _placing == "istasyon": # (it takes hold of the rails, its platform to them)
+		var spot: Dictionary = village.station_spot(p)
+		if not spot.is_empty():
+			p.x = spot.at.x
+			p.z = spot.at.z
+			_ghost_yaw = spot.yaw
 	if p.distance_to(_ghost_pos) < 0.01 and _ghost_reason != "x":
 		return
 	_ghost_pos = p

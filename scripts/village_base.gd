@@ -6,7 +6,7 @@ extends Node3D
 signal message(text: String, kind: String) ## kind: "info", "good", "bad"
 
 
-const START_STOCK := {"odun": 40, "tas": 12, "yiyecek": 100}
+const START_STOCK := {"odun": 40, "tas": 12, "yiyecek": 250}
 
 
 const EAT_EVERY := 75.0 ## s a villager goes on one food
@@ -202,8 +202,9 @@ func _ready() -> void:
 
 
 func start(at: Vector3) -> void:
-	# The railway in from the edge of the valley, the station at its end; the first of the town come
-	# by train, and what they bring is unloaded there.
+	# The railway across the valley; the first of the town are put down on the open line with what
+	# they brought, in a heap by the rails, and go where they like. A station comes later, on the
+	# rails, wherever it's wanted.
 	var line := _rail_line(at)
 	var station: Building = null
 	var at_k := -1
@@ -211,7 +212,7 @@ func start(at: Vector3) -> void:
 		rail = line
 		_rail_mesh(rail)
 		at_k = _nearest_k(rail, at)
-		station = _place_station(rail, at_k)
+		station = _beside_line("yigin", rail, at_k)
 	if station == null:
 		_start_old(at)
 		return
@@ -229,7 +230,7 @@ func start(at: Vector3) -> void:
 	add_child(train)
 	train.arrived.connect(_train_arrived.bind(station))
 	arriving = true
-	message.emit("Tren geliyor: ilk yerleşimciler ve yükleri istasyona iniyor.", "info")
+	message.emit("Tren geliyor: ilk yerleşimciler ve yükleri rayın yanına iniyor.", "info")
 
 
 # --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
@@ -1263,7 +1264,10 @@ func _settlers_off(st: Building) -> void:
 func dress_line() -> void:
 	var era := EraDressing.new()
 	add_child(era)
-	era.build(self, rail, depot())
+	var by: Building = depot()
+	if by == null and not stores().is_empty():
+		by = stores()[0]
+	era.build(self, rail, by)
 
 
 ## The old start, with no railway: a store and a house put down at once.
@@ -1582,21 +1586,46 @@ static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector
 
 ## The station beside the line at point `k` (or a little along it), its platform to the track, on
 ## whichever side is open.
-func _place_station(line: PackedVector3Array, k: int) -> Building:
+func _beside_line(kind: String, line: PackedVector3Array, k: int) -> Building:
 	var n := line.size()
 	var dir := (line[mini(k + 20, n - 1)] - line[maxi(k - 20, 0)])
 	dir.y = 0.0
 	dir = dir.normalized()
-	var ss: Vector2 = BuildingDefs.def("istasyon").size
+	var ss: Vector2 = BuildingDefs.def(kind).size
 	for sgn in [1.0, -1.0]:
 		var side: Vector3 = dir.cross(Vector3.UP) * sgn
 		for back in [0.0, 6.0, -6.0, 12.0, -12.0]:
 			var p: Vector3 = line[k] - dir * back + side * (ss.y * 0.5 + 3.4 + 2.6)
 			var face := -side # (its front, the platform, toward the track)
 			var yaw := atan2(face.x, face.z)
-			if check("istasyon", p, yaw) == "":
-				return place("istasyon", p, yaw)
+			if check(kind, p, yaw) == "":
+				return place(kind, p, yaw)
 	return null
+
+
+const STATION_SNAP := 40.0 ## m from the rails a station being placed takes hold of them
+
+
+## Where a station goes for a pointer at `p`: on the near side of the rails, its platform to them
+## ({at, yaw}), or {} too far off them.
+func station_spot(p: Vector3) -> Dictionary:
+	if rail.size() < 2:
+		return {}
+	var k := _nearest_k(rail, p)
+	var off := p - rail[k]
+	off.y = 0.0
+	if off.length() > STATION_SNAP:
+		return {}
+	var dir := rail[mini(k + 20, rail.size() - 1)] - rail[maxi(k - 20, 0)]
+	dir.y = 0.0
+	dir = dir.normalized()
+	var side := dir.cross(Vector3.UP)
+	if side.dot(off) < 0.0:
+		side = -side
+	var ss: Vector2 = BuildingDefs.def("istasyon").size
+	var at := rail[k] + side * (ss.y * 0.5 + 3.4 + 2.6)
+	var face := -side
+	return {"at": at, "yaw": atan2(face.x, face.z)}
 
 
 ## The train in: the settlers step down from the coach one by one, then unload the boxcar by hand,
@@ -1667,7 +1696,7 @@ func _cargo_done(station: Building) -> void:
 			return
 	train.set_meta("leaving", true)
 	arriving = false
-	message.emit("Yük indi. Tren yoluna devam ediyor. Ev kurun; o zamana dek kamp ateşinde yatarlar.", "good")
+	message.emit("Yük rayın yanına yığıldı, tren yoluna devam ediyor. Haritaya (G) bak, yerini seç, KAMP DEPOSU kur: köylüler yığını oraya taşır. Açıkta kalan bozulur.", "good")
 	get_tree().create_timer(3.0, false).timeout.connect(func() -> void:
 		if is_instance_valid(train):
 			train.leave())
@@ -1809,6 +1838,13 @@ func footprint(kind: String, pos: Vector3, yaw: float, grow := 0.0) -> Array[Vec
 func check(kind: String, pos: Vector3, yaw: float) -> String:
 	if absf(pos.x) > 980.0 or absf(pos.z) > 980.0:
 		return "Haritanın dışında"
+	if kind == "istasyon":
+		for o in buildings:
+			if o.kind == "istasyon" and o.state != "gone":
+				return "Bir istasyon yeter: tren orada duruyor"
+		var spot := station_spot(pos)
+		if spot.is_empty() or Vector2(pos.x - spot.at.x, pos.z - spot.at.z).length() > 1.0:
+			return "İstasyon rayın yanına kurulur"
 	var sz: Vector2 = BuildingDefs.def(kind).size
 	var b := Basis(Vector3.UP, yaw)
 	var lo := INF
@@ -2652,6 +2688,8 @@ func _on_finished(b: Building) -> void:
 		_house_people()
 		return
 	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
+	if b.kind == "istasyon" and not b.repaired:
+		message.emit("Tren artık burada duracak." if knows("telgraf") else "İstasyon hazır, ama telgraf olmadan tren durmaz: okuma odasında araştır.", "info")
 	if b.repaired:
 		b.freshen()
 	if b.kind == "silahlik" and not b.has_meta("stocked"):
@@ -3184,18 +3222,21 @@ func add_anywhere(r: String, n: int, p: Vector3) -> void:
 		s.add_goods(r, n)
 
 
-## The store nearest `p` with room left, or null (none, or all full).
+## The store nearest `p` with room left, or null (none, or all full). Under a roof if there's one.
 func store_room(p: Vector3) -> Building:
-	var best: Building = null
-	var bd := INF
-	for b in stores():
-		if b.room() <= 0:
-			continue
-		var d := b.global_position.distance_squared_to(p)
-		if d < bd:
-			bd = d
-			best = b
-	return best
+	for open in [false, true]:
+		var best: Building = null
+		var bd := INF
+		for b in stores():
+			if b.room() <= 0 or bool(b.def.get("open", false)) != open:
+				continue
+			var d := b.global_position.distance_squared_to(p)
+			if d < bd:
+				bd = d
+				best = b
+		if best:
+			return best
+	return null
 
 
 ## What all the stores hold, and how much they could: [held, room for].
