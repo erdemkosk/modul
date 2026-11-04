@@ -96,6 +96,7 @@ var upgraded_now := "" ## (what its last finish did to it)
 var plastered := false ## a house: its logs plastered with mud
 var stove := false ## a house: a brick stove in it
 var mode := "" ## a mud pit: "" mud, "kerpic" bricks; a quarry: "" stone, "demir" iron
+var work_poly := PackedVector2Array() ## the same as it was dragged on the screen (inside `work_area`)
 var work_area := Rect2() ## a workplace: the ground (x, z) its workers keep to, if it's been drawn (ALAN ÇİZ)
 var drying: Array[Vector2] = [] ## a mud pit: bricks laid out on the racks: (seconds left, how many)
 var _racks: Node3D

@@ -201,6 +201,13 @@ func _ready() -> void:
 # --- Input ------------------------------------------------------------------------------------------
 
 func _input(e: InputEvent) -> void:
+	# a box dragged out ends where the button's let go, over the panels too (they'd swallow it)
+	if e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		var up := (e as InputEventMouseButton).position
+		if _sel_from != Vector2.INF:
+			_end_select(up)
+		elif _drag_from != null:
+			_area_done(up)
 	# Shift and the wheel turn a building being placed (not the zoom)
 	if _ghost and e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).shift_pressed and (e as InputEventMouseButton).button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		rotate_ghost(15.0 if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_UP else -15.0)
@@ -235,6 +242,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			else:
 				# a click picks; a drag draws a box round folk to pick them all (on release)
 				_sel_from = mb.position
+				_sel_ground = cam.ground_under(mb.position)
+				_sel_far = false
 				_sel_shift = mb.shift_pressed
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if _placing in ["yol", "sur"] and _road_pts.size() >= 2:
@@ -245,17 +254,6 @@ func _unhandled_input(e: InputEvent) -> void:
 				_rclick_from = mb.position # (a drag lines them up; on release)
 			else:
 				_rclick_act(_rclick_intent(mb.position))
-	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _drag_from != null:
-		_area_done(cam.ground_under((e as InputEventMouseButton).position))
-	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and _sel_from != Vector2.INF:
-		var up := (e as InputEventMouseButton).position
-		if up.distance_to(_sel_from) > 10.0:
-			_box_select(Rect2(_sel_from, Vector2.ZERO).expand(up), _sel_shift)
-		else:
-			_pick(_sel_from, _sel_shift)
-		_sel_from = Vector2.INF
-		hud.show_select_box(Rect2())
-		hud.build_keys = false # (picking in the world: the numbers go back to the groups)
 	elif e is InputEventMouseButton and not e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT and _rclick_from != Vector2.INF:
 		var up := (e as InputEventMouseButton).position
 		if up.distance_to(_rclick_from) > 14.0:
@@ -267,11 +265,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventMouseMotion and _rclick_from != Vector2.INF:
 		var at := (e as InputEventMouseMotion).position
 		_show_formation(_formation(_rclick_from, at) if at.distance_to(_rclick_from) > 14.0 else [])
-	if e is InputEventMouseMotion and _sel_from != Vector2.INF:
-		var at := (e as InputEventMouseMotion).position
-		if at.distance_to(_sel_from) > 10.0:
-			hud.show_select_box(Rect2(_sel_from, Vector2.ZERO).expand(at))
-	elif e is InputEventKey and e.pressed and not e.echo:
+	if e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		# Ctrl (Cmd) + a number: the folk chosen kept as that group; a number alone picks them again
 		if k.physical_keycode >= KEY_1 and k.physical_keycode <= KEY_9 and (k.ctrl_pressed or k.meta_pressed):
@@ -513,6 +507,8 @@ func stop_placing() -> void:
 	_hide_measure()
 	_placing = ""
 	_show_guide(Vector3.INF, Vector3.INF)
+	if _drag_from != null:
+		hud.show_select_box(Rect2())
 	_drag_from = null
 	if _marks_mm:
 		_marks_mm.visible = false
@@ -1524,7 +1520,7 @@ func _order_at(at: Vector2) -> Dictionary:
 ## gunsight over a foe, a shield over cover, a struck-through ring over an order to call off. Over the
 ## interface, and while a box or an area is being dragged out, nothing.
 func _update_pointer() -> void:
-	var at := get_viewport().get_mouse_position() if mouse_pin == Vector2.INF else mouse_pin
+	var at := _pointer()
 	var i: Dictionary = {}
 	if _rclick_from != Vector2.INF and at.distance_to(_rclick_from) > 14.0:
 		i = {"do": "line", "word": "Sıraya diz", "cursor": ""}
@@ -1873,11 +1869,6 @@ func _on_resized() -> void:
 
 # --- Areas dragged out: trees to fell, a workplace's ground ---------------------------------------
 
-func _rect(a: Vector3, b: Vector3) -> Rect2:
-	return Rect2(Vector2(minf(a.x, b.x), minf(a.z, b.z)), Vector2(absf(a.x - b.x), absf(a.z - b.z)))
-
-
-## A flat box over the ground on `rect`, `color` (made the first time).
 ## The trench as it'll be cut, while it's dragged: a dark strip of its width from where the drag
 ## began to the mouse, the spoil's side shown lighter.
 var _trench_w := 1.3
@@ -1905,46 +1896,26 @@ func _trench_on(box: MeshInstance3D, a: Vector3, b: Vector3) -> MeshInstance3D:
 	return box
 
 
-func _box_on(box: MeshInstance3D, rect: Rect2, color: Color) -> MeshInstance3D:
-	if box == null:
-		box = MeshInstance3D.new()
-		box.mesh = BoxMesh.new()
-		var m := StandardMaterial3D.new()
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.no_depth_test = false
-		box.material_override = m
-		box.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(box)
-	(box.material_override as StandardMaterial3D).albedo_color = color
-	var c := rect.get_center()
-	var lo := INF
-	var hi := -INF
-	for p: Vector2 in [rect.position, rect.end, Vector2(rect.position.x, rect.end.y), Vector2(rect.end.x, rect.position.y), c]:
-		var h := terrain.height_at(p.x, p.y)
-		lo = minf(lo, h)
-		hi = maxf(hi, h)
-	(box.mesh as BoxMesh).size = Vector3(maxf(rect.size.x, 0.2), hi - lo + 2.0, maxf(rect.size.y, 0.2))
-	box.global_position = Vector3(c.x, (lo + hi) * 0.5, c.y)
-	box.visible = true
-	return box
-
-
 func _update_drag() -> void:
 	if _drag_from == null:
 		if _drag_box:
 			_drag_box.visible = false
 		return
-	var to: Variant = cam.ground_under(get_viewport().get_mouse_position())
-	if to == null:
-		return
+	var at := _pointer()
+	var to: Variant = cam.ground_under(at)
 	var color: Color = {"mayin": Color(0.8, 0.25, 0.1, 0.25), "hendek": Color(0.35, 0.25, 0.15, 0.3), "tuzak": Color(0.45, 0.32, 0.2, 0.28), "kes": Color(0.95, 0.2, 0.08, 0.24), "kesme": Color(0.6, 0.75, 1.0, 0.2), "alan": Color(0.55, 0.9, 0.45, 0.2)}[_placing]
 	if _placing == "hendek":
+		if to == null:
+			return
 		_drag_box = _trench_on(_drag_box, _drag_from, to)
 		hud.set_hint("HENDEK: %d m · genişlik %.1f m (tekerlek: genişlet / daralt) · bırak: kazılsın" % [roundi(Vector2(to.x - _drag_from.x, to.z - _drag_from.z).length()), _trench_w])
-	else:
-		_drag_box = _box_on(_drag_box, _rect(_drag_from, to), color)
-	_spot_marks(_rect(_drag_from, to) if _placing in ["mayin", "tuzak"] else Rect2())
+		return
+	# (the rest drawn on the screen as a plain box, whichever way it's dragged; what's on the ground
+	# under it is what's ordered)
+	var box := Rect2(_anchored(_drag_from, at), Vector2.ZERO).expand(at)
+	hud.show_select_box(box, Color(color, 1.0))
+	var quad := _ground_quad(box) if _placing in ["mayin", "tuzak"] else PackedVector2Array()
+	_spot_marks(_quad_rect(quad) if quad.size() >= 3 else Rect2(), quad)
 
 
 ## While a box is dragged for mines or pits: a marker where each would go, green if it can, red if
@@ -1952,7 +1923,7 @@ func _update_drag() -> void:
 var _marks_mm: MultiMeshInstance3D
 
 
-func _spot_marks(rect: Rect2) -> void:
+func _spot_marks(rect: Rect2, poly := PackedVector2Array()) -> void:
 	if _marks_mm == null:
 		var disc := CylinderMesh.new()
 		disc.top_radius = 0.45
@@ -1976,7 +1947,7 @@ func _spot_marks(rect: Rect2) -> void:
 	if rect.size == Vector2.ZERO:
 		_marks_mm.visible = false
 		return
-	var spots: Array = village.lay_spots(rect, village.MINE_GAP if _placing == "mayin" else village.TRAP_GAP, _placing)
+	var spots: Array = village.lay_spots(rect, village.MINE_GAP if _placing == "mayin" else village.TRAP_GAP, _placing, poly)
 	var mm := _marks_mm.multimesh
 	var n := mini(spots.size(), mm.instance_count)
 	mm.visible_instance_count = n
@@ -1987,21 +1958,30 @@ func _spot_marks(rect: Rect2) -> void:
 	_marks_mm.visible = true
 
 
-func _area_done(to: Variant) -> void:
+func _area_done(up: Vector2) -> void:
 	var from: Variant = _drag_from
+	var to: Variant = cam.ground_under(up)
 	_drag_from = null
+	hud.show_select_box(Rect2())
 	if _drag_box:
 		_drag_box.visible = false
 	if _marks_mm:
 		_marks_mm.visible = false
-	if from == null or to == null:
+	if from == null:
 		return
-	var rect := _rect(from, to)
 	if _placing == "hendek": # (a line, not a box)
+		if to == null:
+			return
 		var n := village.mark_trench(Vector2(from.x, from.z), Vector2(to.x, to.z), _trench_w)
 		hud.toast("%d m hendek kazılacak" % (n * 3) if n > 0 else "Hendek o kadar kısa olamaz", "good" if n > 0 else "info")
 		return
+	var box := Rect2(_anchored(from, up), Vector2.ZERO).expand(up)
+	var poly := _ground_quad(box) if box.size.length() > 10.0 else PackedVector2Array()
+	var rect := _quad_rect(poly) if poly.size() >= 3 else Rect2()
 	if rect.size.x < 1.0 or rect.size.y < 1.0:
+		poly = PackedVector2Array()
+		if to == null:
+			return
 		if _placing in ["tuzak", "mayin"]: # (a click: one pit, one mine there)
 			rect = Rect2(Vector2(to.x - 0.3, to.z - 0.3), Vector2(0.6, 0.6))
 		elif _placing in ["kes", "kesme"]: # (a click, not a drag: the one tree there)
@@ -2014,22 +1994,23 @@ func _area_done(to: Variant) -> void:
 			return
 	match _placing:
 		"kes": # (marked to be felled first: everyone drops their work for it)
-			var n := village.mark_trees(rect, true, true)
+			var n := village.mark_trees(rect, true, true, poly)
 			hud.toast("%d ağaç kesilecek: herkes işini bırakıp gidiyor" % n if n > 0 else "Orada kesilecek ağaç yok", "good" if n > 0 else "info")
 		"mayin":
-			var n := village.lay_mines(rect)
+			var n := village.lay_mines(rect, poly)
 			hud.toast("%d mayın gömüldü" % n if n > 0 else "Mayın gömülemedi (demir ya da kömür yok, ya da yer uygun değil)", "good" if n > 0 else "info")
 		"tuzak":
-			var n := village.lay_traps(rect)
+			var n := village.lay_traps(rect, poly)
 			hud.toast("%d kazık tuzağı kuruldu" % n if n > 0 else "Tuzak kurulamadı (odun yok ya da yer uygun değil)", "good" if n > 0 else "info")
 		"kesme":
-			var n := village.mark_trees(rect, false)
+			var n := village.mark_trees(rect, false, false, poly)
 			hud.toast("%d ağacın işareti kalktı" % n, "info")
 		"alan":
 			var b := _area_for
 			stop_placing()
 			if b and is_instance_valid(b):
 				b.work_area = rect
+				b.work_poly = poly
 				select(b)
 				hud.toast("%s yalnızca bu alanda çalışacak" % b.display_name(), "good")
 
@@ -2038,14 +2019,51 @@ func _area_done(to: Variant) -> void:
 func _show_work_area() -> void:
 	var b := selected
 	if b and is_instance_valid(b) and b.work_area.has_area() and _placing == "":
-		_area_box = _box_on(_area_box, b.work_area, Color(0.55, 0.9, 0.45, 0.14))
+		var r: Rect2 = b.work_area
+		var q: PackedVector2Array = b.work_poly if b.work_poly.size() >= 3 else PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		if _area_box == null or q != _area_shown:
+			_area_shown = q
+			_area_line(q)
+		_area_box.visible = true
 	elif _area_box:
 		_area_box.visible = false
+
+
+var _area_shown := PackedVector2Array() ## (the outline drawn just now)
+
+
+## The work area's outline lying on the ground: a green ribbon, over the rises and falls.
+func _area_line(q: PackedVector2Array) -> void:
+	if _area_box == null:
+		_area_box = MeshInstance3D.new()
+		_area_box.mesh = ImmediateMesh.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = Color(0.55, 0.9, 0.45, 0.8)
+		_area_box.material_override = m
+		_area_box.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_area_box)
+	var im := _area_box.mesh as ImmediateMesh
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for k in q.size():
+		var a := q[k]
+		var b := q[(k + 1) % q.size()]
+		var across := (b - a).normalized().orthogonal() * 0.3
+		var n := maxi(ceili(a.distance_to(b) / 2.0), 1)
+		for i in n + 1:
+			var p := a.lerp(b, float(i) / n)
+			for s: Vector2 in [p + across, p - across]:
+				im.surface_add_vertex(Vector3(s.x, terrain.height_at(s.x, s.y) + 0.35, s.y))
+	im.surface_end()
 
 
 func clear_work_area() -> void:
 	if selected and is_instance_valid(selected):
 		selected.work_area = Rect2()
+		selected.work_poly = PackedVector2Array()
 		hud.toast("%s yine her yerde çalışacak" % selected.display_name(), "info")
 
 
@@ -2081,6 +2099,70 @@ func refit_selected(what: String) -> void:
 var _camp_turn := false ## (show_trouble: the camp shown, the rest next)
 var _sel_from := Vector2.INF ## a left press with nothing being placed: where (to tell a click from a drag)
 var _sel_shift := false
+var _sel_ground: Variant = null ## the ground under where it began: the box stays on it if the view moves
+var _sel_far := false ## the pointer's gone far enough for this to be a box, not a click
+
+
+## Where the mouse is (a test's pin if it has one).
+func _pointer() -> Vector2:
+	return get_viewport().get_mouse_position() if mouse_pin == Vector2.INF else mouse_pin
+
+
+## Where a box began on the screen as the view stands now: on the `ground` it was begun over, else
+## where it was pressed.
+func _anchored(ground: Variant, pressed: Vector2) -> Vector2:
+	var c := get_viewport().get_camera_3d()
+	if ground == null or c.is_position_behind(ground):
+		return pressed
+	return c.unproject_position(ground)
+
+
+## A left drag in the world, each frame: the box from where it began to the pointer, any way round,
+## over the panels too.
+func _update_select() -> void:
+	if _sel_from == Vector2.INF:
+		return
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): # (let go somewhere that never told us)
+		_sel_from = Vector2.INF
+		hud.show_select_box(Rect2())
+		return
+	var at := _pointer()
+	var start := _anchored(_sel_ground, _sel_from)
+	_sel_far = _sel_far or at.distance_to(start) > 10.0
+	if _sel_far:
+		hud.show_select_box(Rect2(start, Vector2.ZERO).expand(at))
+
+
+func _end_select(up: Vector2) -> void:
+	var start := _anchored(_sel_ground, _sel_from)
+	if _sel_far or up.distance_to(start) > 10.0:
+		_box_select(Rect2(start, Vector2.ZERO).expand(up), _sel_shift)
+	else:
+		_pick(_sel_from, _sel_shift)
+	_sel_from = Vector2.INF
+	hud.show_select_box(Rect2())
+	hud.build_keys = false # (picking in the world: the numbers go back to the groups)
+
+
+## The ground under a box on the screen: its four corners as they fall (a corner off the map or in
+## the sky pulled in toward the middle till it's on the ground).
+func _ground_quad(box: Rect2) -> PackedVector2Array:
+	var mid := box.get_center()
+	var out := PackedVector2Array()
+	for c: Vector2 in [box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)]:
+		for k in 6:
+			var g: Variant = cam.ground_under(c.lerp(mid, k / 6.0))
+			if g != null:
+				out.append(Vector2(g.x, g.z))
+				break
+	return out
+
+
+func _quad_rect(q: PackedVector2Array) -> Rect2:
+	var r := Rect2(q[0], Vector2.ZERO)
+	for p in q:
+		r = r.expand(p)
+	return r
 var _trouble_i := -1 ## which of the troubled places was shown last (show_trouble)
 
 
@@ -2180,6 +2262,7 @@ func _process(_dt: float) -> void:
 	if village.day != _saved_day and weather.hour > 6.0 and not raids.active:
 		_saved_day = village.day
 		VillageSave.save(self) # (every morning)
+	_update_select()
 	if _placing in ["yol", "sur"]: # (the palisade's stakes shown to the mouse as the road's planks are)
 		_update_road_line()
 	elif _placing == "kapi":

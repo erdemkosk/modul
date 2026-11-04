@@ -1973,14 +1973,20 @@ func ground_at(p: Vector3) -> float:
 ## Every standing prop with its foot within `reach` of `pos`.
 # --- Trees marked to be felled (KES) -------------------------------------------------------------
 
+## Whether `p` is inside `poly` (a box dragged on the screen, as it falls on the ground); no poly
+## keeps nothing out.
+static func in_poly(p: Vector2, poly: PackedVector2Array) -> bool:
+	return poly.size() < 3 or Geometry2D.is_point_in_polygon(p, poly)
+
+
 ## The standing trees in `area` (the ground's x, z) marked to be felled (`urgent`: by everyone, now),
 ## or unmarked (`on` false). How many changed.
-func mark_trees(area: Rect2, on: bool, urgent := false) -> int:
+func mark_trees(area: Rect2, on: bool, urgent := false, poly := PackedVector2Array()) -> int:
 	var n := 0
 	var c := area.get_center()
 	for i in _props_in(Vector3(c.x, 0, c.y), area.size.length() * 0.5 + 1.0):
 		var o: Vector3 = props._xf[i].origin
-		if not area.has_point(Vector2(o.x, o.z)) or str(props._models[props._kind[i]].kind) != "tree":
+		if not area.has_point(Vector2(o.x, o.z)) or not in_poly(Vector2(o.x, o.z), poly) or str(props._models[props._kind[i]].kind) != "tree":
 			continue
 		var level := 2 if urgent else 1
 		if on and int(cut_marks.get(i, 0)) < level:
@@ -2057,14 +2063,14 @@ func _show_marks() -> void:
 
 ## The marked tree nearest `p` within `reach` (in `area` if it has one; `urgent`: only an urgent
 ## one) that nobody's after, or -1.
-func marked_tree(p: Vector3, reach: float, area := Rect2(), urgent := false) -> int:
+func marked_tree(p: Vector3, reach: float, area := Rect2(), urgent := false, poly := PackedVector2Array()) -> int:
 	var best := -1
 	var bd := INF
 	for i: int in cut_marks:
 		if reserved.has(i) or props.cut.has(i) or (urgent and int(cut_marks[i]) < 2):
 			continue
 		var o: Vector3 = props._xf[i].origin
-		if area.has_area() and not area.has_point(Vector2(o.x, o.z)):
+		if area.has_area() and not (area.has_point(Vector2(o.x, o.z)) and in_poly(Vector2(o.x, o.z), poly)):
 			continue
 		var d := Vector2(o.x - p.x, o.z - p.z).length()
 		if d <= reach and d < bd:
@@ -2081,7 +2087,7 @@ const TRAP_GAP := 2.5 ## m between pits laid in a box
 
 ## Pits dug and staked across `area` (a pit every TRAP_GAP), or at its middle if it's a click; a
 ## sprung one there set again. Each costs TRAP_COST odun from the stores. How many were set.
-func lay_traps(area: Rect2) -> int:
+func lay_traps(area: Rect2, poly := PackedVector2Array()) -> int:
 	var spots: Array[Vector3] = []
 	if area.size.x < 1.5 and area.size.y < 1.5:
 		spots.append(Vector3(area.get_center().x, 0, area.get_center().y))
@@ -2090,7 +2096,8 @@ func lay_traps(area: Rect2) -> int:
 		while x < area.end.x:
 			var z := area.position.y + TRAP_GAP * 0.5
 			while z < area.end.y:
-				spots.append(Vector3(x, 0, z))
+				if in_poly(Vector2(x, z), poly):
+					spots.append(Vector3(x, 0, z))
 				z += TRAP_GAP
 			x += TRAP_GAP
 	var n := 0
@@ -2168,7 +2175,7 @@ const MINE_GAP := 5.0
 ## Where mines (or pits, `gap` apart) would go across `area` (one at a click), each [spot, why not]
 ## ("" if it can): not in water or on a cliff, not under a building, not on top of another. The woods
 ## are fine.
-func lay_spots(area: Rect2, gap: float, kind: String) -> Array:
+func lay_spots(area: Rect2, gap: float, kind: String, poly := PackedVector2Array()) -> Array:
 	var spots: Array[Vector3] = []
 	if area.size.x < 1.5 and area.size.y < 1.5:
 		spots.append(Vector3(area.get_center().x, 0, area.get_center().y))
@@ -2177,7 +2184,8 @@ func lay_spots(area: Rect2, gap: float, kind: String) -> Array:
 		while x < area.end.x:
 			var z := area.position.y + gap * 0.5
 			while z < area.end.y:
-				spots.append(Vector3(x, 0, z))
+				if in_poly(Vector2(x, z), poly):
+					spots.append(Vector3(x, 0, z))
 				z += gap
 			x += gap
 	var out: Array = []
@@ -2199,13 +2207,13 @@ func lay_spots(area: Rect2, gap: float, kind: String) -> Array:
 	return out
 
 
-func lay_mines(area: Rect2) -> int:
+func lay_mines(area: Rect2, poly := PackedVector2Array()) -> int:
 	if not knows("patlayici"):
 		message.emit("Önce okuma odasında Patlayıcılar araştırılmalı", "info")
 		return 0
 	var n := 0
 	var short := false
-	for e: Array in lay_spots(area, MINE_GAP, "mayin"):
+	for e: Array in lay_spots(area, MINE_GAP, "mayin", poly):
 		if str(e[1]) != "":
 			continue
 		var p: Vector3 = e[0]
@@ -2590,6 +2598,7 @@ func refit(b: Building, what: String, why: Array) -> Building:
 	var crew := b.workers.duplicate()
 	var wanted := b.wanted
 	var area := b.work_area
+	var area_poly := b.work_poly
 	var pile := b.goods.duplicate()
 	b.goods.clear()
 	_unplace(b)
@@ -2603,6 +2612,7 @@ func refit(b: Building, what: String, why: Array) -> Building:
 	nb.mode = mode
 	nb.wanted = wanted
 	nb.work_area = area
+	nb.work_poly = area_poly
 	for r: String in pile:
 		nb.add_goods(r, int(pile[r]))
 	for v: Villager in crew:

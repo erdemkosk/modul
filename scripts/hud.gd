@@ -1561,20 +1561,21 @@ func _ledger_line(parent: Control, hour: String, text: String, ink: Color, kind:
 var _sel_box: Panel
 
 
-func show_select_box(r: Rect2) -> void:
+func show_select_box(r: Rect2, tint := Ui.ACCENT) -> void:
 	if _sel_box == null:
 		_sel_box = Panel.new()
 		_sel_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(Ui.ACCENT, 0.12)
-		sb.border_color = Color(Ui.ACCENT, 0.9)
 		sb.set_border_width_all(1)
 		_sel_box.add_theme_stylebox_override("panel", sb)
 		add_child(_sel_box)
-	var k := maxf(get_tree().root.content_scale_factor, 1.0)
+	var style := _sel_box.get_theme_stylebox("panel") as StyleBoxFlat
+	style.bg_color = Color(tint, 0.12)
+	style.border_color = Color(tint, 0.9)
 	_sel_box.visible = r.size.length() > 1.0
-	_sel_box.position = r.position / k
-	_sel_box.size = r.size / k
+	# (mouse and unproject_position are already in the interface's own units: no scaling here)
+	_sel_box.position = r.position
+	_sel_box.size = r.size
 
 
 ## A question put to the player, a telegram form at the top middle: the office's printed head, the
@@ -2026,12 +2027,12 @@ func _edge_marks() -> void:
 		if not want.has(key):
 			(_marks[key] as Button).queue_free()
 			_marks.erase(key)
-	var size := get_viewport().get_visible_rect().size / maxf(get_tree().root.content_scale_factor, 1.0)
+	var size := get_viewport().get_visible_rect().size
 	var mid := size * 0.5
 	for key: String in want:
 		var at: Vector3 = want[key][1]
 		var behind := cam3.is_position_behind(at)
-		var sp := cam3.unproject_position(at) / maxf(get_tree().root.content_scale_factor, 1.0)
+		var sp := cam3.unproject_position(at)
 		if behind:
 			sp = mid - (sp - mid) * 10.0
 		var on := not behind and sp.x > 40 and sp.x < size.x - 40 and sp.y > 120 and sp.y < size.y - 150

@@ -578,9 +578,9 @@ func _plan_work(v: Villager) -> void:
 			return
 	var kind: String = {"odun": "tree", "tas": "rock", "demir": "iron", "komur": "coal", "yiyecek": "bush"}[res]
 	# (trees marked to be felled first: a little further than the camp would go for its own)
-	var i := marked_tree(b.global_position, float(b.def.reach) * 1.6, b.work_area) if res == "odun" else -1
+	var i := marked_tree(b.global_position, float(b.def.reach) * 1.6, b.work_area, false, b.work_poly) if res == "odun" else -1
 	if i < 0:
-		i = find_prop(b.global_position, float(b.def.reach), kind, b.work_area)
+		i = find_prop(b.global_position, float(b.def.reach), kind, b.work_area, b.work_poly)
 	if i < 0:
 		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "demir": "Yakında demir damarı yok (pas renkli kayalar)", "komur": "Yakında kömür damarı yok (kara kayalar)", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
 		_plan_idle(v)
@@ -792,9 +792,9 @@ func _plan_healer(v: Villager, b: Building) -> void:
 			b.idle_note = "Kışın şifalı ot yetişmez"
 		_plan_idle(v)
 		return
-	var i := find_prop(b.global_position, float(b.def.reach), "fern", b.work_area)
+	var i := find_prop(b.global_position, float(b.def.reach), "fern", b.work_area, b.work_poly)
 	if i < 0:
-		i = find_prop(b.global_position, float(b.def.reach), "bush", b.work_area)
+		i = find_prop(b.global_position, float(b.def.reach), "bush", b.work_area, b.work_poly)
 	if i < 0:
 		b.idle_note = "Yakında şifalı ot kalmadı"
 		_plan_idle(v)
@@ -1169,7 +1169,7 @@ func _plan_cart(v: Villager) -> void:
 
 ## The nearest standing prop of `kind` ("tree", "rock", "bush") within `reach` of `p` that no one's
 ## going for (a bush not resting), on ground a villager can get to.
-func find_prop(p: Vector3, reach: float, kind: String, area := Rect2()) -> int:
+func find_prop(p: Vector3, reach: float, kind: String, area := Rect2(), poly := PackedVector2Array()) -> int:
 	var best := -1
 	var bd := INF
 	var near := _props_in(p, reach)
@@ -1179,7 +1179,7 @@ func find_prop(p: Vector3, reach: float, kind: String, area := Rect2()) -> int:
 	for i in near:
 		if reserved.has(i):
 			continue
-		if area.has_area() and not area.has_point(Vector2(props._xf[i].origin.x, props._xf[i].origin.z)):
+		if area.has_area() and not (area.has_point(Vector2(props._xf[i].origin.x, props._xf[i].origin.z)) and in_poly(Vector2(props._xf[i].origin.x, props._xf[i].origin.z), poly)):
 			continue
 		if str(props._models[props._kind[i]].kind) != kind:
 			continue
