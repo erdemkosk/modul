@@ -23,8 +23,13 @@ func build(v: Node, rail: PackedVector3Array, station: Node3D) -> void:
 		return
 	_telegraph(rail, station)
 	if station:
-		_water_tower(rail, station)
-		_semaphore(rail, station)
+		station_dress(rail, station)
+
+
+## A station's water tower and semaphore.
+func station_dress(rail: PackedVector3Array, station: Node3D) -> void:
+	_water_tower(rail, station)
+	_semaphore(rail, station)
 
 
 ## The side of the line away from the station (where the poles and the tower stand), at rail point k.

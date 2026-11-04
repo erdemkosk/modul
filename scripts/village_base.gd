@@ -202,35 +202,77 @@ func _ready() -> void:
 
 
 func start(at: Vector3) -> void:
-	# The railway across the valley; the first of the town are put down on the open line with what
-	# they brought, in a heap by the rails, and go where they like. A station comes later, on the
-	# rails, wherever it's wanted.
+	# The railway across the valley, and the first of the town on it with all they brought: the
+	# train rolls in from the edge, and where it's stopped (stop_train) they get down.
 	var line := _rail_line(at)
-	var station: Building = null
-	var at_k := -1
-	if line.size() > 20:
-		rail = line
-		_rail_mesh(rail)
-		at_k = _nearest_k(rail, at)
-		station = _beside_line("yigin", rail, at_k)
-	if station == null:
+	if line.size() <= 20:
 		_start_old(at)
 		return
-	station.complete_now()
+	rail = line
+	_rail_mesh(rail)
 	dress_line()
-	# the station's place along the line (by the line's own length, its rises and falls and all):
-	# the coach stops level with it
 	train = Train.new()
 	train.quiet = true
 	train.nav = nav
-	train.setup(rail, 0.0, 0.0)
-	var s_station := train.s_of(station.global_position)
-	train.stop_at = s_station
-	train._s = maxf(s_station - 200.0, 0.0)
+	train.setup(rail, INF, 0.0)
+	train._s = 50.0 # (all of it on the rails)
+	var works := RailWorks.bores(rail, nav)
+	if not works.is_empty() and works[0].x < 5: # (out of a tunnel through the valley's rim)
+		train._s = maxf(train.s_of(rail[works[0].y]) - 8.0, 50.0)
 	add_child(train)
-	train.arrived.connect(_train_arrived.bind(station))
+	# (left alone, it stops of itself before the valley's end)
+	train.stop_at -= TRAIN_RUNS_OUT
+	if not works.is_empty() and works[works.size() - 1].y > rail.size() - 5:
+		train.stop_at = minf(train.stop_at, train.s_of(rail[works[works.size() - 1].x]) - 30.0)
+	train.arrived.connect(_train_stopped)
 	arriving = true
-	message.emit("Tren geliyor: ilk yerleşimciler ve yükleri rayın yanına iniyor.", "info")
+	message.emit("Tren vadiye giriyor: yer beğenince TRENİ DURDUR.", "info")
+
+
+const TRAIN_RUNS_OUT := 200.0 ## m before the end of the line the first train stops if nobody's stopped it
+
+
+## Whether the first train is still rolling and can be stopped.
+func can_stop_train() -> bool:
+	return arriving and _pile == null and is_instance_valid(train) and not train.is_standing()
+
+
+## The first train stopped as soon as it can be, where there's room by the rails for the load: a
+## reason if there's none in the next stretch of line.
+func stop_train() -> String:
+	if not can_stop_train():
+		return "x"
+	var from: float = train._s + train._v * train._v / (2.0 * Train.BRAKE) + 2.0
+	var coach: float = train._gap[2]
+	var k := _nearest_k(rail, train._at(from - coach)[0])
+	for n in range(0, 800, 20): # (every 6 m, for 240 m)
+		if k + n >= rail.size():
+			break
+		var b := _beside_line("yigin", rail, k + n)
+		if b:
+			_pile = b
+			b.complete_now()
+			train.stop_at = minf(maxf(train.s_of(b.global_position) + coach, from), train.stop_at)
+			message.emit("Tren fren yapıyor: burada iniliyor.", "good")
+			return ""
+	return "Buralarda rayın yanı yüke müsait değil, biraz daha ilerle"
+
+
+## The first train at a stand. Left to run out of line, the load goes down in the nearest room back.
+func _train_stopped() -> void:
+	if _pile == null:
+		var k := _nearest_k(rail, train._at(train._s - float(train._gap[2]))[0])
+		while k > 0 and _pile == null:
+			_pile = _beside_line("yigin", rail, k)
+			k -= 20
+		if _pile == null:
+			arriving = false
+			train.leave()
+			_start_old(train.engine_at())
+			return
+		_pile.complete_now()
+		message.emit("Hat bitiyor: tren burada duruyor.", "info")
+	_train_arrived(_pile)
 
 
 # --- The train: what's sent for, paid for in kind, brought up the line now and then --------------
@@ -1261,13 +1303,14 @@ func _settlers_off(st: Building) -> void:
 
 ## The line dressed for its years: telegraph poles along it, the water tower and the semaphore by
 ## the station (EraDressing; laid out the same from the rail and the station on a loaded game).
+var _era: EraDressing
+
+
 func dress_line() -> void:
 	var era := EraDressing.new()
 	add_child(era)
-	var by: Building = depot()
-	if by == null and not stores().is_empty():
-		by = stores()[0]
-	era.build(self, rail, by)
+	_era = era
+	era.build(self, rail, depot())
 
 
 ## The old start, with no railway: a store and a house put down at once.
@@ -1354,45 +1397,18 @@ func water_at(p: Vector3) -> float:
 var _river: Array[Vector4] = [] ## the river's line: x, surface y, z, half its width
 
 
-## Where the line crosses water, a bridge: the rails carried 1.6 m over the water on a trestle, eased
-## up to it and down again over 24 m either side. (The points' heights become the rails' bed's.)
+## The line set at the heights it can run at (RailWorks.grade): bridges over the water, trestles
+## where the land drops, tunnels where it stands too high.
 func _bridged(line: PackedVector3Array) -> PackedVector3Array:
-	var n := line.size()
-	var wet := PackedFloat32Array()
-	wet.resize(n)
-	var any := false
-	for k in n:
-		wet[k] = water_at(line[k])
-		any = any or wet[k] > -INF
-	if not any:
-		return line
-	var lift := PackedFloat32Array()
-	lift.resize(n)
-	for k in n:
-		lift[k] = -INF
-	var k := 0
-	while k < n:
-		if wet[k] == -INF:
-			k += 1
-			continue
-		var a := k
-		var top := -INF
-		while k < n and wet[k] > -INF:
-			top = maxf(top, wet[k])
-			k += 1
-		var deck := top + 1.6
-		var ramp := 80 # (points: 24 m)
-		for j in range(maxi(a - ramp, 0), mini(k + ramp, n)):
-			var u := 1.0
-			if j < a:
-				u = smoothstep(0.0, 1.0, float(j - (a - ramp)) / ramp)
-			elif j >= k:
-				u = smoothstep(0.0, 1.0, 1.0 - float(j - k) / ramp)
-			lift[j] = maxf(lift[j], lerpf(line[j].y, deck, u))
-	for j in n:
-		if lift[j] > line[j].y:
-			line[j].y = lift[j]
-	return line
+	var ground := PackedFloat32Array()
+	var least := PackedFloat32Array()
+	ground.resize(line.size())
+	least.resize(line.size())
+	for k in line.size():
+		ground[k] = nav.height(line[k].x, line[k].z)
+		var w := water_at(line[k])
+		least[k] = w + RailWorks.DECK if w > -INF else -INF
+	return RailWorks.grade(line, ground, least)
 
 
 ## From `p` on along `dir` to the edge of the map.
@@ -1453,6 +1469,8 @@ func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 	for k in range(0, lines.size(), 8):
 		for i in _props_in(lines[k], 4.0):
 			var info := props.prop_info(i)
+			if nav.height(lines[k].x, lines[k].z) - lines[k].y > RailWorks.ROOF:
+				continue # (deep under the hill: the trees stand)
 			if str(info.kind) != "cliff" and Vector2(info.origin.x - lines[k].x, info.origin.z - lines[k].z).length() < 3.6:
 				props.cut_tree(i)
 				reserved.erase(i)
@@ -1471,17 +1489,18 @@ func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 		var side := dir.cross(Vector3.UP)
 		var g := maxf(nav.height(c.x, c.z), c.y) # (up on a bridge: the line's own height)
 		var up := c.y - nav.height(c.x, c.z) > 0.3
+		var under := nav.height(c.x, c.z) > c.y + RailWorks.UNDER # (in a tunnel: nothing to draw)
 		var l := Vector3(c.x, g, c.z) - side * 1.6 * gauge + Vector3.UP * 0.02
 		var rr := Vector3(c.x, g, c.z) + side * 1.6 * gauge + Vector3.UP * 0.02
 		l.y = (g - 0.1) if up else nav.height(l.x, l.z) + 0.03
 		rr.y = (g - 0.1) if up else nav.height(rr.x, rr.z) + 0.03
 		var top := Vector3(c.x, g + 0.14, c.z)
 		var rl := [top - side * 0.76 * gauge + Vector3.UP * 0.18, top + side * 0.76 * gauge + Vector3.UP * 0.18]
-		if k > 0 and not up:
+		if k > 0 and not up and not under:
 			# the bed: two slopes up to its crown
 			_quad(bed, prev_l, l, top, (prev_l + prev_r) * 0.5 + Vector3.UP * 0.12)
 			_quad(bed, (prev_l + prev_r) * 0.5 + Vector3.UP * 0.12, top, rr, prev_r)
-		if k > 0:
+		if k > 0 and not under:
 			for j in 2:
 				var a: Vector3 = prev_rails[j]
 				var b: Vector3 = rl[j]
@@ -1527,18 +1546,23 @@ func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 		var dir := lines[mini(k + 1, lines.size() - 1)] - lines[maxi(k - 1, 0)]
 		dir.y = 0.0
 		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
-		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), Vector3(c.x, maxf(nav.height(c.x, c.z), c.y) + 0.2, c.z)))
+		var tie := Vector3(c.x, maxf(nav.height(c.x, c.z), c.y) + 0.2, c.z)
+		if nav.height(c.x, c.z) > c.y + RailWorks.UNDER:
+			tie.y -= 30.0 # (in a tunnel)
+		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), tie))
 		var shade := randf_range(0.26, 0.38)
 		mm.set_instance_color(j, Color(shade, shade * 0.8, shade * 0.6))
 	var smi := MultiMeshInstance3D.new()
 	smi.multimesh = mm
 	add_child(smi)
+	if gauge == 1.0:
+		RailWorks.portals(self, lines, nav)
 	# the trestle under it where it's up off the ground: a bent of two piles every 3 m, braced
 	var piles: Array[Transform3D] = []
 	for k in range(0, lines.size(), 10):
 		var c := lines[k]
 		var g := nav.height(c.x, c.z)
-		if c.y - g < 0.6:
+		if c.y - g < 0.35:
 			continue
 		var dir := lines[mini(k + 1, lines.size() - 1)] - lines[maxi(k - 1, 0)]
 		dir.y = 0.0
@@ -1588,6 +1612,8 @@ static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector
 ## whichever side is open.
 func _beside_line(kind: String, line: PackedVector3Array, k: int) -> Building:
 	var n := line.size()
+	if not on_the_flat(line[k]):
+		return null
 	var dir := (line[mini(k + 20, n - 1)] - line[maxi(k - 20, 0)])
 	dir.y = 0.0
 	dir = dir.normalized()
@@ -1603,6 +1629,11 @@ func _beside_line(kind: String, line: PackedVector3Array, k: int) -> Building:
 	return null
 
 
+## Whether the rails at `p` are on the ground: not on a bridge, not in a tunnel.
+func on_the_flat(p: Vector3) -> bool:
+	return absf(p.y - nav.height(p.x, p.z)) < 0.6
+
+
 const STATION_SNAP := 40.0 ## m from the rails a station being placed takes hold of them
 
 
@@ -1614,7 +1645,7 @@ func station_spot(p: Vector3) -> Dictionary:
 	var k := _nearest_k(rail, p)
 	var off := p - rail[k]
 	off.y = 0.0
-	if off.length() > STATION_SNAP:
+	if off.length() > STATION_SNAP or not on_the_flat(rail[k]):
 		return {}
 	var dir := rail[mini(k + 20, rail.size() - 1)] - rail[maxi(k - 20, 0)]
 	dir.y = 0.0
@@ -1632,6 +1663,7 @@ func station_spot(p: Vector3) -> Dictionary:
 ## carrying what it brought onto the platform and into the station (the food first). With it empty
 ## the train steams on, out of the valley the other way.
 var _cargo := {} ## what's still in the boxcar
+var _pile: Building = null ## where the first train's load is going down
 
 
 func _train_arrived(station: Building) -> void:
@@ -2687,8 +2719,10 @@ func _on_finished(b: Building) -> void:
 			"soba": message.emit("%s evine kerpiç soba yapıldı" % b.display_name(), "good")
 		_house_people()
 		return
-	message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
+	if b.kind != "yigin":
+		message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
 	if b.kind == "istasyon" and not b.repaired:
+		_era.station_dress(rail, b)
 		message.emit("Tren artık burada duracak." if knows("telgraf") else "İstasyon hazır, ama telgraf olmadan tren durmaz: okuma odasında araştır.", "info")
 	if b.repaired:
 		b.freshen()

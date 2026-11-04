@@ -350,6 +350,8 @@ func _process(dt: float) -> void:
 				(w[0] as Node3D).rotate_object_local(Vector3.RIGHT, moved / float(w[1]))
 	# the stack: thick when it works, a wisp standing still; a chuff a stroke
 	_smoke.amount_ratio = clampf(0.25 + absf(_v) / MAX_SPEED, 0.25, 1.0)
+	var stack := _cars[0].global_position
+	_smoke.emitting = nav == null or nav.height(stack.x, stack.z) < stack.y + 3.0 # (none through a hillside)
 	var dark := Weather.night_now
 	_sparks.emitting = dark > 0.5 and absf(_v) > 1.5
 	_lamp.light_energy = dark * 6.0

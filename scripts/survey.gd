@@ -28,7 +28,7 @@ func left(i: int) -> int:
 
 ## Every couple of seconds: anyone near a seam not yet on the map, and the towers.
 func tick() -> void:
-	if v.props == null or v.props.veins.is_empty():
+	if v.props == null or v.props.veins.is_empty() or v.stores().is_empty():
 		return
 	var veins: Array[Dictionary] = v.props.veins
 	if found.is_empty():

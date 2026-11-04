@@ -130,6 +130,8 @@ func _ready() -> void:
 		village.start(start)
 		if village.station_at() != Vector3.INF:
 			start = village.station_at()
+		elif village.arriving:
+			start = village.train.engine_at()
 	for n: Node in [weather, terrain, decor, nav, village, raids, seasons]:
 		n.process_mode = Node.PROCESS_MODE_PAUSABLE # (this node runs while paused, for the keys: the world doesn't)
 	cam = RtsCamera.new()
@@ -187,7 +189,7 @@ func _ready() -> void:
 	village.hud = hud
 	seasons.message.connect(hud.toast)
 	if saved.is_empty():
-		hud.toast("Tren sizi rayın yanına bırakacak. G: haritaya bak, yerini seç, KAMP DEPOSU kur. F1: tuşlar", "info")
+		hud.toast("Tren vadiyi geçiyor. G: haritaya bak, yer beğenince TRENİ DURDUR. F1: tuşlar", "info")
 	else:
 		await screen.step("Kasabalılar yerine dönüyor", 0.93)
 		VillageSave.restore(self, saved)
@@ -423,6 +425,9 @@ func new_game() -> void:
 
 
 func save_game() -> void:
+	if village.arriving:
+		hud.toast("Tren yoldayken kaydedilmez", "info")
+		return
 	if VillageSave.save(self):
 		hud.toast("Kaydedildi (gün %d)" % village.day, "good")
 	else:
@@ -2269,7 +2274,7 @@ func _process(_dt: float) -> void:
 	# The first train in: the view rides with it till it stops at the platform.
 	if village.arriving and is_instance_valid(village.train) and not village.train.is_standing() and not _cam_free:
 		cam.focus = cam.focus.lerp(village.train.engine_at(), 0.08)
-	if village.day != _saved_day and weather.hour > 6.0 and not raids.active:
+	if village.day != _saved_day and weather.hour > 6.0 and not raids.active and not village.arriving:
 		_saved_day = village.day
 		VillageSave.save(self) # (every morning)
 	_update_select()

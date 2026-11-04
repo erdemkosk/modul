@@ -230,6 +230,10 @@ func _draw() -> void:
 			var p := _at(((cv as Convoy)._cars[0].node as Node3D).global_position)
 			var col := OURS if (cv as Convoy).ally else RED
 			draw_rect(Rect2(p - Vector2(4, 2.5), Vector2(8, 5)), col, false, 1.4)
+	if v.arriving and is_instance_valid(v.train): # (the first train, on its way)
+		var tp := _at(v.train.engine_at())
+		draw_circle(tp, 5.0 if whole else 3.5, Color(0.72, 0.13, 0.08))
+		draw_arc(tp, 8.0 if whole else 6.0, 0.0, TAU, 20, Color(0.72, 0.13, 0.08), 1.2, true)
 	if is_instance_valid(v.armoured):
 		var ap := _at(v.armoured.engine_at())
 		draw_rect(Rect2(ap - Vector2(4, 4), Vector2(8, 8)), RED)

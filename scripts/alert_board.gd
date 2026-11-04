@@ -5,12 +5,15 @@ extends VBoxContainer
 ## off as it's done, put away for good once it's finished or closed.
 
 var game: Node
+var _stop: PanelContainer
+var _follow: Button
 var _rows: Array[Button] = []
 var _t := 0.0
 var _at: Array = [] ## where each strip's click goes (INF: nowhere)
 
 const STEPS := [
-	["Yükü indir", "Trenle gelenler yükü rayın yanına yığsın"],
+	["Treni durdur", "Yer beğenince TRENİ DURDUR: herkes orada iner,
+     yük rayın yanına yığılır"],
 	["Depo kur", "G: haritaya bak, yerini seç.
      KASABA > KAMP DEPOSU: yük oraya taşınır"],
 	["Ev kur", "KASABA > KÜTÜK EV: kış gelmeden herkese yatak"],
@@ -67,9 +70,45 @@ func make(parent: Node) -> void:
 	_guide_lines.add_theme_constant_override("outline_size", 0)
 	_closed = Settings.guide_off
 	_guide.visible = not _closed
+	_make_stop(parent)
+
+
+## The brake, while the first train's rolling: where it's stopped is where the town begins.
+func _make_stop(parent: Node) -> void:
+	_stop = PanelContainer.new()
+	_stop.add_theme_stylebox_override("panel", Ui.paper(4.0))
+	_stop.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_stop.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_stop.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_stop.offset_bottom = -230
+	parent.add_child(_stop)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	_stop.add_child(col)
+	var note := Ui.label(col, "Yük ve insanlar trende. Yer beğenince durdur.", 15, Ui.INK, "text")
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+	col.add_child(row)
+	var brake := Ui.ink_button(Button.new(), Color(1.0, 0.62, 0.42), 19, "strong")
+	brake.text = "  TRENİ DURDUR  "
+	brake.pressed.connect(func() -> void:
+		var why: String = game.village.stop_train()
+		if why != "" and why != "x":
+			game.hud.toast(why, "bad"))
+	row.add_child(brake)
+	_follow = Ui.ink_button(Button.new(), Ui.INK, 15, "strong")
+	_follow.text = "TRENE DÖN"
+	_follow.pressed.connect(func() -> void:
+		game._cam_free = false)
+	row.add_child(_follow)
+	_stop.visible = false
 
 
 func _process(dt: float) -> void:
+	_stop.visible = game.village.can_stop_train()
+	_follow.visible = game._cam_free
 	_t -= dt
 	if _t > 0.0 or game == null or game.village == null or game.get("_loading"):
 		return
