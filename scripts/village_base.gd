@@ -1343,26 +1343,9 @@ func _start_old(at: Vector3) -> void:
 ## to another edge across the valley, the walkable way each time, smoothed into long easy curves, a
 ## point every 0.3 m on the ground.
 func _rail_line(at: Vector3) -> PackedVector3Array:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed if seed != 0 else 1
-	var a0 := rng.randf() * TAU
-	var from := _edge_point(a0)
-	var to := _edge_point(a0 + PI + rng.randf_range(-0.6, 0.6))
-	if from == Vector3.INF or to == Vector3.INF:
+	var pts: Array = RailWorks.route(self, at)
+	if pts.size() < 4:
 		return PackedVector3Array()
-	var way_in := nav.find_path(from, at)
-	var way_out := nav.find_path(at, to)
-	if way_in.size() < 4 or way_out.size() < 4:
-		return PackedVector3Array()
-	# (every so many points of the walk, then a smooth curve through them: a railway bends gently)
-	# (a point every 40 m or so of the walk, none too near the station: long, even bends)
-	var pts: Array = []
-	for k in range(0, way_in.size() - 10, 20):
-		pts.append(way_in[k])
-	pts.append(at)
-	for k in range(20, way_out.size() - 10, 20):
-		pts.append(way_out[k])
-	pts.append(way_out[way_out.size() - 1])
 	# (eased twice: each point drawn toward its neighbours' middle, the ends left)
 	for pass_ in 2:
 		var eased: Array = [pts[0]]
@@ -1424,16 +1407,6 @@ func _to_edge(p: Vector3, dir: Vector3) -> Vector3:
 	return p + dir * maxf(t, 0.0)
 
 
-## A walkable point on the valley's edge round from angle `a`.
-func _edge_point(a: float) -> Vector3:
-	var half := float(terrain.half) - 60.0
-	for k in 24:
-		var p := Vector3(cos(a + k * 0.26), 0, sin(a + k * 0.26)) * half
-		if nav.is_open(p):
-			return p
-	return Vector3.INF
-
-
 func _nearest_k(line: PackedVector3Array, p: Vector3) -> int:
 	var best := 0
 	var bd := INF
@@ -1466,6 +1439,8 @@ func _rail_len(line: PackedVector3Array) -> float:
 ## the trees in the way felled.
 func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 	var lines := line
+	if gauge == 1.0:
+		RailWorks.earthworks(self, lines)
 	for k in range(0, lines.size(), 8):
 		for i in _props_in(lines[k], 4.0):
 			var info := props.prop_info(i)
