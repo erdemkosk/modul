@@ -96,6 +96,38 @@ var yards: Array = [] ## Yard, one to a house
 
 
 var roads: Array = [] ## the plank roads laid: each a polyline [x0, z0, x1, z1, ...]
+var road_sites: Array[Dictionary] = [] ## marked out, not yet all laid: {line, done (points laid), plan (its ghost)}
+const ROAD_STRETCH := 8 ## points of a road laid at a go (2.4 m)
+
+
+## `n` more points of a road site laid, the grass off them, an odun's worth of the stores gone for
+## every two stretches; the plan taken up when it's done. False if the wood's run out.
+func lay_stretch(site: Dictionary, p: Vector3) -> bool:
+	var st := store_with("odun", p)
+	if st == null or st.take_goods("odun", 1) == 0:
+		return false
+	var line: PackedVector3Array = site.line
+	var from: int = site.done
+	var to := mini(from + ROAD_STRETCH, line.size())
+	_road_mesh(line.slice(from, to))
+	var cells: Array[Vector2i] = []
+	for k in range(from, to):
+		var c := Nav.cell_of(line[k])
+		if not c in cells:
+			cells.append(c)
+	nav.set_road(cells)
+	site.done = to
+	if to >= line.size():
+		if is_instance_valid(site.plan):
+			(site.plan as Node).queue_free()
+		var flat: Array = []
+		for k in line.size():
+			if k % 4 == 0 or k == line.size() - 1:
+				flat.append(snappedf(line[k].x, 0.01))
+				flat.append(snappedf(line[k].z, 0.01))
+		roads.append(flat)
+		road_sites.erase(site)
+	return true
 var walls: Array[Wall] = [] ## the palisades
 var rail := PackedVector3Array() ## the railway, from the valley's edge to the station (on the ground)
 var train: Train
@@ -1695,7 +1727,8 @@ func _unload_trip(v: Villager, station: Building, sd: Vector3) -> void:
 		{"t": "do", "f": func() -> bool:
 			v.set_carry(res, n)
 			return true},
-		{"t": "go", "to": station.door()},
+		{"t": "go", "to": station.drop_spot(res)},
+		{"t": "work", "time": 0.6, "anim": "gather", "face": station.drop_spot(res)},
 		{"t": "do", "f": func() -> bool:
 			v.set_carry("", 0)
 			if is_instance_valid(station):
@@ -1953,7 +1986,8 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	b.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(pos.x, base_height(kind, pos, yaw), pos.z))
 	b.cells = footprint(kind, pos, yaw, 0.0 if BuildingDefs.DEFS[kind].role == "farm" else 0.5) # (a margin: paths keep off the walls)
 	b.nav = nav
-	if b.def.role == "farm":
+	b.make_steps()
+	if b.def.role == "farm" or b.def.get("open", false): # (walked over, to the stacks themselves)
 		nav.set_field(b.cells, true)
 	else:
 		nav.set_building(b.cells, true)
@@ -2047,14 +2081,19 @@ func ground_at(p: Vector3) -> float:
 		if b.state == "ghost" or b.state == "gone" or b.def.role in ["farm", "light"] or b.kind in ["siper", "tel", "makineli"]:
 			continue
 		var d := Vector2(p.x - b.global_position.x, p.z - b.global_position.z)
-		if d.length() > b.radius + (10.0 if b.kind == "istasyon" else 3.0):
+		if d.length() > b.radius + (10.0 if b.kind == "istasyon" else 3.0) + b.steps_out:
 			continue
 		var l := b.global_transform.affine_inverse() * Vector3(p.x, b.global_position.y, p.z)
 		var sz: Vector2 = b.def.size
+		if b.steps_out > 0.0 and absf(l.x) <= 1.05:
+			var out: float = l.z - b._front()
+			if out > 0.0 and out <= b.steps_out:
+				g = maxf(g, b.global_position.y + Building.FLOOR - out / b.steps_out * b.steps_rise)
+				continue
 		if b.kind == "istasyon" and absf(l.x) <= sz.x * 0.5 + 3.0 and l.z > sz.y * 0.5 and l.z <= sz.y * 0.5 + 3.4:
 			g = maxf(g, b.global_position.y + 0.96) # (on the platform's boards)
 			continue
-		var deck := 1.7 if b.kind in ["ev", "ambar"] else 0.0
+		var deck := float(Building.STEPPED.get(b.kind, 0.0))
 		if absf(l.x) <= sz.x * 0.5 and l.z >= -sz.y * 0.5 and l.z <= sz.y * 0.5 + deck:
 			g = maxf(g, b.global_position.y + (0.47 if l.z <= sz.y * 0.5 else 0.45))
 	return g
@@ -2647,7 +2686,7 @@ func _unplace(b: Building) -> void:
 	if y:
 		yards.erase(y)
 		y.queue_free()
-	if b.def.role == "farm":
+	if b.def.role == "farm" or b.def.get("open", false):
 		nav.set_field(b.cells, false)
 	else:
 		nav.set_building(b.cells, false)
@@ -2819,6 +2858,9 @@ func lay_path(pts: Array, free := false, start_dir := Vector3.ZERO) -> float:
 	var line := road_curve(pts, start_dir)
 	if line.size() < 2:
 		return 0.0
+	if not free: # (marked out, to be laid by the folk: Village._plan_road)
+		road_sites.append({"line": line, "done": 0, "plan": _road_mesh(line, true)})
+		return (line.size() - 1) * ROAD_STEP
 	var length := (line.size() - 1) * ROAD_STEP
 	var n := ceili(length / 2.0)
 	var laid := 0
@@ -3155,6 +3197,10 @@ func _road_mesh(line: PackedVector3Array, ghost := false, afford := -1, into: Mu
 		else:
 			var shade := randf_range(0.42, 0.6)
 			mm.set_instance_color(j, Color(shade, shade * 0.76, shade * 0.5))
+			if k % 3 == 0:
+				terrain.clear_grass(c, 1.6) # (none of it comes up through the planks)
+	if not ghost:
+		terrain.commit_digs()
 	var mi := into if into else MultiMeshInstance3D.new()
 	mi.multimesh = mm
 	if mi.get_parent() == null:
@@ -3498,6 +3544,10 @@ func _unstaff(v: Villager) -> void:
 ## In through `b`'s door: up to it, the door swung open, a few steps inside. (A cart stays at the
 ## door; a building with no door standing is gone into the old way.)
 func _go_in(b: Building, v: Villager = null) -> Array:
+	if b.kind == "kamp" and not (v and v.has_cart): # (open-fronted: right in under the roof)
+		return [{"t": "go", "to": b.door()}, {"t": "step", "to": b.inside()}]
+	if b.kind == "ambar" and not (v and v.has_cart) and b.steps_out > 0.0: # (up the steps to the deck)
+		return [{"t": "go", "to": b.door()}, {"t": "step", "to": b.inside()}]
 	if not b.has_door() or (v and v.has_cart):
 		return [{"t": "go", "to": b.door()}]
 	return [{"t": "go", "to": b.door()}, {"t": "do", "f": func() -> bool:
@@ -3508,6 +3558,8 @@ func _go_in(b: Building, v: Villager = null) -> Array:
 
 ## And out again.
 func _go_out(b: Building, v: Villager = null) -> Array:
+	if (b.kind == "kamp" or (b.kind == "ambar" and b.steps_out > 0.0)) and not (v and v.has_cart):
+		return [{"t": "step", "to": b.door()}]
 	if not b.has_door() or (v and v.has_cart):
 		return []
 	return [{"t": "do", "f": func() -> bool:

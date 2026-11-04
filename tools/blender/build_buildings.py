@@ -3318,7 +3318,7 @@ def tel():
 
 BUILDERS = {
     "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
-    "meydan": meydan, "silahlik": silahlik, "istasyon": istasyon,
+    "silahlik": silahlik, "istasyon": istasyon, # (the square: BuildingDefs._square)
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,
     "ev_oda": ev_oda, "ev_soba": ev_soba,

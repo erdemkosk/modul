@@ -784,6 +784,8 @@ func _pastime(v: Villager) -> bool:
 	var crafty := v.skill("zanaat") >= 4.0 or v.skill("insa") >= 5.0 or v.skill("odun") >= 6.0 or v.origin in ["makinist", "oduncu"]
 	var opts: Array = [] ## [weight, Callable -> bool]
 	opts.append([2.2 * (0.35 if temp < -6.0 or wet else 1.0), func() -> bool: return _plan_seat(v, smoker, crafty)])
+	if not squares().is_empty() and not v.is_child and not wet and temp > -8.0:
+		opts.append([4.5, func() -> bool: return _plan_bench(v, smoker)])
 	if not v.is_child and not winter and temp > 3.0 and h > 5.0 and h < 20.5 and not wet:
 		var w := 1.5 + (2.5 if v.skill("toplama") >= 4.0 else 0.0) + (1.5 if v.has_trait("tembel") or v.has_trait("kanaatkar") else 0.0) + (1.0 if v.origin == "koylu" else 0.0)
 		opts.append([w, func() -> bool: return _plan_fish(v)])
@@ -885,6 +887,57 @@ func _seat_taken(at: Vector3) -> bool:
 
 func _hold_seat(at: Vector3, v: Villager, what: String) -> void:
 	_seats_held[Vector3i(roundi(at.x * 2.0), 0, roundi(at.z * 2.0))] = [v, what]
+
+
+const SQUARE_BENCH := 2.55 ## m from the square's middle to where someone sits on a bench
+
+
+## An hour on a bench on the square, among the others there: talk, a pipe, and the better for it.
+func _plan_bench(v: Villager, smoker: bool) -> bool:
+	var sq := _nearest(squares(), v.position)
+	if sq == null or sq.global_position.distance_to(v.position) > 130.0:
+		return false
+	var at := Vector3.INF
+	var mid := Vector3.ZERO
+	var picks: Array[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+	picks.shuffle()
+	for k in picks:
+		var a := PI * 0.25 + (k / 3) * PI * 0.5
+		var along := float(k % 3 - 1) * 0.8
+		var l := Vector3(cos(a), 0, sin(a)) * SQUARE_BENCH + Vector3(-sin(a), 0, cos(a)) * along
+		var w := sq.to_global(l)
+		if not _seats_held.has(Vector3i(roundi(w.x * 2.0), 0, roundi(w.z * 2.0))):
+			at = w
+			mid = sq.global_position
+			break
+	if at == Vector3.INF:
+		return false
+	at.y = sq.global_position.y + 0.35
+	var what := "Meydanda oturuyor"
+	var anim := "sit"
+	if smoker and randf() < 0.5:
+		anim = "pipe"
+		what = "Meydanda pipo içiyor"
+	_hold_seat(at, v, what)
+	var work := {"t": "work", "time": randf_range(30.0, 60.0), "anim": anim, "seat": 0.44, "face": mid}
+	for o in villagers:
+		if o == v or o.dead or o.plan.is_empty() or o.team != 0 or not (o.plan[0] as Dictionary).has("seat"):
+			continue
+		if o.position.distance_to(at) < 7.0 and str(o.plan[0].t) == "work":
+			var talk: Dictionary = o.plan[0].get("talk", {})
+			if talk.is_empty():
+				talk = {"folk": [o], "t0": clock, "seed": randi() % 1000, "reach": 8.0, "keep_face": true, "where": "porch"}
+				o.plan[0]["talk"] = talk
+			(talk.folk as Array).append(v)
+			work["talk"] = talk
+			what = "Meydanda sohbet ediyor"
+			break
+	v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": at}, work,
+		{"t": "do", "f": func() -> bool:
+			v.think("square", "Meydanda oturup iki laf etti", 6.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+			return true},
+		{"t": "step", "to": sq.door()}], what, sq, true)
+	return true
 
 
 ## Sat at its ease: a rest, a pipe, or the knife out (whittling a peg, or a blade put to the stone).

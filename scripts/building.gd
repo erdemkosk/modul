@@ -2138,6 +2138,25 @@ static func _burlap() -> StandardMaterial3D:
 	return _sack
 
 
+## Where to stand to put `r` down on the open pile: right by the stack it goes on (the last of its
+## kind with room, else the next empty square).
+func drop_spot(r: String) -> Vector3:
+	var k := -1
+	for i in stacks.size():
+		if stacks[i].res == r and int(stacks[i].n) < int(stacks[i].of):
+			k = i
+	var sq := Vector3(-2.4 + (k % 5) * STACK_W, 0.0, -1.3 + (k / 5) * STACK_D) if k >= 0 else Vector3(-2.4 + (stacks.size() % 5) * STACK_W, 0.0, -1.3 + (stacks.size() / 5) * STACK_D)
+	return to_global(sq + Vector3(0, 0, STACK_D * 0.5))
+
+
+## Where to stand to take `r` off the open pile: right by the last stack of it.
+func take_spot(r: String) -> Vector3:
+	for i in range(stacks.size() - 1, -1, -1):
+		if stacks[i].res == r:
+			return to_global(stacks[i].at + Vector3(0, 0, STACK_D * 0.5))
+	return door()
+
+
 ## The middle of stack `k`, in the world.
 func stack_world(k: int) -> Vector3:
 	return to_global(stacks[k].at) + Vector3.UP * 0.35
@@ -2348,7 +2367,56 @@ static func _stream(id: String) -> AudioStream:
 ## Where a villager stands to go in or work at it: in front of its door.
 func door() -> Vector3:
 	var sz: Vector2 = def.size
+	if steps_out > 0.0: # (the foot of its steps: up them from there)
+		return global_transform * Vector3(0, 0, _front() + steps_out + 0.5)
 	return global_transform * Vector3(0, 0, sz.y * 0.5 + 1.3)
+
+
+const STEPPED := {"ev": 1.7, "ambar": 1.7, "kamp": 0.0} ## kinds with a floor to climb to: their deck, m past the front wall
+const FLOOR := 0.45 ## m the floor stands over its base
+
+var steps_out := 0.0 ## m the steps run out from the front
+var steps_rise := 0.0 ## m they climb
+
+
+func _front() -> float:
+	return (def.size as Vector2).y * 0.5 + float(STEPPED.get(kind, 0.0))
+
+
+## Where it stands high off the ground at its front: steps up, with cheeks, and the door at their foot.
+func make_steps() -> void:
+	if not STEPPED.has(kind):
+		return
+	var front := _front()
+	var foot := global_transform * Vector3(0, 0, front + 0.6)
+	var rise := global_position.y + FLOOR - nav.height(foot.x, foot.z)
+	if rise < 0.3:
+		return
+	var n := ceili(rise / 0.19)
+	var r := rise / n
+	var run := 0.3
+	steps_out = n * run
+	steps_rise = rise
+	var wood: Material = material("plank")
+	var dark: Material = material("dark")
+	for k in n:
+		var top := FLOOR - (k + 1) * r
+		var low := FLOOR - rise - 0.3
+		var mi := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(1.9, top - low, run)
+		mi.mesh = b
+		mi.material_override = wood
+		mi.position = Vector3(0, (top + low) * 0.5, front + (k + 0.5) * run)
+		add_child(mi)
+		for sx: float in [-1.0, 1.0]:
+			var cheek := MeshInstance3D.new()
+			var c := BoxMesh.new()
+			c.size = Vector3(0.1, top + r - low, run)
+			cheek.mesh = c
+			cheek.material_override = dark
+			cheek.position = Vector3(sx, (top + r + low) * 0.5, front + (k + 0.5) * run)
+			add_child(cheek)
 
 
 ## Where someone stands once in through the door, on the floor.

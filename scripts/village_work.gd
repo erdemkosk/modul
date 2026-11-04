@@ -283,6 +283,29 @@ func _plan_haul(v: Villager) -> bool:
 
 ## What's still lying out by the rails carried under a roof, the food first. False if there's none,
 ## or no roof to take it to.
+## A road marked out: to its next stretch, a few planks hammered down, on to the next while there's
+## wood; only one to a stretch.
+func _plan_road(v: Villager) -> bool:
+	for site: Dictionary in road_sites:
+		if int(site.get("gang", 0)) >= 3 or store_with("odun", v.position) == null:
+			continue
+		var line: PackedVector3Array = site.line
+		var at: Vector3 = line[mini(int(site.done), line.size() - 1)]
+		at.y = nav.height(at.x, at.z)
+		site["gang"] = int(site.get("gang", 0)) + 1
+		if v.idle:
+			v.abort()
+		v.give([{"t": "go", "to": at},
+			{"t": "work", "time": 2.6, "anim": "build", "face": at},
+			{"t": "do", "f": func() -> bool:
+				site["gang"] = maxi(int(site.get("gang", 1)) - 1, 0)
+				if road_sites.has(site):
+					lay_stretch(site, v.position)
+				return true}], "Tahta yol döşüyor", null)
+		return true
+	return false
+
+
 func _plan_clear_pile(v: Villager) -> bool:
 	var from: Building = null
 	for b in stores():
@@ -303,20 +326,29 @@ func _plan_clear_pile(v: Villager) -> bool:
 		return false
 	if v.idle:
 		v.abort()
-	var n := from.take_goods(r, mini(v.capacity(r), maxi(to.room(), 1)))
-	v.owed = {"res": r, "n": n, "store": from}
-	v.give([{"t": "go", "to": from.door() + Vector3(randf_range(-2, 2), 0, randf_range(0.5, 2))},
-		{"t": "work", "time": 0.7, "anim": "gather", "face": from.global_position},
+	var got := {"n": 0} # (taken off the stack when they're at it, not from across the valley)
+	var most := mini(v.capacity(r), maxi(to.room(), 1))
+	var spot := from.take_spot(r)
+	v.give([{"t": "go", "to": spot},
+		{"t": "work", "time": 0.8, "anim": "gather", "face": spot},
 		{"t": "do", "f": func() -> bool:
-			v.set_carry(r, n)
+			if not is_instance_valid(from):
+				return false
+			got.n = from.take_goods(r, most)
+			if int(got.n) <= 0:
+				return false
+			v.owed = {"res": r, "n": got.n, "store": from}
+			v.set_carry(r, got.n)
 			return true}] + _go_in(to, v) + [
 		{"t": "do", "f": func() -> bool:
 			v.owed = {}
 			v.set_carry("", 0)
+			if int(got.n) <= 0:
+				return true
 			if is_instance_valid(to) and to.state == "done":
-				to.add_goods(r, n)
+				to.add_goods(r, got.n)
 			else:
-				add_anywhere(r, n, v.position)
+				add_anywhere(r, got.n, v.position)
 			return true}] + _go_out(to, v), "Yığından taşıyor: %s" % str(BuildingDefs.RES_NAMES[r]).to_lower(), to)
 	return true
 

@@ -12,6 +12,7 @@ extends Node
 ## walks grows over again, slowly. Ground scorched by a fire (`scorch`) greens again slower still.
 
 const CELL := 2.0
+const ROAD_EASE := 0.12 ## what a plank road costs against open ground: gone a long way round for
 const N := 1024 ## cells a side
 const STEEP := 0.8 ## rise over run past which a cell is shut
 const WEAR_STEP := 0.06 ## wear a second of walking gives the cell underfoot
@@ -556,7 +557,7 @@ func set_road(cells: Array[Vector2i]) -> void:
 		if _shut[i] != 0:
 			continue
 		_road[i] = 1
-		_grid(c, false, _base[i] * COST_SCALE * 0.3)
+		_grid(c, false, _base[i] * COST_SCALE * ROAD_EASE)
 
 
 ## A palisade's cells (`on`) or no longer (breached, pulled down). Not solid: a way through one costs
@@ -568,7 +569,7 @@ func set_wall(cells: Array[Vector2i], on: bool) -> void:
 		if _shut[i] != 0:
 			continue
 		_wall[i] = 1 if on else 0
-		_grid(c, false, _base[i] * COST_SCALE * (400.0 if on else (0.3 if _road[i] == 1 else 1.0)))
+		_grid(c, false, _base[i] * COST_SCALE * (400.0 if on else (ROAD_EASE if _road[i] == 1 else 1.0)))
 	for c in cells:
 		_seal_diagonals(c)
 
@@ -603,7 +604,7 @@ func _seal_diagonals(c: Vector2i) -> void:
 						still = true
 				if not still:
 					_sealed.erase(i)
-					_grid(f, false, _base[i] * COST_SCALE * (0.3 if _road[i] == 1 else 1.0))
+					_grid(f, false, _base[i] * COST_SCALE * (ROAD_EASE if _road[i] == 1 else 1.0))
 
 
 func on_wall(p: Vector3) -> bool:

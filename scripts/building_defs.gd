@@ -30,7 +30,7 @@ const DEFS := {
 	"ev": {"name": "Kütük ev", "size": Vector2(6, 5), "cost": {"odun": 14}, "time": 28.0, "role": "house", "beds": 4,
 		"desc": "Dört kişilik kütük ev, taş bacalı. Soğukta ve gece ocağında odun yakar. Boş yatak varsa kasabaya yeni insanlar gelir. Arkasına bir oda eklenerek altı kişilik büyütülebilir."},
 	"meydan": {"name": "Meydan", "size": Vector2(10, 10), "cost": {"odun": 8, "tas": 12}, "time": 30.0, "role": "square",
-		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar, köşede kasabanın çanı. Akşamları ateş yakılır; başında oturan kasabalının morali yükselir, çocuklar orada oynar. Çan sabah işbaşını, akşam paydosu çalar; baskında tehlike çanı çalınınca kasabanın her yerindeki herkes saklanır. Meydan yoksa firariyi ancak yakınındakiler fark eder."},
+		"desc": "Kasabanın ortası: taş döşeli, ortada ateş çukuru, çevresinde banklar, çan, ilan panosu ve pazar tezgâhı. Boş vakitlerinde kasabalılar banklara oturup sohbet eder, morali yükselir; akşamları ateş yakılır, çocuklar orada oynar. Çan sabah işbaşını, akşam paydosu çalar; baskında tehlike çanı çalınınca kasabanın her yerindeki herkes saklanır. Meydan yoksa firariyi ancak yakınındakiler fark eder."},
 	"istasyon": {"name": "İstasyon", "size": Vector2(7, 5), "cost": {"odun": 30, "tas": 6}, "time": 30.0, "role": "store", "holds": 200,
 		"desc": "Rayın yanına kurulur. Tren artık burada durur, göçmen getirir, mal alır; telgraf da buradan çalışır. Depo olarak 200 yük alır."},
 	"yigin": {"name": "Yük yığını", "size": Vector2(6, 4), "cost": {}, "time": 0.0, "role": "store", "holds": 1000, "open": true,
@@ -119,6 +119,7 @@ const STUFF := {
 	"window": {"color": Color(0.1, 0.08, 0.06), "hp": 40.0, "burns": false, "density": 400.0},
 	"water": {"color": Color(0.06, 0.09, 0.1), "hp": 40.0, "burns": false, "density": 1000.0},
 	"cloth": {"color": Color(0.55, 0.22, 0.14), "hp": 30.0, "burns": true, "burn": 8.0, "catch": 0.25, "density": 200.0},
+	"canvas": {"color": Color(0.5, 0.45, 0.33), "hp": 30.0, "burns": true, "burn": 8.0, "catch": 0.25, "density": 200.0},
 	"sand": {"color": Color(0.48, 0.42, 0.3), "hp": 400.0, "burns": false, "density": 1600.0},
 }
 
@@ -240,13 +241,60 @@ static func recipe(kind: String) -> Array[Dictionary]:
 		"ev":
 			_hall(out, 6.0, 5.0, 2.3, 1.8, "log", "shingle", 1.0)
 			_p(out, "box", Vector3(0.6, 5.2, 0.6), Vector3(1.9, 3.0, -1.7), "stone")
+		"meydan":
+			_square(out)
 		"yigin": # (a stake at its corner: what's there is the goods themselves, Building.show_heap)
 			_p(out, "box", Vector3(0.1, 0.6, 0.1), Vector3(-2.9, 0.3, -1.9), "wood")
-		"kamp": # (posts and a roof, sacks and crates under it)
-			_shed(out, 6.0, 5.0, "plank", "cloth")
-			for k in 3:
-				_p(out, "box", Vector3(0.8, 0.7, 0.8), Vector3(-1.5 + k * 1.0, 0.35, 1.2), "plank")
-			_p(out, "cyl", Vector3(0.7, 0.75, 0.7), Vector3(1.9, 0.38, 1.3), "cloth")
+		"kamp": # (a log-walled lean-to: a plank floor, a tarpaulin lashed over poles, the stores stacked under it)
+			_p(out, "box", Vector3(6.1, 3.5, 5.1), Vector3(0, -1.4, 0), "dark")
+			_p(out, "box", Vector3(5.9, 0.1, 4.9), Vector3(0, 0.4, 0), "plank")
+			for k in 7: # (the floor's boards)
+				_p(out, "box", Vector3(0.05, 0.03, 4.8), Vector3(-2.4 + k * 0.8, 0.46, 0), "dark")
+			for sx in [-2.75, 0.0, 2.75]: # (posts, the front ones the taller, peeled poles)
+				_p(out, "cyl", Vector3(0.26, 3.2, 0.26), Vector3(sx, 2.0, 2.2), "log")
+				_p(out, "cyl", Vector3(0.26, 2.3, 0.26), Vector3(sx, 1.55, -2.2), "log")
+			for sx in [-2.75, 2.75]: # (knee braces at the front corners)
+				_p(out, "box", Vector3(0.12, 1.15, 0.12), Vector3(sx + signf(-sx) * 0.42, 3.0, 2.2), "wood", Vector3(0, 0, signf(sx) * 40.0))
+			for k in 5: # (the back wall, logs laid up between the posts, chinked dark)
+				_p(out, "xcyl", Vector3(5.7, 0.3, 0.3), Vector3(0, 0.62 + k * 0.29, -2.2), "log")
+				if k < 4:
+					_p(out, "box", Vector3(5.4, 0.06, 0.08), Vector3(0, 0.77 + k * 0.29, -2.05), "dark")
+			for sx in [-2.8, 2.8]: # (the sides: a rail and half-wall of boards)
+				for k in 3:
+					_p(out, "box", Vector3(0.1, 0.34, 3.9), Vector3(sx, 0.68 + k * 0.42, -0.2), "plank")
+				_p(out, "box", Vector3(0.1, 0.1, 4.3), Vector3(sx, 1.72, -0.1), "dark")
+			_p(out, "xcyl", Vector3(6.2, 0.26, 0.26), Vector3(0, 3.62, 2.2), "dark")
+			_p(out, "xcyl", Vector3(6.2, 0.26, 0.26), Vector3(0, 2.72, -2.2), "dark")
+			var pitch := rad_to_deg(atan2(0.9, 4.4))
+			for sx in [-2.4, -1.2, 0.0, 1.2, 2.4]: # (rafters)
+				_p(out, "box", Vector3(0.14, 0.14, 5.3), Vector3(sx, 3.3, 0.0), "wood", Vector3(-pitch, 0, 0))
+			_p(out, "box", Vector3(6.9, 0.07, 5.9), Vector3(0, 3.46, 0.0), "canvas", Vector3(-pitch, 0, 0))
+			for k in 6: # (the tarpaulin's folds, and its hem hanging at the front)
+				_p(out, "box", Vector3(0.1, 0.05, 5.8), Vector3(-2.75 + k * 1.1, 3.52, 0.0), "canvas", Vector3(-pitch, 0, 0))
+			for k in 9:
+				_p(out, "box", Vector3(0.72, 0.16 + 0.07 * (k % 2), 0.03), Vector3(-3.0 + k * 0.75, 3.38, 2.92), "canvas")
+			for sx in [-3.1, 3.1]: # (guy ropes to pegs in the ground)
+				_p(out, "box", Vector3(0.03, 3.3, 0.03), Vector3(sx * 1.08, 2.0, 2.7), "dark", Vector3(18.0, 0, -signf(sx) * 12.0))
+				_p(out, "box", Vector3(0.1, 0.4, 0.1), Vector3(sx * 1.17, 0.2, 3.2), "wood")
+			# crates in a stack against the back, their battens dark
+			for c: Array in [[-2.1, 0.86, -1.6, 0.0], [-1.15, 0.86, -1.6, 7.0], [-0.2, 0.86, -1.65, -5.0], [-1.65, 1.67, -1.6, 12.0], [-0.65, 1.67, -1.6, -8.0], [-1.2, 2.45, -1.6, 20.0]]:
+				_p(out, "box", Vector3(0.84, 0.76, 0.84), Vector3(c[0], c[1], c[2]), "plank", Vector3(0, c[3], 0))
+				_p(out, "box", Vector3(0.88, 0.07, 0.88), Vector3(c[0], c[1] + 0.26, c[2]), "dark", Vector3(0, c[3], 0))
+				_p(out, "box", Vector3(0.88, 0.07, 0.88), Vector3(c[0], c[1] - 0.26, c[2]), "dark", Vector3(0, c[3], 0))
+			# barrels, hooped
+			for c: Array in [[1.25, -1.6], [2.05, -1.55], [1.65, -0.85]]:
+				_p(out, "cyl", Vector3(0.68, 0.92, 0.68), Vector3(c[0], 0.92, c[1]), "wood")
+				for y in [0.68, 1.16]:
+					_p(out, "cyl", Vector3(0.71, 0.07, 0.71), Vector3(c[0], y, c[1]), "dark")
+			# sacks, heaped to the right at the front
+			for c: Array in [[1.2, 0.8], [1.95, 0.85], [1.55, 1.25], [1.6, 0.95]]:
+				_p(out, "cyl", Vector3(0.66, 0.42, 0.9), Vector3(c[0], 0.67 if c != [1.6, 0.95] else 1.05, c[1]), "canvas", Vector3(0, 30.0 * c[0], 0))
+			# a coil of rope, an axe's block, a lantern on the middle post
+			_p(out, "cyl", Vector3(0.6, 0.16, 0.6), Vector3(-1.9, 0.55, 1.3), "thatch")
+			_p(out, "cyl", Vector3(0.5, 0.5, 0.5), Vector3(-0.9, 0.7, 1.45), "log")
+			_p(out, "box", Vector3(0.05, 0.42, 0.05), Vector3(-0.8, 1.06, 1.45), "wood", Vector3(0, 0, 18.0))
+			_p(out, "box", Vector3(0.16, 0.24, 0.16), Vector3(0, 2.55, 2.38), "window")
+			_p(out, "box", Vector3(0.2, 0.04, 0.2), Vector3(0, 2.69, 2.38), "dark")
 		"ambar":
 			_hall(out, 9.0, 7.0, 3.0, 2.6, "log", "shingle", 2.2)
 			for k in 3:
@@ -505,6 +553,85 @@ static func _log_walls(out: Array[Dictionary], w: float, d: float, hx: float, hz
 
 ## An open work shed: plinth, a plank floor, four posts (the front ones taller), a back wall, a
 ## half wall each side and a lean-to roof.
+## The town's square: a round of laid stone with a kerb, the fire in its stone ring in the middle with
+## a pot on a tripod, four benches facing it, the bell in its frame, the notice board, a market
+## stall under a striped awning, lamps on posts, the flag. (Village.SQUARE_SEATS: the benches.)
+static func _square(out: Array[Dictionary]) -> void:
+	var y := 0.35
+	_p(out, "cyl", Vector3(10.0, 1.2, 10.0), Vector3(0, y - 0.56, 0), "stone")
+	for k in 28: # (the kerb)
+		var a := k * TAU / 28.0
+		_p(out, "box", Vector3(1.05, 0.14, 0.32), Vector3(cos(a) * 4.9, y + 0.05, sin(a) * 4.9), "sand", Vector3(0, -rad_to_deg(a) + 90.0, 0))
+	for ring: Array in [[1.75, 14], [2.2, 18], [2.65, 22], [3.1, 26], [3.55, 30], [4.0, 34], [4.45, 38]]: # (setts laid in rings, the mortar dark between)
+		for k in int(ring[1]):
+			var a := (k + 0.5 * (int(ring[1]) % 4)) * TAU / float(ring[1])
+			_p(out, "box", Vector3(0.34, 0.05, 0.36), Vector3(cos(a) * float(ring[0]), y + 0.05, sin(a) * float(ring[0])), "sand" if k % 3 == 0 else "stone", Vector3(0, -rad_to_deg(a) + 90.0, 0))
+	# the fire: a ring of stones, logs laid in, a pot over it
+	for k in 10:
+		var a := k * TAU / 10.0
+		_p(out, "box", Vector3(0.42, 0.3, 0.34), Vector3(cos(a) * 1.05, y + 0.15, sin(a) * 1.05), "stone", Vector3(0, -rad_to_deg(a) + 8.0 * (k % 3), 0))
+	_p(out, "cyl", Vector3(1.8, 0.06, 1.8), Vector3(0, y + 0.03, 0), "dark")
+	for k in 4:
+		_p(out, "xcyl", Vector3(1.2, 0.16, 0.16), Vector3(0, y + 0.16 + (k % 2) * 0.13, 0), "log", Vector3(0, k * 45.0, 0))
+	out[out.size() - 1]["tag"] = "fire"
+	for k in 3:
+		var a := k * TAU / 3.0 + 0.5
+		_p(out, "box", Vector3(0.06, 2.1, 0.06), Vector3(cos(a) * 0.5, y + 1.0, sin(a) * 0.5), "dark", Vector3(sin(a) * 14.0, 0, -cos(a) * 14.0))
+	_p(out, "cyl", Vector3(0.5, 0.34, 0.5), Vector3(0, y + 1.0, 0), "dark")
+	# four benches round it, each with a back
+	for k in 4:
+		var a := PI * 0.25 + k * PI * 0.5
+		var turn := -rad_to_deg(a) + 90.0
+		var at := Vector3(cos(a), 0, sin(a))
+		var side := Vector3(-at.z, 0, at.x)
+		_p(out, "box", Vector3(2.5, 0.09, 0.42), at * 2.7 + Vector3.UP * (y + 0.44), "plank", Vector3(0, turn, 0))
+		_p(out, "box", Vector3(2.5, 0.34, 0.07), at * 2.93 + Vector3.UP * (y + 0.8), "plank", Vector3(0, turn, 0))
+		for s in [-1.05, 1.05]:
+			_p(out, "box", Vector3(0.1, 0.44, 0.4), at * 2.7 + side * s + Vector3.UP * (y + 0.2), "dark", Vector3(0, turn, 0))
+			_p(out, "box", Vector3(0.1, 1.0, 0.1), at * 2.95 + side * s + Vector3.UP * (y + 0.5), "dark", Vector3(0, turn, 0))
+	# the bell, in its frame, on the north side, a shingled cap over it
+	var bx := 0.0
+	var bz := -4.1
+	for s in [-0.9, 0.9]:
+		_p(out, "box", Vector3(0.26, 3.0, 0.26), Vector3(bx + s, y + 1.5, bz), "dark")
+		_p(out, "box", Vector3(0.12, 1.5, 0.12), Vector3(bx + s, y + 0.75, bz + 0.55), "wood", Vector3(26.0, 0, 0))
+	_p(out, "box", Vector3(2.3, 0.26, 0.3), Vector3(bx, y + 3.0, bz), "dark")
+	_p(out, "box", Vector3(2.6, 0.1, 1.1), Vector3(bx, y + 3.3, bz + 0.24), "shingle", Vector3(16.0, 0, 0))
+	_p(out, "box", Vector3(2.6, 0.1, 1.1), Vector3(bx, y + 3.3, bz - 0.24), "shingle", Vector3(-16.0, 0, 0))
+	_p(out, "cone", Vector3(0.62, 0.7, 0.62), Vector3(bx, y + 2.45, bz), "stone")
+	out[out.size() - 1]["tag"] = "bell"
+	_p(out, "box", Vector3(0.03, 1.9, 0.03), Vector3(bx + 0.34, y + 1.5, bz), "thatch")
+	# the notice board, papers pinned to it
+	var nx := 4.0
+	var nz := -2.2
+	for s in [-0.75, 0.75]:
+		_p(out, "box", Vector3(0.14, 2.1, 0.14), Vector3(nx, y + 1.05, nz + s), "dark")
+	_p(out, "box", Vector3(0.07, 1.05, 1.6), Vector3(nx, y + 1.45, nz), "plank")
+	_p(out, "box", Vector3(0.5, 0.06, 1.9), Vector3(nx, y + 2.12, nz), "shingle", Vector3(0, 0, 8.0))
+	for c: Array in [[-0.42, 1.68], [0.05, 1.56], [0.48, 1.7], [-0.2, 1.22], [0.34, 1.2]]:
+		_p(out, "box", Vector3(0.02, 0.34, 0.27), Vector3(nx - 0.05, y + float(c[1]), nz + float(c[0])), "plaster")
+	# a market stall, a striped awning on four poles, goods on its counter
+	var mx := -2.9
+	var mz := 3.3
+	for c: Array in [[-1.1, -0.7], [1.1, -0.7], [-1.1, 0.7], [1.1, 0.7]]:
+		_p(out, "box", Vector3(0.1, 2.3 if float(c[1]) > 0.0 else 1.9, 0.1), Vector3(mx + float(c[0]), y + (1.15 if float(c[1]) > 0.0 else 0.95), mz + float(c[1])), "wood")
+	for k in 6:
+		_p(out, "box", Vector3(0.44, 0.05, 2.0), Vector3(mx - 1.2 + k * 0.44 + 0.1, y + 2.15, mz), "cloth" if k % 2 == 0 else "plaster", Vector3(-15.0, 0, 0))
+	_p(out, "box", Vector3(2.2, 0.08, 0.7), Vector3(mx, y + 0.86, mz - 0.1), "plank")
+	_p(out, "box", Vector3(2.1, 0.8, 0.08), Vector3(mx, y + 0.42, mz - 0.42), "plank")
+	for k in 4:
+		_p(out, "cyl", Vector3(0.3, 0.16, 0.3), Vector3(mx - 0.75 + k * 0.5, y + 0.98, mz - 0.12), "thatch")
+	_p(out, "box", Vector3(0.6, 0.5, 0.6), Vector3(mx + 1.55, y + 0.25, mz + 0.1), "plank", Vector3(0, 18.0, 0))
+	_p(out, "cyl", Vector3(0.56, 0.8, 0.56), Vector3(mx - 1.55, y + 0.4, mz + 0.2), "wood")
+	# lamps on posts, and the flag
+	for c: Array in [[3.5, 3.5], [-3.5, -3.5]]:
+		_p(out, "cyl", Vector3(0.14, 2.9, 0.14), Vector3(c[0], y + 1.45, c[1]), "dark")
+		_p(out, "box", Vector3(0.5, 0.06, 0.06), Vector3(float(c[0]) * 0.93, y + 2.8, c[1]), "dark")
+		_p(out, "box", Vector3(0.2, 0.3, 0.2), Vector3(float(c[0]) * 0.9, y + 2.6, c[1]), "window")
+	_p(out, "cyl", Vector3(0.12, 5.2, 0.12), Vector3(3.9, y + 2.6, 2.2), "wood")
+	_p(out, "box", Vector3(0.9, 0.5, 0.03), Vector3(3.42, y + 4.9, 2.2), "cloth")
+
+
 static func _shed(out: Array[Dictionary], w: float, d: float, wall: String, roof: String) -> void:
 	var hx := w * 0.5 - 0.2
 	var hz := d * 0.5 - 0.2

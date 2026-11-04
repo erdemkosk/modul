@@ -832,19 +832,19 @@ func set_carry(res: String, n: int) -> void:
 			mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.5 if _body else 1.62, 0.0))
 		"tas":
 			var b := BoxMesh.new()
-			b.size = Vector3(0.36, 0.28, 0.3)
+			b.size = Vector3(0.5, 0.3, 0.36)
 			mi.mesh = b
 			m.albedo_color = Color(0.5, 0.49, 0.46)
-			mi.position = Vector3(0, 1.08, -0.3)
+			mi.position = Vector3(0, 1.06, -0.33)
 		"yiyecek":
 			var c := CylinderMesh.new()
-			c.top_radius = 0.2
-			c.bottom_radius = 0.15
-			c.height = 0.28
+			c.top_radius = 0.26
+			c.bottom_radius = 0.23
+			c.height = 0.3
 			c.radial_segments = 10
 			mi.mesh = c
 			m.albedo_color = Color(0.55, 0.42, 0.22)
-			mi.position = Vector3(0, 1.0, -0.3)
+			mi.position = Vector3(0, 1.04, -0.33)
 		"camur": # (a basket of it)
 			var c := CylinderMesh.new()
 			c.top_radius = 0.2
@@ -865,10 +865,10 @@ func set_carry(res: String, n: int) -> void:
 			mi.position = Vector3(0, 1.0, -0.3)
 		"kerpic":
 			var b := BoxMesh.new()
-			b.size = Vector3(0.34, 0.26, 0.3)
+			b.size = Vector3(0.5, 0.3, 0.36)
 			mi.mesh = b
 			m.albedo_color = Color(0.66, 0.55, 0.4)
-			mi.position = Vector3(0, 1.08, -0.3)
+			mi.position = Vector3(0, 1.06, -0.33)
 		"su":
 			var c := CylinderMesh.new()
 			c.top_radius = 0.14
@@ -890,7 +890,7 @@ func capacity(res: String) -> int:
 			return 30
 		"hand":
 			return 15
-	return roundi({"odun": 6, "tas": 4, "yiyecek": 6, "camur": 4, "kerpic": 4}.get(res, 5) * trait_mul("carry"))
+	return roundi({"odun": 20, "tas": 14, "yiyecek": 25, "camur": 12, "kerpic": 14}.get(res, 15) * trait_mul("carry"))
 
 
 func _drop_vehicle() -> void:
@@ -906,7 +906,90 @@ func _drop_vehicle() -> void:
 	_wheel_r = 0.36
 
 
-## The handcart, pushed in front: a plank bed on two wheels, two handles back to the hands.
+## A cart wheel on a hub that turns: felloes, an iron tyre, turned spokes, a nave with its iron bands.
+func _cart_wheel(parent: Node3D, at: Vector3, r: float, width: float, spokes: int) -> void:
+	var hub := Node3D.new()
+	hub.position = at
+	parent.add_child(hub)
+	var wood := Building.material("wood")
+	var iron := Building.material("dark")
+	var round_it := Basis(Vector3.BACK, PI * 0.5)
+	var rim := MeshInstance3D.new()
+	var rm := TorusMesh.new()
+	rm.inner_radius = r - 0.07
+	rm.outer_radius = r - 0.01
+	rm.rings = 28
+	rm.ring_segments = 6
+	rim.mesh = rm
+	rim.material_override = wood
+	rim.basis = round_it * Basis.from_scale(Vector3(1.0, width / 0.06, 1.0))
+	hub.add_child(rim)
+	var tyre := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = r - 0.018
+	tm.outer_radius = r + 0.012
+	tm.rings = 28
+	tm.ring_segments = 5
+	tyre.mesh = tm
+	tyre.material_override = iron
+	tyre.basis = round_it * Basis.from_scale(Vector3(1.0, width / 0.03, 1.0))
+	hub.add_child(tyre)
+	var nave := MeshInstance3D.new()
+	var nm := CylinderMesh.new()
+	nm.top_radius = r * 0.13
+	nm.bottom_radius = r * 0.17
+	nm.height = width * 2.6
+	nm.radial_segments = 10
+	nave.mesh = nm
+	nave.material_override = wood
+	nave.basis = round_it
+	hub.add_child(nave)
+	for side: float in [-1.0, 1.0]:
+		var band := MeshInstance3D.new()
+		var bm := CylinderMesh.new()
+		bm.top_radius = r * 0.17
+		bm.bottom_radius = r * 0.17
+		bm.height = 0.022
+		bm.radial_segments = 10
+		band.mesh = bm
+		band.material_override = iron
+		band.basis = round_it
+		band.position = Vector3(side * width * 0.8, 0, 0)
+		hub.add_child(band)
+	for k in spokes:
+		var a := k * TAU / spokes
+		var sp := MeshInstance3D.new()
+		var sm := CylinderMesh.new()
+		sm.top_radius = 0.016
+		sm.bottom_radius = 0.026
+		sm.height = r * 0.84
+		sm.radial_segments = 6
+		sp.mesh = sm
+		sp.material_override = wood
+		sp.basis = Basis(Vector3.RIGHT, a)
+		sp.position = Vector3(0, cos(a), sin(a)) * r * 0.5
+		hub.add_child(sp)
+	_wheels.append(hub)
+
+
+## A round stick from `a` to `b`.
+func _pole(parent: Node3D, a: Vector3, b: Vector3, thick: float, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = thick
+	c.bottom_radius = thick
+	c.height = a.distance_to(b)
+	c.radial_segments = 6
+	mi.mesh = c
+	mi.material_override = mat
+	var up := (b - a).normalized()
+	var side := up.cross(Vector3.RIGHT if absf(up.x) < 0.9 else Vector3.BACK).normalized()
+	mi.transform = Transform3D(Basis(side, up, side.cross(up)), (a + b) * 0.5)
+	parent.add_child(mi)
+
+
+## The handcart, pushed in front: a slatted bed on a frame, stake sides, two big spoked wheels on an
+## iron axle, two long handles with grips back to the hands, a prop to stand on.
 func give_cart(on: bool) -> void:
 	_drop_vehicle()
 	if not on:
@@ -917,135 +1000,127 @@ func give_cart(on: bool) -> void:
 	_cart.position = Vector3(0, 0, -1.25)
 	add_child(_cart)
 	var wood := Building.material("plank")
-	var dark := Building.material("dark")
-	var bed := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.95, 0.12, 1.15)
-	bed.mesh = bm
-	bed.material_override = wood
-	bed.position = Vector3(0, 0.55, 0)
-	_cart.add_child(bed)
-	for s in [-1.0, 1.0]:
-		var side := MeshInstance3D.new()
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.05, 0.3, 1.15)
-		side.mesh = sm
-		side.material_override = wood
-		side.position = Vector3(s * 0.47, 0.72, 0)
-		_cart.add_child(side)
-		var handle := MeshInstance3D.new()
-		var hm := BoxMesh.new()
-		hm.size = Vector3(0.05, 0.05, 0.9)
-		handle.mesh = hm
-		handle.material_override = dark
-		handle.transform = Transform3D(Basis(Vector3.RIGHT, -0.35), Vector3(s * 0.3, 0.75, 0.85))
-		_cart.add_child(handle)
-		var hub := Node3D.new()
-		hub.position = Vector3(s * 0.55, 0.36, -0.15)
-		_cart.add_child(hub)
-		var wheel := MeshInstance3D.new()
-		var wm := CylinderMesh.new()
-		wm.top_radius = 0.36
-		wm.bottom_radius = 0.36
-		wm.height = 0.07
-		wm.radial_segments = 10
-		wheel.mesh = wm
-		wheel.material_override = dark
-		wheel.rotation.z = PI * 0.5
-		hub.add_child(wheel)
-		var spoke := MeshInstance3D.new()
-		var spm := BoxMesh.new()
-		spm.size = Vector3(0.09, 0.66, 0.05)
-		spoke.mesh = spm
-		spoke.material_override = wood
-		hub.add_child(spoke)
-		_wheels.append(hub)
+	var frame := Building.material("wood")
+	var iron := Building.material("dark")
+	for k in 7: # (the bed's boards, across, a finger between each)
+		_mesh_box(_cart, Vector3(0.96, 0.03, 0.15), Vector3(0, 0.59, -0.5 + k * 0.167), wood)
+	for s: float in [-1.0, 1.0]:
+		_mesh_box(_cart, Vector3(0.06, 0.08, 1.3), Vector3(s * 0.34, 0.54, 0), frame) # (the bearers)
+		_pole(_cart, Vector3(s * 0.34, 0.56, 0.6), Vector3(s * 0.3, 0.94, 1.32), 0.024, frame) # (the handle)
+		_pole(_cart, Vector3(s * 0.3, 0.94, 1.32), Vector3(s * 0.3, 0.97, 1.46), 0.032, iron) # (its grip)
+		for z: float in [-0.48, 0.0, 0.48]: # (stakes, and the rails on them)
+			_mesh_box(_cart, Vector3(0.05, 0.42, 0.05), Vector3(s * 0.49, 0.77, z), frame)
+		for y: float in [0.72, 0.92]:
+			_mesh_box(_cart, Vector3(0.035, 0.08, 1.14), Vector3(s * 0.49, y, 0), wood)
+		_mesh_box(_cart, Vector3(0.05, 0.03, 0.1), Vector3(s * 0.49, 0.6, 0), iron) # (a strap)
+		_pole(_cart, Vector3(s * 0.34, 0.5, 0.58), Vector3(s * 0.34, 0.04, 0.72), 0.018, frame) # (the prop)
+		_cart_wheel(_cart, Vector3(s * 0.62, 0.42, -0.08), 0.42, 0.05, 10)
+	for y: float in [0.72, 0.92]: # (the head board)
+		_mesh_box(_cart, Vector3(0.96, 0.08, 0.035), Vector3(0, y, -0.56), wood)
+	_pole(_cart, Vector3(-0.66, 0.42, -0.08), Vector3(0.66, 0.42, -0.08), 0.018, iron) # (the axle)
+	_pole(_cart, Vector3(-0.3, 0.94, 1.3), Vector3(0.3, 0.94, 1.3), 0.02, frame) # (a stretcher)
 	_bed = Node3D.new()
 	_cart.add_child(_bed)
 
 
-## An ox and its cart, led from its left: the ox ahead, yoked to the shafts of a two-wheeled
-## cart with high plank sides behind it.
+## An ox and its cart, led from its left: a deep-chested beast with a dewlap, horns and a switch of a
+## tail, a bow yoke on its neck, the long pole back to a cart with stake sides on two high wheels.
 func give_ox(on: bool) -> void:
 	_drop_vehicle()
 	if not on:
 		return
 	has_cart = true
 	vehicle = "ox"
-	_wheel_r = 0.62
+	_wheel_r = 0.68
 	_cart = Node3D.new()
 	add_child(_cart)
 	var hide := StandardMaterial3D.new()
 	hide.albedo_color = [Color(0.42, 0.3, 0.2), Color(0.55, 0.45, 0.33), Color(0.3, 0.22, 0.16), Color(0.72, 0.66, 0.56)][randi() % 4]
 	hide.roughness = 0.95
+	var dark_hide := StandardMaterial3D.new()
+	dark_hide.albedo_color = hide.albedo_color.darkened(0.35)
+	dark_hide.roughness = 0.95
 	var horn := StandardMaterial3D.new()
 	horn.albedo_color = Color(0.85, 0.8, 0.68)
 	var wood := Building.material("plank")
-	var dark := Building.material("dark")
-	# The ox.
+	var frame := Building.material("wood")
+	var iron := Building.material("dark")
+	var rope := Building.material("thatch")
+	# The ox: barrel, shoulders, haunches, all round.
 	var ox := Node3D.new()
-	ox.position = Vector3(0.95, 0, -1.7)
+	ox.position = Vector3(0.95, 0, -1.9)
 	_cart.add_child(ox)
-	_mesh_box(ox, Vector3(0.85, 0.85, 1.9), Vector3(0, 1.15, 0), hide)
-	_mesh_box(ox, Vector3(0.7, 0.35, 0.5), Vector3(0, 1.45, -0.75), hide) # (the hump of its shoulders)
+	_blob(ox, Vector3(0.9, 0.86, 1.95), Vector3(0, 1.17, 0.05), hide)
+	_blob(ox, Vector3(0.82, 0.9, 0.8), Vector3(0, 1.28, -0.66), hide) # (the shoulders)
+	_blob(ox, Vector3(0.8, 0.84, 0.75), Vector3(0, 1.22, 0.75), hide) # (the haunch)
+	_blob(ox, Vector3(0.46, 0.34, 0.5), Vector3(0, 1.72, -0.78), hide) # (the hump)
+	_blob(ox, Vector3(0.22, 0.56, 0.5), Vector3(0, 0.78, -0.86), dark_hide) # (the dewlap)
 	_ox_head = Node3D.new()
-	_ox_head.position = Vector3(0, 1.25, -1.0)
+	_ox_head.position = Vector3(0, 1.32, -1.12)
 	ox.add_child(_ox_head)
-	_mesh_box(_ox_head, Vector3(0.45, 0.5, 0.65), Vector3(0, 0, -0.3), hide)
-	_mesh_box(_ox_head, Vector3(0.36, 0.3, 0.25), Vector3(0, -0.1, -0.7), Building.material("dark"))
-	for s in [-1.0, 1.0]:
-		var h := MeshInstance3D.new()
-		var hm := CylinderMesh.new()
-		hm.top_radius = 0.01
-		hm.bottom_radius = 0.05
-		hm.height = 0.45
-		hm.radial_segments = 6
-		h.mesh = hm
-		h.material_override = horn
-		h.transform = Transform3D(Basis(Vector3.BACK, -s * 1.1).rotated(Vector3.RIGHT, -0.3), Vector3(s * 0.3, 0.3, -0.25))
-		_ox_head.add_child(h)
-		for z in [-0.7, 0.75]:
+	_blob(_ox_head, Vector3(0.42, 0.46, 0.7), Vector3(0, 0.02, -0.28), hide)
+	_blob(_ox_head, Vector3(0.32, 0.26, 0.28), Vector3(0, -0.13, -0.64), dark_hide) # (the muzzle)
+	for s: float in [-1.0, 1.0]:
+		_blob(_ox_head, Vector3(0.05, 0.05, 0.05), Vector3(s * 0.2, 0.12, -0.45), iron) # (an eye)
+		_blob(_ox_head, Vector3(0.22, 0.09, 0.13), Vector3(s * 0.3, 0.14, -0.05), dark_hide) # (an ear)
+		_pole(_ox_head, Vector3(s * 0.14, 0.2, -0.12), Vector3(s * 0.44, 0.27, -0.14), 0.04, horn) # (a horn, out and up)
+		_pole(_ox_head, Vector3(s * 0.44, 0.27, -0.14), Vector3(s * 0.54, 0.54, -0.2), 0.022, horn)
+		for z: float in [-0.72, 0.78]:
 			var hip := Node3D.new()
-			hip.position = Vector3(s * 0.3, 0.8, z)
+			hip.position = Vector3(s * 0.3, 0.86, z)
 			ox.add_child(hip)
-			_mesh_box(hip, Vector3(0.18, 0.8, 0.2), Vector3(0, -0.4, 0), hide)
+			_blob(hip, Vector3(0.26, 0.56, 0.3), Vector3(0, -0.2, 0), hide) # (the forearm)
+			_mesh_box(hip, Vector3(0.13, 0.42, 0.15), Vector3(0, -0.62, 0), hide)
+			_mesh_box(hip, Vector3(0.16, 0.1, 0.19), Vector3(0, -0.81, -0.01), iron) # (the hoof)
 			_ox_legs.append(hip)
-	_mesh_box(ox, Vector3(0.08, 0.7, 0.08), Vector3(0, 1.0, 1.0), hide) # (its tail)
-	_mesh_box(ox, Vector3(1.3, 0.12, 0.14), Vector3(0, 1.62, -0.6), dark) # (the yoke)
+	_pole(ox, Vector3(0, 1.45, 1.1), Vector3(0, 0.68, 1.26), 0.022, hide) # (its tail)
+	_blob(ox, Vector3(0.1, 0.32, 0.1), Vector3(0, 0.58, 1.27), dark_hide) # (the switch)
+	# The yoke and its bows, lashed to the pole.
+	_pole(ox, Vector3(-0.68, 1.72, -0.98), Vector3(0.68, 1.72, -0.98), 0.06, frame)
+	for s: float in [-0.26, 0.26]:
+		_pole(ox, Vector3(s, 1.72, -1.0), Vector3(s, 1.14, -1.0), 0.015, frame)
+	_pole(ox, Vector3(-0.26, 1.14, -1.0), Vector3(0.26, 1.14, -1.0), 0.018, rope)
 	# The cart.
 	var cart := Node3D.new()
 	cart.position = Vector3(0.95, 0, 1.0)
 	_cart.add_child(cart)
-	_mesh_box(cart, Vector3(1.5, 0.14, 2.2), Vector3(0, 0.95, 0), wood)
-	for s in [-1.0, 1.0]:
-		_mesh_box(cart, Vector3(0.06, 0.5, 2.2), Vector3(s * 0.74, 1.25, 0), wood)
-		_mesh_box(cart, Vector3(0.09, 0.09, 2.4), Vector3(s * 0.45, 1.05, -1.9), dark) # (the shafts)
-		var hub := Node3D.new()
-		hub.position = Vector3(s * 0.88, _wheel_r, 0.1)
-		cart.add_child(hub)
-		var wheel := MeshInstance3D.new()
-		var wm := CylinderMesh.new()
-		wm.top_radius = _wheel_r
-		wm.bottom_radius = _wheel_r
-		wm.height = 0.1
-		wm.radial_segments = 12
-		wheel.mesh = wm
-		wheel.material_override = dark
-		wheel.rotation.z = PI * 0.5
-		hub.add_child(wheel)
-		for k in 2:
-			var spoke := MeshInstance3D.new()
-			var spm := BoxMesh.new()
-			spm.size = Vector3(0.12, _wheel_r * 1.9, 0.07)
-			spoke.mesh = spm
-			spoke.material_override = wood
-			spoke.rotation.x = k * PI * 0.5
-			hub.add_child(spoke)
-		_wheels.append(hub)
-	_mesh_box(cart, Vector3(1.5, 0.5, 0.06), Vector3(0, 1.25, 1.1), wood)
+	for s: float in [-0.5, 0.5]:
+		_mesh_box(cart, Vector3(0.1, 0.12, 2.5), Vector3(s, 0.98, 0), frame) # (the bed's sills)
+	for k in 10: # (its floor)
+		_mesh_box(cart, Vector3(1.48, 0.04, 0.22), Vector3(0, 1.05, -1.04 + k * 0.232), wood)
+	_pole(cart, Vector3(0, 1.0, 0.2), Vector3(0, 1.72, -3.9), 0.05, frame) # (the pole, to the yoke)
+	_pole(cart, Vector3(-0.5, 1.0, -0.9), Vector3(0, 1.1, -1.7), 0.03, frame) # (its hounds)
+	_pole(cart, Vector3(0.5, 1.0, -0.9), Vector3(0, 1.1, -1.7), 0.03, frame)
+	for s: float in [-1.0, 1.0]:
+		for z: float in [-1.05, -0.35, 0.35, 1.05]: # (stakes)
+			_mesh_box(cart, Vector3(0.07, 0.86, 0.07), Vector3(s * 0.76, 1.42, z), frame)
+		for y: float in [1.26, 1.5, 1.74]: # (side rails, a gap between)
+			_mesh_box(cart, Vector3(0.04, 0.13, 2.3), Vector3(s * 0.76, y, 0), wood)
+		_cart_wheel(cart, Vector3(s * 0.95, _wheel_r, 0.1), _wheel_r, 0.07, 12)
+		_pole(cart, Vector3(s * 0.76, 1.84, 0.7), Vector3(s * 0.2, 0.98, 0.7), 0.012, rope) # (a lashing)
+	_pole(cart, Vector3(-0.95, _wheel_r, 0.1), Vector3(0.95, _wheel_r, 0.1), 0.04, iron) # (the axle)
+	for y: float in [1.26, 1.5, 1.74]:
+		_mesh_box(cart, Vector3(1.5, 0.13, 0.04), Vector3(0, y, 1.14), wood)
+		_mesh_box(cart, Vector3(1.5, 0.13, 0.04), Vector3(0, y, -1.14), wood)
+	_mesh_box(cart, Vector3(0.1, 0.16, 0.1), Vector3(-0.76, 1.92, -1.05), iron) # (a lantern, hung at the corner)
 	_bed = Node3D.new()
-	_bed.position = Vector3(0, 0.4, 0)
+	_bed.position = Vector3(0, 0.5, 0)
 	cart.add_child(_bed)
+
+
+## A rounded lump of the beast.
+func _blob(parent: Node3D, size: Vector3, at: Vector3, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var m := SphereMesh.new()
+	m.radius = 0.5
+	m.height = 1.0
+	m.radial_segments = 12
+	m.rings = 7
+	mi.mesh = m
+	mi.material_override = mat
+	mi.scale = size
+	mi.position = at
+	parent.add_child(mi)
 
 
 func _mesh_box(parent: Node3D, size: Vector3, at: Vector3, mat: Material) -> void:
@@ -2523,10 +2598,10 @@ func _animate(dt: float, walking: bool) -> void:
 	elif vehicle == "ox" and _anim == "walk":
 		arm_r = -0.9 # (a hand on the halter)
 	elif carry_n > 0 and carry_res in ["tas", "yiyecek", "su", "camur", "kerpic"] and _anim == "walk":
-		arm_l = -0.5
-		arm_r = -0.5
-		el = 1.0 # (the load held in both arms)
-		er = 1.0
+		arm_l = -0.42
+		arm_r = -0.42
+		el = 1.25 # (the load gripped in both hands, against the chest)
+		er = 1.25
 	elif carry_n > 0 and carry_res == "yarali" and _anim == "walk":
 		arm_l = 0.55 # (both hands back, gripping the wrists, leaning into the pull)
 		arm_r = 0.55

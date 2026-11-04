@@ -929,10 +929,8 @@ func _road_finish() -> void:
 		_road_dir = Vector3.ZERO
 		return
 	var got := village.lay_path(_road_pts, false, _road_dir)
-	if got <= 0.0:
-		hud.toast("Depoda odun yok", "bad")
-	else:
-		hud.toast("Tahta yol döşendi: %d m" % roundi(got), "good")
+	if got > 0.0:
+		hud.toast("Tahta yol işaretlendi: %d m · kasabalılar döşeyecek" % roundi(got), "good")
 	_road_pts.clear()
 	_road_dir = Vector3.ZERO
 

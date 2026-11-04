@@ -75,6 +75,7 @@ static func save(game: Node) -> bool:
 	var d := {
 		"saplings": young,
 		"roads": v.roads.duplicate(true),
+		"road_sites": v.road_sites.map(func(e: Dictionary) -> Array: return [Array(e.line).map(func(q: Vector3) -> Array: return [q.x, q.y, q.z]), e.done]),
 		"seed": v.seed,
 		"rail": Array(v.rail).filter(func(q: Vector3) -> bool: return true).map(func(q: Vector3) -> Array: return [snappedf(q.x, 0.01), snappedf(q.y, 0.01), snappedf(q.z, 0.01)]),
 		"walls": v.walls.filter(func(w: Wall) -> bool: return is_instance_valid(w)).map(func(w: Wall) -> Dictionary:
@@ -180,6 +181,14 @@ static func restore(game: Node, d: Dictionary) -> void:
 		v.nav.set_wall(cells, true)
 		w._footing()
 		w.redraw()
+	for e: Array in d.get("road_sites", []):
+		var line := PackedVector3Array()
+		for q: Array in e[0]:
+			line.append(Vector3(float(q[0]), float(q[1]), float(q[2])))
+		var site := {"line": line, "done": int(e[1]), "plan": v._road_mesh(line, true)}
+		v.road_sites.append(site)
+		if int(e[1]) > 0:
+			v._road_mesh(line.slice(0, int(e[1])))
 	for rd: Array in d.get("roads", []):
 		var pts: Array = []
 		for k in range(0, rd.size() - 1, 2):
