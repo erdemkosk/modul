@@ -652,6 +652,30 @@ var standing_log: Array = []
 
 
 func _shift(side: String, by: int) -> void:
+	var was := standing(side)
+	_shift_raw(side, by)
+	if by != 0:
+		_tell_shift.call_deferred(side, by, was, standing(side))
+
+
+## What a choice cost or won, said where it's seen: the side and the change on the news tape (after
+## whatever caused it, so the day-book keeps its reason), and plainly when it tips a side over to
+## friend or foe, and what that means.
+func _tell_shift(side: String, by: int, was: int, now: int) -> void:
+	var name: String = SIDES[side]
+	if was > HOSTILE and now <= HOSTILE:
+		message.emit("%s artık DÜŞMAN: kamyonları sormadan saldırır, telgrafla yardım gelmez." % name, "bad")
+	elif was <= HOSTILE and now > HOSTILE:
+		message.emit("%s artık düşman değil: kamyonları önce konuşmaya gelir." % name, "good")
+	elif was < FRIENDLY and now >= FRIENDLY:
+		message.emit("%s artık DOST: telgrafla yardım istenebilir, baskında asker yollar." % name, "good")
+	elif was >= FRIENDLY and now < FRIENDLY:
+		message.emit("%s artık dost değil: yardım istenemez." % name, "bad")
+	elif absi(by) >= 3:
+		message.emit("%s %+d (şimdi %+d)" % [name, by, now], "good" if by > 0 else "bad")
+
+
+func _shift_raw(side: String, by: int) -> void:
 	if by != 0:
 		standing_log.push_front([day, side, by, ""])
 		if standing_log.size() > 12:

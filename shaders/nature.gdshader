@@ -33,6 +33,9 @@ global uniform float season_autumn; // 0 green .. 1 the autumn's colours (Season
 global uniform float season_bare; // 0 in leaf .. 1 the broadleaf trees bare for the winter (Seasons)
 global uniform vec3 props_lod_center;
 global uniform vec4 view_focus; // xyz: what the view is on (your machine); w: 1 when there is one
+// The folk in the fight the view should keep in sight, whatever crown's over them (set by the camera
+// through WorldProps.view_folk): xyz a man's chest, w 1 when it's set.
+uniform vec4 view_folk[6];
 
 varying vec3 w_normal;
 varying float v_tint;
@@ -41,6 +44,18 @@ varying float v_pick;
 varying float v_lod; // 0..1 across the crossfade band: 0 = detailed, 1 = simple
 varying vec3 w_pos;
 varying float v_base_y;
+
+// How much is left of what's at `p`, seen from `eye` looking at `to`: nothing within `r` of the line
+// between (from the eye to `end` of the way), whole again a quarter further out; behind the eye or
+// past the end, all of it.
+float sight_keep(vec3 p, vec3 eye, vec3 to, float r, float end) {
+	vec3 d = to - eye;
+	float t = dot(p - eye, d) / max(dot(d, d), 0.001);
+	if (t <= 0.0 || t >= end) {
+		return 1.0;
+	}
+	return smoothstep(r, r * 1.25, length(p - (eye + d * t))); // (a narrow dissolving rim: a wide one reads as noise)
+}
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -133,14 +148,22 @@ void fragment() {
 	// above): a tree in the line of sight dissolved round it, trunk and all, wider the further off
 	// the view stands (from above a whole crown fills the middle of the screen); the trees either
 	// side of the line, and every shadow, as they are.
-	if (view_focus.w > 0.5 && !shadow_pass) {
+	// A screen-door dither, not blending: nothing to sort, and the shadow stays whole. So too round
+	// the line to each of the folk in a fight (view_folk), narrower: a man under a crown is seen
+	// through it.
+	if (!shadow_pass) {
 		vec3 p = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec3 eye = CAMERA_POSITION_WORLD;
-		vec3 d = view_focus.xyz - eye;
-		float t = dot(p - eye, d) / max(dot(d, d), 0.001);
-		if (t > 0.0 && t < 0.92) {
-			float r = max(1.3, length(d) * 0.14);
-			float clear = smoothstep(r, r * 1.25, length(p - (eye + d * t))); // (a narrow dissolving rim: a wide one reads as noise)
+		float clear = 1.0;
+		if (view_focus.w > 0.5) {
+			clear = sight_keep(p, eye, view_focus.xyz, max(2.0, length(view_focus.xyz - eye) * 0.16), 0.92);
+		}
+		for (int i = 0; i < 6; i++) {
+			if (view_folk[i].w > 0.5) {
+				clear = min(clear, sight_keep(p, eye, view_folk[i].xyz, max(1.5, length(view_folk[i].xyz - eye) * 0.045), 0.96));
+			}
+		}
+		if (clear < 1.0) {
 			float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(5.0, 11.0), vec2(0.06711056, 0.00583715))));
 			if (n >= clear) {
 				discard;
@@ -159,10 +182,10 @@ void fragment() {
 		}
 	}
 	if ((leaf > 0.5 || sway > 0.5) && !shadow_pass) {
-		// A crown the camera's come into (leaves and branches have nothing to stop it; the trunk does):
-		// dissolved round the lens, gone within 1.5 m, whole again by 4.5, not a wall of leaf and
-		// branch across the view.
-		float keep = smoothstep(1.5, 4.5, length(VERTEX));
+		// A tree close to the camera (low down among the trunks, leaves and branches have nothing to
+		// stop it): dissolved round the lens, gone within 5 m, whole again by 12, not a wall of leaf
+		// and bark across the view.
+		float keep = smoothstep(5.0, 12.0, length(VERTEX));
 		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715))));
 		if (n >= keep) {
 			discard;

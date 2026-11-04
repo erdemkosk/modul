@@ -219,7 +219,7 @@ func _camp_found(how: String) -> void:
 	Ambience.alarm()
 	var store := _main_store()
 	var dir := _compass(camp_at - store.global_position) if store else ""
-	message.emit("%sFirari kampı bulundu: %s yönünde, %d kişi. Milisi topla (TOPLA), seç ve kampa sağ tıkla." % [how, dir, camp_men.size()], "bad")
+	message.emit("%sFirari kampı bulundu: %s yönünde, %d kişi. Milisi seç (V), R ile emre al, kampa sağ tıkla." % [how, dir, camp_men.size()], "bad")
 
 
 func _camp_think() -> void:
@@ -402,7 +402,7 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 func _to_arms() -> void:
 	if hud and Engine.time_scale > 1.0:
 		hud.game.set_speed(1.0)
-		message.emit("Çatışma başladı: hız 1x. Milis emrinde: seç, sağ tıkla mevzi göster.", "bad")
+		message.emit("Çatışma başladı: hız 1x. Milisi seç (V), R ile emre al, sağ tıkla: mevzi.", "bad")
 	for side: String in Village.SIDES:
 		if village.help_why_not(side) == "":
 			message.emit("%s dost: TELGRAF'tan yardım isteyebilirsin." % Village.SIDES[side], "info")
@@ -1127,15 +1127,59 @@ func _building_at(p: Vector3) -> Building:
 	return best
 
 
-## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance`,
-## halved if the foe's behind cover). The flash shows the shooter for a moment to anyone looking.
+## A shot's chance for the range alone, `d` m off: good close in, thinning out toward the end of a
+## rifle's reach (a bow's falls off sooner and never runs as high), never under a third.
+static func range_chance(shooter: Villager, d: float) -> float:
+	if shooter.held == "bow":
+		return clampf(1.0 - d / (maxf(shooter.ranged, 1.0) * 1.4), 0.3, 0.8)
+	return clampf(1.0 - d / (maxf(shooter.ranged, 1.0) * 1.6), 0.3, 0.85)
+
+
+## The chance a shot from `from` (by `by`, `base` for its range) finds `foe`: the range, the hand that
+## holds the gun, what covers the man and how high the shooter stands over him. [chance, what covers
+## it ("" in the open)]. Every shot is rolled on this, and the tag over a foe under the mouse reads it.
+func hit_chance(from: Vector3, foe: Villager, base: float, by: Villager = null) -> Array:
+	var c := base
+	if by:
+		c *= by.aim()
+	var cv := cover(from, foe)
+	return [clampf(c * float(cv[0]), 0.0, 1.0), str(cv[1])]
+
+
+## `shooter`'s chance at `foe` from where it stands, as a shot now would be rolled, and why, in a few
+## words for the tag: [chance, reason, would it fire (in reach and seen)].
+func aim_chance(shooter: Villager, foe: Villager) -> Array:
+	var d := Vector2(foe.position.x - shooter.position.x, foe.position.z - shooter.position.z).length()
+	var from := shooter.muzzle()
+	var hc := hit_chance(from, foe, range_chance(shooter, d), shooter)
+	var what := str(hc[1])
+	var why: Array[String] = []
+	why.append("siperde (%s)" % what if what != "" else "açıkta")
+	var rise := (from.y - 1.4) - foe.position.y
+	if rise > 2.0:
+		why.append("yukarıdan")
+	elif rise < -2.0:
+		why.append("aşağıdan")
+	var fires := true
+	if d > shooter.ranged * (1.25 if shooter.drafted else 1.0):
+		why.append("menzil dışı")
+		fires = false
+	elif not can_see(shooter.position, foe):
+		why.append("karanlıkta, görünmüyor")
+		fires = false
+	why.append("%d m" % roundi(d))
+	return [float(hc[0]), " · ".join(why), fires]
+
+
+## A rifle shot from `from` at `foe` (by `by`): a flash, a streak, and `dmg` if it hits (`chance` for
+## the range, then hit_chance: the shooter's aim, the foe's cover, the height). The flash shows the
+## shooter for a moment to anyone looking.
 func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null, sound := "war/rifle") -> void:
 	var to := foe.position + Vector3.UP * 1.0 + Vector3(randf_range(-0.4, 0.4), randf_range(-0.3, 0.3), randf_range(-0.4, 0.4))
 	if by:
 		by.revealed = 2.5
-		chance *= by.aim()
 		by.learn("nisan", 12.0)
-	chance *= float(cover(from, foe)[0])
+	chance = float(hit_chance(from, foe, chance, by)[0])
 	_flash(from, sound)
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
@@ -1153,12 +1197,46 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 	st.tween_property(mat, "albedo_color:a", 0.0, 0.15)
 	st.tween_callback(streak.queue_free)
 	if randf() < chance:
-		foe.hurt(dmg, by)
+		_struck(foe, dmg, by, from)
 	else:
-		# a miss: it strikes the ground beyond, in a kick of dust (snow in the winter)
-		var past := to + (to - from).normalized() * randf_range(0.5, 3.0)
+		# a miss: it strikes the ground by him or beyond, in a kick of dust (snow in the winter), close
+		# enough to read as a near thing
+		var past := to + (to - from).normalized() * randf_range(0.3, 2.2) + Vector3(randf_range(-0.7, 0.7), 0, randf_range(-0.7, 0.7))
 		past.y = nav.height(past.x, past.z) + 0.05
 		_impact(past)
+
+
+## A shot or an arrow that finds its man: the blow, a flinch, a dark puff off him the way the shot
+## was going; one that drops him is heard (the thud of him falling) and, close to the view, felt.
+func _struck(foe: Villager, dmg: float, by: Villager, from: Vector3) -> void:
+	if not is_instance_valid(foe) or foe.dead:
+		return
+	var was_up := not foe.down
+	foe.hurt(dmg, by)
+	var dir := foe.position - from
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+	var at := foe.position + Vector3.UP * (1.25 if was_up else 0.3)
+	_puff(at, dir, Color(0.3, 0.12, 0.09, 0.85), 6)
+	_puff(at, dir, Color(0.5, 0.44, 0.36, 0.6), 3) # (the coat's dust)
+	if foe.dead or foe.down:
+		if was_up:
+			Ambience.play("log_drop_0%d" % randi_range(1, 3), foe.position, 4.0, 0.55, 220.0) # (a body hitting the ground)
+			var cam := get_viewport().get_camera_3d() as RtsCamera
+			if cam and foe.position.distance_to(cam.global_position) < 70.0:
+				cam.shake(foe.position, 0.28)
+	elif foe._body:
+		foe._body.flinch("RifleHit" if foe.armed else "HitReact")
+
+
+## A puff off a man struck: a few dark motes flung on the way the shot went, falling fast.
+func _puff(at: Vector3, dir: Vector3, c: Color, n: int) -> void:
+	if _dust == null:
+		_impact_emitter()
+	for k in n:
+		var vel := dir * randf_range(1.2, 3.2) + Vector3(randf_range(-0.6, 0.6), randf_range(0.2, 1.6), randf_range(-0.6, 0.6))
+		_dust.emit_particle(Transform3D(Basis.IDENTITY, at + Vector3(randf_range(-0.1, 0.1), randf_range(-0.15, 0.15), randf_range(-0.1, 0.1))), vel, c, Color(1, 1, 1, 1),
+			GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY | GPUParticles3D.EMIT_FLAG_COLOR)
 
 
 ## Where a shot strikes: dust (or snow) kicked up, a few bits flung out.
@@ -1167,35 +1245,41 @@ var _dust: GPUParticles3D
 
 func _impact(at: Vector3) -> void:
 	if _dust == null:
-		var pm := ParticleProcessMaterial.new()
-		pm.gravity = Vector3(0, -4.0, 0)
-		pm.damping_min = 1.5
-		pm.damping_max = 3.0
-		pm.scale_min = 0.5
-		pm.scale_max = 1.2
-		var g := Gradient.new()
-		g.set_color(0, Color(0.55, 0.48, 0.38, 0.75))
-		g.set_color(1, Color(0.6, 0.55, 0.47, 0.0))
-		var gt := GradientTexture1D.new()
-		gt.gradient = g
-		pm.color_ramp = gt
-		_dust = GPUParticles3D.new()
-		_dust.amount = 200
-		_dust.lifetime = 0.9
-		_dust.emitting = false
-		_dust.process_material = pm
-		_dust.draw_pass_1 = FireFx._quad(0.25, false)
-		_dust.visibility_aabb = AABB(Vector3(-2000, -500, -2000), Vector3(4000, 2000, 4000))
-		_dust.local_coords = false
-		_dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(_dust)
+		_impact_emitter()
 	var snowy := Weather.snow_cover_now > 0.3
 	_mark(at, snowy)
 	var c := Color(0.85, 0.88, 0.92, 0.8) if snowy else Color(0.55, 0.48, 0.38, 0.75)
-	for k in 5:
-		var vel := Vector3(randf_range(-1.2, 1.2), randf_range(1.5, 3.5), randf_range(-1.2, 1.2))
+	for k in 7:
+		var vel := Vector3(randf_range(-1.2, 1.2), randf_range(1.8, 4.2), randf_range(-1.2, 1.2))
 		_dust.emit_particle(Transform3D(Basis.IDENTITY, at), vel, c, Color(1, 1, 1, 1),
 			GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY | GPUParticles3D.EMIT_FLAG_COLOR)
+
+
+## The one emitter every kick of dust and puff off a man is flung from (each mote given its own
+## colour, faded out over its short life).
+func _impact_emitter() -> void:
+	var pm := ParticleProcessMaterial.new()
+	pm.gravity = Vector3(0, -4.0, 0)
+	pm.damping_min = 1.5
+	pm.damping_max = 3.0
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1.05, 1.05, 1.05, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_ramp = gt
+	_dust = GPUParticles3D.new()
+	_dust.amount = 200
+	_dust.lifetime = 0.9
+	_dust.emitting = false
+	_dust.process_material = pm
+	_dust.draw_pass_1 = FireFx._quad(0.25, false)
+	_dust.visibility_aabb = AABB(Vector3(-2000, -500, -2000), Vector3(4000, 2000, 4000))
+	_dust.local_coords = false
+	_dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_dust)
 
 
 ## Where shots struck, left in the ground: a little dark pit in the snow with the earth thrown up
@@ -1242,17 +1326,16 @@ func _mark(at: Vector3, snowy: bool) -> void:
 
 
 ## An arrow loosed from `from` at `foe` (by `by`): no flash, hardly a sound, so the archer isn't
-## shown; the shaft flies, and `dmg` if it hits (`chance`, halved behind cover).
+## shown; the shaft flies, and `dmg` if it hits (`chance` for the range, then hit_chance).
 func arrow(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager = null) -> void:
 	if by:
-		chance *= by.aim()
 		by.learn("okcu", 12.0)
-	chance *= float(cover(from, foe)[0])
+	chance = float(hit_chance(from, foe, chance, by)[0])
 	var to := foe.position + Vector3.UP * 1.1 + Vector3(randf_range(-0.5, 0.5), randf_range(-0.3, 0.3), randf_range(-0.5, 0.5))
 	var hit := randf() < chance
 	_fly_arrow(from, to, func() -> void:
 		if hit and is_instance_valid(foe) and not foe.dead:
-			foe.hurt(dmg, by))
+			_struck(foe, dmg, by, from))
 
 
 func _fly_arrow(from: Vector3, to: Vector3, landed: Callable) -> void:

@@ -73,6 +73,12 @@ void fragment() {
 	c = mix(c, c * cast, tint_amt * (1.0 - smoothstep(0.75, 1.1, lum) * 0.6));
 	vec3 cc = clamp(c, 0.0, 1.0);
 	c = mix(c, cc * cc * (3.0 - 2.0 * cc), 0.18 * tint_amt);
+	// an autochrome's greens: the plates never took a pure leaf green, so the yellow-greens and
+	// emeralds go over to olive and grey-green (the other hues left as they are)
+	float gmax = max(c.r, c.b);
+	float greenness = clamp((c.g - gmax) / max(c.g, 0.001) * 2.5, 0.0, 1.0);
+	vec3 olive = mix(vec3(lum), c, 0.55) * vec3(1.04, 1.0, 0.92);
+	c = mix(c, olive, greenness * 0.4 * tint_amt);
 	// fire: the sky above it orange, more toward the top of the view, the dark lit most
 	c += glow * (0.35 + 0.65 * (1.0 - uv.y)) * (1.0 - smoothstep(0.2, 0.9, lum) * 0.6);
 	if (sepia > 0.0) {
@@ -163,7 +169,9 @@ func _process(dt: float) -> void:
 	# Colour: the golden hours warmer and richer, winter paler, night plain.
 	var sun_y := weather.sun_direction().y
 	var golden := smoothstep(-0.03, 0.08, sun_y) * (1.0 - smoothstep(0.12, 0.38, sun_y))
-	env.adjustment_saturation = lerpf(1.22, 1.32, golden) * (0.86 if season == 3 else 1.0) * lerpf(1.0, 0.85, weather._night_factor())
+	# (held near true: under the AgX curve a plate of 1918 is muted, not the candy green the old 1.3
+	# made of the meadow; the golden hours still a little richer)
+	env.adjustment_saturation = lerpf(1.04, 1.14, golden) * (0.88 if season == 3 else 1.0) * lerpf(1.0, 0.85, weather._night_factor())
 	env.adjustment_brightness = 1.0 + golden * 0.04
 	var sm := _vignette.material as ShaderMaterial
 	sm.set_shader_parameter("amount", 0.6 if photo else 0.38)
@@ -171,10 +179,11 @@ func _process(dt: float) -> void:
 	sm.set_shader_parameter("t", Time.get_ticks_msec() / 1000.0)
 	# the season's cast, the night's blue
 	var night := weather._night_factor()
-	var want: Color = [Color(0.98, 1.03, 0.95), Color(1.06, 1.01, 0.88), Color(1.1, 0.96, 0.78), Color(0.95, 0.99, 1.07)][season]
+	# (the lights a touch warm, the shadows a touch cold, every season: an early colour plate's split)
+	var want: Color = [Color(1.02, 1.01, 0.92), Color(1.07, 1.0, 0.86), Color(1.1, 0.96, 0.78), Color(0.98, 0.99, 1.04)][season]
 	want = want.lerp(Color(0.86, 0.92, 1.12), night * 0.75)
 	want = want.lerp(Color(1.12, 0.96, 0.8), golden * 0.6)
-	var want_s: Color = [Color(0.92, 1.0, 1.02), Color(0.95, 0.97, 1.05), Color(0.98, 0.87, 0.8), Color(0.8, 0.9, 1.16)][season]
+	var want_s: Color = [Color(0.9, 0.97, 1.08), Color(0.92, 0.96, 1.1), Color(0.95, 0.9, 0.95), Color(0.8, 0.9, 1.16)][season]
 	want_s = want_s.lerp(Color(0.6, 0.72, 1.2), night * 0.8) # (the night's ink blue)
 	want_s = want_s.lerp(Color(0.9, 0.86, 1.0), golden * 0.4)
 	var k := clampf(dt * 0.5, 0.0, 1.0)

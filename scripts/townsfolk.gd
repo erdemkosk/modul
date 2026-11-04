@@ -76,7 +76,9 @@ static func available() -> bool:
 	return ResourceLoader.exists(SCENE)
 
 
-## Built and dressed: `kind` "man", "child" or "outlaw"; `rng` picks the clothes and the face.
+## Built and dressed: `kind` "man", "woman", "child" or "outlaw" (a deserter of the bands), or a
+## side's soldier: "merkez" (the Centre's khaki) or "kordal" (Free Kordal's dark coats and red);
+## `rng` picks the clothes and the face.
 func build(kind: String, rng: RandomNumberGenerator) -> void:
 	if _scene == null:
 		_scene = load(SCENE) as PackedScene
@@ -162,7 +164,17 @@ func weapon_mount() -> Node3D:
 	return _weapon_mount
 
 
+## The two sides' cloth, so a man can be told from above by his coat alone: the Centre's soldiers
+## in khaki from cap to puttees, a leather belt and pouches; Free Kordal's in dark coats (whatever
+## was to hand, dyed black or near it), a red band on the arm and a red rag at the neck.
+const KHAKI := Color("#6b6844")
+const KHAKI_DARK := Color("#55533a")
+const KORDAL_COAT := [Color("#23201d"), Color("#2b2622"), Color("#1f2226")]
+const KORDAL_RED := Color("#9a1c14")
+
+
 func _dress(kind: String, rng: RandomNumberGenerator) -> void:
+	var soldier := kind in ["merkez", "kordal"]
 	var child := kind == "child"
 	var outlaw := kind == "outlaw"
 	var woman := kind == "woman"
@@ -181,11 +193,22 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	if woman:
 		hat = "Survivor_Headwear" # (the kerchief: the knit cap in its colours, the neckerchief the knot under the chin)
 		coat = "Survivor_Jacket"
-	var scarf := outlaw or woman or rng.randf() < 0.3
+	var extra: Array[String] = [] ## (kit worn over the clothes: a belt and pouches, an armband)
+	if soldier:
+		mask = false
+		coat = "Survivor_Jacket"
+		extra.append("Survivor_BeltGear")
+		if kind == "merkez":
+			hat = "Survivor_PatrolCap" if rng.randf() < 0.75 else "Survivor_CapBack"
+		else:
+			hat = ["Survivor_Ushanka", "Survivor_CapBack", "Survivor_Headwear"][rng.randi() % 3]
+			extra.append("Survivor_Armband")
+	var scarf := outlaw or woman or kind == "kordal" or (not soldier and rng.randf() < 0.3)
 	var gloves := not child and rng.randf() < 0.2
 	var wool: Color = WOOL[rng.randi() % WOOL.size()]
 	if outlaw:
-		wool = SURPLUS[rng.randi() % 3].darkened(rng.randf_range(0.05, 0.25)) # (khaki gone dark with the woods)
+		# (khaki gone dark with the woods, or a coat taken off someone)
+		wool = (SURPLUS[rng.randi() % 3] if rng.randf() < 0.5 else WOOL[rng.randi() % WOOL.size()]).darkened(rng.randf_range(0.1, 0.3))
 	elif not child and rng.randf() < 0.3:
 		wool = SURPLUS[rng.randi() % SURPLUS.size()]
 	var hair: Color = HAIR[rng.randi() % HAIR.size()]
@@ -199,19 +222,36 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 		hat_c = KERCHIEF[rng.randi() % KERCHIEF.size()]
 		scarf_c = hat_c
 		trousers = SKIRT[rng.randi() % SKIRT.size()]
+	if kind == "merkez":
+		wool = KHAKI.darkened(rng.randf_range(0.0, 0.12))
+		trousers = KHAKI_DARK.darkened(rng.randf_range(0.0, 0.1))
+		hat_c = KHAKI_DARK
+	elif kind == "kordal":
+		wool = KORDAL_COAT[rng.randi() % KORDAL_COAT.size()]
+		trousers = Color("#2a2a2a").lightened(rng.randf_range(0.0, 0.08))
+		hat_c = Color("#1e1c1a")
+		scarf_c = KORDAL_RED
+	var patch := wool.darkened(0.06)
+	var trouser_patch := trousers.darkened(0.17)
 	if outlaw:
-		scarf_c = [Color("#6e1c16"), Color("#1c1a18"), Color("#3a2e24")][rng.randi() % 3]
-		trousers = SURPLUS[rng.randi() % 3].darkened(0.3)
+		scarf_c = [Color("#4a4236"), Color("#1c1a18"), Color("#3a2e24"), Color("#5a5040")][rng.randi() % 4] # (rags: never the red, that's Kordal's)
+		trousers = (SURPLUS[rng.randi() % 3] if rng.randf() < 0.6 else CANVAS[rng.randi() % CANVAS.size()]).darkened(0.3)
 		hat_c = SURPLUS[rng.randi() % 3].darkened(0.2)
+		# what's left of a uniform, ragged: patched with whatever cloth came to hand, the knees out
+		patch = WOOL[rng.randi() % WOOL.size()].lightened(0.08)
+		trouser_patch = CANVAS[rng.randi() % CANVAS.size()].lightened(0.12)
 	var colours := {
-		"Jacket": wool, "JacketDark": wool.darkened(0.2), "Patch": wool.darkened(0.06),
-		"Trousers": trousers, "TrouserPatch": trousers.darkened(0.17),
+		"Jacket": wool, "JacketDark": wool.darkened(0.2), "Patch": patch,
+		"Trousers": trousers, "TrouserPatch": trouser_patch,
 		"Boot": boots, "Leather": boots.lightened(0.08), "Glove": Color("#6a4a33"), "GloveDark": Color("#4e3626"),
 		"Skin": skin, "Beanie": hat_c, "Boonie": hat_c, "BoonieDark": hat_c.darkened(0.3),
 		"UshankaTop": Color("#4a3426"), "LeatherBand": Color("#3a2a1e"),
 		"Scarf": scarf_c, "Hoodie": scarf_c.darkened(0.25), "Balaclava": Color("#2a2826"),
 		"HeadBrow": grey.darkened(0.2), "HeadBrowHeavy": grey.darkened(0.15), "HeadLash": hair.darkened(0.3),
 		"HeadBeard": grey, "HeadMoustache": grey,
+		"FieldCap": hat_c, "FieldCapDark": hat_c.darkened(0.3), "Badge": Color("#8a6a2a"),
+		"Webbing": Color("#4a3322"), "Metal": Color("#5a5650"), "PackDark": Color("#3a2a1e"), "Handle": Color("#3a2a1e"),
+		"HiVis": KORDAL_RED, "Reflect": KORDAL_RED.darkened(0.2), "PatchWhite": KORDAL_RED, "PatchMark": KORDAL_RED.darkened(0.35),
 	}
 	var head: String = HEADS[rng.randi() % HEADS.size()] if not child else "Head_Base"
 	if age > 0.8 and rng.randf() < 0.6:
@@ -231,7 +271,7 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
 		var n := String(mi.name)
-		var show := n in ALWAYS or n == coat or n == hat
+		var show := n in ALWAYS or n == coat or n == hat or n in extra
 		match n:
 			"Survivor_Beard":
 				show = beard
@@ -285,37 +325,69 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 
 
 ## The fur hat and the scarf for the winter (a woman's kerchief stays): the summer's hat put away.
+## One of the militia wears a soldier's field cap in place of his own (not over a fur hat in the
+## winter) and a leather belt with its pouches: told from the others from above, nothing more.
 var _summer := {} ## mesh name -> visible, as dressed
 var _kind := ""
+var _winter := false
+var _militia := false
 
 
 func set_winter(on: bool) -> void:
-	if model == null or _kind == "woman" or _kind == "outlaw":
+	_winter = on
+	_refit()
+
+
+func set_militia(on: bool) -> void:
+	if on == _militia:
 		return
+	_militia = on
+	_refit()
+
+
+func _refit() -> void:
+	if model == null or _kind in ["outlaw", "merkez", "kordal"]:
+		return
+	var man := _kind != "woman"
 	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
 		var n := String(mi.name)
 		if not _summer.has(n):
 			_summer[n] = mi.visible
+		var vis := mi.visible
 		if n in HATS and n != "":
-			mi.visible = (n == "Survivor_Ushanka") if on else bool(_summer[n])
+			if not man:
+				continue
+			vis = (n == "Survivor_Ushanka") if _winter else (bool(_summer[n]) and not _militia)
+		elif n == "Survivor_PatrolCap":
+			vis = man and _militia and not _winter
+		elif n == "Survivor_BeltGear":
+			vis = _militia
 		elif n == "Survivor_Neckwear":
-			mi.visible = on or bool(_summer[n])
-		if on and n == "Survivor_Ushanka" and not mi.has_meta("furred"):
-			mi.set_meta("furred", true)
-			for s in mi.mesh.get_surface_count():
-				var base := mi.mesh.surface_get_material(s) as BaseMaterial3D
-				if base == null:
-					continue
-				var m := base.duplicate() as StandardMaterial3D
-				match base.resource_name:
-					"UshankaTop":
-						m.albedo_color = Color("#4a3426")
-					"LeatherBand":
-						m.albedo_color = Color("#3a2a1e")
-					_:
-						m.albedo_color = Color("#5a4632")
-				mi.set_surface_override_material(s, m)
+			if not man:
+				continue
+			vis = _winter or bool(_summer[n])
+		else:
+			continue
+		mi.visible = vis
+		if not vis or mi.has_meta("kitted"):
+			continue
+		mi.set_meta("kitted", true)
+		# (first worn: coloured as a man of the town would have it)
+		_colour(mi, {"UshankaTop": Color("#4a3426"), "LeatherBand": Color("#3a2a1e"), "Fur": Color("#5a4632"),
+			"FieldCap": Color("#4f5240"), "FieldCapDark": Color("#3a3c30"), "Badge": Color("#7a5a26"),
+			"Leather": Color("#4a3322"), "Webbing": Color("#4a3322"), "Metal": Color("#5a5650"), "PackDark": Color("#3a2a1e"), "Handle": Color("#3a2a1e")})
+
+
+## Each of `mi`'s surfaces with a colour in `colours` (by its material's name) painted so.
+func _colour(mi: MeshInstance3D, colours: Dictionary) -> void:
+	for s in mi.mesh.get_surface_count():
+		var base := mi.mesh.surface_get_material(s) as BaseMaterial3D
+		if base == null or not colours.has(base.resource_name):
+			continue
+		var m := base.duplicate() as StandardMaterial3D
+		m.albedo_color = colours[base.resource_name]
+		mi.set_surface_override_material(s, m)
 
 
 ## A long skirt to the ankles, hung from the hips: a cone of wool over the trousers.
@@ -396,11 +468,26 @@ func play(clip: String, speed := 1.0, blend := 0.25) -> void:
 	player.speed_scale = speed
 
 
+## Struck and still on its feet: a short jerk back (`clip`, HitReact or RifleHit), played through
+## over whatever it was doing, then back to it.
+var _flinch_t := 0
+
+
+func flinch(clip: String) -> void:
+	if _dead or _lying or not player.has_animation(clip):
+		return
+	_flinch_t = Time.get_ticks_msec() + 450
+	_clip = clip
+	player.play(clip, 0.06)
+	player.seek(0.05, true)
+	player.speed_scale = 1.5
+
+
 ## Moves for `anim` (Villager._anim): a clip, and over it (for the work no clip has) the numbers
 ## Villager._animate worked out. `speed` is how fast it's going over the ground, `rate` the game's.
 func drive(anim: String, walking: bool, speed: float, rate: float, carrying: String, vehicle: String,
 		armed: bool, v: Dictionary) -> void:
-	if _lying:
+	if _lying or Time.get_ticks_msec() < _flinch_t:
 		return
 	var clip := "Idle"
 	var pace := rate
@@ -429,8 +516,14 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 				# (talking with the hands, now and then a nod or a shake of the head)
 				var beat := int(Time.get_ticks_msec() / 6000 + _seed) % 5
 				clip = ["ual/UalIdleTalking", "ual/UalIdleTalking", "SoldierTalk", "ual/UalIdleNo", "ual/UalIdleTalking"][beat]
-			"sit":
-				clip = "CrouchIdle"
+			"listen":
+				# (hearing the other out: standing easy or the arms folded, nodding now and then)
+				clip = "ual/UalIdleFoldArms" if (_seed % 3 == 0 or cold) and pose.seat < 0.0 else "Idle"
+			"sit", "fish", "whittle", "pipe", "warm", "pray", "wash", "drink":
+				# (the work no clip has, at one's ease: the numbers over the plain stand, the legs
+				# sat if there's a seat)
+				clip = "Idle"
+				procedural = true
 			"eat":
 				clip = "ual/UalConsume"
 			"gather", "draw":
@@ -448,13 +541,35 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 			_:
 				clip = "Idle"
 				procedural = true
+	if side_step != "" and not walking:
+		# shouldered aside where it stands: a step or two that way, the feet going with it
+		clip = side_step
+		pace = side_pace
+		procedural = false
+	pose.nod = 1.0 if anim == "listen" else 0.0
+	pose.bow = 1.0 if anim == "pray" else 0.0
 	play(clip, pace)
 	pose.want(v if procedural else {}, rate)
+
+
+## (Villager: shouldered aside while standing, the step's clip, WalkLeft and so on, and its pace)
+var side_step := ""
+var side_pace := 1.0
+
+
+## Sat down on a seat `seat` m up from where its feet are (a lorry's bench, a stump), the hands on
+## the knees, and left so: for the men riding in a lorry, not driven by a villager's moves.
+func sit(seat := 0.45, speed := 1.0) -> void:
+	pose.seat = seat
+	play("Idle", speed, 0.0)
+	pose.want({"arm_l": -0.55, "arm_r": -0.5, "el": 0.8, "er": 0.75, "lean": 0.12, "kn": 0.05}, 1.0)
 
 
 ## Down, wounded: the fall, then lying there.
 func lie() -> void:
 	_lying = true
+	pose.seat = -1.0
+	side_step = ""
 	_clip = "Death"
 	player.play("Death", 0.15)
 	player.speed_scale = 1.0

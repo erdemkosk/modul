@@ -1189,7 +1189,265 @@ func _finish() -> void:
 		_sound.stream = _stream("heavy_01")
 		_sound.pitch_scale = 0.9
 		_sound.play()
+	_mark_role()
 	finished.emit(self)
+
+
+# --- What it is, from above -------------------------------------------------------------------------
+
+var _role_mark: Node3D ## the one thing that tells it from its neighbours from the RTS camera (_mark_role)
+static var _mark_mats := {}
+static var _flag_shader: Shader
+
+
+## Every log building is a brown box from above, so each sort is given one thing of its own that
+## reads from the RTS camera, laid on the model as it stands when it's done, in the way of the time:
+## the smithy's forge stack capped with sooty iron, its coals glowing; the reading room's front gable
+## whitewashed and its ridge capped with white-painted boards, a public building; the store's
+## double doors painted ox-blood with white braces and its ridge in red-oxide iron; the armoury a
+## flag (white, a blue saltire) on a staff at its ridge's end. (The jail has its red roof, the
+## feldsher his green-cross flag, the workshops their piles.) Hidden while it's a ruin.
+func _mark_role() -> void:
+	if _role_mark:
+		_role_mark.visible = true
+		_paint_marked_pieces()
+		return
+	if not kind in ["demirci", "okuma", "ambar", "silahlik"]:
+		return
+	_role_mark = Node3D.new()
+	_role_mark.name = "RoleMark"
+	add_child(_role_mark)
+	var ridge := _ridge()
+	match kind:
+		"demirci":
+			for p in pieces:
+				if p.tag == "forge":
+					# a squat iron hood on the forge's stack, black with soot, the coals' glow under it
+					var top := Vector3(p.aabb.get_center().x, p.aabb.end.y, p.aabb.get_center().z)
+					var hood := MeshInstance3D.new()
+					var cm := CylinderMesh.new()
+					cm.top_radius = 0.16
+					cm.bottom_radius = 0.42
+					cm.height = 0.34
+					cm.radial_segments = 8
+					cm.rings = 1
+					hood.mesh = cm
+					hood.material_override = _mark_mat("iron")
+					hood.position = top + Vector3(0, 0.12, 0)
+					_role_mark.add_child(hood)
+					var pipe := MeshInstance3D.new()
+					var pm := CylinderMesh.new()
+					pm.top_radius = 0.14
+					pm.bottom_radius = 0.14
+					pm.height = 0.7
+					pm.radial_segments = 8
+					pm.rings = 1
+					pipe.mesh = pm
+					pipe.material_override = _mark_mat("iron")
+					pipe.position = top + Vector3(0, 0.6, 0)
+					_role_mark.add_child(pipe)
+					var mouth := MeshInstance3D.new() # (the pipe's mouth lit from the fire under it)
+					var mm := CylinderMesh.new()
+					mm.top_radius = 0.1
+					mm.bottom_radius = 0.1
+					mm.height = 0.02
+					mm.radial_segments = 8
+					mm.rings = 1
+					mouth.mesh = mm
+					mouth.material_override = _mark_mat("ember")
+					mouth.position = top + Vector3(0, 0.955, 0)
+					_role_mark.add_child(mouth)
+				elif p.tag == "coals":
+					var glow := OmniLight3D.new()
+					glow.light_color = Color(1.0, 0.45, 0.15)
+					glow.light_energy = 0.9
+					glow.omni_range = 3.2
+					glow.shadow_enabled = false
+					glow.position = p.aabb.get_center() + Vector3(0, 0.35, 0)
+					_role_mark.add_child(glow)
+			if not ridge.is_empty():
+				_ridge_cap(ridge, _mark_mat("iron"))
+		"okuma":
+			if not ridge.is_empty():
+				_ridge_cap(ridge, _mark_mat("whitewash"))
+			# the gables boarded and whitewashed, framed by their barge boards
+			for p in pieces:
+				if p.tag != "barge" or ridge.is_empty():
+					continue
+				var bb := p.aabb
+				var base_y := bb.position.y + 0.12
+				var apex: float = (ridge[0] as Vector3).y - 0.2
+				var across_x := bb.size.x > bb.size.z # (the gable runs along x: it faces z)
+				var gable := MeshInstance3D.new()
+				var pr := PrismMesh.new()
+				pr.size = Vector3(maxf(bb.size.x, bb.size.z) - 0.6, apex - base_y, 0.05)
+				gable.mesh = pr
+				gable.material_override = _mark_mat("whitewash")
+				var c := bb.get_center()
+				var inward := -signf(c.z if across_x else c.x) * 0.12
+				gable.position = Vector3(c.x, (base_y + apex) * 0.5, c.z + inward) if across_x else Vector3(c.x + inward, (base_y + apex) * 0.5, c.z)
+				if not across_x:
+					gable.rotation.y = PI * 0.5
+				_role_mark.add_child(gable)
+		"ambar":
+			if not ridge.is_empty():
+				_ridge_cap(ridge, _mark_mat("oxide"))
+			for p in pieces:
+				if p.tag == "door" and p.mesh:
+					# white braces in a Z on each leaf (a rail across, a diagonal), on the leaf itself so
+					# they swing with it
+					var bb := p.mesh_res.get_aabb()
+					var face := Vector3(bb.get_center().x, bb.get_center().y, bb.end.z + 0.02)
+					var rail := MeshInstance3D.new()
+					var rm := BoxMesh.new()
+					rm.size = Vector3(bb.size.x * 0.9, 0.1, 0.03)
+					rail.mesh = rm
+					rail.material_override = _mark_mat("whitewash")
+					rail.position = face
+					p.mesh.add_child(rail)
+					var brace := MeshInstance3D.new()
+					var bm := BoxMesh.new()
+					bm.size = Vector3(0.1, Vector2(bb.size.x, bb.size.y).length() * 0.85, 0.03)
+					brace.mesh = bm
+					brace.material_override = _mark_mat("whitewash")
+					brace.rotation.z = atan2(bb.size.x, bb.size.y) * (1.0 if bb.get_center().x + p.xf.origin.x > 0.0 else -1.0)
+					brace.position = face
+					p.mesh.add_child(brace)
+		"silahlik":
+			if not ridge.is_empty():
+				var a: Vector3 = ridge[0]
+				var b: Vector3 = ridge[1]
+				var end := a if a.x + a.z > b.x + b.z else b
+				var staff := MeshInstance3D.new()
+				var sm := CylinderMesh.new()
+				sm.top_radius = 0.035
+				sm.bottom_radius = 0.05
+				sm.height = 3.0
+				sm.radial_segments = 6
+				sm.rings = 1
+				staff.mesh = sm
+				staff.material_override = material("dark")
+				staff.position = end + Vector3(0, 1.4, 0)
+				_role_mark.add_child(staff)
+				var flag := MeshInstance3D.new()
+				var q := QuadMesh.new()
+				q.size = Vector2(1.5, 1.0)
+				q.subdivide_width = 6
+				flag.mesh = q
+				flag.material_override = _flag_material()
+				# (out from the staff on the side away from the ridge, so it hangs clear of the roof)
+				var out := (end - (b if end == a else a)).normalized()
+				flag.position = end + Vector3(0, 2.35, 0) + out * 0.78
+				flag.basis = Basis(Vector3.UP, atan2(-out.z, out.x))
+				_role_mark.add_child(flag)
+	for c in _role_mark.get_children():
+		if c is GeometryInstance3D:
+			(c as GeometryInstance3D).cast_shadow = _shadow()
+	_paint_marked_pieces()
+
+
+## The pieces of the model itself that are repainted: the smithy's coals glowing, the store's doors.
+func _paint_marked_pieces() -> void:
+	for p in pieces:
+		if not p.alive or p.charred or p.mesh == null:
+			continue
+		if kind == "demirci" and p.tag == "coals":
+			p.mesh.material_override = _mark_mat("ember")
+		elif kind == "ambar" and p.tag == "door":
+			p.mesh.material_override = _mark_mat("oxblood")
+
+
+## The roof's ridge (two ends, in the building), or [] if it has none (a shed, a hipped roof): the
+## highest long, narrow piece of it (the ridge board), its finials and chimney aside.
+func _ridge() -> Array:
+	var best: Piece = null
+	for p in pieces:
+		if p.tag in ["finial", "chimneytop", "chimney", "antlers", "flag", "sign", "barge", "lamp"]:
+			continue
+		var long := maxf(p.ext.x, p.ext.z)
+		var aabb_long := maxf(p.aabb.size.x, p.aabb.size.z)
+		var narrow := minf(p.aabb.size.x, p.aabb.size.z)
+		if aabb_long > 2.5 and narrow < 0.7 and long > 2.0 and (best == null or p.aabb.end.y > best.aabb.end.y):
+			best = p
+	if best == null or best.aabb.end.y < 3.5:
+		return []
+	var hi := best.aabb
+	var c := hi.get_center()
+	if hi.size.x > hi.size.z:
+		return [Vector3(hi.position.x + 0.1, hi.end.y, c.z), Vector3(hi.end.x - 0.1, hi.end.y, c.z)]
+	return [Vector3(c.x, hi.end.y, hi.position.z + 0.1), Vector3(c.x, hi.end.y, hi.end.z - 0.1)]
+
+
+## Capping boards along the ridge, an inverted V, in `mat`.
+func _ridge_cap(ridge: Array, mat: Material) -> void:
+	var a: Vector3 = ridge[0]
+	var b: Vector3 = ridge[1]
+	var along := b - a
+	var yaw := atan2(-along.z, along.x)
+	for side in [-1.0, 1.0]:
+		var board := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(along.length(), 0.04, 0.34)
+		board.mesh = bm
+		board.material_override = mat
+		board.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, side * 0.6)
+		board.position = (a + b) * 0.5 + Basis(Vector3.UP, yaw) * Vector3(0, -0.04, side * 0.13)
+		_role_mark.add_child(board)
+
+
+static func _mark_mat(what: String) -> Material:
+	if not _mark_mats.has(what):
+		var m := StandardMaterial3D.new()
+		match what:
+			"iron": # sheet iron, black with soot
+				m.albedo_color = Color(0.09, 0.09, 0.095)
+				m.metallic = 0.45
+				m.roughness = 0.62
+			"whitewash": # lime-washed boards, a little dirty
+				m.albedo_color = Color(0.74, 0.72, 0.64)
+				m.roughness = 0.95
+			"oxide": # red-oxide paint on iron, faded
+				m.albedo_color = Color(0.4, 0.15, 0.1)
+				m.roughness = 0.8
+			"oxblood": # a barn's painted doors
+				m.albedo_color = Color(0.36, 0.11, 0.08)
+				m.roughness = 0.85
+			"ember": # coals alight
+				m.albedo_color = Color(0.2, 0.06, 0.02)
+				m.emission_enabled = true
+				m.emission = Color(1.0, 0.36, 0.08)
+				m.emission_energy_multiplier = 2.2
+				m.roughness = 1.0
+		_mark_mats[what] = m
+	return _mark_mats[what]
+
+
+## Bunting: white, a blue saltire, stirring in the wind (weather_wind) along its fly.
+static func _flag_material() -> ShaderMaterial:
+	if _flag_shader == null:
+		_flag_shader = Shader.new()
+		_flag_shader.code = """shader_type spatial;
+render_mode cull_disabled;
+global uniform vec3 weather_wind;
+void vertex() {
+	float fly = UV.x; // 0 at the staff
+	float w = length(weather_wind.xz);
+	float wave = sin(TIME * (2.2 + w * 0.4) - fly * 6.0) * (0.05 + w * 0.012) * fly;
+	VERTEX.z += wave;
+	VERTEX.y -= fly * fly * 0.18 / (1.0 + w * 0.5); // (it droops in still air)
+	NORMAL = normalize(vec3(-cos(TIME * (2.2 + w * 0.4) - fly * 6.0) * 0.3 * fly, 0.0, 1.0));
+}
+void fragment() {
+	vec2 uv = UV - 0.5;
+	float d = min(abs(uv.x - uv.y), abs(uv.x + uv.y)); // (corner to corner)
+	vec3 c = mix(vec3(0.78, 0.77, 0.72), vec3(0.12, 0.2, 0.42), smoothstep(0.08, 0.065, d));
+	ALBEDO = c;
+	ROUGHNESS = 0.9;
+	BACKLIGHT = c * 0.35;
+}"""
+	var m := ShaderMaterial.new()
+	m.shader = _flag_shader
+	return m
 
 
 # --- Mending ----------------------------------------------------------------------------------------
@@ -1394,9 +1652,9 @@ func set_hearth(on: bool) -> void:
 		(_chimney.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.15, 0.1, 0.15)
 		(_chimney.process_material as ParticleProcessMaterial).initial_velocity_min = 0.6
 		(_chimney.process_material as ParticleProcessMaterial).initial_velocity_max = 1.2
-		# wood smoke: a bluish grey thinning to nothing
-		(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.32, 0.33, 0.36, 0.0),
-			Color(0.42, 0.43, 0.46, 0.28), Color(0.55, 0.56, 0.58, 0.1), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.12, 0.5, 1.0])
+		# wood smoke: a soft grey thinning to nothing (a little greyer than the blue it was)
+		(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.34, 0.34, 0.35, 0.0),
+			Color(0.43, 0.43, 0.44, 0.28), Color(0.54, 0.54, 0.55, 0.1), Color(0.6, 0.6, 0.6, 0.0)], [0.0, 0.12, 0.5, 1.0])
 		# (a thin wisp, not a cloud: smaller, fainter, fewer)
 		(_chimney.process_material as ParticleProcessMaterial).scale_min = 0.55
 		(_chimney.process_material as ParticleProcessMaterial).scale_max = 1.0
@@ -1414,8 +1672,8 @@ func set_hearth(on: bool) -> void:
 		if coal != _coal_smoke:
 			_coal_smoke = coal
 			(_chimney.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.12, 0.12, 0.12, 0.0),
-				Color(0.18, 0.18, 0.19, 0.42), Color(0.32, 0.32, 0.33, 0.18), Color(0.45, 0.45, 0.46, 0.0)], [0.0, 0.12, 0.5, 1.0]) if coal else FireFx._ramp([Color(0.32, 0.33, 0.36, 0.0),
-				Color(0.42, 0.43, 0.46, 0.28), Color(0.55, 0.56, 0.58, 0.1), Color(0.6, 0.6, 0.62, 0.0)], [0.0, 0.12, 0.5, 1.0])
+				Color(0.18, 0.18, 0.19, 0.42), Color(0.32, 0.32, 0.33, 0.18), Color(0.45, 0.45, 0.46, 0.0)], [0.0, 0.12, 0.5, 1.0]) if coal else FireFx._ramp([Color(0.34, 0.34, 0.35, 0.0),
+				Color(0.43, 0.43, 0.44, 0.28), Color(0.54, 0.54, 0.55, 0.1), Color(0.6, 0.6, 0.6, 0.0)], [0.0, 0.12, 0.5, 1.0])
 
 
 ## Its chimney smoking.
@@ -2182,6 +2440,8 @@ static func _sink_later(rb: RigidBody3D, after: float) -> void:
 
 func _to_ruin() -> void:
 	state = "ruin"
+	if _role_mark:
+		_role_mark.visible = false
 	ruined.emit(self)
 
 

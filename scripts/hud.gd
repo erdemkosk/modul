@@ -29,14 +29,15 @@ const SPEEDS := [1.0, 2.0, 4.0]
 ## their own.
 const KEYS := [
 	["Kamera", [[["W", "A", "S", "D"], "kaydır"], [["Shift"], "hızlı kaydır"], [["Q", "E"], "döndür (orta tuşla da)"],
-		[["Tekerlek"], "yakınlaş"], [["H"], "depoya dön"], [["Harita"], "tıklanan yere git"]]],
-	["Bina", [[["Tab"], "bina grubu"], [["1", "–", "6"], "bina seç"], [["Sol tık"], "koy"], [["Shift", "+", "tık"], "üst üste koy"],
-		[["R", "/", "Shift", "R"], "çevir"], [["Alt"], "hizasız koy"], [["Sağ tık", "/", "Esc"], "vazgeç"]]],
-	["Emirler", [[["Sürükle"], "kesim, tuzak, mayın alanı"], [["Çizgi"], "hendek: boştakiler kazar"], [["Sağ tık"], "işareti kaldır"]]],
+		[["Tekerlek"], "yakınlaş"], [["H"], "depoya dön"], [["Home"], "seçileni izle"], [["Harita"], "tıklanan yere git"]]],
+	["Bina", [[["Tab"], "bina grubu, sonra 1–6 bina seçer"], [["1", "–", "6"], "bina seç (Tab'dan, sekmeden sonra)"], [["Sol tık"], "koy"], [["Shift", "+", "tık"], "üst üste koy"],
+		[["Q", "/", "E"], "çevir"], [["Shift", "+", "Tekerlek"], "çevir"], [["Alt"], "hizasız koy"], [["Sağ tık", "/", "Esc"], "vazgeç"]]],
+	["Emirler", [[["Sürükle"], "kesim, tuzak, mayın alanı"], [["Çizgi"], "hendek: boştakiler kazar"], [["Sağ tık"], "işareti kaldır (kimse seçili değilken)"]]],
 	["Seçim", [[["Sol tık"], "bina ya da kasabalı"], [["Shift", "+", "tık"], "birkaç kasabalı"], [["Sürükle"], "kutuyla seç"],
-		[["V"], "bütün milis"], [["Sağ tık"], "işyerine ata"]]],
-	["Emirde", [[["R"], "emrine al, bırak"], [["Sağ tık"], "git, saldır, gir · kum torbası, hendek, sur: siper al (imleç kalkan olur)"], [["Sağ sürükle"], "sıraya diz, siper arar"],
-		[["G"], "milisi topla"], [["M"], "milis yap"], [["L"], "fener"]]],
+		[["Ctrl", "+", "1–9"], "seçilenleri gruba al"], [["1–9"], "grubu seç · iki kez: oraya git"],
+		[["V"], "bütün milis"], [["Sağ tık"], "işyerine ata (emirde kimse yokken)"]]],
+	["Emirde", [[["R"], "seçilenleri emre al, bırak"], [["Sağ tık"], "imleçte yazanı yapar: saldır, ara, esir al, saklan, silah al, siper al, git"], [["Sağ sürükle"], "sıraya diz, siper arar"],
+		[["M"], "milis yap: alarmda kendisi silahlanır"], [["L"], "fener"]]],
 	["Bina kartı", [[["O"], "onar"], [["Del"], "yık"]]],
 	["Defterler", [[["K"], "kasabalılar"], [["T"], "araştırma"], [["J"], "günlük"], [["F1"], "bu kart"]]],
 	["Zaman", [[["Boşluk"], "duraklat (emir verilir)"], [["+", "/", "−"], "hız"], [["F5"], "kaydet"], [["F9"], "yükle"], [["Esc"], "menü"]]],
@@ -49,6 +50,7 @@ const COVER := [["Kütük duvar", "0,22"], ["Kum torbası", "0,28"], ["Hendek", 
 
 var game: Node
 var category := 0
+var build_keys := false ## Tab pressed or a tab clicked: the numbers pick a building of the group, not the folk kept under them (Main)
 
 var _res: Dictionary = {} ## good -> [row, amount Label, change Label]
 const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot", "komur", "demir"]
@@ -311,9 +313,12 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 	elif fill.y > 0 and fill.x >= fill.y * 0.85:
 		line = "Depolar dolmak üzere"
 	if game.raids.camp_known:
-		line = "FİRARİ KAMPI (%d kişi): milisi TOPLA, kampa sağ tıkla" % game.raids.camp_men.size()
+		line = "FİRARİ KAMPI (%d kişi): milisi seç, R ile emre al, kampa sağ tıkla" % game.raids.camp_men.size()
 		bad = true
-	_store_line.visible = line != ""
+	_store_line.visible = line != "" and _brass.visible
+	_state_head.text = ("Durum !" if bad else "Durum") + (" ▴" if _brass.visible else " ▾")
+	_state_head.add_theme_color_override("font_color", Ui.P_RED if bad else Ui.INK)
+	_state_head.tooltip_text = "Depoların doluluğu, tarafların gözünde kasaba" + ("\n" + line if line != "" else "")
 	_store_line.text = line + ("   ▸ GÖSTER" if bad else "")
 	var lc: Color = Ui.P_RED if bad else Ui.P_INK
 	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
@@ -323,6 +328,8 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 
 var _depo_fill: Label
 var _depo_bar: ProgressBar
+var _brass: PanelContainer ## the plate itself: folded away until DURUM is pressed (the screen kept clear)
+var _state_head: Button ## DURUM ▾ on the bar: opens the plate; a red mark on it when something's wrong
 var _side_marks := {} ## side -> its standing on the brass plate
 
 
@@ -354,20 +361,24 @@ func _stores_plate() -> void:
 	_store_line.pressed.connect(func() -> void: game.show_trouble())
 	add_child(_store_line)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 8)
 	p.add_child(row)
 	var pair := HBoxContainer.new() # (the two that open something, side by side)
-	pair.add_theme_constant_override("separation", 6)
+	pair.add_theme_constant_override("separation", 4)
 	row.add_child(pair)
 	_goods_head = _nav_button("Kaynaklar ▾", func() -> void: pass)
 	_goods_head.tooltip_text = "Depolardaki odun, taş, yiyecek, silahlar...: üzerine gel"
 	pair.add_child(_goods_head)
-	var who := _nav_button("Kasabalılar", func() -> void: toggle_people())
+	var who := _nav_button("Halk", func() -> void: toggle_people())
 	who.tooltip_text = "Herkesin becerileri ve hangi işe öncelikle verileceği (K)"
 	pair.add_child(who)
 	var tech := _nav_button("Araştırma", func() -> void: toggle_tech())
 	tech.tooltip_text = "Araştırma ağacı: ne bulunabilir, ne açar, ne kadar kaldı (T)"
 	pair.add_child(tech)
+	_state_head = _nav_button("Durum ▾", func() -> void:
+		_brass.visible = not _brass.visible
+		_t = 1.0) # (redrawn on the next frame)
+	pair.add_child(_state_head)
 	var book := _nav_button("Günlük", func() -> void: toggle_log())
 	book.tooltip_text = "Olanların hepsi, gün gün: kaçırdığın haberler, telgraflar, baskınlar (J)"
 	pair.add_child(book)
@@ -385,6 +396,8 @@ func _brass_plate() -> void:
 	p.offset_left = 22
 	p.offset_top = 80
 	p.tooltip_text = "Bütün depoların aldığı ve içindeki yük; Merkez ve Özgür Kordal'ın gözünde kasaba (−30 ve altı düşman, +30 ve üstü dost)"
+	p.visible = false
+	_brass = p
 	add_child(p)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -580,7 +593,9 @@ func _build_bar() -> void:
 		t.add_theme_font_size_override("font_size", 14)
 		t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.45))
 		t.add_theme_constant_override("outline_size", 2)
-		t.pressed.connect(func() -> void: show_category(i))
+		t.pressed.connect(func() -> void:
+			show_category(i)
+			build_keys = true)
 		_tab_row.add_child(t)
 		_tabs.append(t)
 	p.resized.connect(_place_tabs)
@@ -1100,10 +1115,9 @@ func _make_card() -> void:
 	col.add_child(_card_folk)
 	_btn.release = _add(_card_folk, "İŞTEN AL", func() -> void: game.release_selected(), "İşyerinden çıkar: taşır, inşa eder")
 	_btn.militia = _add(_card_folk, "MİLİS YAP", func() -> void: game.toggle_militia(), "Tehlike çanında silahlıktan silah alıp mevziye geçer (M)")
-	_btn.draft = _add(_card_folk, "TOPLA", func() -> void: game.toggle_draft(), "Emrine al: sağ tık mevzi, hayduda sağ tık hedef (G)")
 	_btn.lantern = _add(_card_folk, "FENERİ SÖNDÜR", func() -> void: game.toggle_lantern(), "Karanlıkta görünmez olur ama az görür (L)")
 	_btn.folk_look = _add(_card_folk, "ODAKLAN", func() -> void: game.focus_selected(), "Kamerayı ona götür")
-	_btn.ctl = _add(_card_folk, "KONTROL (R)", func() -> void: game.toggle_control(), "Emrine al: işini bırakır, sağ tıkla gider, saldırır, binaya girer (R)")
+	_btn.ctl = _add(_card_folk, "EMRE AL (R)", func() -> void: game.toggle_control(), "Emre al: işini bırakır; silahlı mevzi tutar ve ateş eder, silahsız yakında silah ya da balta kapar. Sağ tık ne yapacağını imleçte yazar (R)")
 	_btn.ctl_gun = _add(_card_folk, "SİLAH AL", func() -> void: game.control_order("weapon"), "En yakın silahlıktan ya da yerdeki tüfekten silah alır")
 	_btn.ctl_cover = _add(_card_folk, "SİPER", func() -> void: game.control_order("cover"), "En yakın sipere geçer")
 	_btn.ctl_cover.visible = false # (a right-click on the cover itself does it: the pointer turns a shield)
@@ -1292,8 +1306,8 @@ func _make_placing() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	_placing_plate.add_child(row)
-	row.add_child(_iron_button("↺  ÇEVİR", func() -> void: game.rotate_ghost(-15.0), "Sola çevir (Q)"))
-	row.add_child(_iron_button("ÇEVİR  ↻", func() -> void: game.rotate_ghost(15.0), "Sağa çevir (R)"))
+	row.add_child(_iron_button("↺  ÇEVİR", func() -> void: game.rotate_ghost(-15.0), "Sola çevir (Q, Shift + tekerlek)"))
+	row.add_child(_iron_button("ÇEVİR  ↻", func() -> void: game.rotate_ghost(15.0), "Sağa çevir (E, Shift + tekerlek)"))
 	row.add_child(_iron_button("VAZGEÇ", func() -> void: game.stop_placing(), "Koymaktan vazgeç (sağ tık / Esc)"))
 	_place_make = HBoxContainer.new()
 	_place_make.add_theme_constant_override("separation", 4)
@@ -2756,11 +2770,12 @@ func _folk_card(v: Villager) -> void:
 	(_btn.release as Button).visible = v.workplace != null and many.size() <= 1
 	(_btn.militia as Button).visible = not v.is_child and not guard
 	(_btn.militia as Button).text = "MİLİSTEN ÇIKAR" if v.militia else "MİLİS YAP"
-	(_btn.draft as Button).visible = v.militia and not v.down
-	(_btn.draft as Button).text = "BIRAK" if v.drafted else "TOPLA"
+	# one button for all chosen: EMRE AL while any of them isn't in hand, BIRAK once they all are
 	var held: bool = game.village.controlled(v)
-	(_btn.ctl as Button).visible = not v.is_child and not v.down and many.size() <= 1
-	(_btn.ctl as Button).text = "BIRAK (R)" if held else "KONTROL (R)"
+	var all_held := many.all(func(o: Villager) -> bool: return o.is_child or o.down or game.village.controlled(o))
+	(_btn.ctl as Button).visible = not v.down and many.any(func(o: Villager) -> bool: return not o.is_child and not o.down)
+	(_btn.ctl as Button).text = "BIRAK (R)" if all_held and held else "EMRE AL (R)"
+	(_btn.ctl as Button).tooltip_text = "Bırak: yine kendi işine döner (R)" if all_held and held else "Emre al: işini bırakır; silahlı mevzi tutar ve ateş eder, silahsız yakında silah ya da balta kapar. Sağ tık ne yapacağını imleçte yazar (R)"
 	(_btn.ctl as Button).add_theme_color_override("font_color", Ui.P_BLUE if held else Ui.P_INK)
 	for key in ["ctl_gun", "ctl_hide", "ctl_carry"]: # (cover: a right-click on it)
 		(_btn[key] as Button).visible = held and many.size() <= 1
@@ -2783,7 +2798,7 @@ func _folk_card(v: Villager) -> void:
 	if v.down:
 		lines.append("YARALI, YERDE: %d sn içinde eve taşınmazsa ölecek" % int(v.bleed))
 	if v.militia:
-		lines.append("Milis (%s)%s · %s: %d · Fener: %s" % [{"rifle": "tüfekçi", "bow": "okçu"}.get(v.weapon, "silahı raftan"), " TOPLANDI" if v.drafted else "",
+		lines.append("Milis (%s)%s · %s: %d · Fener: %s" % [{"rifle": "tüfekçi", "bow": "okçu"}.get(v.weapon, "silahı raftan"), " · EMİRDE" if held else "",
 			"Ok" if v.held == "bow" else "Fişek", v.ammo, {"": "oto", "off": "sönük", "on": "yanık"}[v.lantern_mode]])
 		# its cover against the nearest foe: what shields it, and how hard it is to hit
 		var foe: Villager = game.raids.nearest_raider(v.position, 160.0)
@@ -2793,6 +2808,8 @@ func _folk_card(v: Villager) -> void:
 			lines.append("Siper: %s · düşman isabeti %%%d  ·  bizim isabetimiz %%%d" % [str(cv[1]) if str(cv[1]) != "" else "açıkta", roundi(float(cv[0]) * 100.0), roundi(float(back[0]) * 100.0)])
 		elif v.in_cover:
 			lines.append("Siperde")
+	if held and not v.militia:
+		lines.append("EMİRDE · " + ("silahlı" if v.armed else ("baltalı" if v.has_meta("axe") else "silahsız")))
 	if v.carry_n > 0:
 		lines.append("Taşıdığı: %d %s" % [v.carry_n, str(BuildingDefs.RES_NAMES.get(v.carry_res, v.carry_res)).to_lower()])
 	if many.size() > 1:
@@ -2802,4 +2819,4 @@ func _folk_card(v: Villager) -> void:
 		lines.append("Seçili: " + ", ".join(names))
 	_card_lines.text = "\n".join(lines).replace(" · ", ", ")
 	_card_kind.text = "NÜFUS KÂĞIDI" if many.size() <= 1 else "BİRLİK"
-	_card.tooltip_text = "Toplandı: yere sağ tık mevzi (siper arar), hayduda sağ tık hedef." if v.drafted else "Bir işyerine, tarlaya ya da silahlığa sağ tıkla: oraya ata. Shift+tık: birkaç kişi seç."
+	_card.tooltip_text = "Emirde: sağ tık imleçte yazanı yapar (saldır, ara, saklan, siper al, git). R: bırak." if held else "Bir işyerine, tarlaya ya da silahlığa sağ tıkla: oraya ata. R: emre al. Ctrl+1–9: gruba al."

@@ -91,6 +91,12 @@ var _tool_kind := ""
 var _body: Townsfolk ## the rigged townsman (null: the old jointed figure)
 var look_seed := 0 ## what its body was dressed from (Portraits builds it again from this)
 var look_kind := "man"
+var uniform := "" ## a side's soldier: "merkez", "kordal" (by tunic_color); "" its own clothes
+var seat := -1.0 ## sat down at what it's doing: the seat's height over the ground (-1 on its feet)
+var _run := 1.0 ## (a child at play runs)
+var _talk_turn := -1 ## the turn of the talk it last spoke in
+var _talk_look := Vector3.INF ## (in a talk: whoever's speaking, to look at)
+var _saw_foe := false ## (it has called out the band coming)
 # --- the defence
 var militia := false ## takes a rifle from the armoury when the alarm goes
 var drafted := false ## under the player's orders (skipped by Village._assign)
@@ -482,7 +488,8 @@ var _speed_now := 0.0 ## m/s over the ground this frame
 var _rifle := false
 
 ## The tool in the right hand for each kind of work.
-const TOOLS := {"mow": "scythe", "eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet"}
+const TOOLS := {"mow": "scythe", "eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet",
+	"fish": "rod", "pipe": "pipe", "whittle": "knife", "drink": "cup"}
 
 
 ## Room kept between folk: no one walks through another. Everyone on their feet out in the open is
@@ -494,6 +501,11 @@ static var _grid_frame := -1
 const ROOM := 0.62 ## m between two, at least
 var _pressed := 0.0 ## s it has been pressed up against someone while trying to walk on
 var _let_by := 0.0 ## s left that it slips past the others (a jam it couldn't step out of)
+## One standing isn't slid over the ground: how far it's been shouldered is gathered up, and once
+## it's worth a step it takes one, that way, the feet going (Townsfolk.side_step).
+var _nudge := Vector2.ZERO
+var _step_v := Vector2.ZERO ## m/s of the step it's taking
+var _stepping := 0.0 ## s left of it
 
 
 func _enter_tree() -> void:
@@ -509,7 +521,30 @@ func _keeps_room() -> bool:
 	return not dead and not down and not sleeping and inside == null and carried_by == null and not has_cart and visible and is_inside_tree()
 
 
+## A step aside under way, or one begun once it's been shouldered far enough (a few centimetres
+## and it just stands; more and it moves its feet).
+func _step_aside(dt: float, walking: bool) -> void:
+	if walking or seat >= 0.0:
+		_nudge = Vector2.ZERO
+		_stepping = 0.0
+		return
+	if _stepping > 0.0:
+		_stepping -= dt
+		var to := position + Vector3(_step_v.x, 0, _step_v.y) * dt
+		if nav.is_open(to) or not nav.is_open(position):
+			position.x = to.x
+			position.z = to.z
+			position.y = village.ground_at(position) if village.has_method("ground_at") else nav.height(position.x, position.z)
+		return
+	if _nudge.length() > 0.07:
+		_stepping = clampf(_nudge.length() / 0.6, 0.35, 0.7) # (a step at an easy pace)
+		_step_v = _nudge / _stepping
+		_nudge = Vector2.ZERO
+
+
 func _make_room(dt: float, walking: bool) -> void:
+	if seat >= 0.0:
+		return # (sat down: the others go round it)
 	if _let_by > 0.0:
 		_let_by -= dt
 		return
@@ -556,6 +591,9 @@ func _make_room(dt: float, walking: bool) -> void:
 			_let_by = 1.2
 			return
 	var by := push * minf(dt * (6.0 if walking else 2.5), 0.5)
+	if not walking:
+		_nudge += by # (stepped, not slid: _step_aside)
+		return
 	var to := position + Vector3(by.x, 0, by.y)
 	if not nav.is_open(to) and nav.is_open(position) and walking:
 		_pressed += dt * 2.0 # (a wall behind it: the jam ends sooner)
@@ -605,11 +643,17 @@ func _build_look() -> void:
 			rng.randomize()
 			look_seed = rng.seed if rng.seed != 0 else 1
 		rng.seed = look_seed
-		look_kind = "outlaw" if team == 1 else ("child" if is_child else ("woman" if female else "man"))
+		# a side's soldier (the relief, a convoy's, a band of them) in that side's uniform
+		if tunic_color.is_equal_approx(Color(0.36, 0.38, 0.27)):
+			uniform = "merkez"
+		elif tunic_color.is_equal_approx(Color(0.3, 0.1, 0.08)):
+			uniform = "kordal"
+		look_kind = uniform if uniform != "" else ("outlaw" if team == 1 else ("child" if is_child else ("woman" if female else "man")))
 		_body = Townsfolk.new()
 		add_child(_body)
 		_body.build(look_kind, rng)
 		_tunic = _body.coat_material
+		_body.pose.ground = func(at: Vector3) -> float: return nav.height(at.x, at.z) if nav else at.y
 		return
 	var parts := _parts("outlaw" if team == 1 else FOLK[randi() % FOLK.size()])
 	if parts.has("Torso") and parts.has("ArmL"):
@@ -1053,6 +1097,8 @@ func _cart_load(res: String, n: int) -> Node3D:
 
 
 func give(new_plan: Array, what: String, for_node: Node = null, is_idle := false) -> void:
+	if what == "Saklanıyor" and job != what and randf() < 0.3:
+		call_out(["Saklanın!", "Herkes içeri!", "Çocukları alın!"])
 	plan = new_plan
 	job = what
 	target = for_node
@@ -1201,7 +1247,7 @@ func _body_mood(walking: bool) -> void:
 						who = o
 			if who and (_anim == "chat" or randf() < 0.5):
 				_look_at = who.position + Vector3.UP * 1.55
-	pose.look_at = _look_at
+	pose.look_at = _talk_look if _talk_look != Vector3.INF else _look_at
 	var leg_hurt := "tek_bacak" in scars or wounds.any(func(w: Dictionary) -> bool: return str(w.part).ends_with("bacak"))
 	pose.limp = move_toward(pose.limp, 1.0 if leg_hurt else (0.4 if hp < max_hp * 0.5 else 0.0), 0.02)
 	var freezing: bool = village.weather.temperature < -2.0 and not sleeping and inside == null and not has_trait("sibir")
@@ -1342,6 +1388,18 @@ func _go_down() -> void:
 	bleed = 120.0
 	job = "Yaralı, yerde"
 	drafted = false
+	if team == 0:
+		# whoever's nearest on their feet calls it out
+		var near: Villager = null
+		var bd := 20.0
+		for o: Villager in village.villagers:
+			if o != self and not o.dead and not o.down and o.visible and not o.is_child:
+				var d := o.position.distance_to(position)
+				if d < bd:
+					bd = d
+					near = o
+		if near:
+			near.call_out(["Yaralı var!", "%s vuruldu!" % display_name.split(" ")[0], "Sedye! Yaralı var!", "Vurdular, yardım edin!"])
 	if _lantern:
 		_lantern.visible = false
 	_hold("")
@@ -1442,8 +1500,18 @@ func _process(dt: float) -> void:
 			wounds.clear() # (mended: what's left of it is a scar, if anything)
 	if sleeping:
 		return
+	seat = -1.0
+	_run = 1.0
+	_talk_look = Vector3.INF
 	if _keeps_room():
-		_make_room(dt, not _path.is_empty() or (not plan.is_empty() and str(plan[0].t) == "step"))
+		var moving := not _path.is_empty() or (not plan.is_empty() and str(plan[0].t) in ["step", "circle"])
+		_make_room(dt, moving)
+		_step_aside(dt, moving)
+	if Engine.get_process_frames() % 30 == get_instance_id() % 30:
+		if _body and team == 0 and uniform == "":
+			_body.set_militia(militia and not is_child)
+		if _saw_foe and (village.raids == null or not village.raids.active):
+			_saw_foe = false
 	_lantern_check()
 	if plan.is_empty():
 		_anim = "idle"
@@ -1465,22 +1533,30 @@ func _process(dt: float) -> void:
 				# it stays where it is and thinks again in a while
 				abort()
 				give([{"t": "work", "time": STAY_IN, "anim": "idle"}], "Kapılar kilitli, burada bekliyor", null, true)
-			elif _walk(dt):
-				plan.pop_front()
-				_path = PackedVector3Array()
+			else:
+				_run = 1.5 if bool(step.get("run", false)) else 1.0
+				if _walk(dt):
+					plan.pop_front()
+					_path = PackedVector3Array()
 		"work":
 			_anim = str(step.get("anim", "build"))
+			seat = float(step.seat) if step.has("seat") else (0.0 if _anim in ["sit", "eat"] else -1.0)
+			var face_now: Vector3 = step.get("face", Vector3.INF)
+			if step.has("talk"):
+				var f := _talk(step)
+				if f != Vector3.INF and not bool(step.talk.get("keep_face", false)):
+					face_now = f
 			_hold(TOOLS.get(_anim, ""))
 			# The blows heard: an axe on wood, a pick and a chisel on stone, the hammer on a site.
-			var period: float = {"chop": 1.37, "limb": 1.2, "mine": 1.57, "chisel": 0.45, "build": 0.9}.get(_anim, 0.0)
+			var period: float = BEATS.get(_anim, 0.0)
 			if period > 0.0:
 				_hit_t -= delta_safe(dt)
 				if _hit_t <= 0.0:
 					_hit_t = period
 					var pitch: float = {"chop": 1.0, "limb": 1.2, "mine": 1.7, "chisel": 2.0, "build": 1.4}[_anim]
 					Ambience.knock(global_position + Vector3.UP * 1.0 - global_basis.z * 0.6, pitch)
-			if step.has("face"):
-				_face(step.face, dt)
+			if face_now != Vector3.INF:
+				_face(face_now, dt)
 			var sk := work_skill()
 			var pace := knack(sk)
 			learn(sk, dt)
@@ -1505,6 +1581,12 @@ func _process(dt: float) -> void:
 			_fight(step, dt)
 		"hold":
 			_hold_post(step, dt)
+		"chase":
+			_chase(step, dt)
+		"flee":
+			_flee(step, dt)
+		"circle":
+			_circle(step, dt)
 		"step":
 			var to: Vector3 = step.to
 			var d := Vector2(to.x - position.x, to.z - position.z)
@@ -1526,6 +1608,158 @@ func _process(dt: float) -> void:
 			_animate(dt, true)
 		_:
 			plan.pop_front()
+
+
+## A word with others (`talk`: {folk, t0, seed}, the one dictionary shared by all of them): those
+## there turn to whoever's speaking and take turns at it, a few seconds each, the others hearing
+## them out and nodding; now and then the one speaking says something aloud (FolkTalk, FolkLines).
+## Waits for the other to come up. Where to face (INF: as the step says).
+func _talk(step: Dictionary) -> Vector3:
+	var talk: Dictionary = step.talk
+	var reach := float(talk.get("reach", 3.2))
+	var here: Array[Villager] = []
+	for o: Variant in talk.folk:
+		if not is_instance_valid(o):
+			continue
+		var w := o as Villager
+		if w.dead or w.sleeping or w.plan.is_empty() or not is_same(w.plan[0].get("talk"), talk):
+			continue
+		if w == self or w.position.distance_to(position) < reach:
+			here.append(w)
+	if here.size() < 2:
+		for o: Variant in talk.folk:
+			if is_instance_valid(o) and o != self and not (o as Villager).dead:
+				return (o as Villager).position # (looking out for the other, coming over)
+		return Vector3.INF
+	here.sort_custom(func(a: Villager, b: Villager) -> bool: return a.get_instance_id() < b.get_instance_id())
+	var span := 3.6 + float(int(talk.seed) % 3) * 0.8
+	var turn := int((float(village.clock) - float(talk.t0)) / span)
+	var speaker: Villager = here[(turn * 7 + int(talk.seed)) % here.size()]
+	if speaker == self:
+		_anim = "chat"
+		var mid := Vector3.ZERO
+		var other: Villager = null
+		for o in here:
+			if o != self:
+				mid += o.position
+				other = o
+		mid /= float(here.size() - 1)
+		_talk_look = mid + Vector3.UP * 1.45
+		if _talk_turn != turn:
+			_talk_turn = turn
+			if randf() < 0.4:
+				FolkTalk.say(self, FolkLines.line(self, other, str(talk.get("where", ""))))
+		return mid
+	if _anim == "chat":
+		_anim = "listen" # (hearing the other out; one sat at its pipe or its cup keeps at it)
+	_talk_look = speaker.position + Vector3.UP * 1.45
+	return speaker.position
+
+
+## Called out in a fight or a fright: a short shout over its head (FolkTalk lets only a few through).
+func call_out(lines: Array) -> void:
+	if not lines.is_empty():
+		FolkTalk.say(self, str(lines.pick_random()), true)
+
+
+## Tag: after `who` (fleeing, `flee`) till it's caught, then the other's turn, once it's counted to
+## three. `left` s of the game, about `center`.
+func _chase(step: Dictionary, dt: float) -> void:
+	step.left = float(step.left) - dt * _rate()
+	var o: Variant = step.who
+	if float(step.left) <= 0.0 or not is_instance_valid(o) or (o as Villager).plan.is_empty() or str((o as Villager).plan[0].t) != "flee":
+		plan.pop_front()
+		_path = PackedVector3Array()
+		return
+	var w := o as Villager
+	if w.position.distance_to(position) < 0.9:
+		var left := float(step.left)
+		var c: Vector3 = step.center
+		var what := job
+		w.give([{"t": "work", "time": 1.6, "anim": "look", "face": position}, {"t": "chase", "who": self, "left": left, "center": c}], what, null, true)
+		give([{"t": "flee", "from": w, "left": left + 1.6, "center": c}], what, null, true)
+		return
+	if _path.is_empty() or _path_i >= _path.size() or w.position.distance_to(_chase_at) > 1.5:
+		_path = PackedVector3Array([w.position]) if _line_open(position, w.position) else nav.path_for(self, position, w.position)
+		_path_i = 0
+		_chase_at = w.position
+	if _path.is_empty():
+		_anim = "look"
+		_face(w.position, dt)
+		_animate(dt, false)
+		return
+	_run = 1.45
+	_walk(dt)
+
+
+## Tag, the one it's after: off out of reach when `from` comes close, never far from `center`.
+func _flee(step: Dictionary, dt: float) -> void:
+	step.left = float(step.left) - dt * _rate()
+	var o: Variant = step.from
+	if float(step.left) <= 0.0 or not is_instance_valid(o) or (o as Villager).dead:
+		plan.pop_front()
+		_path = PackedVector3Array()
+		return
+	var w := o as Villager
+	var running := not _path.is_empty() and _path_i < _path.size()
+	if not running and w.position.distance_to(position) < 5.0:
+		var c: Vector3 = step.center
+		var away := position - w.position
+		away.y = 0.0
+		away = away.normalized() if away.length() > 0.1 else Vector3.RIGHT
+		for k in 6:
+			var p := position + away.rotated(Vector3.UP, randf_range(-1.0, 1.0)) * randf_range(3.0, 6.0)
+			p = c + (p - c).limit_length(8.0)
+			if nav.is_open(p) and _line_open(position, p):
+				p.y = village.ground_at(p)
+				_path = PackedVector3Array([p])
+				_path_i = 0
+				running = true
+				break
+	if running:
+		_run = 1.4
+		if _walk(dt):
+			_path = PackedVector3Array()
+		return
+	_anim = "look"
+	_face(w.position, dt)
+	_animate(dt, false)
+
+
+## Nothing in the way along the straight line from `a` to `b` (a short run at play).
+func _line_open(a: Vector3, b: Vector3) -> bool:
+	for k in range(1, 6):
+		if not nav.is_open(a.lerp(b, k / 5.0)):
+			return false
+	return true
+
+
+## A ring game: round `ring.center` at `ring.r` m, all of them together the same way (`ring.w`
+## rad/s from `ring.t0`), each from its own place on the ring (`a0`).
+func _circle(step: Dictionary, dt: float) -> void:
+	step.left = float(step.left) - dt * _rate()
+	if float(step.left) <= 0.0:
+		plan.pop_front()
+		return
+	var ring: Dictionary = step.ring
+	var c: Vector3 = ring.center
+	var r := float(ring.r)
+	var w := float(ring.w)
+	var a := float(step.a0) + w * (float(village.clock) - float(ring.t0))
+	var to := c + Vector3(cos(a), 0, sin(a)) * r
+	var d := Vector2(to.x - position.x, to.z - position.z)
+	var move := minf(d.length(), 3.0 * dt)
+	if d.length() > 0.001:
+		position.x += d.x / d.length() * move
+		position.z += d.y / d.length() * move
+	position.y = village.ground_at(position)
+	var ahead := a + signf(w) * 0.35
+	_face(c + Vector3(cos(ahead), 0, sin(ahead)) * r, dt)
+	_speed_now = maxf(absf(w) * r * _rate(), move / maxf(dt, 0.001))
+	_anim = "walk"
+	_hold("")
+	_phase += dt * _speed_now * 3.2
+	_animate(dt, true)
 
 
 ## One of the town come up against a barred gate or the stakes with no way round: it stands and
@@ -1586,6 +1820,10 @@ func _walk(dt: float) -> bool:
 			_attack_t -= dt
 			if _attack_t <= 0.0:
 				_attack_t = randf_range(1.0, 1.4)
+				if not _saw_foe:
+					_saw_foe = true
+					if randf() < 0.4:
+						call_out(["Kırın şu kapıyı!", "Ambarı bulun!", "Yakın hepsini!"])
 				if bar.has("gate"):
 					(bar.gate as Gate).hit(attack)
 				else:
@@ -1625,7 +1863,7 @@ func _walk(dt: float) -> bool:
 			job = job if job.ends_with("(çamura saplandı)") else job + " (çamura saplandı)"
 	if carry_n > 0 and carry_res == "yarali":
 		speed *= 0.5 # (a body dragged: slow going)
-	speed *= _rate() * (1.1 if team == 1 else 1.0) * speed_mul
+	speed *= _rate() * (1.1 if team == 1 else 1.0) * speed_mul * _run
 	_speed_now = speed
 	var left := speed * dt
 	var moved := 0.0
@@ -1721,6 +1959,10 @@ func _hold(kind: String) -> void:
 	if _tool:
 		_tool.queue_free()
 		_tool = null
+	if _tool_left:
+		_tool_left.queue_free()
+		_tool_left = null
+	_rod_line = null
 	if _body:
 		_body.grip(null)
 	if kind == "" or (_arms.size() < 2 and _body == null):
@@ -1746,6 +1988,9 @@ func _hold(kind: String) -> void:
 		bw.material_override = wood
 		bw.position = Vector3(0, -0.06, -0.06)
 		_tool.add_child(bw)
+		return
+	if kind in ["rod", "pipe", "knife", "cup"]:
+		_small_thing(kind, wood, iron)
 		return
 	if kind == "scythe":
 		# the snath, long and bent, held by its two grips; the blade out at its foot
@@ -1781,6 +2026,58 @@ func _hold(kind: String) -> void:
 	var other: float = {"axe": 0.3, "pick": 0.36, "hoe": 0.5, "spade": 0.5}.get(kind, 0.0)
 	if other > 0.0:
 		_second_hand(Vector3(0, -other, 0))
+
+
+## What's held at one's ease: a fishing rod (its line hanging from the tip), a pipe, a knife (and
+## the stick it's whittling, in the other hand), a tin cup.
+var _tool_left: Node3D
+var _rod_line: Node3D
+
+
+func _small_thing(kind: String, wood: Material, iron: Material) -> void:
+	var dark := Building.material("dark")
+	match kind:
+		"rod":
+			_tool_part(Vector3(0.022, 2.6, 0.022), Vector3(0, -1.2, 0), wood)
+			_rod_line = Node3D.new()
+			_rod_line.position = Vector3(0, -2.48, 0)
+			_tool.add_child(_rod_line)
+			var line := MeshInstance3D.new()
+			var lm := BoxMesh.new()
+			lm.size = Vector3(0.006, 1.7, 0.006)
+			line.mesh = lm
+			var lc := StandardMaterial3D.new()
+			lc.albedo_color = Color(0.82, 0.8, 0.72)
+			line.material_override = lc
+			line.position = Vector3(0, -0.85, 0)
+			_rod_line.add_child(line)
+		"pipe":
+			_tool_part(Vector3(0.014, 0.014, 0.15), Vector3(0, -0.02, -0.07), dark)
+			_tool_part(Vector3(0.035, 0.05, 0.035), Vector3(0, 0.0, -0.15), wood)
+		"knife":
+			_tool_part(Vector3(0.02, 0.09, 0.025), Vector3(0, -0.02, 0), wood)
+			_tool_part(Vector3(0.006, 0.1, 0.022), Vector3(0, -0.11, 0), iron)
+			_tool_left = Node3D.new()
+			_tool_left.position = Vector3(0, _palm(), -0.04)
+			_hand(0).add_child(_tool_left)
+			var stick := MeshInstance3D.new()
+			var sm := BoxMesh.new()
+			sm.size = Vector3(0.03, 0.26, 0.03)
+			stick.mesh = sm
+			stick.material_override = Building.material("log")
+			stick.position = Vector3(0, -0.06, 0)
+			_tool_left.add_child(stick)
+		"cup":
+			var cup := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.04
+			cm.bottom_radius = 0.035
+			cm.height = 0.09
+			cm.radial_segments = 8
+			cup.mesh = cm
+			cup.material_override = iron
+			cup.position = Vector3(0, -0.04, -0.05)
+			_tool.add_child(cup)
 
 
 ## Where the left hand takes hold of the tool (Townsfolk.grip).
@@ -1823,6 +2120,10 @@ func _hold_post(step: Dictionary, dt: float) -> void:
 	elif raids and ranged > 0.0:
 		foe = raids.nearest_raider(position, ranged, true)
 	if foe and (ammo > 0 or not armed):
+		if not _saw_foe:
+			_saw_foe = true
+			if randf() < 0.6:
+				call_out(["Geliyorlar!", "Siper alın!", "İşte oradalar!", "Başınızı eğin!"])
 		_face(foe.position, dt * 3.0)
 		_anim = "aim"
 		_attack_t = _attack_t - dt if _aimed_at(foe.position) else maxf(_attack_t, 0.5) # (turned to it, the gun up, then the shot)
@@ -1830,12 +2131,14 @@ func _hold_post(step: Dictionary, dt: float) -> void:
 			_attack_t = randf_range(2.2, 3.0)
 			if armed:
 				ammo -= 1
+				if ammo == 0:
+					call_out(["Fişeğim bitti!", "Fişek! Fişek verin!"])
 			var d := foe.position.distance_to(position)
 			if held == "bow":
 				_attack_t = randf_range(1.4, 1.9) # (a bow's quicker than a bolt)
-				raids.arrow(muzzle(), foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.4), 0.3, 0.8), self)
+				raids.arrow(muzzle(), foe, attack * randf_range(0.8, 1.2), Raids.range_chance(self, d), self)
 			else:
-				raids.shoot(muzzle(), foe, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
+				raids.shoot(muzzle(), foe, attack * randf_range(0.8, 1.2), Raids.range_chance(self, d), self)
 	else:
 		_anim = "idle"
 		if step.has("face"):
@@ -1883,7 +2186,7 @@ func _fight(step: Dictionary, dt: float) -> void:
 		_attack_t = _attack_t - dt if _aimed_at(f.position) else maxf(_attack_t, 0.5)
 		if _attack_t <= 0.0:
 			_attack_t = randf_range(2.0, 2.8)
-			village.raids.shoot(muzzle(), f, attack * randf_range(0.8, 1.2), clampf(1.0 - d / (ranged * 1.6), 0.3, 0.85), self)
+			village.raids.shoot(muzzle(), f, attack * randf_range(0.8, 1.2), Raids.range_chance(self, d), self)
 		_animate(dt, false)
 		return
 	if role == "shooter" or (armed and ranged > 0.0):
@@ -1919,6 +2222,44 @@ func _face(p: Vector3, dt: float) -> void:
 	rotation.y = _yaw
 
 
+## The blows' time (s), heard (Ambience.knock) and swung in time with it (_animate: the bite at the
+## top of the beat).
+const BEATS := {"chop": 1.37, "limb": 1.2, "mine": 1.57, "chisel": 0.45, "build": 0.9}
+## A blow as it's dealt, keyed through its beat (0 the bite): the follow-through after it, the tool
+## freed and lifted, drawn back slow with the weight going onto the back foot, held a moment at
+## the top, then brought in hard (eased in: quickest at the end). [t, twist, arm_l, arm_r, el, er,
+## lean, kn]; the last stretch, back to the bite, is the blow.
+const SWINGS := {
+	"chop": [[0.0, -0.55, -1.15, -1.15, 0.3, 0.22, 0.3, 0.34], [0.1, -0.8, -1.05, -1.05, 0.32, 0.25, 0.37, 0.4],
+		[0.27, -0.2, -1.25, -1.25, 0.45, 0.4, 0.18, 0.22], [0.78, 0.95, -1.75, -1.75, 0.85, 0.85, 0.02, 0.12],
+		[0.87, 1.03, -1.82, -1.82, 0.9, 0.88, -0.02, 0.12]],
+	"mine": [[0.0, 0.0, -0.75, -0.75, 0.15, 0.15, 0.52, 0.42], [0.1, -0.03, -0.68, -0.68, 0.18, 0.18, 0.57, 0.46],
+		[0.3, 0.05, -1.2, -1.2, 0.5, 0.5, 0.35, 0.3], [0.8, 0.12, -2.7, -2.7, 1.0, 1.0, -0.17, 0.1],
+		[0.88, 0.14, -2.8, -2.8, 1.05, 1.05, -0.2, 0.1]],
+	"build": [[0.0, -0.05, -0.6, -0.95, 0.8, 0.45, 0.18, 0.08], [0.12, -0.06, -0.6, -0.9, 0.8, 0.4, 0.2, 0.08],
+		[0.66, 0.06, -0.6, -2.0, 0.8, 1.6, 0.08, 0.05], [0.8, 0.07, -0.6, -2.06, 0.8, 1.66, 0.06, 0.05]],
+}
+
+
+## The numbers for `kind`'s blow at `u` through its beat (SWINGS).
+static func _swing(kind: String, u: float) -> Array:
+	var keys: Array = SWINGS[kind]
+	var n := keys.size()
+	for i in n:
+		var a: Array = keys[i]
+		var last := i == n - 1
+		var b: Array = keys[0] if last else keys[i + 1]
+		var t1 := 1.0 if last else float(b[0])
+		if u >= float(a[0]) and u < t1:
+			var k := (u - float(a[0])) / maxf(t1 - float(a[0]), 0.001)
+			k = k * k if last else smoothstep(0.0, 1.0, k) # (the blow quickens all the way in)
+			var out := []
+			for j in range(1, 8):
+				out.append(lerpf(float(a[j]), float(b[j]), k))
+			return out
+	return (keys[0] as Array).slice(1)
+
+
 func _animate(dt: float, walking: bool) -> void:
 	var t := Time.get_ticks_msec() * 0.001
 	var leg := 0.0
@@ -1938,25 +2279,19 @@ func _animate(dt: float, walking: bool) -> void:
 			bob = absf(sin(_phase)) * 0.05
 			el = 0.35 + maxf(-arm_l, 0.0) * 0.4
 			er = 0.35 + maxf(-arm_r, 0.0) * 0.4
-		"chop":
-			# Both hands on the haft, swung in flat at the trunk from over the right shoulder.
-			var s := sin(t * 4.6)
-			arm_l = -1.3
-			arm_r = -1.3
-			twist = s * 0.75
-			lean = 0.1
-			el = 0.5 - s * 0.25
-			er = 0.35 + s * 0.25
-			kn = 0.2
-		"mine":
-			# Overhead and down.
-			var s := sin(t * 4.0)
-			arm_l = -1.6 - s * 1.0
-			arm_r = arm_l
-			lean = -s * 0.2 + 0.1
-			el = 0.3 + maxf(s, 0.0) * 0.6
-			er = el
-			kn = 0.25
+		"chop", "mine":
+			# Both hands on the haft: the axe drawn back slow over the right shoulder and swung in
+			# flat at the trunk, the hips leading and the body going through after it; the pick
+			# lifted overhead, the back arched, and brought down with the weight behind it, the
+			# knees giving. In time with the blow heard (BEATS).
+			var w := _swing(_anim, 1.0 - clampf(_hit_t / float(BEATS[_anim]), 0.0, 1.0))
+			twist = w[0]
+			arm_l = w[1]
+			arm_r = w[2]
+			el = w[3]
+			er = w[4]
+			lean = w[5]
+			kn = w[6]
 		"mow":
 			# The scythe: a long flat sweep from right to left, the body turning from the hips into it,
 			# the knees soft; then lifted round to the right again.
@@ -2028,11 +2363,65 @@ func _animate(dt: float, walking: bool) -> void:
 			el = 0.8
 			er = 0.5 + s * 1.0
 		"sit":
-			arm_l = -0.5
-			arm_r = -0.45
-			lean = 0.15
-			el = 0.9 # (hands on the knees)
-			er = 0.9
+			# the hands on the knees (on the ground, the forearms across them)
+			var low := seat >= 0.0 and seat < 0.2
+			arm_l = -0.85 if low else -0.55
+			arm_r = -0.8 if low else -0.5
+			lean = 0.2 if low else 0.12
+			el = 0.65 if low else 0.8
+			er = 0.6 if low else 0.75
+		"fish":
+			# the rod out over the water in both hands, now and then a twitch of the tip
+			var jig := pow(maxf(sin(t * 0.9 + get_instance_id() % 7), 0.0), 12.0) * 0.3
+			arm_r = -0.9 - jig
+			er = 0.5 + jig
+			arm_l = -0.75
+			el = 0.8
+			lean = 0.12
+		"whittle":
+			# the stick held up before the chest, the knife drawn away down it, stroke on stroke
+			var cut := maxf(sin(t * 3.4 + get_instance_id() % 5), 0.0)
+			arm_l = -0.7
+			el = 1.2
+			arm_r = -0.65 - cut * 0.25
+			er = 1.15 - cut * 0.45
+			lean = 0.3
+			twist = -0.1
+		"pipe", "drink":
+			# the pipe (the cup) to the mouth every few seconds, held a moment, lowered; the other
+			# hand at rest
+			var u := fmod(t + (get_instance_id() % 7) * 0.9, 6.5 if _anim == "pipe" else 5.0)
+			var up := smoothstep(0.0, 0.7, u) * (1.0 - smoothstep(2.0, 2.7, u))
+			arm_r = -0.4 - up * 0.5
+			er = 0.5 + up * 1.6
+			arm_l = -0.5 if seat >= 0.0 else 0.05
+			el = 0.8 if seat >= 0.0 else 0.2
+			lean = 0.1 if seat >= 0.0 else 0.0
+		"warm":
+			# the hands held out to the fire, rubbed now and then
+			var rub := sin(t * 5.5) * 0.12 * maxf(sin(t * 0.6 + get_instance_id() % 5), 0.0)
+			arm_l = -1.0
+			arm_r = -1.0
+			el = 0.85 + rub
+			er = 0.85 - rub
+			lean = 0.22 if seat >= 0.0 else 0.15
+			kn = 0.12
+		"pray":
+			arm_l = -0.42
+			arm_r = -0.42
+			el = 1.95 # (the hands together before the chest)
+			er = 1.95
+			lean = 0.05
+		"wash":
+			# bent to the bucket, the water scooped up to the face in both hands
+			var u := fmod(t + (get_instance_id() % 5) * 0.4, 2.4) / 2.4
+			var up := smoothstep(0.15, 0.45, u) * (1.0 - smoothstep(0.7, 0.95, u))
+			arm_l = -0.95 - up * 0.45
+			arm_r = arm_l
+			el = 0.5 + up * 1.6
+			er = el
+			lean = 0.6 - up * 0.2
+			kn = 0.25
 		"eat":
 			# Sat, the bowl in the left hand, the spoon going up to the mouth.
 			var s := sin(t * 2.2)
@@ -2105,12 +2494,15 @@ func _animate(dt: float, walking: bool) -> void:
 			el = 0.5
 			er = 1.7 # (the butt to the shoulder)
 		"build":
-			var s := sin(t * 7.0)
-			el = 0.8
-			er = 0.5 + maxf(s, 0.0) * 0.9
-			arm_r = -1.3 - s * 0.6
-			arm_l = -0.6
-			lean = 0.1
+			# the hammer drawn up and brought down on the nail, the other hand holding it
+			var w := _swing("build", 1.0 - clampf(_hit_t / float(BEATS.build), 0.0, 1.0))
+			twist = w[0]
+			arm_l = w[1]
+			arm_r = w[2]
+			el = w[3]
+			er = w[4]
+			lean = w[5]
+			kn = w[6]
 		_:
 			arm_l = sin(t * 1.3) * 0.04
 			arm_r = -arm_l
@@ -2148,6 +2540,22 @@ func _animate(dt: float, walking: bool) -> void:
 	if _body:
 		if _lantern and _lantern.visible:
 			_lantern.global_basis = Basis.IDENTITY # (it hangs from the hand, upright)
+		if _rod_line:
+			_rod_line.global_basis = Basis.IDENTITY # (the line hangs straight down from the tip)
+		_body.pose.seat = seat
+		# the feet set on the slope, close to the view, on the land itself (not a floor or a porch)
+		var cam := get_viewport().get_camera_3d()
+		var near := cam != null and cam.global_position.distance_squared_to(global_position) < 4900.0
+		_body.pose.plant = 1.0 if near and seat < 0.0 and perched == null and absf(position.y - nav.height(position.x, position.z)) < 0.06 else 0.0
+		if _stepping > 0.0 and not walking:
+			var l := global_basis.orthonormalized().inverse() * Vector3(_step_v.x, 0, _step_v.y)
+			if absf(l.x) > absf(l.z):
+				_body.side_step = "WalkRight" if l.x > 0.0 else "WalkLeft"
+			else:
+				_body.side_step = "WalkBack" if l.z > 0.0 else "Walk"
+			_body.side_pace = _step_v.length() / Townsfolk.WALK_SPEED * 1.3
+		else:
+			_body.side_step = ""
 		_body_mood(walking)
 		_body.drive(_anim, walking, _speed_now, _rate(), carry_res if carry_n > 0 else "", vehicle, _rifle,
 			{"arm_l": arm_l, "arm_r": arm_r, "el": el, "er": er, "lean": lean, "twist": twist, "kn": kn})

@@ -729,10 +729,17 @@ func _rescues() -> void:
 				return true}] + _go_out(to), "Yaralıyı taşıyor", d)
 
 
-# --- Direct control (R): one of the town under the player's hand -----------------------------------
+# --- In hand (EMİRDE, R): one of the town under the player's orders ---------------------------------
 # Anyone grown can be taken in hand: they drop what they're doing and wait for orders (right-click
-# to send them, an enemy to set on, a house to hide in, the armoury to arm at), and the card offers
-# the rest: a weapon from the nearest rack or off the ground, into cover, hide, carry the wounded.
+# to send them, an enemy to set on, a body to search, a house to hide in, the armoury to arm at), and
+# the card offers the rest: a weapon from the nearest rack or off the ground, into cover, hide, carry
+# the wounded. The one state the player sees: `drafted` (kept out of the work) with the "controlled"
+# mark. The militia called up by the alarm are drafted too, but not in hand: their duty runs by
+# itself (to the rack, then a post) till the player takes them in hand like anyone else.
+
+## How far a militiaman without a weapon goes to its armoury when taken in hand (else an axe).
+const ARMOURY_REACH := 160.0
+
 
 func take_control(v: Villager) -> void:
 	v.drafted = true
@@ -740,7 +747,13 @@ func take_control(v: Villager) -> void:
 	if v.sleeping:
 		v.wake()
 	v.abort()
+	v.focus = null
 	if not v.armed:
+		# a militiaman with its rack near enough fetches its own weapon, holding in cover after
+		var a: Building = armory_for(v) if v.militia and not v.has_trait("no_rifle") else null
+		if a and a.global_position.distance_to(v.position) < ARMOURY_REACH:
+			arm(v, a, false)
+			return
 		# no rifle: an axe in the hand, to fight with as best it can
 		v.fighter = true
 		v.attack = maxf(v.attack, 16.0)
@@ -756,18 +769,30 @@ func release_control(v: Villager) -> void:
 		if not v.armed:
 			v.arm_with("")
 			v.fighter = false
-	if not v.has_meta("called_up"):
-		v.drafted = false
 	v.focus = null
 	v.abort()
+	if v.has_meta("called_up") and not v.down:
+		# still on the alarm's roll: back to its own duty (the rack, then a post)
+		if v.armed:
+			hold_at(v, default_post(v))
+		else:
+			var a := armory_for(v)
+			if a:
+				arm(v, a)
+	else:
+		v.drafted = false
 
 
-## Those in hand with an axe and nothing to do: they go for any foe that comes within reach.
+## Those in hand with an axe and nothing to do go for any foe that comes within reach; one fallen
+## (or killed) is out of hand.
 func _controlled_tick() -> void:
-	if raids == null:
-		return
 	for v in villagers:
-		if not v.has_meta("axe") or v.armed or v.dead or v.down:
+		if v.has_meta("controlled") and (v.dead or v.down):
+			v.remove_meta("controlled")
+			if v.has_meta("axe"):
+				v.remove_meta("axe")
+			continue
+		if raids == null or not v.has_meta("axe") or v.armed or v.dead or v.down:
 			continue
 		if not (v.plan.is_empty() or v.idle or str(v.plan[0].get("t", "")) == "work"):
 			continue

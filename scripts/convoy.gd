@@ -349,18 +349,18 @@ func _seat_riders(truck: Node3D) -> void:
 		for k in 3:
 			var f := Townsfolk.new()
 			truck.add_child(f)
-			f.build("outlaw", rng)
+			f.build("merkez" if side == "merkez" else "kordal", rng) # (in their side's uniform)
 			var t := (k + 0.5) / 3.0
 			var p: Vector3
 			if long_z:
 				p = Vector3(box.get_center().x + sx * box.size.x * 0.3, floor_y, box.position.z + box.size.z * lerpf(0.15, 0.85, t))
-				f.rotation.y = -PI * 0.5 * sx
+				f.rotation.y = PI * 0.5 * sx # (facing in across the bed)
 			else:
 				p = Vector3(box.position.x + box.size.x * lerpf(0.15, 0.85, t), floor_y, box.get_center().z + sx * box.size.z * 0.3)
 				f.rotation.y = PI * 0.5 - PI * 0.5 * sx
 			f.position = p
 			f.scale = Vector3.ONE * 0.95
-			f.play("RifleCrouchIdle", rng.randf_range(0.8, 1.1))
+			f.sit(0.45, rng.randf_range(0.8, 1.1)) # (on the bench down the bed's side)
 			f.player.seek(rng.randf() * 2.0, true)
 			_riders.append(f)
 

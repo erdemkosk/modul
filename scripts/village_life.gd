@@ -603,48 +603,31 @@ func _plan_home(v: Villager) -> void:
 		return true}], "Eve gidiyor", h)
 
 
-## Nothing to do: a while spent as people spend it. A word with someone else standing about, a sit
-## on the ground, a stretch, a look round, a stroll.
+## Nothing to do: a while spent as people spend it, each in their own way (who they are, what
+## they're good at, the season and the hour, what's near): of an evening round the fire on the
+## square; by day a chore about the house, now and then a word with someone, a sit on the porch, a
+## chopping block or a stump (a pipe, a bit of whittling, a knife put to the stone), the rod at the
+## water in the warm months, hands warmed at a fire in the cold, a wash at the well of a morning, a
+## prayer at the graves, a mother sat with her child, a look down the line for the train; or just a
+## stretch, a look round, a stroll.
 func _plan_idle(v: Villager) -> void:
 	# Of an evening, round the fire on the square.
 	var sq := _nearest(squares(), v.position)
 	if sq and sq.lit and sq.global_position.distance_to(v.position) < 200.0 and randf() < 0.8:
-		var a := randf() * TAU
-		var seat := sq.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(2.2, 3.2)
-		seat.y = ground_at(seat)
-		v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": seat},
-			{"t": "work", "time": randf_range(15.0, 30.0), "anim": "sit" if randf() < 0.6 else "chat", "face": sq.global_position + Vector3.UP},
-			{"t": "do", "f": func() -> bool:
-				v.think("fire", "Akşam meydanda ateş başında oturdu", 10.0, maxf(weather.day_length_minutes * 60.0, 60.0))
-				return true},
-			{"t": "step", "to": sq.door()}], "Meydanda, ateş başında", sq, true)
+		_plan_square(v, sq)
 		return
 	var near: Building = v.workplace if v.workplace else _nearest(stores(), v.position)
 	var at := near.door() if near else v.position
 	var p := at + Vector3(randf_range(-6, 6), 0, randf_range(1.5, 7))
-	# Someone else standing about near: go over and talk.
-	for o in villagers:
-		if o == v or o.dead or o.sleeping or not o.idle or o.job == "Sohbet ediyor":
-			continue
-		if o.position.distance_to(v.position) < 14.0 and randf() < 0.6:
-			var meet := (v.position + o.position) * 0.5
-			var dir := (o.position - v.position)
-			dir.y = 0.0
-			dir = dir.normalized() if dir.length() > 0.1 else Vector3.RIGHT
-			var talk := randf_range(7.0, 13.0)
-			v.give([{"t": "go", "to": meet - dir * 0.6}, {"t": "work", "time": talk, "anim": "chat", "face": meet + dir}], "Sohbet ediyor", null, true)
-			o.give([{"t": "go", "to": meet + dir * 0.6}, {"t": "work", "time": talk, "anim": "chat", "face": meet - dir}], "Sohbet ediyor", null, true)
-			return
+	# Someone else standing about near: now and then, go over and talk.
+	if randf() < 0.3 and _plan_chat(v):
+		return
 	# By day, a chore about the house: splitting wood at the block, hanging the washing, hoeing the
 	# garden; or a bucket fetched from the well.
 	var h := weather.hour
-	if not v.is_child and h > 7.0 and h < 19.0 and randf() < 0.6:
+	if not v.is_child and h > 7.0 and h < 19.0 and randf() < 0.45:
 		var y := _yard_of(v.home) if is_instance_valid(v.home) else null
-		var wells: Array[Building] = []
-		for b in buildings:
-			if b.state == "done" and b.def.role == "well":
-				wells.append(b)
-		var well := _nearest(wells, v.position)
+		var well := _nearest(_wells(), v.position)
 		if well and randf() < 0.2:
 			v.give([{"t": "go", "to": well.door()},
 				{"t": "work", "time": 5.0, "anim": "draw", "face": well.global_position},
@@ -670,29 +653,484 @@ func _plan_idle(v: Villager) -> void:
 						return t[0] < float(c.time)
 				v.give([{"t": "go", "to": c.at}, step], c.job, null, true)
 				return
+	if randf() < 0.75 and _pastime(v):
+		return
 	var roll := randf()
 	var what: Array
-	if roll < 0.35:
-		what = [{"t": "go", "to": p}, {"t": "work", "time": randf_range(8.0, 15.0), "anim": "sit"}]
-	elif roll < 0.5:
+	if roll < 0.2:
 		what = [{"t": "go", "to": p}, {"t": "work", "time": 2.5, "anim": "stretch"}, {"t": "work", "time": randf_range(3.0, 6.0), "anim": "idle"}]
-	elif roll < 0.75:
+	elif roll < 0.6:
 		what = [{"t": "go", "to": p}, {"t": "work", "time": randf_range(4.0, 8.0), "anim": "look"}]
 	else:
 		what = [{"t": "go", "to": p}, {"t": "work", "time": randf_range(2.0, 5.0), "anim": "idle"}, {"t": "go", "to": at + Vector3(randf_range(-8, 8), 0, randf_range(1.5, 9))}]
 	v.give(what, "Boşta", null, true)
 
 
-## A child at play: running about near home, after the other children if there are any.
+func _wells() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.state == "done" and b.def.role == "well":
+			out.append(b)
+	return out
+
+
+## The square's fire of an evening: sat round it on the ground (or stood close in the cold, warming
+## their hands), talking among themselves by turns, a cup going round after supper, a pipe.
+var _fire_talks := {} ## square -> the talk round its fire (Villager._talk)
+
+
+func _plan_square(v: Villager, sq: Building) -> void:
+	var fire := sq.global_position
+	var talk: Dictionary = _fire_talks.get(sq, {})
+	if talk.is_empty():
+		talk = {"folk": [], "t0": clock, "seed": randi() % 1000, "reach": 7.5, "keep_face": true, "where": "fire"}
+		_fire_talks[sq] = talk
+	var folk: Array = talk.folk
+	for i in range(folk.size() - 1, -1, -1):
+		var o: Variant = folk[i]
+		if not is_instance_valid(o) or (o as Villager).dead or not (o as Villager).job.begins_with("Ateş") and (o as Villager).job != "Meydanda, ateş başında":
+			folk.remove_at(i)
+	folk.append(v)
+	var h := weather.hour
+	var cold := weather.temperature < 3.0
+	var anim := "sit"
+	var seat := 0.0
+	var r := randf_range(2.3, 3.0)
+	var what := "Meydanda, ateş başında"
+	var roll := randf()
+	if roll < 0.28 and h >= 19.0 and not v.is_child:
+		anim = "drink"
+		what = "Ateş başında içiyor"
+	elif roll < 0.5 and cold:
+		anim = "warm"
+		seat = -1.0
+		r = randf_range(1.7, 2.1)
+		what = "Ateşte ısınıyor"
+	elif roll < 0.62 and _smokes(v):
+		anim = "pipe"
+		what = "Ateş başında pipo içiyor"
+	var a := randf() * TAU
+	var spot := fire + Vector3(cos(a), 0, sin(a)) * r
+	spot.y = ground_at(spot)
+	var work := {"t": "work", "time": randf_range(18.0, 34.0), "anim": anim, "face": fire + Vector3.UP, "talk": talk}
+	if seat >= 0.0:
+		work["seat"] = seat
+	v.give([{"t": "go", "to": sq.door()}, {"t": "step", "to": spot}, work,
+		{"t": "do", "f": func() -> bool:
+			v.think("fire", "Akşam meydanda ateş başında oturdu", 10.0, maxf(weather.day_length_minutes * 60.0, 60.0))
+			return true},
+		{"t": "step", "to": sq.door()}], what, sq, true)
+
+
+## Whether `v` is one for a pipe (some of the men, the same ones always).
+static func _smokes(v: Villager) -> bool:
+	return not v.is_child and not v.female and v.look_seed % 3 == 0
+
+
+## A word with one or two others standing about near: they come together, two face to face a pace
+## apart or three in a ring, and talk by turns (Villager._talk).
+func _plan_chat(v: Villager) -> bool:
+	var others: Array[Villager] = []
+	for o in villagers:
+		if o == v or o.dead or o.sleeping or o.team != 0 or o.is_child != v.is_child:
+			continue
+		if not (o.plan.is_empty() or (o.idle and o.job == "Boşta")):
+			continue
+		if o.position.distance_to(v.position) < 16.0:
+			others.append(o)
+	if others.is_empty():
+		return false
+	others.shuffle()
+	var group: Array = [v, others[0]]
+	if others.size() > 1 and randf() < 0.35:
+		group.append(others[1])
+	var mid := Vector3.ZERO
+	for o: Villager in group:
+		mid += o.position
+	mid /= float(group.size())
+	var r := 0.68 if group.size() == 2 else 0.85
+	var a0 := randf() * TAU
+	var talk := {"folk": group, "t0": clock, "seed": randi() % 1000, "reach": 3.2}
+	var time := randf_range(12.0, 20.0)
+	for i in group.size():
+		var o: Villager = group[i]
+		var a := a0 + TAU * i / group.size()
+		var spot := mid + Vector3(cos(a), 0, sin(a)) * r
+		if not nav.is_open(spot):
+			spot = mid
+		spot.y = ground_at(spot)
+		o.give([{"t": "go", "to": spot}, {"t": "step", "to": spot}, {"t": "work", "time": time, "anim": "chat", "talk": talk, "face": mid}], "Sohbet ediyor", null, true)
+	return true
+
+
+## One of the pastimes that suit `v` just now, tried in a weighted random order till one has a
+## place for it. False if none has.
+func _pastime(v: Villager) -> bool:
+	var h := weather.hour
+	var temp := weather.temperature
+	var winter := seasons != null and seasons.winter()
+	var wet := Weather.rain_now > 0.25 or weather.snow_intensity > 0.35
+	var smoker := _smokes(v)
+	var crafty := v.skill("zanaat") >= 4.0 or v.skill("insa") >= 5.0 or v.skill("odun") >= 6.0 or v.origin in ["makinist", "oduncu"]
+	var opts: Array = [] ## [weight, Callable -> bool]
+	opts.append([2.2 * (0.35 if temp < -6.0 or wet else 1.0), func() -> bool: return _plan_seat(v, smoker, crafty)])
+	if not v.is_child and not winter and temp > 3.0 and h > 5.0 and h < 20.5 and not wet:
+		var w := 1.5 + (2.5 if v.skill("toplama") >= 4.0 else 0.0) + (1.5 if v.has_trait("tembel") or v.has_trait("kanaatkar") else 0.0) + (1.0 if v.origin == "koylu" else 0.0)
+		opts.append([w, func() -> bool: return _plan_fish(v)])
+	if temp < 4.0:
+		opts.append([3.0, func() -> bool: return _plan_warm(v)])
+	if smoker and not wet:
+		opts.append([1.5, func() -> bool: return _plan_pipe(v)])
+	if v.female:
+		var kid := _child_of(v)
+		if kid:
+			opts.append([3.0, func() -> bool: return _plan_with_child(v, kid)])
+	if temp > 4.0 and h > 5.5 and h < 11.0:
+		opts.append([2.0, func() -> bool: return _plan_wash(v)])
+	if cemetery != null and not cemetery.graves.is_empty() and not v.is_child:
+		var mourning := v.thoughts.any(func(t: Dictionary) -> bool: return str(t.id) in ["grief", "loss", "funeral"])
+		opts.append([0.5 + (3.0 if v.origin == "papaz" else 0.0) + (4.0 if mourning else 0.0), func() -> bool: return _plan_pray(v)])
+	if rail.size() > 1:
+		var due := next_train - day
+		opts.append([0.5 + (1.2 if due <= 0 else 0.0) + (1.5 if v.origin == "demiryolcu" else 0.0), func() -> bool: return _plan_line(v)])
+	while not opts.is_empty():
+		var total := 0.0
+		for o: Array in opts:
+			total += float(o[0])
+		var r := randf() * total
+		var pick := 0
+		for i in opts.size():
+			r -= float(opts[i][0])
+			if r <= 0.0:
+				pick = i
+				break
+		var f: Callable = opts[pick][1]
+		opts.remove_at(pick)
+		if f.call():
+			return true
+	return false
+
+
+# --- seats ------------------------------------------------------------------------------------------
+
+var _seats_held := {} ## Vector3i (the seat, to half a metre) -> [villager, job]: taken
+
+
+## A seat near `v`: the edge of a house's porch (its own first), the chopping block in its yard, a
+## stump near by. {at (where the feet go), face, h (the seat's height over the ground there),
+## where} or {}.
+func _seat_near(v: Villager) -> Dictionary:
+	var found: Array[Dictionary] = []
+	var own := v.home if is_instance_valid(v.home) and v.home.state == "done" else null
+	for b in buildings:
+		if b.state != "done" or b.kind != "ev" or b.is_burning() or b.global_position.distance_to(v.position) > 45.0:
+			continue
+		var sz: Vector2 = b.def.size
+		for x: float in [-0.34, 0.34]:
+			var l := Vector3(x * sz.x, 0, sz.y * 0.5 + 1.7 + 0.12)
+			var at := b.global_transform * l
+			at.y = nav.height(at.x, at.z)
+			var hgt := b.global_position.y + 0.45 - at.y
+			if hgt < 0.3 or hgt > 0.75 or not nav.is_open(at):
+				continue
+			found.append({"at": at, "face": b.global_transform * (l + Vector3(0, 0, 3.0)), "h": hgt, "where": "porch", "own": b == own})
+	if own:
+		var y := _yard_of(own)
+		if y and y._block != Vector3.INF:
+			var away := (own.door() - y._block)
+			away.y = 0.0
+			away = away.normalized() if away.length() > 0.1 else Vector3.FORWARD
+			var at: Vector3 = y._block + away * 0.2
+			at.y = nav.height(at.x, at.z)
+			var hgt: float = y._block.y + 0.55 - at.y
+			if hgt > 0.3 and hgt < 0.75:
+				found.append({"at": at, "face": at + away * 3.0, "h": hgt, "where": "block", "own": true})
+	for st in _stumps.get_children():
+		var n := st as Node3D
+		if n == null or n.position.distance_to(v.position) > 35.0:
+			continue
+		var a := randf() * TAU
+		var dir := Vector3(cos(a), 0, sin(a))
+		var at := n.position + dir * 0.15
+		at.y = nav.height(at.x, at.z)
+		var hgt := n.position.y + 0.35 - at.y
+		if hgt > 0.25 and hgt < 0.7 and nav.is_open(at + dir * 0.5):
+			found.append({"at": at, "face": at + dir * 3.0, "h": hgt, "where": "stump", "own": false})
+	found.shuffle()
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return bool(a.own) and not bool(b.own))
+	for s: Dictionary in found:
+		if not _seat_taken(s.at):
+			return s
+	return {}
+
+
+func _seat_taken(at: Vector3) -> bool:
+	var key := Vector3i(roundi(at.x * 2.0), 0, roundi(at.z * 2.0))
+	if not _seats_held.has(key):
+		return false
+	var e: Array = _seats_held[key]
+	var o: Variant = e[0]
+	return is_instance_valid(o) and not (o as Villager).dead and (o as Villager).job == str(e[1]) and not (o as Villager).plan.is_empty()
+
+
+func _hold_seat(at: Vector3, v: Villager, what: String) -> void:
+	_seats_held[Vector3i(roundi(at.x * 2.0), 0, roundi(at.z * 2.0))] = [v, what]
+
+
+## Sat at its ease: a rest, a pipe, or the knife out (whittling a peg, or a blade put to the stone).
+func _plan_seat(v: Villager, smoker: bool, crafty: bool) -> bool:
+	var s := _seat_near(v)
+	if s.is_empty():
+		return false
+	var anim := "sit"
+	var what: String = {"porch": "Sundurmada oturuyor", "block": "Kütüğe oturmuş dinleniyor", "stump": "Kütükte oturuyor"}[s.where]
+	var r := randf()
+	if smoker and r < 0.55:
+		anim = "pipe"
+		what = "Pipo içiyor"
+	elif crafty and r < 0.6:
+		anim = "whittle"
+		what = "Tahta yontuyor" if randf() < 0.6 else "Bıçağını biliyor"
+	_hold_seat(s.at, v, what)
+	var work := {"t": "work", "time": randf_range(25.0, 45.0), "anim": anim, "seat": s.h, "face": s.face}
+	# someone sat near by already: they get talking, each keeping to its seat
+	for o in villagers:
+		if o == v or o.dead or o.plan.is_empty() or o.team != 0 or not (o.plan[0] as Dictionary).has("seat"):
+			continue
+		if o.position.distance_to(s.at) < 5.5 and str(o.plan[0].t) == "work":
+			var talk: Dictionary = o.plan[0].get("talk", {})
+			if talk.is_empty():
+				talk = {"folk": [o], "t0": clock, "seed": randi() % 1000, "reach": 6.0, "keep_face": true, "where": str(s.where)}
+				o.plan[0]["talk"] = talk
+			(talk.folk as Array).append(v)
+			work["talk"] = talk
+			break
+	v.give([{"t": "go", "to": s.at}, {"t": "step", "to": s.at}, work], what, null, true)
+	return true
+
+
+## Sat on the bank with a rod: the lake's shore or the river's, whichever's nearer (and not too far).
+var _shores: Array[Array] = [] ## [where the feet go, the water before it]
+
+
+func _plan_fish(v: Villager) -> bool:
+	if _shores.is_empty():
+		_find_shores()
+	var best: Array = []
+	var bd := 170.0
+	for e in _shores:
+		var d := (e[0] as Vector3).distance_to(v.position)
+		if d < bd and not _seat_taken(e[0]):
+			bd = d
+			best = e
+	if best.is_empty():
+		return false
+	var at: Vector3 = best[0]
+	var water: Vector3 = best[1]
+	_hold_seat(at, v, "Balık tutuyor")
+	v.give([{"t": "go", "to": at}, {"t": "step", "to": at},
+		{"t": "work", "time": randf_range(45.0, 80.0), "anim": "fish", "seat": 0.0, "face": water},
+		{"t": "do", "f": func() -> bool:
+			if randf() < 0.45:
+				v.think("fish", "Balık tuttu", 4.0, maxf(weather.day_length_minutes * 60.0, 60.0) * 0.5)
+			return true}], "Balık tutuyor", null, true)
+	return true
+
+
+## Places on the bank to sit and fish from: round the lake, and down both sides of the river.
+func _find_shores() -> void:
+	_shores.append([Vector3.INF, Vector3.INF]) # (looked: none found still counts)
+	var lake: Dictionary = terrain.meta.get("lake", {})
+	if not lake.is_empty():
+		var c := Vector2(float(lake.x), float(lake.z))
+		for k in 32:
+			var a := k * TAU / 32.0
+			var dir := Vector2(cos(a), sin(a))
+			var rad := Vector2(float(lake.rx), float(lake.rz))
+			var last_water := Vector2.INF
+			for q in range(6, 30):
+				var f := q * 0.05
+				var pt := c + dir * rad * f
+				if terrain.is_water(pt.x, pt.y):
+					last_water = pt
+				elif last_water != Vector2.INF:
+					_shore(Vector3(pt.x, 0, pt.y) + Vector3(dir.x, 0, dir.y) * 0.6, Vector3(last_water.x, 0, last_water.y))
+					break
+	var river: Dictionary = terrain.meta.get("river", {})
+	var pts: Array = river.get("points", [])
+	var hw := float(river.get("half_width", 9.0))
+	for k in range(0, pts.size() - 1, 2):
+		var a := Vector3(float(pts[k][0]), 0, float(pts[k][2]))
+		var b := Vector3(float(pts[k + 1][0]), 0, float(pts[k + 1][2]))
+		var along := (b - a).normalized()
+		var side := Vector3(-along.z, 0, along.x)
+		for sgn: float in [-1.0, 1.0]:
+			for off: float in [hw - 1.5, hw, hw + 1.5, hw + 3.0]:
+				var pt := a + side * sgn * off
+				if not terrain.is_water(pt.x, pt.z) and terrain.is_water(pt.x - side.x * sgn * 2.5, pt.z - side.z * sgn * 2.5):
+					_shore(pt, pt - side * sgn * 3.0)
+					break
+
+
+func _shore(at: Vector3, water: Vector3) -> void:
+	if not nav.is_open(at):
+		return
+	at.y = nav.height(at.x, at.z)
+	water.y = at.y
+	_shores.append([at, water])
+
+
+## Hands to a fire in the cold: the camp fire or the square's, if one's burning.
+func _plan_warm(v: Villager) -> bool:
+	var fires: Array[Vector3] = []
+	for s: Building in _camps:
+		if is_instance_valid(s) and (_camps[s] as Node3D).visible and _camp_sleepers(s) > 0:
+			fires.append(camp_fire(s))
+	for sq in squares():
+		if sq.lit:
+			fires.append(sq.global_position)
+	var best := Vector3.INF
+	for f in fires:
+		if f.distance_to(v.position) < 120.0 and (best == Vector3.INF or f.distance_to(v.position) < best.distance_to(v.position)):
+			best = f
+	if best == Vector3.INF:
+		return false
+	var a := randf() * TAU
+	var at := best + Vector3(cos(a), 0, sin(a)) * randf_range(1.6, 2.0)
+	at.y = ground_at(at)
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": randf_range(15.0, 25.0), "anim": "warm", "face": best}], "Ateşte ısınıyor", null, true)
+	return true
+
+
+## A pipe by its own door (or the store's), stood looking out.
+func _plan_pipe(v: Villager) -> bool:
+	var b: Building = v.home if is_instance_valid(v.home) and v.home.state == "done" else _nearest(stores(), v.position)
+	if b == null:
+		return false
+	var at := b.door() + b.global_basis.z * 1.4 + b.global_basis.x * randf_range(-1.5, 1.5)
+	if not nav.is_open(at):
+		return false
+	at.y = ground_at(at)
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": randf_range(18.0, 30.0), "anim": "pipe", "face": at + b.global_basis.z * 4.0}], "Pipo içiyor", null, true)
+	return true
+
+
+## A child of hers about and at a loose end.
+func _child_of(v: Villager) -> Villager:
+	for o in villagers:
+		if o.is_child and not o.dead and not o.sleeping and o.family == v.family and v.family != "" \
+				and (o.plan.is_empty() or o.idle) and o.position.distance_to(v.position) < 40.0:
+			return o
+	return null
+
+
+## A mother sat with her child beside her, on the porch or a stump.
+func _plan_with_child(v: Villager, kid: Villager) -> bool:
+	var s := _seat_near(v)
+	if s.is_empty():
+		return false
+	var face: Vector3 = s.face
+	var side := (face - (s.at as Vector3)).cross(Vector3.UP).normalized() * 0.62
+	var kid_at: Vector3 = s.at + side
+	kid_at.y = nav.height(kid_at.x, kid_at.z)
+	if not nav.is_open(kid_at):
+		kid_at = s.at - side
+		kid_at.y = nav.height(kid_at.x, kid_at.z)
+	var time := randf_range(25.0, 40.0)
+	_hold_seat(s.at, v, "Çocuğuyla oturuyor")
+	v.give([{"t": "go", "to": s.at}, {"t": "step", "to": s.at}, {"t": "work", "time": time, "anim": "sit", "seat": s.h, "face": face}], "Çocuğuyla oturuyor", null, true)
+	kid.abort()
+	kid.give([{"t": "go", "to": kid_at}, {"t": "step", "to": kid_at},
+		{"t": "work", "time": time, "anim": "sit", "seat": float(s.h) + (kid_at.y - (s.at as Vector3).y) * -1.0, "face": face + side}], "Annesiyle oturuyor", null, true)
+	return true
+
+
+## A wash at the well of a morning: a bucket drawn, the water scooped up to the face.
+func _plan_wash(v: Villager) -> bool:
+	var well := _nearest(_wells(), v.position)
+	if well == null or well.global_position.distance_to(v.position) > 120.0:
+		return false
+	var at := well.door()
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": 4.0, "anim": "draw", "face": well.global_position},
+		{"t": "work", "time": randf_range(6.0, 9.0), "anim": "wash", "face": well.global_position}], "Kuyuda yıkanıyor", null, true)
+	return true
+
+
+## Stood at one of the graves a while, head bowed.
+func _plan_pray(v: Villager) -> bool:
+	var i := randi() % cemetery.graves.size()
+	var g: Vector3 = cemetery._slot(i)
+	var at := g + Basis(Vector3.UP, cemetery._yaw) * Vector3(0, 0, -1.1)
+	if g.distance_to(v.position) > 160.0 or not nav.is_open(at):
+		return false
+	at.y = ground_at(at)
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": randf_range(18.0, 30.0), "anim": "pray", "face": g}], "Mezarlıkta dua ediyor", null, true)
+	return true
+
+
+## Stood a few metres off the line looking down it (waiting on the train if it's due).
+func _plan_line(v: Villager) -> bool:
+	var best := -1
+	var bd := 90.0
+	for k in range(0, rail.size(), 3):
+		var d := rail[k].distance_to(v.position)
+		if d < bd:
+			bd = d
+			best = k
+	if best < 0:
+		return false
+	var p := rail[best]
+	var along := (rail[mini(best + 1, rail.size() - 1)] - rail[maxi(best - 1, 0)])
+	along.y = 0.0
+	along = along.normalized() if along.length() > 0.01 else Vector3.RIGHT
+	var side := Vector3(-along.z, 0, along.x)
+	if (v.position - p).dot(side) < 0.0:
+		side = -side
+	var at := p + side * randf_range(4.5, 6.0)
+	if not nav.is_open(at):
+		return false
+	at.y = ground_at(at)
+	var due := next_train - day <= 0
+	v.give([{"t": "go", "to": at}, {"t": "work", "time": randf_range(12.0, 22.0), "anim": "look", "face": p + along * randf_range(-15.0, 15.0)}],
+		"Treni bekliyor" if due else "Demiryoluna bakıyor", null, true)
+	return true
+
+
+## A child at play: tag with another child (the one it's after till it's caught, then the other way
+## about), a ring game round and round with two or more, or running about near home.
 func _plan_play(v: Villager) -> void:
 	var near: Building = v.home if is_instance_valid(v.home) else _nearest(stores(), v.position)
 	var at := near.door() if near else v.position
-	var other: Villager = null
+	var kids: Array[Villager] = []
 	for o in villagers:
-		if o != v and o.is_child and not o.sleeping and o.position.distance_to(v.position) < 25.0:
-			other = o
-	var to := (other.position + Vector3(randf_range(-2, 2), 0, randf_range(-2, 2))) if other and randf() < 0.6 else at + Vector3(randf_range(-7, 7), 0, randf_range(1, 8))
-	v.give([{"t": "go", "to": to}, {"t": "work", "time": randf_range(1.0, 3.0), "anim": "chat" if other else "look"}], "Oynuyor", null, true)
+		if o != v and o.is_child and not o.dead and not o.sleeping and (o.plan.is_empty() or (o.idle and o.job == "Oynuyor")) \
+				and o.position.distance_to(v.position) < 25.0:
+			kids.append(o)
+	var mid := v.position.lerp(kids[0].position, 0.5) if not kids.is_empty() else v.position
+	if not nav.is_open(mid):
+		mid = v.position
+	if kids.size() >= 2 and randf() < 0.45:
+		var ring := {"center": mid, "r": 1.3 + kids.size() * 0.15, "w": 0.9 * (1.0 if randf() < 0.5 else -1.0), "t0": clock}
+		var all: Array[Villager] = [v]
+		all.append_array(kids.slice(0, 4))
+		var time := randf_range(14.0, 22.0)
+		for i in all.size():
+			var k: Villager = all[i]
+			var a0 := TAU * i / all.size()
+			var start: Vector3 = mid + Vector3(cos(a0), 0, sin(a0)) * float(ring.r)
+			start.y = ground_at(start)
+			k.abort()
+			k.give([{"t": "go", "to": start}, {"t": "circle", "ring": ring, "a0": a0, "left": time}], "Halka oyunu oynuyor", null, true)
+		return
+	if not kids.is_empty() and randf() < 0.7:
+		var other := kids[randi() % kids.size()]
+		var time := randf_range(18.0, 30.0)
+		other.abort()
+		other.give([{"t": "flee", "from": v, "left": time + 2.0, "center": mid}], "Kovalamaca oynuyor", null, true)
+		v.give([{"t": "work", "time": 1.6, "anim": "look", "face": other.position}, {"t": "chase", "who": other, "left": time, "center": mid}], "Kovalamaca oynuyor", null, true)
+		return
+	var to := at + Vector3(randf_range(-7, 7), 0, randf_range(1, 8))
+	v.give([{"t": "go", "to": to, "run": true}, {"t": "work", "time": randf_range(1.0, 3.0), "anim": "look"}], "Oynuyor", null, true)
 
 
 ## Lunch about noon, supper before dark: once each, at home if it's near (in through the door, a

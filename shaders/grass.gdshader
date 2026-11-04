@@ -72,14 +72,20 @@ float fbm(vec2 p, int oct) {
 	return s;
 }
 
-// The meadow colour the ground paints under this clump (world_terrain.gdshader, its large-scale
-// terms): the blades take it, so near grass and the far field are one green, not two.
+// The meadow colour the ground paints under this clump (world_terrain.gdshader meadow_colour, its
+// large-scale terms): the blades take it, so near grass and the far field are one olive grey-green,
+// gone to ochre on the dry rises, not two greens.
 vec3 ground_grass(vec2 xz) {
 	float big = fbm(xz * 0.012, 3); // an octave or two fewer than the ground: per vertex, and the fine ones don't show on a blade
 	float mid = fbm(xz * 0.09, 2);
-	vec3 c = mix(mix(vec3(0.12, 0.23, 0.05), vec3(0.26, 0.36, 0.09), big), vec3(0.31, 0.28, 0.16), smoothstep(0.55, 0.85, mid) * 0.6);
-	c *= mix(0.78, 1.12, fbm(xz * 0.025 + 31.0, 2));
-	c = mix(c, vec3(0.08, 0.13, 0.05), smoothstep(0.62, 0.8, fbm(xz * 0.045 + 5.0, 2)) * 0.45);
+	vec3 c = mix(vec3(0.11, 0.17, 0.07), vec3(0.2, 0.265, 0.11), big);
+	c = mix(c, vec3(0.3, 0.27, 0.15), smoothstep(0.55, 0.85, mid) * 0.5);
+	c *= mix(0.84, 1.08, fbm(xz * 0.025 + 31.0, 2));
+	c = mix(c, vec3(0.1, 0.125, 0.08), smoothstep(0.6, 0.8, fbm(xz * 0.045 + 5.0, 2)) * 0.5);
+	c = mix(c, vec3(0.33, 0.28, 0.16), smoothstep(0.64, 0.84, fbm(xz * 0.06 + 77.0, 2)) * 0.35);
+	c = mix(c, vec3(0.3, 0.29, 0.25), smoothstep(0.7, 0.88, fbm(xz * 0.13 + 91.0, 2)) * 0.25);
+	c = mix(c, vec3(0.34, 0.27, 0.15), season_autumn * 0.4);
+	c = mix(c, vec3(0.36, 0.31, 0.22), season_bare * 0.7);
 	return c;
 }
 
@@ -105,6 +111,8 @@ void vertex() {
 	// Patches: some of the meadow grows tall and thick, some is grazed short and thin.
 	float patchy = vnoise(xz * 0.11) * 0.7 + vnoise(xz * 0.5) * 0.3;
 	density *= mix(0.55, 1.35, patchy);
+	// The bare peaty patches the ground paints (world_terrain.gdshader bare_n): the turf given out.
+	density *= 1.0 - smoothstep(0.6, 0.72, fbm(xz * 0.21 + 63.0, 2));
 	float h3 = hash12(cell + 5.1);
 	float dist = length(xz - node.xz);
 	float radius = float(grid / 2) * spacing;
@@ -163,16 +171,20 @@ void vertex() {
 	float tone = hash12(cell + 3.3);
 	// The ground's own green (skipped for clumps that don't grow), a touch of tone per clump.
 	vec3 ground_c = scale > 0.0 ? ground_grass(xz) : color_a;
-	v_col = ground_c * mix(0.92, 1.12, tone) * mix(1.0, 0.85, s2.g); // wetter ground, deeper green
+	v_col = ground_c * mix(0.95, 1.06, tone) * mix(1.0, 0.88, s2.g); // wetter ground, deeper green
+	// A meadow is never all live blades: dead straw among them, a clump here and there gone over,
+	// more on the dry patches (it greys the field from afar the way it does in an old plate).
+	float dead = step(hash12(cell + 23.9), 0.1 + 0.2 * smoothstep(0.55, 0.85, fbm(xz * 0.09, 2)));
+	v_col = mix(v_col, vec3(0.36, 0.31, 0.2) * (0.85 + 0.3 * tone), dead * 0.75);
 	// Straw on the steppe, where the ground turns dry (its own edge: world_terrain.gdshader).
 	float dry = scale > 0.0 ? smoothstep(0.15, 0.75, s2.a + (fbm(xz * 0.09, 2) - 0.5) * 0.4) : s2.a;
 	v_col = mix(v_col, vec3(0.4, 0.34, 0.19) * (0.85 + 0.3 * tone), dry);
-	v_col = mix(v_col, vec3(0.4, 0.37, 0.18), smoothstep(0.72, 1.0, vnoise(xz * 0.07)) * 0.55); // going to seed
-	v_col *= 1.0 + gust * 0.12; // the gust turns the paler underside to the light
+	v_col = mix(v_col, vec3(0.37, 0.33, 0.2), smoothstep(0.72, 1.0, vnoise(xz * 0.07)) * 0.55); // going to seed
+	v_col *= 1.0 + gust * 0.08; // the gust turns the paler underside to the light
 	// Autumn: the meadow goes over to straw and rust.
-	v_col = mix(v_col, vec3(0.42, 0.33, 0.15) * (0.85 + 0.3 * tone), season_autumn * 0.55 * (1.0 - dry));
+	v_col = mix(v_col, vec3(0.42, 0.33, 0.15) * (0.85 + 0.3 * tone), season_autumn * 0.3 * (1.0 - dry)); // (on top of the ground's own turn: ground_grass)
 	// Winter: the meadow dead, pale straw and grey-brown, not green.
-	v_col = mix(v_col, mix(vec3(0.46, 0.4, 0.28), vec3(0.33, 0.28, 0.2), tone), season_bare * 0.85);
+	v_col = mix(v_col, mix(vec3(0.46, 0.4, 0.28), vec3(0.33, 0.28, 0.2), tone), season_bare * 0.6);
 	// In flower: a clump here and there tipped with white, yellow, blue or purple, in drifts.
 	float bloom = step(hash12(cell + 9.1), season_flowers * 0.24 * smoothstep(0.2, 0.6, vnoise(xz * 0.05 + 3.0)) * (1.0 - dry));
 	float pick = hash12(cell + 17.7);
@@ -190,14 +202,14 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 c = mix(v_root, v_col, smoothstep(0.0, 0.6, v_h)) * mix(0.95, 1.12, v_h);
+	vec3 c = mix(v_root, v_col, smoothstep(0.0, 0.6, v_h)) * mix(0.93, 1.05, v_h);
 	c = mix(c, v_flower.rgb, v_flower.a * smoothstep(0.6, 0.85, v_h));
 	c *= mix(1.0, 0.65, weather_wetness * (1.0 - weather_ice));
 	c = mix(c, vec3(0.68, 0.72, 0.76), weather_ice * 0.6 * smoothstep(0.2, 1.0, v_h)); // hoarfrost on the blades
 	ALBEDO = c;
 	ROUGHNESS = mix(0.75, 0.4, weather_wetness);
 	SPECULAR = 0.3;
-	BACKLIGHT = c * 0.7;
+	BACKLIGHT = c * 0.4; // (a glow against the sun, not the lit-from-within lime it was)
 	AO = mix(0.82, 1.0, v_h); // lit near enough as the ground is, or a field of it reads darker than the field beyond
 	AO_LIGHT_AFFECT = 0.6;
 }

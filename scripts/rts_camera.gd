@@ -17,6 +17,7 @@ var yaw := 0.6
 var dist := 70.0
 var edge_pan := true
 
+var in_sight: Array[Vector3] = [] ## folk in a fight to be seen through the trees (CombatMarks), chest high
 var _dist_to := 70.0
 var _tilt := 0.0 ## the middle drag's own say in the pitch
 var _turning := false
@@ -53,6 +54,25 @@ func pitch() -> float:
 
 func jump_to(p: Vector3) -> void:
 	focus = p
+	follow.clear()
+
+
+## Ridden with (Main.follow_chosen): the view keeps the middle of these in its sights, the slower
+## the further it has to go, till it's panned by hand or sent somewhere else. The dead drop out.
+var follow: Array[Node3D] = []
+
+
+func _follow_point() -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for f in follow:
+		if is_instance_valid(f) and f.is_inside_tree() and not (f is Villager and (f as Villager).dead):
+			sum += f.global_position
+			n += 1
+	if n == 0:
+		follow.clear()
+		return Vector3.INF
+	return sum / n
 
 
 ## A blast felt: the view jolts, `amount` (0..1) the harder the nearer, and settles.
@@ -106,6 +126,11 @@ func _process(dt: float) -> void:
 	if move != Vector2.ZERO:
 		move = move.normalized()
 		focus += (fwd * move.y + right * move.x) * speed * real_dt
+		follow.clear()
+	elif not follow.is_empty():
+		var at := _follow_point()
+		if at != Vector3.INF:
+			focus = focus.lerp(Vector3(at.x, focus.y, at.z), 1.0 - exp(-5.0 * real_dt))
 	focus.x = clampf(focus.x, -LIMIT, LIMIT)
 	focus.z = clampf(focus.z, -LIMIT, LIMIT)
 	var ground := terrain.height_at(focus.x, focus.z) if terrain else 0.0
@@ -119,6 +144,8 @@ func _process(dt: float) -> void:
 	look_at(focus + Vector3.UP * 0.5, Vector3.UP)
 	# (the trees between the view and the town dissolve round the line of sight: nature.gdshader)
 	RenderingServer.global_shader_parameter_set(&"view_focus", Vector4(focus.x, focus.y + 1.0, focus.z, 1.0))
+	# (and round the line to each of the folk in a fight, nearest the middle first: CombatMarks)
+	WorldProps.view_folk(in_sight)
 
 
 ## Where a ray from the camera through a point on the screen meets the ground (marched along the

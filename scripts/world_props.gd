@@ -151,6 +151,25 @@ static func _guess_kind(id: String) -> String:
 	return "tree"
 
 
+## Every material made with the nature shader (view_folk sets them all).
+static var _nature_mats: Array[ShaderMaterial] = []
+static var _folk_now := PackedVector4Array()
+
+
+## The folk the view should see through the trees to (up to six; RtsCamera, from the fight's
+## marks): each crown on the line from the camera to one dissolves round it (nature.gdshader).
+static func view_folk(pts: Array[Vector3]) -> void:
+	var v := PackedVector4Array()
+	v.resize(6)
+	for i in mini(pts.size(), 6):
+		v[i] = Vector4(pts[i].x, pts[i].y, pts[i].z, 1.0)
+	if v == _folk_now:
+		return
+	_folk_now = v
+	for m in _nature_mats:
+		m.set_shader_parameter(&"view_folk", v)
+
+
 ## A copy of the mesh whose surfaces use the nature shader (wind, wet, snow), coloured like the
 ## model's own materials.
 func _with_nature_materials(mesh: Mesh, kind: String, height: float, lod_role := 0.0, lod_near := 0.0) -> Mesh:
@@ -159,6 +178,7 @@ func _with_nature_materials(mesh: Mesh, kind: String, height: float, lod_role :=
 		var src := out.surface_get_material(s)
 		var mat := ShaderMaterial.new()
 		mat.shader = preload("res://shaders/nature.gdshader")
+		_nature_mats.append(mat)
 		var col := Color(0.5, 0.5, 0.5)
 		var rough := 0.85
 		var mat_name := ""
@@ -267,14 +287,24 @@ func _load_props() -> void:
 			y -= 0.25 * s # bed them in so slopes don't show their undersides
 			if terrain.start_ease(data[o], data[o + 2]) > 0.6:
 				y -= 1.4 * s # (the start's level ground: its stones sunk nearly flush with it)
-		if model.kind == "rock":
-			# On a steep face the ground falls away under one side: sit it on the low side, its
-			# uphill side buried in the slope, not hanging off the cliff.
-			var r := 0.7 * s
+		if model.kind == "rock" or model.kind == "cliff":
+			# On a steep face the ground falls away under one side: leaned with the slope part of
+			# the way, sat down on its low side and sunk deeper the steeper it is, its uphill side
+			# buried in the hill, not hanging off it.
+			var r := (0.7 if model.kind == "rock" else 2.5) * s
 			var px := data[o]
 			var pz := data[o + 2]
-			var low := minf(minf(terrain.height_at(px + r, pz), terrain.height_at(px - r, pz)), minf(terrain.height_at(px, pz + r), terrain.height_at(px, pz - r)))
-			y = minf(y, low - 0.1 * s)
+			var hx0 := terrain.height_at(px - r, pz)
+			var hx1 := terrain.height_at(px + r, pz)
+			var hz0 := terrain.height_at(px, pz - r)
+			var hz1 := terrain.height_at(px, pz + r)
+			var n := Vector3(hx0 - hx1, 2.0 * r, hz0 - hz1).normalized()
+			var slope := 1.0 - n.y # (0 flat, ~0.3 at 45°)
+			var tilt := Vector3.UP.slerp(n, 0.6)
+			if tilt.cross(Vector3.UP).length() > 0.001:
+				basis = Basis(Quaternion(Vector3.UP, tilt)) * basis
+			var low := minf(minf(hx0, hx1), minf(hz0, hz1))
+			y = minf(y, low - (0.1 + 0.35 * minf(slope * 3.0, 1.0)) * s)
 		_xf[i] = Transform3D(basis, Vector3(data[o], y, data[o + 2]))
 		_kind[i] = k
 		_tint[i] = fposmod(sin(data[o] * 12.9898 + data[o + 2] * 78.233) * 43758.5453, 1.0)

@@ -119,7 +119,7 @@ func _trouble(v: Villager) -> Array:
 		return ["ÜŞÜDÜ", 2]
 	if game.village._hungry:
 		return ["AÇ", 1]
-	if v.militia and v.drafted:
+	if game.village.controlled(v):
 		return ["EMİRDE", 0]
 	return ["", 0]
 

@@ -23,6 +23,8 @@ global uniform float weather_wetness;
 global uniform float weather_snow;
 global uniform float weather_rain;
 global uniform float weather_ice;
+global uniform float season_autumn; // the meadow going over to straw (Seasons), as the grass's blades do
+global uniform float season_bare; // late autumn into winter: the meadow dead, flat and straw-coloured
 
 varying vec3 world_pos;
 varying float skirt;
@@ -118,6 +120,23 @@ float tri_pebbles(vec3 p, vec3 w, float s) {
 	return pebbles(p.zy * s) * w.x + pebbles(p.xz * s) * w.y + pebbles(p.xy * s) * w.z;
 }
 
+// The meadow's colour, as an early colour plate of the taiga shows it: no bright lawn but a cold
+// olive and grey-green, gone over to ochre and straw on the dry rises, darker and mossy in the
+// hollows, with bare peaty earth showing through here and there. Shared, term for term, with the
+// grass's blades (grass.gdshader ground_grass), so the near grass and the far field are one.
+vec3 meadow_colour(vec2 xz, float big, float mid) {
+	vec3 c = mix(vec3(0.11, 0.17, 0.07), vec3(0.2, 0.265, 0.11), big);
+	c = mix(c, vec3(0.3, 0.27, 0.15), smoothstep(0.55, 0.85, mid) * 0.5); // sun-dried, gone to straw
+	c *= mix(0.84, 1.08, fbm(xz * 0.025 + 31.0, 3)); // lusher hollows, paler rises, tens of metres across
+	c = mix(c, vec3(0.1, 0.125, 0.08), smoothstep(0.6, 0.8, fbm(xz * 0.045 + 5.0, 3)) * 0.5); // moss, dark and grey
+	c = mix(c, vec3(0.33, 0.28, 0.16), smoothstep(0.64, 0.84, fbm(xz * 0.06 + 77.0, 3)) * 0.35); // dry ochre patches
+	c = mix(c, vec3(0.3, 0.29, 0.25), smoothstep(0.7, 0.88, fbm(xz * 0.13 + 91.0, 2)) * 0.25); // grey, wind-bleached
+	// the turning year: rust and straw in the autumn, dead and pale under the winter's sky
+	c = mix(c, vec3(0.34, 0.27, 0.15), season_autumn * 0.4);
+	c = mix(c, vec3(0.36, 0.31, 0.22), season_bare * 0.7);
+	return c;
+}
+
 float height_tex(vec2 xz) {
 	return texture(heightmap, (xz + map_half + 0.5) / map_size).r;
 }
@@ -191,22 +210,18 @@ void fragment() {
 	meadow *= 1.0 - smoothstep(0.1, 0.6, vm.g + (fine - 0.5) * 0.3) * 0.8;
 
 	// --- Layers ---
-	vec3 grass_a = vec3(0.12, 0.23, 0.05);
-	vec3 grass_b = vec3(0.26, 0.36, 0.09);
-	vec3 grass_dry = vec3(0.31, 0.28, 0.16);
-	vec3 grass_c = mix(mix(grass_a, grass_b, big), grass_dry, smoothstep(0.55, 0.85, mid) * 0.6);
-	grass_c *= 0.94 + 0.12 * fine; // painted: broad patches carry the variety, not speckle
-	// Seen from afar a meadow is never one flat colour: lusher hollows, paler sun-dried
-	// rises, clover-dark patches and flowering ones, all at the scale of tens of metres.
-	float swale = fbm(xz * 0.025 + 31.0, 3);
-	grass_c *= mix(0.78, 1.12, swale);
-	grass_c = mix(grass_c, vec3(0.08, 0.13, 0.05), smoothstep(0.62, 0.8, fbm(xz * 0.045 + 5.0, 3)) * 0.45);
-	grass_c = mix(grass_c, vec3(0.3, 0.29, 0.13), smoothstep(0.66, 0.85, fbm(xz * 0.06 + 77.0, 3)) * 0.35);
+	vec3 grass_c = meadow_colour(xz, big, mid);
+	grass_c *= 0.95 + 0.1 * fine; // painted: broad patches carry the variety, not speckle
+	// Bare peaty earth where the turf has given out, a few metres across, frayed into the grass.
+	float bare_n = fbm(xz * 0.21 + 63.0, 3) + (fine - 0.5) * 0.25;
+	vec3 peat_c = mix(vec3(0.1, 0.08, 0.06), vec3(0.16, 0.13, 0.095), fine);
+	grass_c = mix(grass_c, peat_c, smoothstep(0.66, 0.76, bare_n) * 0.85);
 	grass_c *= mix(1.0, 0.82, smoothstep(0.02, 0.2, slope)); // steeper banks: thinner, earthier
 
-	vec3 dirt_c = mix(vec3(0.16, 0.125, 0.09), vec3(0.23, 0.19, 0.14), mid) * (0.94 + 0.12 * fine);
-	vec3 floor_c = mix(vec3(0.17, 0.13, 0.08), vec3(0.24, 0.2, 0.12), fine);
-	floor_c = mix(floor_c, vec3(0.16, 0.2, 0.09), smoothstep(0.5, 0.8, mid) * 0.7); // moss
+	// (dark, peaty earth: the taiga's soil, not a sandy brown)
+	vec3 dirt_c = mix(vec3(0.115, 0.09, 0.068), vec3(0.18, 0.145, 0.105), mid) * (0.94 + 0.12 * fine);
+	vec3 floor_c = mix(vec3(0.14, 0.11, 0.075), vec3(0.21, 0.17, 0.11), fine);
+	floor_c = mix(floor_c, vec3(0.13, 0.155, 0.09), smoothstep(0.5, 0.8, mid) * 0.7); // moss, grey-green
 	// Layered rock bands; faded out with distance, where they would alias into moire.
 	float strata = mix(0.5, sin(world_pos.y * 1.7 + fbm(xz * 0.05, 3) * 9.0) * 0.5 + 0.5, 1.0 - smoothstep(40.0, 160.0, dist));
 	// Rock detail from three sides (not stretched down cliffs): broken into blocks close up,
@@ -243,9 +258,9 @@ void fragment() {
 	snow_c = mix(snow_c, vec3(0.7, 0.71, 0.72), smoothstep(0.6, 0.85, fbm(xz * 0.03 + 41.0, 3)) * 0.35);
 	snow_c *= 0.94 + 0.08 * fine;
 	float peb = pebbles(xz * 9.0);
-	vec3 road_c = mix(vec3(0.24, 0.22, 0.18), vec3(0.3, 0.28, 0.24), smoothstep(0.15, 0.5, peb) * 0.2 + mid * 0.5 + 0.15); // gravel as a tone, not a pattern
+	vec3 road_c = mix(vec3(0.23, 0.215, 0.19), vec3(0.31, 0.295, 0.265), smoothstep(0.15, 0.5, peb) * 0.2 + mid * 0.5 + 0.15); // gravel as a tone, not a pattern
 	road_c *= 0.94 + 0.1 * fine;
-	vec3 wet_c = mix(vec3(0.16, 0.13, 0.09), vec3(0.2, 0.22, 0.12), mid);
+	vec3 wet_c = mix(vec3(0.12, 0.1, 0.07), vec3(0.15, 0.17, 0.1), mid); // (sedge and black bog earth)
 	vec3 shore_c = mix(vec3(0.3, 0.28, 0.25), vec3(0.2, 0.18, 0.15), smoothstep(0.1, 0.45, pebbles(xz * 4.0)));
 
 	vec3 base = mix(dirt_c, grass_c, meadow);
@@ -268,9 +283,11 @@ void fragment() {
 	// Packed earth, but never one flat brown: clods of it lighter and darker, humus-black patches and
 	// dusty pale ones, small stones worked up through it and wisps of dry grass and needles close up.
 	float clod = fbm(xz * 0.7 + 3.0, 3);
-	vec3 trail_c = mix(vec3(0.15, 0.115, 0.085), vec3(0.28, 0.225, 0.165), smoothstep(0.2, 0.8, mid * 0.55 + clod * 0.45));
-	trail_c = mix(trail_c, vec3(0.095, 0.075, 0.055), smoothstep(0.6, 0.85, fbm(xz * 0.16 + 17.0, 3)) * 0.55); // humus
-	trail_c = mix(trail_c, vec3(0.33, 0.295, 0.235), smoothstep(0.64, 0.9, fbm(xz * 0.22 + 51.0, 3)) * 0.4); // dust
+	// (a trodden brown, darker and warmer than the olive grass, so a path or a yard reads at once
+	// from above, not the pale sand it was)
+	vec3 trail_c = mix(vec3(0.095, 0.072, 0.053), vec3(0.175, 0.13, 0.092), smoothstep(0.2, 0.8, mid * 0.55 + clod * 0.45));
+	trail_c = mix(trail_c, vec3(0.08, 0.062, 0.046), smoothstep(0.6, 0.85, fbm(xz * 0.16 + 17.0, 3)) * 0.55); // humus
+	trail_c = mix(trail_c, vec3(0.24, 0.205, 0.165), smoothstep(0.66, 0.9, fbm(xz * 0.22 + 51.0, 3)) * 0.3); // dust
 	float near_e = 1.0 - smoothstep(18.0, 55.0, dist);
 	// (stones of a few sizes, here and there, not a polka dot: two scales, most cells left empty)
 	float stone_e = max(smoothstep(0.24, 0.12, stones_at(xz * 3.1 + 7.0, 0.75)), smoothstep(0.26, 0.14, stones_at(xz * 1.4 + 2.0, 0.88))) * near_e;
@@ -278,7 +295,7 @@ void fragment() {
 	float litter_e = smoothstep(0.7, 0.9, fbm(xz * 2.4 + 9.0, 2)) * near_e;
 	trail_c = mix(trail_c, vec3(0.31, 0.26, 0.13), litter_e * 0.45);
 	trail_c *= 0.9 + 0.18 * fine;
-	base = mix(base, base * vec3(0.95, 0.9, 0.72) + vec3(0.03, 0.025, 0.0), worn_grass * 0.7); // grass trodden pale
+	base = mix(base, base * vec3(0.9, 0.84, 0.68) + vec3(0.03, 0.022, 0.008), worn_grass * 0.75); // grass trodden thin and pale
 	base = mix(base, trail_c, trail * 0.95);
 	base = mix(base, rock_c, rock);
 	float rough = mix(0.92, 0.85, rock);
