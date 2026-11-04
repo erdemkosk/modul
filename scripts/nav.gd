@@ -35,6 +35,7 @@ var _base := PackedFloat32Array() ## each cell's own cost
 var _shut := PackedByteArray() ## 1 the ground's own (water, cliff), 2 a building's
 var _road := PackedByteArray() ## 1 under a plank road: quick, never mud, the cheapest way
 var _wall := PackedByteArray() ## 1 under a palisade: dear to cross (a way round through a gate is taken), not solid
+var _wire := PackedByteArray() ## 1 where barbed wire stands
 var _claim := PackedByteArray() ## 1 under a field: walked over, not built on
 var _worn := {} ## cell index -> true while it carries any wear
 var _scorched := {} ## cell index -> how scorched, 0..1
@@ -60,6 +61,7 @@ func _ready() -> void:
 	_shut.resize(N * N)
 	_road.resize(N * N)
 	_wall.resize(N * N)
+	_wire.resize(N * N)
 	_shown.resize(N * N)
 	_claim.resize(N * N)
 	astar.region = Rect2i(0, 0, N, N)
@@ -558,6 +560,25 @@ func set_road(cells: Array[Vector2i]) -> void:
 			continue
 		_road[i] = 1
 		_grid(c, false, _base[i] * COST_SCALE * ROAD_EASE)
+
+
+## Barbed wire's cells (`on`) or no longer: built on no more than a building's, and gone round, but not
+## solid: with no way round, it's the way, slowly (Villager._walk: cut through, at a cost).
+func set_wire(cells: Array[Vector2i], on: bool) -> void:
+	set_building(cells, on)
+	for c in cells:
+		var i := c.y * N + c.x
+		if _shut[i] == 1:
+			continue
+		_wire[i] = 1 if on else 0
+		if on:
+			_grid(c, false, -1.0)
+		_grid(c, false, _base[i] * COST_SCALE * (400.0 if on else (ROAD_EASE if _road[i] == 1 else 1.0)))
+
+
+func on_wire(p: Vector3) -> bool:
+	var c := cell_of(p)
+	return _wire[c.y * N + c.x] == 1
 
 
 ## A palisade's cells (`on`) or no longer (breached, pulled down). Not solid: a way through one costs

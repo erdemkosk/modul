@@ -2075,8 +2075,8 @@ func _stack_node(e: Dictionary, seed_: int) -> Node3D:
 		"yiyecek": # (sacks, two courses of three)
 			var count := ceili(fill * 6.0)
 			for k in count:
-				var lie := Basis(Vector3.UP, look.randf_range(-0.2, 0.2)) * Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * 0.62)
-				Props.place(at, "sack", Transform3D(lie, Vector3(-0.32 + (k % 3) * 0.32, 0.17 + (k / 3) * 0.26, 0.18)))
+				var lie := Basis(Vector3.UP, look.randf_range(-0.12, 0.12)).scaled(Vector3.ONE * 0.62)
+				Props.place(at, "sack", Transform3D(lie, Vector3(-0.36 + (k % 3) * 0.36, (k / 3) * 0.22, 0.0)))
 		"odun": # (logs, in the hollows of the course under)
 			var count := ceili(fill * 10.0)
 			for k in count:

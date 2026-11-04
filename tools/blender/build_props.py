@@ -46,12 +46,13 @@ BURLAP = (0.63, 0.52, 0.35)
 ROPE = (0.6, 0.5, 0.33)
 
 
-def loft(p, rings, color, under=None, segs=14):
+def loft(p, rings, color, under=None, segs=20):
     """A body of revolution about a bent spine: `rings` are (centre, half-width, half-height), each
     square to the way from the last; `under` the colour its belly goes toward."""
     bm = p.bm
     loops = []
     pts = [Vector(r[0]) for r in rings]
+    belly = {}
     for i, r in enumerate(rings):
         fwd = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
         side = fwd.cross(Vector((0, 0, 1)))
@@ -60,7 +61,9 @@ def loft(p, rings, color, under=None, segs=14):
         vs = []
         for k in range(segs):
             t = k / segs * math.tau
-            vs.append(bm.verts.new(pts[i] + side * (math.cos(t) * r[1]) + up * (math.sin(t) * r[2])))
+            v = bm.verts.new(pts[i] + side * (math.cos(t) * r[1]) + up * (math.sin(t) * r[2]))
+            belly[v] = max(-math.sin(t), 0.0)
+            vs.append(v)
         loops.append(vs)
     faces = []
     for a, b in zip(loops, loops[1:]):
@@ -74,11 +77,10 @@ def loft(p, rings, color, under=None, segs=14):
         faces.append(f)
     bmesh.ops.recalc_face_normals(bm, faces=faces)
     for f in faces:
-        c = color
-        if under is not None:
-            down = max(-f.calc_center_median().dot(Vector((0, 0, 1))) + float(sum(q[2] for q in pts) / len(pts)), 0.0)
-            c = tuple(color[i] + (under[i] - color[i]) * min(down * 1.6, 1.0) for i in range(3))
-        p._paint([f], c)
+        for loop in f.loops:
+            t = belly[loop.vert] if under is not None else 0.0
+            c = tuple(color[q] + ((under or color)[q] - color[q]) * t for q in range(3))
+            loop[p.col] = (c[0], c[1], c[2], 1.0)
     return faces
 
 
@@ -109,8 +111,14 @@ def ox():
     muzzle = k.piece("dark", "head")
     loft(muzzle, [((0, 1.9, 1.17), 0.14, 0.13), ((0, 2.0, 1.1), 0.15, 0.11), ((0, 2.07, 1.05), 0.11, 0.07)], MUZZLE, segs=10)
     for s in (-1, 1):
-        muzzle.box((s * 0.195, 1.68, 1.42), (0.03, 0.08, 0.06), (0.03, 0.02, 0.02))  # (an eye)
+        loft(muzzle, [((s * 0.205, 1.64, 1.4), 0.02, 0.02), ((s * 0.215, 1.68, 1.4), 0.04, 0.038), ((s * 0.205, 1.72, 1.4), 0.02, 0.02)], (0.03, 0.02, 0.02), segs=10)  # (an eye)
+        loft(muzzle, [((s * 0.06, 2.06, 1.09), 0.012, 0.012), ((s * 0.065, 2.09, 1.08), 0.03, 0.022), ((s * 0.07, 2.11, 1.07), 0.012, 0.012)], (0.03, 0.02, 0.02), segs=8)  # (a nostril)
     k.add(muzzle)
+    brow = k.piece("hide", "head")
+    for s in (-1, 1):  # (the ridge over the eye, the lid)
+        loft(brow, [((s * 0.1, 1.6, 1.53), 0.03, 0.03), ((s * 0.17, 1.67, 1.5), 0.05, 0.035), ((s * 0.22, 1.74, 1.44), 0.025, 0.02)], HIDE, segs=8)
+    loft(brow, [((0, 1.38, 1.62), 0.06, 0.05), ((0, 1.46, 1.63), 0.13, 0.07), ((0, 1.58, 1.58), 0.08, 0.05)], HIDE_DARK, segs=10)  # (the curly poll)
+    k.add(brow)
     horns = k.piece("plaster", "head")
     for s in (-1, 1):  # (out from the poll, forward, and up to a dark tip)
         loft(horns, [((s * 0.15, 1.38, 1.6), 0.055, 0.055), ((s * 0.3, 1.42, 1.65), 0.05, 0.05), ((s * 0.44, 1.5, 1.74), 0.04, 0.04), ((s * 0.5, 1.56, 1.88), 0.028, 0.028)], HORN, segs=8)
@@ -334,9 +342,13 @@ def barrel():
 def sack():
     k = B.Kit("sack")
     p = k.piece("cloth")
-    loft(p, [((0, 0, 0.0), 0.17, 0.13), ((0, 0, 0.04), 0.26, 0.2), ((0, 0, 0.16), 0.29, 0.23), ((0, 0, 0.3), 0.27, 0.21), ((0, 0, 0.42), 0.19, 0.15),
-             ((0, 0, 0.5), 0.06, 0.05), ((0, 0, 0.53), 0.055, 0.05), ((0, 0, 0.58), 0.1, 0.09), ((0, 0, 0.62), 0.07, 0.06)], BURLAP, (0.5, 0.41, 0.27), segs=12)
-    B._ring(p, Vector((0, 0, 0.52)), Vector((0, 0, 1)), 0.065, 0.015, 0.03, ROPE, n=10)
+    # lying as it was dropped: a full bag, flat under its weight, its neck tied and flopped over
+    loft(p, [((0, -0.44, 0.15), 0.08, 0.04), ((0, -0.4, 0.16), 0.24, 0.13), ((0, -0.26, 0.18), 0.3, 0.18), ((0, 0.0, 0.19), 0.32, 0.19), ((0, 0.2, 0.18), 0.3, 0.18),
+             ((0, 0.34, 0.16), 0.24, 0.14), ((0, 0.42, 0.14), 0.1, 0.07), ((0, 0.46, 0.13), 0.045, 0.04), ((0, 0.49, 0.125), 0.045, 0.04), ((0, 0.54, 0.12), 0.1, 0.05), ((0, 0.58, 0.1), 0.06, 0.02)],
+         BURLAP, (0.46, 0.37, 0.24), segs=14)
+    for x in (-0.16, 0.0, 0.16):  # (the creases across it)
+        loft(p, [((x, -0.38, 0.345), 0.01, 0.006), ((x + 0.01, 0.0, 0.378), 0.02, 0.008), ((x, 0.3, 0.345), 0.01, 0.006)], (0.5, 0.41, 0.27), segs=6)
+    B._ring(p, Vector((0, 0.475, 0.127)), Vector((0, 1, 0)), 0.05, 0.014, 0.03, ROPE, n=10)
     k.add(p)
     k.finish()
 

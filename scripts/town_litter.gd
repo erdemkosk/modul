@@ -8,11 +8,11 @@ extends Node3D
 ## loaded game; baked into a few meshes (MeshBake).
 
 const KINDS := {
-	"house": ["wood", "block", "barrel", "boards", "cart"],
+	"house": ["wood", "block", "barrel", "boards", "cart", "logs"],
 	"store": ["crates", "barrel", "drum", "sacks", "cart", "tins", "drum"],
 	"square": ["barrel", "crates", "boards"],
 	"well": ["barrel", "trough"],
-	"work": ["wood", "boards", "block", "cart"],
+	"work": ["wood", "logs", "boards", "block", "cart", "logs"],
 	"carts": ["cart", "cart", "hay", "drum"],
 	"barracks": ["sandbags", "sandbags", "ammo", "drum", "ammo"],
 	"tower": ["sandbags", "ammo"],
@@ -123,6 +123,8 @@ func _make(kind: String, p: Vector3, yaw: float) -> void:
 			for k in 6:
 				var c := p + Vector3(_rng.randf_range(-0.8, 0.8), 0.02, _rng.randf_range(-0.8, 0.8))
 				_box(Vector3(0.12, 0.03, 0.06), plank, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), c))
+		"logs":
+			Props.place(self, "logs", _at(b, p))
 		"barrel":
 			Props.place(self, "barrel", _at(Basis(Vector3.UP, yaw), p))
 		"crates":
@@ -131,8 +133,8 @@ func _make(kind: String, p: Vector3, yaw: float) -> void:
 				Props.place(self, "crate", _at(b * Basis(Vector3.UP, _rng.randf_range(-0.15, 0.15)), p + b * off))
 		"sacks":
 			for k in 4:
-				var lie := Basis(Vector3.UP, yaw + k * 0.7) * Basis(Vector3.RIGHT, PI * 0.5)
-				Props.place(self, "sack", _at(lie, p + b * Vector3((k % 2) * 0.62 - 0.31, 0.28 + (k / 2) * 0.46, -0.25 + (k / 2) * 0.1)))
+				var lie := Basis(Vector3.UP, yaw + _rng.randf_range(-0.25, 0.25))
+				Props.place(self, "sack", _at(lie, p + b * Vector3((k % 2) * 0.68 - 0.34, (k / 2) * 0.34, (k / 2) * 0.1)))
 		"boards": # (boards stacked on two bearers)
 			for s in [-0.8, 0.8]:
 				_box(Vector3(0.12, 0.12, 1.0), dark, Transform3D(b, p + b * Vector3(s, 0.06, 0)))

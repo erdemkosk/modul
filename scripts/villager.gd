@@ -73,6 +73,7 @@ var _elbows: Array[Node3D] = [] ## the forearms' pivots (on a model built in two
 var _knees: Array[Node3D] = [] ## the shins' pivots
 var _torso: Node3D
 var _load: Node3D
+var _wire_t := 0.0 ## s at the wire in front of it
 var _yaw := 0.0
 var _weapon: Node3D
 var _attack_t := 0.0
@@ -853,10 +854,7 @@ func _hand_load(res: String, n: int) -> Node3D:
 				at.add_child(mi)
 		"yiyecek":
 			at.position = Vector3(0, 1.06, -0.33)
-			var sack := Building._burlap()
-			_mesh_ball(at, Vector3(0.52, 0.42, 0.34), Vector3(0, 0, 0), sack)
-			_mesh_ball(at, Vector3(0.2, 0.14, 0.18), Vector3(0.0, 0.25, 0), sack)
-			_hand_cyl(at, 0.075, 0.05, Vector3(0, 0.2, 0), rope)
+			Props.place(at, "sack", Transform3D(Basis(Vector3.UP, PI * 0.5).scaled(Vector3.ONE * 0.72), Vector3(0.03, -0.14, 0)))
 		"camur":
 			at.position = Vector3(0, 1.04, -0.33)
 			_basket(at, 0.25, 0.26, rope)
@@ -1834,6 +1832,22 @@ func _walk(dt: float) -> bool:
 			job = "Suru kırıyor"
 			_animate(dt, false)
 			return false
+	if team == 1:
+		var wire: Building = village.wire_ahead(position, _path[_path_i])
+		if wire:
+			# Cut through by hand, torn on it the while, and shot at.
+			_face(wire.global_position, dt)
+			_anim = "strike"
+			job = "Teli kesiyor"
+			_wire_t += dt
+			if floori(_wire_t / 1.5) > floori((_wire_t - dt) / 1.5):
+				hurt(village.WIRE_TEAR)
+			if _wire_t >= village.WIRE_CUT:
+				_wire_t = 0.0
+				village.cut_wire(wire)
+			_animate(dt, false)
+			return false
+		_wire_t = 0.0
 	if team == 0 and _barred(dt):
 		return false
 	var worn := nav.worn(position)
@@ -2538,6 +2552,8 @@ func _animate(dt: float, walking: bool) -> void:
 	elif carry_n > 0 and carry_res == "odun" and _anim == "walk":
 		arm_r = -2.6
 		er = 1.8 # (the hand over on the log)
+	if _load and not has_cart:
+		_load.visible = _anim in ["walk", "idle", "look"] # (down out of the way as they stoop to it)
 	if _body:
 		if _lantern and _lantern.visible:
 			_lantern.global_basis = Basis.IDENTITY # (it hangs from the hand, upright)

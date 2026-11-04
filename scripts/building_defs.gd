@@ -79,7 +79,7 @@ const DEFS := {
 	"siper": {"name": "Kum torbası mevzi", "size": Vector2(3, 2), "cost": {"tas": 3, "odun": 1}, "time": 8.0, "role": "post",
 		"desc": "Toprak doldurulmuş çuvallardan alçak bir duvar. Tehlike çanında milis, firarilerin geldiği yöne en yakın mevzinin arkasına geçer: siperdeki adamı vurmak iki kat zordur."},
 	"tel": {"name": "Dikenli tel", "size": Vector2(3.8, 1), "cost": {"odun": 2, "demir": 1}, "time": 4.0, "role": "obstacle",
-		"desc": "Çarpı kazıklara gerilmiş dikenli tel. Kimse içinden geçemez: firarileri dolaşmaya, siperlerin ve lambaların önünden geçmeye zorlar."},
+		"desc": "Çarpı kazıklara gerilmiş dikenli tel. Kasabalılar geçmez, firariler dolaşır. Yol bulamayan firari teli keser: kesene kadar durur, yaralanır, sen de vurursun; kesilen parça gedik açar."},
 	"makineli": {"name": "Maxim yuvası", "size": Vector2(3, 3), "cost": {"odun": 4, "tas": 6, "demir": 8}, "time": 24.0, "role": "mg", "slots": 2, "needs": "makineli",
 		"station": Vector3(0, 0, -0.9),
 		"desc": "Kum torbası çember içinde tekerlekli bir Maxim makineli tüfeği. İki kişi verilir: biri ateş eder, öteki şeridi besler. 65 m içinde gördüğü düşmana kısa kısa taramalar yapar; her tarama silahlıktan bir fişek yer. Fişek yoksa susar."},

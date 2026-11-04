@@ -1990,7 +1990,10 @@ func place(kind: String, pos: Vector3, yaw: float) -> Building:
 	if b.def.role == "farm" or b.def.get("open", false): # (walked over, to the stacks themselves)
 		nav.set_field(b.cells, true)
 	else:
-		nav.set_building(b.cells, true)
+		if b.kind == "tel":
+			nav.set_wire(b.cells, true)
+		else:
+			nav.set_building(b.cells, true)
 	_clear_ground(kind, pos, yaw)
 	if not kind in BuildingDefs.YARDS and not BuildingDefs.DEFS[kind].role in ["farm", "light"]:
 		# (the ground round it trodden bare by the building of it and the coming and going, fading into the grass)
@@ -2689,11 +2692,17 @@ func _unplace(b: Building) -> void:
 	if b.def.role == "farm" or b.def.get("open", false):
 		nav.set_field(b.cells, false)
 	else:
-		nav.set_building(b.cells, false)
+		if b.kind == "tel":
+			nav.set_wire(b.cells, false)
+		else:
+			nav.set_building(b.cells, false)
 		if b.kind in BuildingDefs.CHAINED: # (the cells it shared with the next length stay shut)
 			for n in buildings:
 				if n != b and n.kind == b.kind and n.state != "gone" and n.global_position.distance_to(b.global_position) < 8.0:
-					nav.set_building(n.cells, true)
+					if n.kind == "tel":
+						nav.set_wire(n.cells, true)
+					else:
+						nav.set_building(n.cells, true)
 			call_deferred("join_chains")
 	if b.has_meta("litter") and is_instance_valid(b.get_meta("litter")):
 		(b.get_meta("litter") as Node).queue_free()
@@ -2986,6 +2995,9 @@ func rail_block(a: Vector3, b: Vector3) -> Dictionary:
 ## walked actually crossing them ({gate} / {wall, at}; empty if nothing). (Cheap unless it's by a wall:
 ## the grid knows its cells.)
 func barred_at(from: Vector3, to: Vector3) -> Dictionary:
+	var ahead := wire_ahead(from, to)
+	if ahead:
+		return {"at": ahead.global_position}
 	if walls.is_empty():
 		return {}
 	var a := Vector2(from.x, from.z)
@@ -3566,6 +3578,36 @@ func _go_out(b: Building, v: Villager = null) -> Array:
 		if is_instance_valid(b):
 			b.open_door()
 		return true}, {"t": "step", "to": b.door()}]
+
+
+## The length of barbed wire a step from `from` toward `to`, or null.
+func wire_ahead(from: Vector3, to: Vector3) -> Building:
+	var way := to - from
+	way.y = 0.0
+	if way.length() < 0.05:
+		return null
+	var p := from + way.normalized() * minf(way.length(), 1.1)
+	if not nav.on_wire(p):
+		return null
+	var best: Building = null
+	var bd := 5.0
+	for b in buildings:
+		if b.kind == "tel" and b.state != "gone" and b.global_position.distance_to(p) < bd:
+			bd = b.global_position.distance_to(p)
+			best = b
+	return best
+
+
+const WIRE_CUT := 5.0 ## s a man takes to cut through a length of wire
+const WIRE_TEAR := 4.0 ## what it costs him every second and a half of that
+
+
+## A length of wire cut through: gone, a gap.
+func cut_wire(b: Building) -> void:
+	if not is_instance_valid(b) or b.state == "gone":
+		return
+	message.emit("Dikenli tel kesildi: hatta gedik açıldı", "bad")
+	remove_building(b)
 
 
 ## A place to stand by a building, on the side toward `from`.

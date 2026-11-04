@@ -1425,6 +1425,13 @@ func _make_people() -> void:
 	head.add_child(title)
 	Ui.label(title, "KASABALILAR DEFTERİ", 26, Ui.P_INK, "display")
 	Ui.label(title, "Nüfus ve iş kaydı", 14, Ui.P_DIM, "italic")
+	for g: Array in [["TAŞIYICI", "tasima", "insa", "Seçili köylüler önce taşır, inşaat yapmaz"], ["İNŞAATÇI", "insa", "tasima", "Seçili köylüler önce inşa eder, taşıma yapmaz"], ["SERBEST", "", "", "Seçili köylülerde bu iki iş normale döner"]]:
+		var b := Ui.ink_button(Button.new(), Ui.P_BLUE, 14, "strong")
+		b.text = str(g[0])
+		b.tooltip_text = str(g[3])
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.pressed.connect(func() -> void: _set_group_work(str(g[0]), str(g[1]), str(g[2])))
+		head.add_child(b)
 	var close := Ui.ink_button(Button.new(), Ui.P_RED, 15, "strong")
 	close.text = "×"
 	close.tooltip_text = "Kapat (K)"
@@ -1830,6 +1837,23 @@ func _refresh_tech() -> void:
 	_tech_note.mouse_filter = Control.MOUSE_FILTER_PASS
 	_tech_note.add_theme_color_override("font_color", Color(1.0, 0.84, 0.45) if readers == 0 else Color(Ui.CHALK, 0.75))
 	_tech_tree.refresh()
+
+
+## The folk chosen on the ground all put first on `first` and off `off` ("": those two back to normal).
+func _set_group_work(what: String, first: String, off: String) -> void:
+	var folk: Array[Villager] = game._chosen()
+	if folk.is_empty():
+		toast("Önce köylüleri seç, sonra K ile burayı aç", "info")
+		return
+	for v: Villager in folk:
+		if first == "":
+			v.prio.erase("tasima")
+			v.prio.erase("insa")
+		else:
+			v.prio[first] = 2
+			v.prio[off] = 0
+	toast("%d köylü: %s" % [folk.size(), what], "good")
+	_refresh_people()
 
 
 func toggle_people() -> void:
