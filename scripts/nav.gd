@@ -97,6 +97,29 @@ func _read_ground() -> void:
 			_grid(Vector2i(cx, cz), false, cost * COST_SCALE)
 
 
+## The land changed under `cells`: what was too steep to walk and now isn't opens up (`wet`: the water
+## at a point, -INF for none: that stays shut). What's newly steep stays open, it's graded to climb.
+func regrade(cells: Array, wet: Callable) -> void:
+	var h := terrain._heights
+	var s := terrain.size
+	var any := false
+	for q: Vector2i in cells:
+		var c := q.y * N + q.x
+		if q.x < 1 or q.y < 1 or q.x >= N - 1 or q.y >= N - 1 or _shut[c] != 1:
+			continue
+		var i := (q.y * 2 + 1) * s + q.x * 2 + 1
+		var steep := maxf(absf(h[i + 1] - h[i - 1]), absf(h[i + s] - h[i - s])) * 0.5
+		if steep > STEEP or float(wet.call(center_of(q))) > -INF:
+			continue
+		_shut[c] = 0
+		_base[c] = 1.3 + steep * 2.5
+		_grid(q, false, _base[c] * COST_SCALE)
+		_grid(q, false, -1.0)
+		any = true
+	if any:
+		_find_regions()
+
+
 func _shut_water() -> void:
 	var lake: Dictionary = terrain.meta.lake
 	var lx := float(lake.x)

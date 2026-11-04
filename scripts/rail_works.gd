@@ -13,6 +13,7 @@ const BED := 3.6 ## m from the rails' middle the cut or bank's flat goes
 const BORE_DEEP := 14.0 ## m a cutting may go down before it's a tunnel instead
 const BORE_LONG := 80.0 ## m that deep it has to be: anything shorter is cut through
 const BANK := 5.0 ## m of bank at most: higher than that, a trestle
+const CUT_RUN := 1.3 ## m out for each m up on a cutting's side (not so steep the folk can't climb it)
 const STEP := 16 ## m a side of the squares the way's looked for over
 const FLAT_ENOUGH := 0.03 ## the grade that costs nothing extra to walk the way over
 
@@ -234,6 +235,7 @@ static func earthworks(v: Node, line: PackedVector3Array) -> void:
 	var size := t.size
 	var half := t.half
 	var felled := false
+	var touched := {}
 	for k in range(0, line.size(), 6):
 		if deep[k] == 1:
 			continue
@@ -242,7 +244,7 @@ static func earthworks(v: Node, line: PackedVector3Array) -> void:
 		var cut := d > 0.05
 		if not cut and (d > -0.05 or d < -BANK or v.water_at(c) > -INF):
 			continue
-		var r := minf(BED + absf(d) * (1.0 if cut else 1.5) + 1.5, 40.0)
+		var r := minf(BED + absf(d) * (CUT_RUN if cut else 1.5) + 1.5, 40.0)
 		var gx0 := clampi(floori(c.x - r) + half, 0, size - 1)
 		var gx1 := clampi(ceili(c.x + r) + half, 0, size - 1)
 		var gz0 := clampi(floori(c.z - r) + half, 0, size - 1)
@@ -254,9 +256,12 @@ static func earthworks(v: Node, line: PackedVector3Array) -> void:
 				var off := maxf(sqrt(dx * dx + dz * dz) - BED, 0.0)
 				var i := gz * size + gx
 				if cut:
-					h[i] = minf(h[i], c.y + off)
+					h[i] = minf(h[i], c.y + off / CUT_RUN)
 				elif c.y - off / 1.5 > h[i]:
 					h[i] = c.y - off / 1.5
+		for gz in range(gz0, gz1 + 1, 2):
+			for gx in range(gx0, gx1 + 1, 2):
+				touched[Vector2i(gx / 2, gz / 2)] = true
 		for i: int in v._props_in(c, r):
 			RutStore.cut[i] = SaveGame.day
 			v.props._remove(i)
@@ -266,6 +271,7 @@ static func earthworks(v: Node, line: PackedVector3Array) -> void:
 	t._heights = h
 	t._dig_dirty = true
 	t.commit_digs()
+	v.nav.regrade(touched.keys(), v.water_at)
 
 
 ## The stretches of `line` under the ground: [first, last] point of each.
