@@ -542,7 +542,7 @@ func _place_here(keep: bool) -> void:
 	if kind in BuildingDefs.WORKSHOP_KINDS:
 		b.mode = _placing_mode
 	hud.toast("%s için yer açıldı: köylüler malzeme taşıyacak" % b.display_name(), "info")
-	if not keep:
+	if not keep and not kind in BuildingDefs.CHAINED: # (one length leads on to the next, till right-click)
 		stop_placing()
 		select(b)
 	else:
@@ -574,6 +574,13 @@ func _update_ghost() -> void:
 				p.z = on.at.z
 				var d: Vector3 = on.dir
 				_ghost_yaw = atan2(d.x, d.z)
+		if _placing in BuildingDefs.CHAINED:
+			var link := _chain_snap(_placing, p)
+			if not link.is_empty():
+				p = link.at
+				if not is_equal_approx(link.yaw, _ghost_yaw):
+					_ghost_yaw = link.yaw
+					_ghost_reason = "x"
 	if _placing == "istasyon": # (it takes hold of the rails, its platform to them)
 		var spot: Dictionary = village.station_spot(p)
 		if not spot.is_empty():
@@ -590,7 +597,7 @@ func _update_ghost() -> void:
 		_ghost.set_ghost(true, reason == "")
 		var def: Dictionary = BuildingDefs.DEFS[_placing]
 		if reason == "":
-			hud.set_hint("%s: %s · %s · Alt: hizasız · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing), "Q / E çevir" if _yaw_manual else "kapısı kasabaya dönük (Q / E: elle çevir)"])
+			hud.set_hint("%s: %s · %s · Alt: hizasız · Shift+tık üst üste · Sağ tık iptal" % [def.name, BuildingDefs.cost_text(_placing), "ucuna yaklaştır, kendi yapışır" if _placing in BuildingDefs.CHAINED else "Q / E çevir" if _yaw_manual else "kapısı kasabaya dönük (Q / E: elle çevir)"])
 		else:
 			hud.set_hint(reason, true)
 	_ghost_reason = reason
@@ -600,6 +607,51 @@ func _update_ghost() -> void:
 ## front on the same line and an even 2 m between their walls when it's near that, a brass guide
 ## line drawn between them while it holds. Alt held: no pulling.
 var _guide: MeshInstance3D
+
+
+## Wire and sandbags near a free end of their own kind: the next length, end to end with it, straight
+## on or turned by 45 or 90 degrees toward the pointer ({at, yaw}, {} with none near).
+func _chain_snap(kind: String, p: Vector3) -> Dictionary:
+	var sz: Vector2 = BuildingDefs.DEFS[kind].size
+	var reach := sz.x * 1.15
+	var ends: Array = [] # (each end of each length: [where, which way it leads on, the length])
+	for b in village.buildings:
+		if b.kind != kind or b.state in ["gone", "ghost"]:
+			continue
+		var axis: Vector3 = b.global_basis * Vector3.RIGHT
+		axis.y = 0.0
+		axis = axis.normalized()
+		for sgn in [1.0, -1.0]:
+			var out: Vector3 = axis * sgn
+			var at: Vector3 = b.global_position + out * sz.x * 0.5
+			at.y = 0.0
+			ends.append([at, out, b])
+	var bd := reach
+	var pick: Array = []
+	var flat := Vector3(p.x, 0, p.z)
+	for e: Array in ends:
+		var d := flat.distance_to(e[0])
+		if d >= bd:
+			continue
+		var taken := false
+		for o: Array in ends:
+			if o[2] != e[2] and (o[0] as Vector3).distance_to(e[0]) < 0.8:
+				taken = true
+		if not taken:
+			bd = d
+			pick = e
+	if pick.is_empty():
+		return {}
+	var on: Vector3 = pick[1]
+	var to: Vector3 = flat - (pick[0] as Vector3)
+	var turn := 0.0
+	if to.length() > 0.5:
+		turn = clampf(snappedf(on.signed_angle_to(to, Vector3.UP), PI * 0.25), -PI * 0.5, PI * 0.5)
+	var dir := on.rotated(Vector3.UP, turn)
+	var at: Vector3 = (pick[0] as Vector3) + dir * sz.x * 0.5
+	var own: Vector3 = pick[2].global_basis * Vector3.RIGHT
+	var along := dir if own.dot(on) > 0.0 else -dir # (sandbags keep facing the way the last ones do)
+	return {"at": Vector3(snappedf(at.x, 0.01), p.y, snappedf(at.z, 0.01)), "yaw": atan2(-along.z, along.x)}
 
 
 func _line_up(kind: String, p: Vector3, yaw: float) -> Vector3:

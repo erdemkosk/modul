@@ -1865,10 +1865,19 @@ func check(kind: String, pos: Vector3, yaw: float) -> String:
 		return "Zemin çok eğimli"
 	if kind == "camur" and not mud_near(pos):
 		return "Yakında çamur yok: ıslak zemine, kıyıya kur"
+	var mates := {} # (wire and sandbags go end to end: what's next to one of its own is no matter)
+	if kind in BuildingDefs.CHAINED:
+		var own := _rect_poly(pos, yaw, Rect2(-sz * 0.5, sz).grow(-0.3))
+		for o in buildings:
+			if o.kind == kind and o.state != "gone" and o.global_position.distance_to(pos) < sz.x * 2.0:
+				if not Geometry2D.intersect_polygons(own, _rect_poly(o.global_position, o.global_rotation.y, Rect2(-sz * 0.5, sz).grow(-0.3))).is_empty():
+					return "Üst üste geliyor"
+				for c in o.cells:
+					mates[c] = true
 	for c in footprint(kind, pos, yaw, 1.0):
 		if not nav.is_ground_open(Nav.center_of(c)):
 			return "Su ya da uçurum"
-		if not nav.can_build(Nav.center_of(c)):
+		if not nav.can_build(Nav.center_of(c)) and not mates.has(c):
 			return "Başka bir binaya çok yakın"
 	# A house's yard (its garden, outbuildings, fence) needs its room: never into another's yard or
 	# another building, and nothing built in a house's yard.
@@ -2605,6 +2614,10 @@ func _unplace(b: Building) -> void:
 		nav.set_field(b.cells, false)
 	else:
 		nav.set_building(b.cells, false)
+		if b.kind in BuildingDefs.CHAINED: # (the cells it shared with the next length stay shut)
+			for n in buildings:
+				if n != b and n.kind == b.kind and n.state != "gone" and n.global_position.distance_to(b.global_position) < 8.0:
+					nav.set_building(n.cells, true)
 	if b.has_meta("litter") and is_instance_valid(b.get_meta("litter")):
 		(b.get_meta("litter") as Node).queue_free()
 
