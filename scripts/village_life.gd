@@ -539,13 +539,8 @@ func _camp_fires() -> void:
 					(c as GPUParticles3D).emitting = on
 
 
-## Three army bell tents round a camp fire: khaki canvas on a centre pole, guyed out, flaps open.
+## Three wall tents round a camp fire (assets/props/tent.glb).
 func _tents(root: Node3D) -> void:
-	var canvas := StandardMaterial3D.new()
-	canvas.albedo_color = Color(0.47, 0.45, 0.33)
-	canvas.roughness = 1.0
-	canvas.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var pole := Building.material("wood")
 	for k in 3:
 		var a := 0.9 + k * TAU / 3.0
 		var at := Vector3(cos(a), 0, sin(a)) * 4.6
@@ -556,51 +551,7 @@ func _tents(root: Node3D) -> void:
 		if not clear:
 			continue
 		var g := ground_at(root.global_position + at) - root.global_position.y
-		var cone := CylinderMesh.new()
-		cone.top_radius = 0.06
-		cone.bottom_radius = 1.6
-		cone.height = 2.3
-		cone.radial_segments = 10
-		cone.cap_bottom = false
-		var t := MeshInstance3D.new()
-		t.mesh = cone
-		t.material_override = canvas
-		t.position = at + Vector3.UP * (g + 1.15)
-		t.rotation.y = a
-		root.add_child(t)
-		var wall := CylinderMesh.new() # (the short wall round its foot)
-		wall.top_radius = 1.6
-		wall.bottom_radius = 1.62
-		wall.height = 0.4
-		wall.radial_segments = 10
-		wall.cap_top = false
-		wall.cap_bottom = false
-		var w := MeshInstance3D.new()
-		w.mesh = wall
-		w.material_override = canvas
-		w.position = at + Vector3.UP * (g + 0.2)
-		root.add_child(w)
-		var p := MeshInstance3D.new()
-		var pm := CylinderMesh.new()
-		pm.top_radius = 0.035
-		pm.bottom_radius = 0.035
-		pm.height = 2.7
-		p.mesh = pm
-		p.material_override = pole
-		p.position = at + Vector3.UP * (g + 1.35)
-		root.add_child(p)
-		for q in 4: # (guy ropes out to pegs)
-			var ga := a + q * TAU / 4.0 + 0.4
-			var from := at + Vector3(cos(ga), 0, sin(ga)) * 1.5 + Vector3.UP * (g + 0.45)
-			var to := at + Vector3(cos(ga), 0, sin(ga)) * 2.4 + Vector3.UP * g
-			var rope := MeshInstance3D.new()
-			var rm := BoxMesh.new()
-			rm.size = Vector3(0.015, 0.015, from.distance_to(to))
-			rope.mesh = rm
-			rope.material_override = pole
-			root.add_child(rope)
-			rope.position = (from + to) * 0.5
-			rope.look_at(root.global_position + to, Vector3.UP)
+		Props.place(root, "tent", Transform3D(Basis(Vector3.UP, a), at + Vector3.UP * g))
 
 
 func _plan_home(v: Villager) -> void:

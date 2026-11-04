@@ -97,6 +97,11 @@ func _cyl(r: float, h: float, mat: Material, xf: Transform3D, sides := 10) -> vo
 	mi.global_transform = xf
 
 
+## A place in the world, put in this node's terms.
+func _at(b: Basis, p: Vector3) -> Transform3D:
+	return global_transform.affine_inverse() * Transform3D(b, p)
+
+
 func _make(kind: String, p: Vector3, yaw: float) -> void:
 	var b := Basis(Vector3.UP, yaw)
 	var wood := Building.material("wood")
@@ -119,25 +124,15 @@ func _make(kind: String, p: Vector3, yaw: float) -> void:
 				var c := p + Vector3(_rng.randf_range(-0.8, 0.8), 0.02, _rng.randf_range(-0.8, 0.8))
 				_box(Vector3(0.12, 0.03, 0.06), plank, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), c))
 		"barrel":
-			_cyl(0.3, 0.8, plank, Transform3D(Basis.IDENTITY, p + Vector3.UP * 0.4), 12)
-			for hy: float in [0.18, 0.62]:
-				_cyl(0.31, 0.04, dark, Transform3D(Basis.IDENTITY, p + Vector3.UP * hy), 12)
+			Props.place(self, "barrel", _at(Basis(Vector3.UP, yaw), p))
 		"crates":
 			for k in 3:
-				var off := Vector3((k % 2) * 0.72 - 0.36, 0.33 + (k / 2) * 0.66, 0)
-				_box(Vector3(0.66, 0.66, 0.66), plank, Transform3D(b * Basis(Vector3.UP, _rng.randf_range(-0.15, 0.15)), p + b * off))
+				var off := Vector3((k % 2) * 0.72 - 0.36, (k / 2) * 0.68, 0)
+				Props.place(self, "crate", _at(b * Basis(Vector3.UP, _rng.randf_range(-0.15, 0.15)), p + b * off))
 		"sacks":
-			var sack := StandardMaterial3D.new()
-			sack.albedo_color = Color(0.68, 0.6, 0.45)
 			for k in 4:
-				var sm := SphereMesh.new()
-				sm.radius = 0.3
-				sm.height = 0.45
-				var mi := MeshInstance3D.new()
-				mi.mesh = sm
-				mi.material_override = sack
-				add_child(mi)
-				mi.global_position = p + b * Vector3((k % 2) * 0.55 - 0.27, 0.22 + (k / 2) * 0.35, (k / 2) * 0.1)
+				var lie := Basis(Vector3.UP, yaw + k * 0.7) * Basis(Vector3.RIGHT, PI * 0.5)
+				Props.place(self, "sack", _at(lie, p + b * Vector3((k % 2) * 0.62 - 0.31, 0.28 + (k / 2) * 0.46, -0.25 + (k / 2) * 0.1)))
 		"boards": # (boards stacked on two bearers)
 			for s in [-0.8, 0.8]:
 				_box(Vector3(0.12, 0.12, 1.0), dark, Transform3D(b, p + b * Vector3(s, 0.06, 0)))

@@ -2075,17 +2075,8 @@ func _stack_node(e: Dictionary, seed_: int) -> Node3D:
 		"yiyecek": # (sacks, two courses of three)
 			var count := ceili(fill * 6.0)
 			for k in count:
-				var mi := MeshInstance3D.new()
-				var c := CapsuleMesh.new()
-				c.radius = 0.2
-				c.height = 0.78
-				c.radial_segments = 8
-				c.rings = 2
-				mi.mesh = c
-				mi.material_override = _burlap()
-				var y := 0.34 + (k / 3) * 0.32
-				mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, look.randf_range(-0.12, 0.12)), Vector3(-0.32 + (k % 3) * 0.32, y, 0.0))
-				at.add_child(mi)
+				var lie := Basis(Vector3.UP, look.randf_range(-0.2, 0.2)) * Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * 0.62)
+				Props.place(at, "sack", Transform3D(lie, Vector3(-0.32 + (k % 3) * 0.32, 0.17 + (k / 3) * 0.26, 0.18)))
 		"odun": # (logs, in the hollows of the course under)
 			var count := ceili(fill * 10.0)
 			for k in count:
@@ -2130,7 +2121,7 @@ func _stack_node(e: Dictionary, seed_: int) -> Node3D:
 static var _sack: StandardMaterial3D
 
 
-static func _burlap() -> StandardMaterial3D:
+static func _burlap() -> StandardMaterial3D: # (what's carried: the same sacking)
 	if _sack == null:
 		_sack = StandardMaterial3D.new()
 		_sack.albedo_color = Color(0.63, 0.52, 0.35)
