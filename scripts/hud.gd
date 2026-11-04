@@ -1445,7 +1445,7 @@ func _make_people() -> void:
 	key.add_theme_constant_override("separation", 18)
 	key.alignment = BoxContainer.ALIGNMENT_END
 	col.add_child(key)
-	for pair: Array in [["♥", "hevesli: iki kat hızlı öğrenir"], ["▲", "önce bu işe"], ["–", "bu işe hiç"]]:
+	for pair: Array in [["♥", "hevesli: iki kat hızlı öğrenir"], ["▲", "boşa çıkınca önce bu işe"], ["–", "bu işe hiç"]]:
 		var k := HBoxContainer.new()
 		k.add_theme_constant_override("separation", 4)
 		key.add_child(k)

@@ -817,70 +817,130 @@ func set_carry(res: String, n: int) -> void:
 		_load = _cart_load(res, n)
 		_bed.add_child(_load)
 		return
-	var mi := MeshInstance3D.new()
-	var m := StandardMaterial3D.new()
-	m.roughness = 0.9
+	_load = _hand_load(res, n)
+	add_child(_load)
+
+
+## What's carried in the arms or on the shoulder, as it's carried: logs roped together, stone in a
+## wooden hod with a rope handle, a tied sack, a wicker basket, a stack of bricks, a hooped pail.
+func _hand_load(res: String, n: int) -> Node3D:
+	var at := Node3D.new()
+	var rope := Building.material("thatch")
 	match res:
 		"odun":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.11
-			c.bottom_radius = 0.12
-			c.height = 1.5
-			c.radial_segments = 8
-			mi.mesh = c
-			m.albedo_color = Color(0.36, 0.25, 0.15)
-			mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.5 if _body else 1.62, 0.0))
-		"tas":
-			var b := BoxMesh.new()
-			b.size = Vector3(0.5, 0.3, 0.36)
-			mi.mesh = b
-			m.albedo_color = Color(0.5, 0.49, 0.46)
-			mi.position = Vector3(0, 1.06, -0.33)
+			at.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.5 if _body else 1.62, 0.0))
+			var logs := clampi(1 + n / 7, 1, 4)
+			var bark := Building.material("log")
+			for k in logs:
+				var a := k * TAU / maxf(logs, 1.0)
+				_hand_cyl(at, 0.075 if logs > 1 else 0.11, 1.5, Vector3(cos(a), 0, sin(a)) * (0.08 if logs > 1 else 0.0), bark)
+			for y: float in [-0.45, 0.45]:
+				_hand_cyl(at, 0.15 if logs > 1 else 0.125, 0.04, Vector3(0, y, 0), rope)
+		"tas", "komur", "demir":
+			at.position = Vector3(0, 1.06, -0.33)
+			var board := Building.material("plank")
+			_mesh_box(at, Vector3(0.5, 0.03, 0.36), Vector3(0, -0.14, 0), board)
+			for s: float in [-1.0, 1.0]:
+				_mesh_box(at, Vector3(0.03, 0.28, 0.36), Vector3(s * 0.25, 0, 0), board)
+				_mesh_box(at, Vector3(0.5, 0.28, 0.03), Vector3(0, 0, s * 0.18), board)
+			var ink: Material = Building.rock_material(3) if res == "tas" else (Building.material("dark"))
+			for k in clampi(n / 3, 2, 6):
+				var mi := MeshInstance3D.new()
+				mi.mesh = Building.rock(k)
+				mi.material_override = ink
+				mi.scale = Vector3.ONE * 0.2
+				mi.position = Vector3(-0.14 + (k % 3) * 0.14, 0.1 + (k / 3) * 0.08, -0.07 + (k % 2) * 0.14)
+				at.add_child(mi)
 		"yiyecek":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.26
-			c.bottom_radius = 0.23
-			c.height = 0.3
-			c.radial_segments = 10
-			mi.mesh = c
-			m.albedo_color = Color(0.55, 0.42, 0.22)
-			mi.position = Vector3(0, 1.04, -0.33)
-		"camur": # (a basket of it)
-			var c := CylinderMesh.new()
-			c.top_radius = 0.2
-			c.bottom_radius = 0.15
-			c.height = 0.26
-			c.radial_segments = 10
-			mi.mesh = c
-			m.albedo_color = Color(0.24, 0.17, 0.11)
-			mi.position = Vector3(0, 1.0, -0.3)
-		"ot": # (a bundle of herbs)
-			var c := CylinderMesh.new()
-			c.top_radius = 0.14
-			c.bottom_radius = 0.05
-			c.height = 0.35
-			c.radial_segments = 8
-			mi.mesh = c
-			m.albedo_color = Color(0.35, 0.5, 0.22)
-			mi.position = Vector3(0, 1.0, -0.3)
+			at.position = Vector3(0, 1.06, -0.33)
+			var sack := Building._burlap()
+			_mesh_ball(at, Vector3(0.52, 0.42, 0.34), Vector3(0, 0, 0), sack)
+			_mesh_ball(at, Vector3(0.2, 0.14, 0.18), Vector3(0.0, 0.25, 0), sack)
+			_hand_cyl(at, 0.075, 0.05, Vector3(0, 0.2, 0), rope)
+		"camur":
+			at.position = Vector3(0, 1.04, -0.33)
+			_basket(at, 0.25, 0.26, rope)
+			var mud := StandardMaterial3D.new()
+			mud.albedo_color = Color(0.24, 0.17, 0.11)
+			_mesh_ball(at, Vector3(0.42, 0.14, 0.42), Vector3(0, 0.12, 0), mud)
+		"ot":
+			at.position = Vector3(0, 1.04, -0.33)
+			_basket(at, 0.23, 0.22, rope)
+			var herb := StandardMaterial3D.new()
+			herb.albedo_color = Color(0.35, 0.5, 0.22)
+			for k in 7:
+				var a := k * 2.4
+				_mesh_ball(at, Vector3(0.14, 0.18, 0.14), Vector3(cos(a) * 0.12, 0.17 + (k % 3) * 0.03, sin(a) * 0.12), herb)
 		"kerpic":
-			var b := BoxMesh.new()
-			b.size = Vector3(0.5, 0.3, 0.36)
-			mi.mesh = b
-			m.albedo_color = Color(0.66, 0.55, 0.4)
-			mi.position = Vector3(0, 1.06, -0.33)
+			at.position = Vector3(0, 0.97, -0.33)
+			var brick := StandardMaterial3D.new()
+			brick.albedo_color = Color(0.66, 0.5, 0.36)
+			for k in clampi(1 + n / 3, 1, 5):
+				var turn := 0.02 * float(k % 3 - 1)
+				_mesh_box(at, Vector3(0.48, 0.075, 0.24), Vector3(turn, 0.04 + k * 0.08, -turn), brick)
 		"su":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.14
-			c.bottom_radius = 0.11
-			c.height = 0.26
-			c.radial_segments = 8
-			mi.mesh = c
-			m.albedo_color = Color(0.3, 0.22, 0.14)
-			mi.position = Vector3(0, 1.0, -0.32)
-	mi.material_override = m
-	_load = mi
-	add_child(mi)
+			at.position = Vector3(0, 1.0, -0.32)
+			var stave := Building.material("wood")
+			_hand_cyl(at, 0.13, 0.26, Vector3.ZERO, stave)
+			var water := StandardMaterial3D.new()
+			water.albedo_color = Color(0.2, 0.3, 0.36)
+			_hand_cyl(at, 0.115, 0.01, Vector3(0, 0.125, 0), water)
+			for y: float in [-0.08, 0.08]:
+				_hand_cyl(at, 0.137, 0.02, Vector3(0, y, 0), Building.material("dark"))
+			_pole(at, Vector3(-0.13, 0.12, 0), Vector3(0, 0.3, 0), 0.008, Building.material("dark"))
+			_pole(at, Vector3(0.13, 0.12, 0), Vector3(0, 0.3, 0), 0.008, Building.material("dark"))
+		"yarali":
+			pass
+		_:
+			at.position = Vector3(0, 1.06, -0.33)
+			_mesh_box(at, Vector3(0.48, 0.28, 0.34), Vector3.ZERO, Building.material("plank"))
+			for s: float in [-0.14, 0.14]:
+				_mesh_box(at, Vector3(0.5, 0.03, 0.36), Vector3(0, s, 0), Building.material("dark"))
+	return at
+
+
+func _hand_cyl(parent: Node3D, r: float, h: float, pos: Vector3, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = r
+	c.bottom_radius = r * 0.94
+	c.height = h
+	c.radial_segments = 9
+	mi.mesh = c
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
+
+
+func _mesh_ball(parent: Node3D, size: Vector3, pos: Vector3, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var m := SphereMesh.new()
+	m.radius = 0.5
+	m.height = 1.0
+	m.radial_segments = 10
+	m.rings = 6
+	mi.mesh = m
+	mi.material_override = mat
+	mi.scale = size
+	mi.position = pos
+	parent.add_child(mi)
+
+
+## A wicker basket: tapering, a thick rim, bands round it, a bow handle.
+func _basket(parent: Node3D, r: float, h: float, wicker: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = r
+	c.bottom_radius = r * 0.72
+	c.height = h
+	c.radial_segments = 12
+	mi.mesh = c
+	mi.material_override = wicker
+	parent.add_child(mi)
+	_hand_cyl(parent, r + 0.012, 0.03, Vector3(0, h * 0.5, 0), Building.material("wood"))
+	_hand_cyl(parent, r * 0.86, 0.02, Vector3(0, -h * 0.12, 0), Building.material("wood"))
+	_pole(parent, Vector3(-r, h * 0.5, 0), Vector3(0, h * 1.05, 0), 0.012, Building.material("wood"))
+	_pole(parent, Vector3(r, h * 0.5, 0), Vector3(0, h * 1.05, 0), 0.012, Building.material("wood"))
 
 
 ## How much it carries of `res` in one go.

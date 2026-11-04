@@ -192,11 +192,20 @@ func _assign() -> void:
 			if v.plan.is_empty():
 				_plan_play(v)
 			continue
-		var haul_ok := int(v.prio.get("tasima", 1)) > 0
-		var build_ok := int(v.prio.get("insa", 1)) > 0
-		var cut_ok := int(v.prio.get("odun", 1)) > 0
-		if (haul_ok and _plan_haul(v)) or (build_ok and _plan_build(v)) or (build_ok and _plan_road(v)) or (haul_ok and _plan_clear_pile(v)) or _plan_firewood(v) or (build_ok and _plan_wall(v)) \
-				or (cut_ok and _plan_cut(v)) or (haul_ok and _plan_logs(v)) or (build_ok and _plan_trench(v)):
+		if _plan_by_choice(v):
 			continue
 		if v.plan.is_empty():
 			_plan_idle(v)
+
+
+## What `v` turns to with nothing to do: the town's usual order, but what they've been put first on
+## (▲ on the people's screen) before anything else, and nothing they've been kept off (–).
+func _plan_by_choice(v: Villager) -> bool:
+	var jobs: Array = [["tasima", _plan_haul], ["insa", _plan_build], ["insa", _plan_road], ["tasima", _plan_clear_pile],
+		["", _plan_firewood], ["insa", _plan_wall], ["odun", _plan_cut], ["tasima", _plan_logs], ["insa", _plan_trench]]
+	for want: int in [2, 1]:
+		for job: Array in jobs:
+			var pr := 1 if job[0] == "" else int(v.prio.get(job[0], 1))
+			if pr == want and (job[1] as Callable).call(v):
+				return true
+	return false
