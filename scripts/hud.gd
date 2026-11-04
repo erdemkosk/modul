@@ -39,7 +39,7 @@ const KEYS := [
 	["Emirde", [[["R"], "seçilenleri emre al, bırak"], [["Sağ tık"], "imleçte yazanı yapar: saldır, ara, esir al, saklan, silah al, siper al, git"], [["Sağ sürükle"], "sıraya diz, siper arar"],
 		[["M"], "milis yap: alarmda kendisi silahlanır"], [["L"], "fener"]]],
 	["Bina kartı", [[["O"], "onar"], [["Del"], "yık"]]],
-	["Defterler", [[["K"], "kasabalılar"], [["T"], "araştırma"], [["J"], "günlük"], [["F1"], "bu kart"]]],
+	["Defterler", [[["K"], "kasabalılar"], [["T"], "araştırma"], [["J"], "günlük"], [["G"], "keşif haritası"], [["F1"], "bu kart"]]],
 	["Zaman", [[["Boşluk"], "duraklat (emir verilir)"], [["+", "/", "−"], "hız"], [["F5"], "kaydet"], [["F9"], "yükle"], [["Esc"], "menü"]]],
 	["Görüntü", [[["P"], "fotoğraf, sepya, çık"]]],
 	["Deneme", [[["F"], "tutuştur"], [["B"], "baskın"], [["N"], "inşaatı bitir"]]],
@@ -97,6 +97,9 @@ var _ask_paused := false ## (a question put: the game held still till it's answe
 var _asks: VBoxContainer ## the questions put to the player (ask), top middle
 var _tele: TelegraphPanel
 var _tech_plate: PanelContainer ## the research tree
+var _map_plate: PanelContainer ## the survey map (G)
+var _map_note: Label
+var _map_big: Minimap
 var _tech_tree: TechTree
 var _tech_note: Label
 var _card_train: HFlowContainer
@@ -1696,6 +1699,46 @@ func toggle_telegraph() -> void:
 
 func telegraph_open() -> bool:
 	return _tele_plate.visible
+
+
+## The whole valley on one sheet, made the first time it's opened: the seams found so far on it.
+func toggle_map() -> void:
+	if _map_plate == null:
+		_map_plate = PanelContainer.new()
+		_map_plate.add_theme_stylebox_override("panel", Ui.paper(6.0))
+		_map_plate.set_anchors_preset(Control.PRESET_CENTER)
+		_map_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_map_plate.grow_vertical = Control.GROW_DIRECTION_BOTH
+		add_child(_map_plate)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		_map_plate.add_child(col)
+		var head := HBoxContainer.new()
+		col.add_child(head)
+		var title := Ui.label(head, "KORDAL VADİSİ · KEŞİF HARİTASI", 20, Color(1.0, 0.87, 0.6), "head")
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var close := _small_button("KAPAT", func() -> void: toggle_map())
+		close.tooltip_text = "Kapat (G)"
+		head.add_child(close)
+		_map_big = Minimap.new()
+		_map_big.game = game
+		_map_big.whole = true
+		_map_big.side = 780.0
+		_map_big.reach = 1000.0
+		_map_big.on_click = func() -> void: toggle_map()
+		col.add_child(_map_big)
+		_map_note = Ui.label(col, "", 14, Color(0.95, 0.9, 0.8), "text")
+		_map_note.add_theme_constant_override("outline_size", 0)
+		_map_plate.visible = false
+	_map_plate.visible = not _map_plate.visible
+	if _map_plate.visible:
+		_map_plate.move_to_front()
+		var n: int = game.village.survey.found.size()
+		_map_note.text = "▲ taş   ◆ demir   ■ kömür · %d damar bulundu · Kasabalılar yakınından geçince ya da gözcü kulesi görünce işlenir: emre alıp yolla" % n
+
+
+func map_open() -> bool:
+	return _map_plate != null and _map_plate.visible
 
 
 func toggle_tech() -> void:

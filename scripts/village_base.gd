@@ -113,6 +113,7 @@ var help_ready := 0 ## the day a side may be asked again
 var _help_coming := "" ## (a side asked, the column not yet set out)
 var selling: Array[String] = [] ## the goods put on the train when it comes (PRICES)
 var trade := Trade.new(self) ## the market, the contracts, what's sent for
+var survey := Survey.new(self) ## the seams found so far
 var loading_until := -1.0 ## the clock when the train standing at the platform leaves (-1: none)
 var express := false ## a train wired for: tomorrow, and not late
 var grass_fires: GrassFires ## fire in the grass (round a burning building)

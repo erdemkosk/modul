@@ -583,6 +583,9 @@ func _plan_work(v: Villager) -> void:
 		i = find_prop(b.global_position, float(b.def.reach), kind, b.work_area, b.work_poly)
 	if i < 0:
 		b.idle_note = {"odun": "Yakında ağaç kalmadı", "tas": "Yakında kaya kalmadı", "demir": "Yakında demir damarı yok (pas renkli kayalar)", "komur": "Yakında kömür damarı yok (kara kayalar)", "yiyecek": "Kışın çalılar yemiş vermez" if seasons and seasons.winter() else "Yakında yemiş kalmadı"}[res]
+		if res in ["demir", "komur", "tas"] and not b.has_meta("no_seam"): # (the seams lie far apart: said once)
+			b.set_meta("no_seam", true)
+			message.emit("%s: %d m içinde %s yok. Haritada (G) damarı bul, atölyeyi yanına kur." % [b.display_name(), int(b.def.reach), str(BuildingDefs.RES_NAMES[res]).to_lower()], "bad")
 		_plan_idle(v)
 		return
 	if b.room() > 6: # (a note that the pile's full stays while it's near full)

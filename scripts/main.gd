@@ -284,6 +284,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_ESCAPE:
 				if hud.help_open():
 					hud.toggle_help()
+				elif hud.map_open():
+					hud.toggle_map()
 				elif hud.people_open():
 					hud.toggle_people()
 				elif hud.tech_open():
@@ -348,6 +350,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				hud.toggle_people()
 			KEY_T:
 				hud.toggle_tech()
+			KEY_G:
+				hud.toggle_map()
 			KEY_J:
 				hud.toggle_log()
 			KEY_V:

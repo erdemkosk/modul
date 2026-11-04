@@ -381,11 +381,13 @@ func _add_grove() -> void:
 ## (rust-red) and coal (black), in veins of a few together, the first of each near enough to find
 ## early. Seeded, after the grove, so a dug-out one's index stays its own.
 const ORES := {
-	"stone": {"colour": Color(0.72, 0.7, 0.64), "veins": 6, "kind": "rock"},
-	"iron": {"colour": Color(0.52, 0.27, 0.17), "veins": 6},
-	"coal": {"colour": Color(0.1, 0.1, 0.11), "veins": 5},
+	"stone": {"colour": Color(0.72, 0.7, 0.64), "veins": 9, "first": Vector2(80.0, 160.0), "kind": "rock"},
+	"iron": {"colour": Color(0.52, 0.27, 0.17), "veins": 10, "first": Vector2(230.0, 320.0)},
+	"coal": {"colour": Color(0.1, 0.1, 0.11), "veins": 9, "first": Vector2(270.0, 360.0)},
 }
-const ORE_R := Vector2(80.0, 420.0) ## how far from where you begin the veins lie
+const ORE_EDGE := 930.0 ## m from the valley's middle the seams may lie
+const ORE_APART := 140.0 ## m at the least between two seams
+var veins: Array[Dictionary] = [] ## {ore, at (x, z), rocks (prop indices)}, the same for a seed each run
 
 
 ## A rock's model in a seam's colour, as kind `kind`.
@@ -419,7 +421,8 @@ func _add_ores() -> void:
 		return
 	var at := (sp as Transform3D).origin
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 4711
+	rng.seed = 4711 + WorldTerrain.seed * 31
+	var home := Vector2(at.x, at.z)
 	for ore: String in ORES:
 		var k := -1
 		for j in _models.size():
@@ -428,14 +431,20 @@ func _add_ores() -> void:
 		if k < 0:
 			continue
 		for vein in int(ORES[ore].veins):
-			# (the first of each near enough to find early on)
-			var r := rng.randf_range(ORE_R.x, ORE_R.x + 80.0) if vein == 0 else rng.randf_range(ORE_R.x + 40.0, ORE_R.y)
-			var c := Vector2(at.x, at.z)
-			for tries in 12:
-				var a := rng.randf() * TAU
-				c = Vector2(at.x, at.z) + Vector2(cos(a), sin(a)) * r
-				if not terrain.is_water(c.x, c.y) and float(terrain.ground_at(c.x, c.y).road) < 0.1:
+			# (the first of each at a distance from where you begin: stone close by, iron and coal a
+			# real way off; the rest anywhere across the valley, none on top of another)
+			var c := Vector2.INF
+			for tries in 60:
+				var q := Vector2(rng.randf_range(-ORE_EDGE, ORE_EDGE), rng.randf_range(-ORE_EDGE, ORE_EDGE))
+				if vein == 0:
+					var first: Vector2 = ORES[ore].first
+					q = home + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(first.x, first.y)
+				if _vein_fits(q):
+					c = q
 					break
+			if c == Vector2.INF:
+				continue
+			var rocks := PackedInt32Array()
 			for n in rng.randi_range(6, 9):
 				var q := c + Vector2(rng.randfn(0.0, 4.5), rng.randfn(0.0, 4.5))
 				if terrain.is_water(q.x, q.y) or float(terrain.ground_at(q.x, q.y).road) > 0.15:
@@ -449,6 +458,27 @@ func _add_ores() -> void:
 				if not _grid.has(cell):
 					_grid[cell] = []
 				(_grid[cell] as Array).append(_xf.size() - 1)
+				rocks.append(_xf.size() - 1)
+			if not rocks.is_empty():
+				veins.append({"ore": ore, "at": c, "rocks": rocks})
+
+
+## Dry, off the roads, not on a cliff, and clear of the other seams.
+func _vein_fits(c: Vector2) -> bool:
+	if terrain.is_water(c.x, c.y) or float(terrain.ground_at(c.x, c.y).road) >= 0.1:
+		return false
+	var lo := INF
+	var hi := -INF
+	for a in 8:
+		var h := terrain.height_at(c.x + cos(a * TAU / 8.0) * 12.0, c.y + sin(a * TAU / 8.0) * 12.0)
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+	if hi - lo > 7.0:
+		return false
+	for e in veins:
+		if (e.at as Vector2).distance_to(c) < ORE_APART:
+			return false
+	return true
 
 
 func _build_far() -> void:

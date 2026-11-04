@@ -7,8 +7,6 @@ extends Control
 ## convoy or an armoured train, the camera's spot circled in pencil. A click takes the view there.
 ## The paper (ground, woods, water) is drawn once; what's on it every quarter second.
 
-const SIZE := 170.0
-const REACH := 270.0 ## m from the store to the map's edge
 const PAPER := Color(0.80, 0.72, 0.55)
 const INK := Color(0.16, 0.12, 0.08)
 const WOOD_INK := Color(0.22, 0.28, 0.16)
@@ -16,17 +14,32 @@ const WATER := Color(0.42, 0.55, 0.6)
 const RED := Color(0.62, 0.1, 0.06)
 const OURS := Color(0.12, 0.2, 0.45)
 
+const VEIN_INK := {"stone": Color(0.36, 0.34, 0.3), "iron": Color(0.58, 0.2, 0.08), "coal": Color(0.07, 0.06, 0.06)}
+
 var game: Node
+var side := 170.0 ## px across
+var reach := 270.0 ## m from the middle to the map's edge
+var whole := false ## the survey map (G): the whole valley round its own middle, not round the store
+var on_click: Callable ## (the survey map: closes once the view's gone there)
 var _t := 0.0
 var _paper: ImageTexture
 var _home := Vector3.INF
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(SIZE, SIZE)
-	size = Vector2(SIZE, SIZE)
+	custom_minimum_size = Vector2(side, side)
+	size = Vector2(side, side)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	tooltip_text = "Harita: tıkla, kamera oraya gitsin"
+	if not whole:
+		var big := Button.new()
+		big.text = "+"
+		big.focus_mode = Control.FOCUS_NONE
+		big.tooltip_text = "Keşif haritası (G)"
+		big.position = Vector2(side - 22, side - 22)
+		big.size = Vector2(20, 20)
+		big.pressed.connect(func() -> void: game.hud.toggle_map())
+		add_child(big)
 
 
 func _process(dt: float) -> void:
@@ -37,44 +50,53 @@ func _process(dt: float) -> void:
 
 
 func _store_at() -> Vector3:
+	if whole:
+		return Vector3.ZERO
 	var st: Array = game.village.stores()
 	return (st[0] as Node3D).global_position if not st.is_empty() else Vector3.ZERO
 
 
 func _to_map(p: Vector3) -> Vector2:
-	return Vector2(SIZE, SIZE) * 0.5 + Vector2(p.x - _home.x, p.z - _home.z) / REACH * SIZE * 0.5
+	return Vector2(side, side) * 0.5 + Vector2(p.x - _home.x, p.z - _home.z) / reach * side * 0.5
 
 
 ## A point on the map, pulled in to its edge if it's off it.
 func _at(p: Vector3) -> Vector2:
-	return _to_map(p).clamp(Vector2(4, 4), Vector2(SIZE - 4, SIZE - 4))
+	return _to_map(p).clamp(Vector2(4, 4), Vector2(side - 4, side - 4))
 
 
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-		var q := ((e as InputEventMouseButton).position - Vector2(SIZE, SIZE) * 0.5) / (SIZE * 0.5) * REACH
+		var q := ((e as InputEventMouseButton).position - Vector2(side, side) * 0.5) / (side * 0.5) * reach
 		var p := Vector3(_home.x + q.x, 0, _home.z + q.y)
 		p.y = game.village.nav.height(p.x, p.z)
 		game.cam.jump_to(p)
 		accept_event()
+		if on_click.is_valid():
+			on_click.call()
 
 
 ## The paper drawn once: its yellow, foxed and darker toward the edges; the slopes shaded and the
 ## contours drawn faint; the water a faded wash with an inked shore; the woods stippled where the
 ## trees stand.
 func _bake() -> void:
+	var shown := side
+	if whole:
+		side = 400.0 # (drawn at half the size it's shown: the paper's made in the one go)
 	var v: Village = game.village
 	var terrain: WorldTerrain = v.terrain
-	var n := int(SIZE)
+	var n := int(side)
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1918
 	var lvl := terrain.lake_level
+	var contour := 20.0 if whole else 6.0
+	var stipple := 0.14 if whole else 0.75
 	var h := PackedFloat32Array()
 	h.resize(n * n)
 	for y in n:
 		for x in n:
-			var q := (Vector2(x, y) - Vector2(SIZE, SIZE) * 0.5) / (SIZE * 0.5) * REACH
+			var q := (Vector2(x, y) - Vector2(side, side) * 0.5) / (side * 0.5) * reach
 			h[y * n + x] = terrain.height_at(_home.x + q.x, _home.z + q.y)
 	for y in n:
 		for x in n:
@@ -88,8 +110,8 @@ func _bake() -> void:
 			var shade := clampf((dx + dy) * 0.08, -0.12, 0.18)
 			if not wet:
 				c = c.darkened(maxf(shade, 0.0)) if (x + y) % 2 == 0 or shade < 0.08 else c.darkened(shade + 0.08)
-				if int(here / 6.0) != int(h[y * n + mini(x + 1, n - 1)] / 6.0):
-					c = c.lerp(Color(0.5, 0.36, 0.22), 0.35) # (a contour every 6 m)
+				if int(here / contour) != int(h[y * n + mini(x + 1, n - 1)] / contour):
+					c = c.lerp(Color(0.5, 0.36, 0.22), 0.35) # (a contour every so many m)
 			else:
 				c = c.lerp(WATER, 0.7)
 				var shore := false
@@ -123,7 +145,7 @@ func _bake() -> void:
 					elif r <= 2.3:
 						img.set_pixel(xx, yy, img.get_pixel(xx, yy).lerp(Color(0.2, 0.3, 0.36), 0.25))
 	# the woods: a stipple of ink where the trees stand
-	for i in v._props_in(_home, REACH * 1.42):
+	for i in v._props_in(_home, reach * 1.42):
 		var info: Dictionary = v.props.prop_info(i)
 		if str(info.kind) != "tree":
 			continue
@@ -132,10 +154,11 @@ func _bake() -> void:
 		var yy := int(p.y)
 		if xx < 1 or yy < 1 or xx >= n - 1 or yy >= n - 1:
 			continue
-		img.set_pixel(xx, yy, img.get_pixel(xx, yy).lerp(WOOD_INK, 0.75))
-		if rng.randf() < 0.5:
+		img.set_pixel(xx, yy, img.get_pixel(xx, yy).lerp(WOOD_INK, stipple))
+		if not whole and rng.randf() < 0.5:
 			img.set_pixel(xx, yy - 1, img.get_pixel(xx, yy - 1).lerp(WOOD_INK, 0.4))
 	_paper = ImageTexture.create_from_image(img)
+	side = shown
 
 
 func _draw() -> void:
@@ -145,8 +168,8 @@ func _draw() -> void:
 	if _paper == null:
 		_home = _store_at()
 		_bake()
-	var frame := PackedVector2Array([Vector2.ZERO, Vector2(SIZE, 0), Vector2(SIZE, SIZE), Vector2(0, SIZE)])
-	draw_texture(_paper, Vector2.ZERO)
+	var frame := PackedVector2Array([Vector2.ZERO, Vector2(side, 0), Vector2(side, side), Vector2(0, side)])
+	draw_texture_rect(_paper, Rect2(0, 0, side, side), false)
 	# the line: a heavy ink line with ticks across it, as railways are drawn
 	if v.rail.size() > 1:
 		var line := PackedVector2Array()
@@ -172,14 +195,15 @@ func _draw() -> void:
 		if b.state == "gone":
 			continue
 		var bp := _to_map(b.global_position)
-		if bp.x < 0 or bp.y < 0 or bp.x > SIZE or bp.y > SIZE:
+		if bp.x < 0 or bp.y < 0 or bp.x > side or bp.y > side:
 			continue
 		var sz: Vector2 = b.def.size
-		var s := Vector2(sz.x, sz.y) / REACH * SIZE * 0.5 + Vector2(1.2, 1.2)
+		var s := Vector2(sz.x, sz.y) / reach * side * 0.5 + Vector2(1.2, 1.2)
 		var col := INK if b.state == "done" else Color(INK, 0.45)
 		if b.is_burning():
 			col = RED
 		draw_rect(Rect2(bp - s * 0.5, s), col)
+	_draw_veins(v)
 	# the townsfolk in blue ink, and those on our side
 	for o in v.villagers:
 		if not o.dead:
@@ -212,7 +236,7 @@ func _draw() -> void:
 	# the camera's spot, circled in pencil
 	draw_arc(_at(game.cam.focus), 7.0, 0, TAU, 20, Color(0.25, 0.22, 0.2, 0.8), 1.0, true)
 	# a compass rose, top right: the north point inked, the rest outlined
-	var cr := Vector2(SIZE - 16, 20)
+	var cr := Vector2(side - 16, 20)
 	draw_colored_polygon(PackedVector2Array([cr + Vector2(0, -11), cr + Vector2(3, 0), cr + Vector2(-3, 0)]), INK)
 	draw_polyline(PackedVector2Array([cr + Vector2(0, 11), cr + Vector2(3, 0), cr + Vector2(-3, 0), cr + Vector2(0, 11)]), INK, 1.0, true)
 	draw_polyline(PackedVector2Array([cr + Vector2(-9, 0), cr + Vector2(0, -2.5), cr + Vector2(9, 0), cr + Vector2(0, 2.5), cr + Vector2(-9, 0)]), INK, 0.8, true)
@@ -221,10 +245,39 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2(5, 5), Vector2(74, 14)), Color(PAPER, 0.92))
 	draw_rect(Rect2(Vector2(5, 5), Vector2(74, 14)), INK, false, 0.8)
 	draw_string(Ui.font("narrow"), Vector2(9, 16), "KORDAL · HARİTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
-	var px100 := 100.0 / REACH * SIZE * 0.5
-	var sb := Vector2(8, SIZE - 9)
+	var metres := 200.0 if whole else 100.0
+	var px100 := metres / reach * side * 0.5
+	var sb := Vector2(8, side - 9)
 	draw_line(sb, sb + Vector2(px100, 0), INK, 1.4)
 	for k in 3:
 		draw_line(sb + Vector2(px100 * k / 2.0, -2), sb + Vector2(px100 * k / 2.0, 2), INK, 1.0)
-	draw_string(Ui.font("narrow"), sb + Vector2(px100 + 3, 3), "100 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
-	draw_rect(Rect2(Vector2.ZERO, Vector2(SIZE, SIZE)), INK, false, 1.5)
+	draw_string(Ui.font("narrow"), sb + Vector2(px100 + 3, 3), "%d m" % metres, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, INK)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(side, side)), INK, false, 1.5)
+
+
+## The seams found: a peak for stone, a diamond for iron, a square for coal; hollow when they're worked
+## out; named on the survey map, with what's left.
+func _draw_veins(v: Village) -> void:
+	var r := 6.0 if whole else 3.5
+	for i: int in v.survey.found:
+		var e: Dictionary = v.props.veins[i]
+		var p := _to_map(Vector3(e.at.x, 0, e.at.y))
+		if p.x < 0 or p.y < 0 or p.x > side or p.y > side:
+			continue
+		var pts: PackedVector2Array
+		match str(e.ore):
+			"stone":
+				pts = PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, r * 0.8), p + Vector2(-r, r * 0.8)])
+			"iron":
+				pts = PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)])
+			_:
+				pts = PackedVector2Array([p + Vector2(-r, -r) * 0.8, p + Vector2(r, -r) * 0.8, p + Vector2(r, r) * 0.8, p + Vector2(-r, r) * 0.8])
+		var left: int = v.survey.left(i)
+		var ink: Color = VEIN_INK[e.ore]
+		if left > 0:
+			draw_colored_polygon(pts, ink)
+		pts.append(pts[0])
+		draw_polyline(pts, PAPER if left > 0 else ink, 1.0, true)
+		if whole:
+			var word: String = str(Survey.NAMES[e.ore]) if left > 0 else "Tükendi"
+			draw_string(Ui.font("narrow"), p + Vector2(r + 3, 4), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, INK)
