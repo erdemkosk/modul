@@ -237,25 +237,34 @@ func can_stop_train() -> bool:
 	return arriving and _pile == null and is_instance_valid(train) and not train.is_standing()
 
 
-## The first train stopped as soon as it can be, where there's room by the rails for the load: a
-## reason if there's none in the next stretch of line.
+## The first train pulled up here and now: the brakes on hard, the load going down by the rails at
+## the nearest room to where it stands. On a bridge or in a tunnel it rolls on to the first ground.
+## A reason if there's nowhere near to put the load.
 func stop_train() -> String:
 	if not can_stop_train():
 		return "x"
-	var from: float = train._s + train._v * train._v / (2.0 * Train.BRAKE) + 2.0
+	train.brake = Train.HARD_BRAKE
+	var from: float = train._s + train._v * train._v / (2.0 * Train.HARD_BRAKE) + 1.0
 	var coach: float = train._gap[2]
 	var k := _nearest_k(rail, train._at(from - coach)[0])
-	for n in range(0, 800, 20): # (every 6 m, for 240 m)
-		if k + n >= rail.size():
-			break
-		var b := _beside_line("yigin", rail, k + n)
+	while k < rail.size() - 1 and not on_the_flat(rail[k]):
+		k += 10
+	var b: Building = null
+	for n in range(0, 400, 20): # (every 6 m, either way, for 120 m)
+		for at: int in [k + n, k - n]:
+			if at >= 0 and at < rail.size() and b == null:
+				b = _beside_line("yigin", rail, at)
 		if b:
-			_pile = b
-			b.complete_now()
-			train.stop_at = minf(maxf(train.s_of(b.global_position) + coach, from), train.stop_at)
-			message.emit("Tren fren yapıyor: burada iniliyor.", "good")
-			return ""
-	return "Buralarda rayın yanı yüke müsait değil, biraz daha ilerle"
+			break
+	if b == null:
+		b = _place_near("yigin", rail[k], 0.0)
+	if b == null:
+		return "Buralarda yükü koyacak yer yok, biraz daha ilerle"
+	_pile = b
+	b.complete_now()
+	train.stop_at = minf(maxf(train.s_of(rail[k]) + coach, from), train.stop_at)
+	message.emit("Tren fren yapıyor: burada iniliyor.", "good")
+	return ""
 
 
 ## The first train at a stand. Left to run out of line, the load goes down in the nearest room back.

@@ -240,15 +240,8 @@ static func recipe(kind: String) -> Array[Dictionary]:
 		"ev":
 			_hall(out, 6.0, 5.0, 2.3, 1.8, "log", "shingle", 1.0)
 			_p(out, "box", Vector3(0.6, 5.2, 0.6), Vector3(1.9, 3.0, -1.7), "stone")
-		"yigin": # (crates and sacks as they came off the boxcar, a heap of planks, nothing over them)
-			for k in 5:
-				_p(out, "box", Vector3(0.9, 0.8, 0.8), Vector3(-2.2 + k * 1.05, 0.4, -0.9 + (k % 2) * 0.2), "plank", Vector3(0, k * 13.0, 0))
-			for k in 3:
-				_p(out, "box", Vector3(0.85, 0.7, 0.75), Vector3(-1.3 + k * 1.1, 1.15, -0.85), "wood", Vector3(0, 20.0 - k * 17.0, 0))
-			for k in 4:
-				_p(out, "cyl", Vector3(0.7, 0.75, 0.7), Vector3(-1.9 + k * 0.85, 0.38, 0.8), "cloth")
-			for k in 4:
-				_p(out, "xcyl", Vector3(2.6, 0.22, 0.22), Vector3(1.5, 0.12 + (k / 3) * 0.2, 0.5 + (k % 3) * 0.26), "log")
+		"yigin": # (a stake at its corner: what's there is the goods themselves, Building.show_heap)
+			_p(out, "box", Vector3(0.1, 0.6, 0.1), Vector3(-2.9, 0.3, -1.9), "wood")
 		"kamp": # (posts and a roof, sacks and crates under it)
 			_shed(out, 6.0, 5.0, "plank", "cloth")
 			for k in 3:

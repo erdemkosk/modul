@@ -389,3 +389,6 @@ static func restore(game: Node, d: Dictionary) -> void:
 	game.cam._dist_to = game.cam.dist
 	v.loading = false
 	v.join_chains()
+	for b in v.buildings:
+		if b.def.get("open", false):
+			b.show_heap()

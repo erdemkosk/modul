@@ -1,7 +1,7 @@
 class_name TitleMenu
 extends CanvasLayer
-## The title screen, before any valley's made: the town at dusk behind it (assets/ui/title_bg.jpg,
-## a picture from the game), the name and the menu down the left over a shade, and the settings
+## The title screen, before any valley's made: the train at the rock fall behind it (assets/ui/title_bg.jpg,
+## the game's painting), the name and the menu down the left over a shade, and the settings
 ## (SettingsPanel) on the right when chosen. A new town has a screen of its own: on the left its
 ## seed (typed or thrown), how many come on the train, how much they bring, how hard the raids
 ## come, the season they arrive in; on the right the settlers themselves, each with their face,
@@ -9,6 +9,10 @@ extends CanvasLayer
 
 const BG := "res://assets/ui/title_bg.jpg"
 const HOT := Color(1.0, 0.66, 0.3) ## (a menu item pointed at, over the dark picture)
+const NEW_BG := "res://assets/ui/newtown_bg.jpg" ## the new town's painted board (its logo and foot buttons on it)
+const VALLEY := "res://assets/ui/newtown_valley.jpg"
+const PARCHMENT := "res://assets/ui/parchment.png" ## (tools/parchment.py)
+const STAGE := Vector2(1920, 1080)
 
 var game: Node ## main.gd
 
@@ -18,6 +22,7 @@ var _people_label: Label
 var _choice := {"supplies": 1, "raids": 1, "season": 0}
 var _groups := {} ## setting -> its buttons
 var _new_plate: Control ## the new town's screen
+var _stage: Control ## what's on it, scaled to the screen
 var _menu: Control ## the name and the menu (put away while the new town's screen is up)
 var _settings: SettingsPanel
 var _credits: Control ## who made what (EMEĞİ GEÇENLER)
@@ -60,7 +65,7 @@ func _ready() -> void:
 	col.add_theme_constant_override("separation", 6)
 	root.add_child(col)
 	var logo := Logo.new()
-	logo.tall = 96.0
+	logo.tall = 104.0
 	logo.sub = "KORDAL TAYGASI · 1918"
 	col.add_child(logo)
 	var gap := Control.new()
@@ -258,93 +263,194 @@ func _new_game_plate(root: Control) -> void:
 	_new_plate = screen
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(screen)
-	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.02, 0.025, 0.55)
-	screen.add_child(dim)
-	var outer := VBoxContainer.new()
-	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	outer.offset_left = 60
-	outer.offset_right = -60
-	outer.offset_top = 40
-	outer.offset_bottom = -36
-	outer.add_theme_constant_override("separation", 14)
-	screen.add_child(outer)
-	Ui.label(outer, "YENİ KASABA", 52, Ui.LIGHT, "display")
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 18)
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(body)
+	var dark := ColorRect.new()
+	dark.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dark.color = Color(0.05, 0.045, 0.04)
+	screen.add_child(dark)
+	# laid out for 1920 x 1080 on the painted board and scaled whole to fit the screen
+	_stage = Control.new()
+	_stage.size = STAGE
+	screen.add_child(_stage)
+	get_viewport().size_changed.connect(_fit_stage)
+	_fit_stage()
+	var pic := TextureRect.new()
+	pic.texture = load(NEW_BG)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_SCALE
+	pic.size = STAGE
+	_stage.add_child(pic)
+	var name := Logo.new()
+	name.tall = 44.0
+	name.position = Vector2(150, 0)
+	_stage.add_child(name)
 	# the town, on the left
-	var plate := PanelContainer.new()
-	plate.add_theme_stylebox_override("panel", Ui.glass(false, 20.0))
-	plate.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(plate)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 14)
-	col.custom_minimum_size = Vector2(400, 0)
-	plate.add_child(col)
-	Ui.label(col, "VADİ", 28, Ui.INK, "display")
-	Ui.label(col, "Tren sizi ve yerleşimcileri vadiye bırakır; gerisi size kalmış.", 14, Ui.DIM)
-	Ui.rule(col)
+	var col := _sheet(Rect2(16, 112, 556, 610), 12)
+	Ui.label(col, "YENİ KASABA", 44, Ui.P_INK, "display")
+	Ui.label(col, "Trenini hazırla, ekibini seç ve Kordal Taygası'nda yeni bir yerleşim kur.", 14, Ui.P_INK)
+	var valley := PanelContainer.new()
+	valley.add_theme_stylebox_override("panel", _line_box())
+	col.add_child(valley)
+	var vrow := HBoxContainer.new()
+	vrow.add_theme_constant_override("separation", 14)
+	valley.add_child(vrow)
+	var thumb := TextureRect.new()
+	thumb.texture = load(VALLEY)
+	thumb.custom_minimum_size = Vector2(92, 80)
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	vrow.add_child(thumb)
+	var vcol := VBoxContainer.new()
+	vcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vrow.add_child(vcol)
+	Ui.label(vcol, "VADİ", 18, Ui.P_INK, "head")
+	_wrap(Ui.label(vcol, "Tohum vadiyi ve demiryolunu belirler. Tren vadide ilerler, nerede ineceğinize siz karar verirsiniz.", 14, Ui.P_INK))
 	# the seed
 	var row := _row(col, "TOHUM", "Aynı tohum aynı yeri, aynı demiryolunu verir")
 	_seed = LineEdit.new()
-	_seed.custom_minimum_size = Vector2(170, 36)
+	_seed.custom_minimum_size = Vector2(240, 38)
 	_seed.add_theme_font_override("font", Ui.font("display"))
-	_seed.add_theme_font_size_override("font_size", 20)
+	_seed.add_theme_font_size_override("font_size", 21)
+	_seed.add_theme_color_override("font_color", Ui.INK)
+	var well := StyleBoxFlat.new()
+	well.bg_color = Color(0.27, 0.19, 0.13)
+	well.set_corner_radius_all(3)
+	well.content_margin_left = 12
+	_seed.add_theme_stylebox_override("normal", well)
+	_seed.add_theme_stylebox_override("focus", well)
 	_seed.text = str(randi_range(1, 999999))
 	row.add_child(_seed)
-	row.add_child(_button("ZAR AT", func() -> void: _seed.text = str(randi_range(1, 999999)), 0))
+	row.add_child(_key("ZAR", func() -> void: _seed.text = str(randi_range(1, 999999))))
 	# how many
 	row = _row(col, "KİŞİ", "Trenle gelen yerleşimciler")
-	row.add_child(_button("−", func() -> void: _set_people(_people - 1), 40))
-	_people_label = Ui.label(row, str(_people), 22, Ui.INK, "display")
-	_people_label.custom_minimum_size = Vector2(40, 0)
+	row.add_child(_key("‹", func() -> void: _set_people(_people - 1), 42))
+	_people_label = Ui.label(row, str(_people), 24, Ui.P_INK, "display")
+	_people_label.custom_minimum_size = Vector2(70, 0)
 	_people_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	row.add_child(_button("+", func() -> void: _set_people(_people + 1), 40))
+	row.add_child(_key("›", func() -> void: _set_people(_people + 1), 42))
 	_choices(col, "MALZEME", "supplies", ["AZ", "NORMAL", "BOL"], "Trenin getirdiği odun, taş, yiyecek (kişi sayısıyla birlikte artar)")
 	_choices(col, "BASKINLAR", "raids", ["KOLAY", "NORMAL", "ZOR"], "Firarilerin ne zaman, ne sıklıkla, kaç kişi geldiği")
 	_choices(col, "MEVSİM", "season", ["İLKBAHAR", "YAZ", "SONBAHAR", "KIŞ"], "Trenin geldiği mevsim")
 	# the crew, on the right
-	var cplate := PanelContainer.new()
-	cplate.add_theme_stylebox_override("panel", Ui.glass(false, 20.0))
-	cplate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_child(cplate)
-	var ccol := VBoxContainer.new()
-	ccol.add_theme_constant_override("separation", 10)
-	cplate.add_child(ccol)
-	Ui.label(ccol, "EKİBİNİ SEÇ", 28, Ui.INK, "display")
-	Ui.label(ccol, "Trenle bunlar gelecek, çift çift. Beğenmediğini YENİDEN ile değiştir: her özelliğin artısı da eksisi de oyunu doğrudan etkiler.", 14, Ui.DIM).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var ccol := _sheet(Rect2(562, 124, 1344, 622), 8)
+	var top := HBoxContainer.new()
+	ccol.add_child(top)
+	var heads := VBoxContainer.new()
+	heads.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heads.add_theme_constant_override("separation", 2)
+	top.add_child(heads)
+	Ui.label(heads, "EKİBİNİ SEÇ", 32, Ui.P_INK, "display")
+	Ui.label(heads, "Trenle bunlar gelecek, çift çift. Beğenmediğini YENİDEN ile değiştir; her özelliğin artısı da eksisi de oyunu doğrudan etkiler.", 14, Ui.P_INK)
+	var again := _key("RASTGELE EKİP", func() -> void:
+		_crew.clear()
+		_fill_crew(), 180)
+	again.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(again)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	ccol.add_child(scroll)
 	_crew_grid = GridContainer.new()
-	_crew_grid.columns = 2
-	_crew_grid.add_theme_constant_override("h_separation", 10)
-	_crew_grid.add_theme_constant_override("v_separation", 10)
+	_crew_grid.columns = 3
+	_crew_grid.add_theme_constant_override("h_separation", 6)
+	_crew_grid.add_theme_constant_override("v_separation", 6)
 	_crew_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_crew_grid)
-	# the foot: back, all again, away
-	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation", 10)
-	outer.add_child(foot)
-	foot.add_child(_button("GERİ", func() -> void: _toggle(""), 160))
-	foot.add_child(_button("HEPSİNİ YENİDEN", func() -> void:
-		_crew.clear()
-		_fill_crew(), 200))
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(gap)
-	var go := _button("YOLA ÇIK", func() -> void:
+	# the foot: the board's own painted buttons, lit under the pointer
+	_foot(Rect2(38, 1000, 174, 58), func() -> void: _toggle(""))
+	_foot(Rect2(1532, 972, 350, 86), func() -> void:
 		game.begin_new({"seed": maxi(int(_seed.text), 1), "people": _people, "supplies": [0.6, 1.0, 1.6][_choice.supplies],
-			"raids": _choice.raids, "season": _choice.season, "crew": _crew.duplicate(true)}), 260)
-	go.custom_minimum_size = Vector2(260, 54)
-	go.add_theme_font_override("font", Ui.font("display"))
-	go.add_theme_font_size_override("font_size", 26)
-	go.add_theme_color_override("font_color", Ui.ACCENT)
-	foot.add_child(go)
+			"raids": _choice.raids, "season": _choice.season, "crew": _crew.duplicate(true)}))
+
+
+## The stage scaled and centred on the screen.
+func _fit_stage() -> void:
+	if not is_instance_valid(_stage):
+		return
+	var room := get_viewport().get_visible_rect().size
+	var k := minf(room.x / STAGE.x, room.y / STAGE.y)
+	_stage.scale = Vector2(k, k)
+	_stage.position = (room - STAGE * k) * 0.5
+
+
+## A torn sheet at `at` on the stage: the column to write on.
+func _sheet(at: Rect2, gap: int) -> VBoxContainer:
+	var sheet := PanelContainer.new()
+	var box := StyleBoxTexture.new()
+	box.texture = load(PARCHMENT)
+	box.set_texture_margin_all(110.0)
+	box.content_margin_left = 44.0
+	box.content_margin_right = 46.0
+	box.content_margin_top = 52.0
+	box.content_margin_bottom = 40.0
+	sheet.add_theme_stylebox_override("panel", box)
+	sheet.position = at.position
+	sheet.size = at.size
+	_stage.add_child(sheet)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", gap)
+	sheet.add_child(col)
+	return col
+
+
+## A thin ruled box on the paper.
+func _line_box(margin := 10.0) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = Color(1.0, 0.95, 0.82, 0.16)
+	b.border_color = Color(0.36, 0.24, 0.13, 0.42)
+	b.set_border_width_all(1)
+	b.set_corner_radius_all(2)
+	b.set_content_margin_all(margin)
+	return b
+
+
+## A key on the paper: raised card, dark ink; `on` the chosen one, burnt orange.
+func _key_box(on: bool, hover := false) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = Color(0.7, 0.4, 0.12) if on else Color(0.84, 0.74, 0.57).lightened(0.1 if hover else 0.0)
+	b.border_color = Color(0.36, 0.23, 0.12, 0.9)
+	b.set_border_width_all(1)
+	b.border_width_bottom = 2
+	b.set_corner_radius_all(3)
+	b.content_margin_left = 12
+	b.content_margin_right = 12
+	b.content_margin_top = 5
+	b.content_margin_bottom = 5
+	return b
+
+
+func _key(text: String, f: Callable, w := 0) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(w, 36)
+	b.add_theme_font_override("font", Ui.face("head", 15))
+	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_constant_override("outline_size", 0)
+	for st: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(st, Ui.P_INK)
+	b.add_theme_stylebox_override("normal", _key_box(false))
+	b.add_theme_stylebox_override("hover", _key_box(false, true))
+	b.add_theme_stylebox_override("pressed", _key_box(true))
+	b.pressed.connect(f)
+	return b
+
+
+## One of the buttons painted on the board at `at`: a clear button over it, a warm light when pointed at.
+func _foot(at: Rect2, f: Callable) -> void:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.position = at.position
+	b.size = at.size
+	var lit := StyleBoxFlat.new()
+	lit.bg_color = Color(1.0, 0.75, 0.4, 0.14)
+	lit.set_corner_radius_all(6)
+	b.add_theme_stylebox_override("hover", lit)
+	b.add_theme_stylebox_override("pressed", lit)
+	b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.pressed.connect(f)
+	_stage.add_child(b)
 
 
 ## The crew made up to how many come: couples, a man and then his wife with his name (those there
@@ -370,9 +476,6 @@ func _new_settler(k: int) -> Dictionary:
 
 
 func _show_crew() -> void:
-	# (as many columns as fit the screen beside the valley's plate: a card wants ~380)
-	var room := get_viewport().get_visible_rect().size.x - 120.0 - 440.0 - 60.0
-	_crew_grid.columns = clampi(int(room / 380.0), 1, 3)
 	for ch in _crew_grid.get_children():
 		ch.queue_free()
 	_crew_faces.clear()
@@ -380,63 +483,62 @@ func _show_crew() -> void:
 		_crew_grid.add_child(_settler_card(k))
 
 
-## A settler's card: their face, name and family, their three best knacks (♥ keen), their traits'
-## good and bad, and YENİDEN to throw them again (a wife keeps her husband's name).
+## A settler's card: their face in a dark frame, name and sign, what they did, their three best knacks
+## (♥ keen), their traits' good and bad, and YENİDEN to throw them again (a wife keeps her husband's
+## name).
 func _settler_card(k: int) -> Control:
 	var c: Dictionary = _crew[k]
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", Ui.glass(false, 10.0, Color(1, 1, 1, 0.05)))
+	card.add_theme_stylebox_override("panel", _line_box(8.0))
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 226)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	card.add_child(row)
 	var face := TextureRect.new()
-	face.custom_minimum_size = Vector2(84, 84)
+	face.custom_minimum_size = Vector2(128, 200)
 	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	face.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var kind := "woman" if bool(c.get("female", false)) else "man"
 	face.texture = Portraits.of_look(int(c.look_seed), kind)
 	row.add_child(face)
 	_crew_faces.append([face, int(c.look_seed), kind])
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 1)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(col)
 	var head := HBoxContainer.new()
 	col.add_child(head)
-	var name := Ui.label(head, str(c.name), 20, Ui.INK, "display")
+	var name := Ui.label(head, str(c.name), 20, Ui.P_INK, "display")
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.clip_text = true
-	head.add_child(_button("YENİDEN", func() -> void:
+	var redo := _key("YENİDEN", func() -> void:
 		var fam := str(_crew[k].family)
 		_crew[k] = Villager.candidate(_rng, bool(_crew[k].female), fam) # (the family's name kept: a couple stays one)
-		_show_crew(), 0))
-	Ui.label(col, "%s · %s ailesi" % ["kadın" if c.female else "erkek", c.family], 13, Ui.DIM)
+		_show_crew())
+	redo.custom_minimum_size = Vector2(0, 26)
+	redo.add_theme_font_size_override("font_size", 12)
+	head.add_child(redo)
 	var from := str(c.get("origin", ""))
+	var said := "%s ailesi." % c.family
 	if from != "":
 		var o: Dictionary = Villager.ORIGINS[from]
-		Ui.label(col, Ui.upper(str(o.name)), 13, Ui.ACCENT, "head")
-		_wrap(Ui.label(col, "%s (%s +%d)" % [o.desc, Villager.SKILLS[o.skill], int(o.by)], 12, Ui.DIM))
+		Ui.label(col, "%s · %s" % [Ui.upper(str(o.name)), "KADIN" if c.female else "ERKEK"], 14, Ui.P_INK, "head")
+		said = "%s ailesi. %s (%s +%d)" % [c.family, o.desc, Villager.SKILLS[o.skill], int(o.by)]
+	_wrap(Ui.label(col, said, 13, Ui.P_DIM))
 	var ks: Array = (c.skills as Dictionary).keys()
 	ks.sort_custom(func(a: String, b: String) -> bool: return float(c.skills[a]) > float(c.skills[b]))
-	var best: Array[String] = []
 	for sk: String in ks.slice(0, 3):
-		best.append("%s %d%s" % [Villager.SKILLS[sk], int(c.skills[sk]), " ♥" if sk in c.keen else ""])
+		Ui.label(col, "+  %s +%d%s" % [Villager.SKILLS[sk], int(c.skills[sk]), " ♥" if sk in c.keen else ""], 15, Ui.P_GREEN, "strong")
 	var weak: String = ks[ks.size() - 1]
-	_wrap(Ui.label(col, " · ".join(best), 14, Ui.INK, "strong"))
-	var extra := []
-	for kk: String in c.keen:
-		if not kk in ks.slice(0, 3):
-			extra.append("%s ♥" % Villager.SKILLS[kk])
-	_wrap(Ui.label(col, ("hevesli: " + ", ".join(extra) + " · " if not extra.is_empty() else "") + "zayıf: %s %d" % [Villager.SKILLS[weak], int(c.skills[weak])], 12, Ui.DIM))
+	var tip := "Zayıf: %s %d" % [Villager.SKILLS[weak], int(c.skills[weak])]
 	if (c.traits as Array).is_empty():
-		Ui.label(col, "Özelliği yok: sıradan biri", 13, Ui.DIM)
+		Ui.label(col, "–  Özelliği yok (sıradan biri)", 14, Ui.P_RED, "strong")
 	for t: String in c.traits:
 		var tr: Dictionary = Villager.TRAITS[t]
-		Ui.label(col, Ui.upper(str(tr.name)), 13, Ui.ACCENT, "head")
-		_wrap(Ui.label(col, "+ " + str(tr.plus), 13, Ui.GOOD))
-		_wrap(Ui.label(col, "− " + str(tr.minus), 13, Ui.BAD))
+		_wrap(Ui.label(col, "–  %s (%s)" % [tr.name, tr.minus], 14, Ui.P_RED, "strong"))
+		tip += "\n%s: %s" % [tr.name, tr.plus]
+	card.tooltip_text = tip
 	return card
 
 
@@ -452,8 +554,8 @@ func _row(col: VBoxContainer, title: String, tip: String) -> HBoxContainer:
 	row.add_theme_constant_override("separation", 8)
 	row.tooltip_text = tip
 	col.add_child(row)
-	var l := Ui.label(row, title, 15, Ui.ACCENT, "head")
-	l.custom_minimum_size = Vector2(120, 0)
+	var l := Ui.label(row, title, 17, Ui.P_INK, "head")
+	l.custom_minimum_size = Vector2(124, 0)
 	return row
 
 
@@ -461,9 +563,9 @@ func _choices(col: VBoxContainer, title: String, key: String, names: Array, tip:
 	var row := _row(col, title, tip)
 	var group: Array[Button] = []
 	for i in names.size():
-		var b := _button(names[i], func() -> void:
+		var b := _key(names[i], func() -> void:
 			_choice[key] = i
-			_mark(key), 0)
+			_mark(key))
 		row.add_child(b)
 		group.append(b)
 	_groups[key] = group
@@ -473,8 +575,11 @@ func _choices(col: VBoxContainer, title: String, key: String, names: Array, tip:
 func _mark(key: String) -> void:
 	var group: Array = _groups[key]
 	for i in group.size():
-		(group[i] as Button).add_theme_color_override("font_color", Ui.ACCENT if i == int(_choice[key]) else Ui.INK)
-		(group[i] as Button).add_theme_stylebox_override("normal", Ui.glass(false, 6.0, Color(1.0, 0.56, 0.14, 0.25) if i == int(_choice[key]) else Color(1, 1, 1, 0.06)))
+		var on: bool = i == int(_choice[key])
+		for st: String in ["font_color", "font_hover_color"]:
+			(group[i] as Button).add_theme_color_override(st, Ui.INK if on else Ui.P_INK)
+		(group[i] as Button).add_theme_stylebox_override("normal", _key_box(on))
+		(group[i] as Button).add_theme_stylebox_override("hover", _key_box(on, true))
 
 
 func _set_people(n: int) -> void:

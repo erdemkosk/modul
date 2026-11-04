@@ -13,6 +13,7 @@ const CARS := ["tren_lokomotif", "tren_tender", "tren_vagon", "tren_yuk"]
 const TOP := 0.32 ## m from the ground to the rail's top
 const MAX_SPEED := 9.0
 const BRAKE := 0.55 ## m/s2
+const HARD_BRAKE := 3.0 ## m/s2: pulled up short (the first train, stopped by hand)
 
 var line := PackedVector3Array() ## the rails' middle, on the ground
 var nav: Nav ## (its cells shut while it stands: nobody walks through it)
@@ -33,6 +34,7 @@ var _chuff_t := 0.0
 var _whistle: AudioStreamPlayer3D
 var _sparks: GPUParticles3D ## from the stack at night, working hard
 var _lamp: SpotLight3D ## the headlamp, lit after dark
+var brake := BRAKE
 var quiet := false ## (the first train, at the start: no whistle over the opening)
 var armour := "" ## an armoured train's side ("merkez", "isyan"): plated over, a gun on its last car, its flag; "" a plain one
 
@@ -317,7 +319,7 @@ func _process(dt: float) -> void:
 		"coming":
 			var end := minf(stop_at, _bar_s)
 			var left := end - _s
-			_v = minf(minf(_v + 1.2 * dt, MAX_SPEED), sqrt(maxf(2.0 * BRAKE * left, 0.0)) + 0.15)
+			_v = minf(minf(_v + 1.2 * dt, MAX_SPEED), sqrt(maxf(2.0 * brake * left, 0.0)) + 0.15)
 			_s = minf(_s + _v * dt, end)
 			if _bar_s < stop_at and _s >= _bar_s - 0.01:
 				_v = 0.0 # (stopped short: it waits there, and comes on when the way's clear)

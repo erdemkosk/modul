@@ -5,12 +5,13 @@ extends Node
 ## key light, a fill, a dark ground), framed head and shoulders and taken once. Asked for one that
 ## isn't taken yet, `of` gives null and puts it in line; they're taken one a frame or two apart.
 
-const SIZE := 96
-const DIST := 0.75 ## m the camera stands off the face
+const SIZE := Vector2i(330, 400) ## (head and shoulders, then painted: shaders/portrait_paint.gdshader)
+const DIST := 1.02 ## m the camera stands off the face
 
 static var _me: Portraits
 
 var _vp: SubViewport
+var _canvas: SubViewport ## the studio's picture painted over
 var _cam: Camera3D
 var _stage: Node3D
 var _taken := {} ## "<seed>:<kind>" -> ImageTexture
@@ -21,37 +22,54 @@ var _busy := false
 func _ready() -> void:
 	_me = self
 	_vp = SubViewport.new()
-	_vp.size = Vector2i(SIZE, SIZE)
+	_vp.size = SIZE
 	_vp.own_world_3d = true
-	_vp.transparent_bg = false
+	_vp.transparent_bg = true
 	_vp.msaa_3d = Viewport.MSAA_4X
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_vp)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#1d1a17")
+	env.background_color = Color(0, 0, 0, 0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("#8a8070")
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color("#7d6f60")
+	env.ambient_light_energy = 0.3
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
 	var key := DirectionalLight3D.new()
-	key.light_color = Color("#ffe2b8")
-	key.light_energy = 1.6
-	key.rotation_degrees = Vector3(-28, -35, 0)
+	key.light_color = Color("#ffdcae")
+	key.light_energy = 1.05
+	key.rotation_degrees = Vector3(-34, 208, 0) # (a window high to the left: half the face in shade)
+	key.shadow_enabled = true
 	_vp.add_child(key)
 	var fill := DirectionalLight3D.new()
 	fill.light_color = Color("#9fb4d0")
-	fill.light_energy = 0.45
-	fill.rotation_degrees = Vector3(-10, 140, 0)
+	fill.light_energy = 0.16
+	fill.rotation_degrees = Vector3(-6, 130, 0)
 	_vp.add_child(fill)
+	var rim := DirectionalLight3D.new() # (the edge of the far cheek and shoulder caught)
+	rim.light_color = Color("#ffcf96")
+	rim.light_energy = 0.5
+	rim.rotation_degrees = Vector3(-18, 25, 0)
+	_vp.add_child(rim)
 	_cam = Camera3D.new()
 	_cam.fov = 26.0
 	_vp.add_child(_cam)
 	_stage = Node3D.new()
 	_vp.add_child(_stage)
+	_canvas = SubViewport.new()
+	_canvas.size = SIZE
+	_canvas.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(_canvas)
+	var sheet := ColorRect.new()
+	sheet.size = Vector2(SIZE)
+	var paint := ShaderMaterial.new()
+	paint.shader = preload("res://shaders/portrait_paint.gdshader")
+	paint.set_shader_parameter("src", _vp.get_texture())
+	sheet.material = paint
+	_canvas.add_child(sheet)
 
 
 ## `v`'s face, or null while it's still to be taken.
@@ -91,11 +109,14 @@ func _take(seed: int, kind: String) -> void:
 	body.player.seek(0.0, true) # (stood square to the camera, not mid-step)
 	await get_tree().process_frame # (the skeleton posed)
 	var face := _head(body)
-	_cam.look_at_from_position(face + Vector3(0.14, 0.03, -DIST), face + Vector3(0, -0.04, 0))
+	_cam.look_at_from_position(face + Vector3(0.3, 0.06, -DIST), face + Vector3(0, -0.09, 0)) # (three-quarters on)
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
-	var img := _vp.get_texture().get_image()
+	_canvas.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	var img := _canvas.get_texture().get_image()
 	if img and not img.is_empty():
+		img.generate_mipmaps()
 		_taken["%d:%s" % [seed, kind]] = ImageTexture.create_from_image(img)
 	body.queue_free()
 	_busy = false

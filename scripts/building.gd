@@ -2016,6 +2016,8 @@ func add_goods(r: String, n: int) -> void:
 	goods[r] = int(goods.get(r, 0)) + n
 	if def.role in ["work", "farm"]:
 		_show_pile()
+	elif def.get("open", false):
+		show_heap()
 
 
 ## Takes up to `n` of `r`; what it could.
@@ -2024,7 +2026,152 @@ func take_goods(r: String, n: int) -> int:
 	goods[r] = int(goods.get(r, 0)) - k
 	if def.role in ["work", "farm"]:
 		_show_pile()
+	elif def.get("open", false):
+		show_heap()
 	return k
+
+
+const STACK := {"yiyecek": 40, "odun": 25, "tas": 30} ## what one stack holds in the open (others: STACK_OF)
+const STACK_OF := 30
+const STACK_ORDER := ["yiyecek", "odun", "tas", "kerpic", "komur", "demir", "camur", "ot"]
+const STACK_W := 1.2 ## m across a stack's square
+const STACK_D := 1.3
+
+
+## What's been set down in the open, as it stands: stack by stack, each good on its own squares, each
+## square as full as it is. Comes and goes with the load; a click on one says what it holds.
+func show_heap() -> void:
+	var list: Array = []
+	for r: String in STACK_ORDER:
+		var left := int(goods.get(r, 0))
+		var most: int = int(STACK.get(r, STACK_OF))
+		while left > 0:
+			var n := mini(left, most)
+			left -= n
+			var k := list.size()
+			var spot := to_global(Vector3(-2.4 + (k % 5) * STACK_W, 0.0, -1.3 + (k / 5) * STACK_D))
+			spot.y = nav.height(spot.x, spot.z) # (each on the ground as it lies there)
+			list.append({"res": r, "n": n, "of": most, "at": to_local(spot)})
+	if str(list) == str(stacks):
+		return
+	stacks = list
+	if _heap:
+		_heap.queue_free()
+	_heap = Node3D.new()
+	add_child(_heap)
+	for k in stacks.size():
+		_heap.add_child(_stack_node(stacks[k], k))
+	pick_stack(mini(picked, stacks.size() - 1))
+
+
+func _stack_node(e: Dictionary, seed_: int) -> Node3D:
+	var at := Node3D.new()
+	at.position = e.at
+	var look := RandomNumberGenerator.new()
+	look.seed = seed_ + 7
+	var fill := float(e.n) / float(e.of)
+	var res := str(e.res)
+	match res:
+		"yiyecek": # (sacks, two courses of three)
+			var count := ceili(fill * 6.0)
+			for k in count:
+				var mi := MeshInstance3D.new()
+				var c := CapsuleMesh.new()
+				c.radius = 0.2
+				c.height = 0.78
+				c.radial_segments = 8
+				c.rings = 2
+				mi.mesh = c
+				mi.material_override = _burlap()
+				var y := 0.34 + (k / 3) * 0.32
+				mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, look.randf_range(-0.12, 0.12)), Vector3(-0.32 + (k % 3) * 0.32, y, 0.0))
+				at.add_child(mi)
+		"odun": # (logs, in the hollows of the course under)
+			var count := ceili(fill * 10.0)
+			for k in count:
+				var row := 0 if k < 4 else (1 if k < 7 else (2 if k < 9 else 3))
+				var first: int = [0, 4, 7, 9][row]
+				var mi := MeshInstance3D.new()
+				var c := CylinderMesh.new()
+				c.top_radius = 0.13
+				c.bottom_radius = 0.14
+				c.height = 1.05
+				c.radial_segments = 7
+				mi.mesh = c
+				mi.material_override = material("log")
+				var y := 0.27 + row * 0.23
+				mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(-0.42 + (k - first) * 0.28 + row * 0.14, y, 0.0))
+				at.add_child(mi)
+		"tas":
+			var count := ceili(fill * 8.0)
+			for k in count:
+				var mi := MeshInstance3D.new()
+				mi.mesh = rock(k)
+				mi.material_override = rock_material(k * 3 + 1)
+				mi.scale = Vector3.ONE * look.randf_range(0.38, 0.5)
+				var y := 0.25 + (k / 4) * 0.22
+				mi.position = Vector3(-0.3 + (k % 4) * 0.2 + (k / 4) * 0.1, y, look.randf_range(-0.22, 0.22))
+				mi.rotation = Vector3(look.randf_range(-0.3, 0.3), look.randf() * TAU, 0)
+				at.add_child(mi)
+		_:
+			var count := ceili(fill * 4.0)
+			for k in count:
+				var mi := MeshInstance3D.new()
+				var b := BoxMesh.new()
+				b.size = Vector3(0.5, 0.36, 0.7)
+				mi.mesh = b
+				mi.material_override = material("plank")
+				var y := 0.32 + (k / 2) * 0.37
+				mi.position = Vector3(-0.27 + (k % 2) * 0.54, y, 0.0)
+				at.add_child(mi)
+	return at
+
+
+static var _sack: StandardMaterial3D
+
+
+static func _burlap() -> StandardMaterial3D:
+	if _sack == null:
+		_sack = StandardMaterial3D.new()
+		_sack.albedo_color = Color(0.63, 0.52, 0.35)
+		_sack.roughness = 1.0
+	return _sack
+
+
+## The middle of stack `k`, in the world.
+func stack_world(k: int) -> Vector3:
+	return to_global(stacks[k].at) + Vector3.UP * 0.35
+
+
+## Stack `k` picked out (-1: none), a square marked round it.
+func pick_stack(k: int) -> void:
+	picked = k
+	if _pick_ring:
+		_pick_ring.queue_free()
+		_pick_ring = null
+	if k < 0 or k >= stacks.size():
+		return
+	_pick_ring = MeshInstance3D.new()
+	var im := ImmediateMesh.new()
+	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
+	var w := STACK_W * 0.5 - 0.04
+	var d := STACK_D * 0.5 - 0.04
+	for c: Vector2 in [Vector2(-w, -d), Vector2(w, -d), Vector2(w, d), Vector2(-w, d), Vector2(-w, -d)]:
+		im.surface_add_vertex(Vector3(c.x, 0.12, c.y))
+	im.surface_end()
+	_pick_ring.mesh = im
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.78, 0.3)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_pick_ring.material_override = mat
+	_pick_ring.position = stacks[k].at
+	add_child(_pick_ring)
+
+
+var stacks: Array = [] ## what's in the open, stack by stack: {res, n, of, at}
+var picked := -1 ## the stack picked out of them
+var _heap: Node3D
+var _pick_ring: MeshInstance3D
 
 
 ## A workplace's pile by its door: a log, a stone or a basket for every few it holds.

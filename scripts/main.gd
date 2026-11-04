@@ -1020,7 +1020,33 @@ func _pick(at: Vector2, add := false) -> void:
 		selected_villager = folk
 		group = [folk]
 		return
+	var heap: Array = _stack_under(at)
+	if not heap.is_empty():
+		select(null)
+		picked_heap = heap[0]
+		picked_heap.pick_stack(heap[1])
+		return
 	select(_building_under(at))
+
+
+## The stack in the open under the point on the screen: [its heap, which], or [].
+func _stack_under(at: Vector2) -> Array:
+	var best: Array = []
+	var nearest := 1.0 # (in stack-widths on the screen)
+	for b in village.buildings:
+		if not b.def.get("open", false) or b.state == "gone":
+			continue
+		for k in b.stacks.size():
+			var mid: Vector3 = b.stack_world(k)
+			if cam.is_position_behind(mid):
+				continue
+			var c := cam.unproject_position(mid)
+			var wide := c.distance_to(cam.unproject_position(mid + cam.global_basis.x * Building.STACK_W * 0.5))
+			var d := c.distance_to(at) / maxf(wide, 1.0)
+			if d < nearest:
+				nearest = d
+				best = [b, k]
+	return best
 
 
 func _building_under(at: Vector2) -> Building:
@@ -1050,6 +1076,9 @@ func _villager_under(at: Vector2) -> Villager:
 
 
 func select(b: Building) -> void:
+	if picked_heap and is_instance_valid(picked_heap):
+		picked_heap.pick_stack(-1)
+	picked_heap = null
 	selected = b
 	selected_villager = null
 	selected_wall = null
@@ -1600,6 +1629,7 @@ func _update_pointer() -> void:
 
 var _cursors_made := false
 var _cursor := ""
+var picked_heap: Building ## the pile a stack's been clicked on (AlertBoard says what's in it)
 var mouse_pin := Vector2.INF ## (a test's: where the pointer's taken to be, as CombatMarks.pointer)
 
 

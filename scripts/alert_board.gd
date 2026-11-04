@@ -5,6 +5,13 @@ extends VBoxContainer
 ## off as it's done, put away for good once it's finished or closed.
 
 var game: Node
+var _guide_col: VBoxContainer
+var _guide_rows: Array = [] ## a step: [its box, its line, the box's frame]
+var _train_lines: Label
+var _train_card: PanelContainer
+var _stack: PanelContainer
+var _stack_name: Label
+var _stack_line: Label
 var _stop: PanelContainer
 var _follow: Button
 var _rows: Array[Button] = []
@@ -28,7 +35,6 @@ const STEPS := [
 	["Korun", "SAVUNMA > GÖZCÜ KULESİ ya da SİLAHLIK: baskın gelmeden"],
 ]
 var _guide: PanelContainer
-var _guide_lines: Label
 var _guide_head: Label
 var _closed := false
 
@@ -42,10 +48,16 @@ func make(parent: Node) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(self)
 	_guide = PanelContainer.new()
-	_guide.add_theme_stylebox_override("panel", Ui.paper(4.0))
+	var slate := StyleBoxFlat.new() # (dark and plain: small writing has to read over anything)
+	slate.bg_color = Color(0.085, 0.06, 0.045, 0.96)
+	slate.border_color = Color(0.72, 0.55, 0.3, 0.8)
+	slate.set_border_width_all(2)
+	slate.set_corner_radius_all(3)
+	slate.set_content_margin_all(12.0)
+	_guide.add_theme_stylebox_override("panel", slate)
 	_guide.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_guide.offset_left = 12
-	_guide.offset_top = 126
+	_guide.offset_top = 118
 	parent.add_child(_guide)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
@@ -66,11 +78,42 @@ func make(parent: Node) -> void:
 		Settings.guide_off = true
 		Settings.save_settings())
 	top.add_child(x)
-	_guide_lines = Ui.label(col, "", 14, Color(0.95, 0.9, 0.8), "text")
-	_guide_lines.add_theme_constant_override("outline_size", 0)
+	_guide_col = VBoxContainer.new()
+	_guide_col.add_theme_constant_override("separation", 5)
+	col.add_child(_guide_col)
+	for s: Array in STEPS:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 9)
+		_guide_col.add_child(row)
+		var box := Label.new()
+		box.custom_minimum_size = Vector2(16, 16)
+		box.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		box.add_theme_font_size_override("font_size", 13)
+		box.add_theme_color_override("font_color", Color(1.0, 0.87, 0.6))
+		var line := StyleBoxFlat.new()
+		line.bg_color = Color(0, 0, 0, 0.2)
+		line.border_color = Color(0.8, 0.7, 0.5, 0.75)
+		line.set_border_width_all(1)
+		box.add_theme_stylebox_override("normal", line)
+		row.add_child(box)
+		var l := Ui.label(row, str(s[0]), 16, Color(0.98, 0.95, 0.88), "strong")
+		l.add_theme_constant_override("outline_size", 0)
+		l.add_theme_constant_override("shadow_offset_x", 0)
+		l.add_theme_constant_override("shadow_offset_y", 0)
+		_guide_rows.append([box, l, line])
+	var strip := TextureRect.new()
+	strip.texture = load("res://assets/ui/guide_strip.jpg")
+	strip.custom_minimum_size = Vector2(0, 56)
+	strip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	strip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	col.add_child(strip)
 	_closed = Settings.guide_off
 	_guide.visible = not _closed
 	_make_stop(parent)
+	_make_train(parent)
+	_make_stack(parent)
 
 
 ## The brake, while the first train's rolling: where it's stopped is where the town begins.
@@ -80,7 +123,7 @@ func _make_stop(parent: Node) -> void:
 	_stop.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_stop.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_stop.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_stop.offset_bottom = -230
+	_stop.offset_bottom = -256
 	parent.add_child(_stop)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
@@ -106,7 +149,106 @@ func _make_stop(parent: Node) -> void:
 	_stop.visible = false
 
 
+## The train's card, bottom left: where it is, when the next is due, what's waiting on it.
+func _make_train(parent: Node) -> void:
+	var p := PanelContainer.new()
+	_train_card = p
+	p.visible = false
+	p.add_theme_stylebox_override("panel", Ui.paper(6.0))
+	p.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	p.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	p.offset_left = 12
+	p.offset_bottom = -92
+	p.custom_minimum_size = Vector2(286, 0)
+	parent.add_child(p)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	p.add_child(col)
+	var top := HBoxContainer.new()
+	col.add_child(top)
+	Ui.label(top, "TREN", 17, Color(1.0, 0.87, 0.6), "head").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var fold := Button.new()
+	fold.text = "–"
+	fold.flat = true
+	fold.focus_mode = Control.FOCUS_NONE
+	fold.tooltip_text = "Kartı katla"
+	fold.add_theme_color_override("font_color", Ui.INK)
+	top.add_child(fold)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	col.add_child(body)
+	fold.pressed.connect(func() -> void: body.visible = not body.visible)
+	var pic := TextureRect.new()
+	pic.texture = load("res://assets/ui/train_card.jpg")
+	pic.custom_minimum_size = Vector2(104, 84)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	body.add_child(pic)
+	var lines := VBoxContainer.new()
+	lines.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lines.add_theme_constant_override("separation", 2)
+	body.add_child(lines)
+	_train_lines = Ui.label(lines, "", 14, Color(0.95, 0.9, 0.8), "text")
+	var wire := Ui.ink_button(Button.new(), Ui.INK, 13, "strong")
+	wire.text = "TELGRAF"
+	wire.tooltip_text = "Tren çağır, mal sat, sözleşme al"
+	wire.pressed.connect(func() -> void: game.hud.toggle_telegraph())
+	lines.add_child(wire)
+
+
+func _refresh_train() -> void:
+	var v: Village = game.village
+	_train_card.visible = v.knows("telgraf") # (nothing to say of the train till there's a wire)
+	if not _train_card.visible:
+		return
+	var state := "Hat boş"
+	if v.arriving:
+		state = "Yolda" if v.can_stop_train() else "Yük iniyor"
+	elif v.line_shut():
+		state = "Hat karla kapalı"
+	elif is_instance_valid(v.armoured):
+		state = "Zırhlı tren hatta"
+	elif is_instance_valid(v.train):
+		state = "Peronda" if v.train.is_standing() else "Hatta"
+	var next := "—"
+	if v.knows("telgraf") and v.depot() != null:
+		next = "Bugün" if v.next_train <= v.day else "%d gün" % (v.next_train - v.day)
+	elif not v.arriving:
+		next = "istasyon yok"
+	_train_lines.text = "Durum: %s\nSonraki: %s\nSözleşme: %d" % [state, next, v.trade.active.size()]
+
+
+## A stack in the open, clicked on: what it is and how much, and what the weather's doing to it.
+func _make_stack(parent: Node) -> void:
+	_stack = PanelContainer.new()
+	_stack.add_theme_stylebox_override("panel", Ui.paper(6.0))
+	_stack.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_stack.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_stack.offset_bottom = -216
+	_stack.visible = false
+	parent.add_child(_stack)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 1)
+	col.custom_minimum_size = Vector2(230, 0)
+	_stack.add_child(col)
+	_stack_name = Ui.label(col, "", 19, Color(1.0, 0.87, 0.6), "head")
+	_stack_line = Ui.label(col, "", 15, Ui.INK, "strong")
+
+
+func _refresh_stack() -> void:
+	var b: Building = game.picked_heap
+	if b == null or not is_instance_valid(b) or b.picked < 0 or b.picked >= b.stacks.size():
+		_stack.visible = false
+		return
+	var e: Dictionary = b.stacks[b.picked]
+	_stack.visible = true
+	_stack_name.text = str(BuildingDefs.RES_NAMES[e.res])
+	_stack_line.text = "%d / %d%s" % [int(e.n), int(e.of), "  ·  açıkta bozuluyor" if e.res in ["yiyecek", "odun"] else ""]
+
+
 func _process(dt: float) -> void:
+	_refresh_stack()
 	_stop.visible = game.village.can_stop_train()
 	_follow.visible = game._cam_free
 	_t -= dt
@@ -115,6 +257,7 @@ func _process(dt: float) -> void:
 	_t = 1.0
 	_refresh()
 	_refresh_guide()
+	_refresh_train()
 
 
 func _steps_done() -> Array[bool]:
@@ -137,19 +280,21 @@ func _refresh_guide() -> void:
 		return
 	var done := _steps_done()
 	var n := 0
-	var text: Array[String] = []
 	var next := true
 	for i in STEPS.size():
+		var r: Array = _guide_rows[i]
+		var box: Label = r[0]
+		var l: Label = r[1]
+		var mine := not done[i] and next
 		if done[i]:
 			n += 1
-			text.append("✓  " + str(STEPS[i][0]))
 		elif next:
 			next = false
-			text.append("▸  %s\n     %s" % [STEPS[i][0], STEPS[i][1]])
-		else:
-			text.append("·  " + str(STEPS[i][0]))
+		box.text = "✓" if done[i] else ""
+		(r[2] as StyleBoxFlat).border_color = Color(1.0, 0.72, 0.3) if mine else Color(0.8, 0.7, 0.5, 0.75)
+		l.text = "%s\n%s" % [STEPS[i][0], str(STEPS[i][1]).replace("\n     ", "\n")] if mine else str(STEPS[i][0])
+		l.add_theme_color_override("font_color", Color(1.0, 0.84, 0.52) if mine else (Color(0.74, 0.7, 0.62) if done[i] else Color(0.98, 0.95, 0.88)))
 	_guide_head.text = "İLK ADIMLAR  %d / %d" % [n, STEPS.size()]
-	_guide_lines.text = "\n".join(text)
 	if n >= STEPS.size():
 		_closed = true
 		_guide.visible = false

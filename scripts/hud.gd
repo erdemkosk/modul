@@ -150,6 +150,20 @@ func _ready() -> void:
 	var mini := Minimap.new()
 	mini.game = game
 	map_plate.add_child(mini)
+	var keys := VBoxContainer.new() # (down the map's left)
+	keys.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	keys.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	keys.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	keys.offset_right = -210
+	keys.offset_bottom = -54
+	keys.add_theme_constant_override("separation", 4)
+	add_child(keys)
+	for k: Array in [["G", "Keşif haritası (G)", func() -> void: toggle_map()], ["+", "Yakınlaştır", func() -> void: mini.zoom(0.7)],
+			["−", "Uzaklaştır", func() -> void: mini.zoom(1.4)], ["⌂", "Kasabaya dön", func() -> void: game.cam.jump_to(mini.home_at())]]:
+		var b := _small_button(str(k[0]), k[2])
+		b.custom_minimum_size = Vector2(34, 34)
+		b.tooltip_text = str(k[1])
+		keys.add_child(b)
 	if _test_panel:
 		_test_panel.move_to_front()
 	var squad := SquadBar.new()
@@ -157,7 +171,7 @@ func _ready() -> void:
 	squad.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	squad.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	squad.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	squad.offset_bottom = -178
+	squad.offset_bottom = -208
 	add_child(squad)
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -215,7 +229,7 @@ func _goods_plate() -> void:
 	var p := _plate()
 	p.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	p.offset_left = 12
-	p.offset_top = 116
+	p.offset_top = 112
 	add_child(p)
 	_fold(_goods_head, p)
 	var col := VBoxContainer.new()
@@ -282,6 +296,9 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 		(parts[0] as Control).visible = _seen.has(id) or id in ["odun", "tas", "yiyecek"]
 		(parts[1] as Label).text = str(n)
 		(parts[1] as Label).add_theme_color_override("font_color", Ui.BAD if id == "yiyecek" and n <= 5 else Ui.INK)
+		(_chips[id][0] as Control).visible = (parts[0] as Control).visible
+		(_chips[id][1] as Label).text = str(n)
+		(_chips[id][1] as Label).add_theme_color_override("font_color", Ui.BAD if id == "yiyecek" and n <= 5 else Ui.INK)
 		var d := roundi(float(n - int(then.get(id, 0))) / span * day_s)
 		(parts[2] as Label).text = ("+%d/gün" % d) if d > 0 else (("%d/gün" % d) if d < 0 else "")
 		(parts[2] as Label).add_theme_color_override("font_color", Ui.GOOD if d > 0 else Ui.BAD)
@@ -329,6 +346,8 @@ func _refresh_goods(v: Village, stock: Dictionary) -> void:
 	_store_line.tooltip_text = "Tıkla: oraya bak" + ("\n" + "\n".join(full.map(func(b: Building) -> String: return "%s: yığın dolu" % b.display_name())) if not full.is_empty() else "")
 
 
+var _chips := {} ## good -> [its place on the bar, its figure]
+var _chip_row: HBoxContainer
 var _depo_fill: Label
 var _depo_bar: ProgressBar
 var _brass: PanelContainer ## the plate itself: folded away until DURUM is pressed (the screen kept clear)
@@ -349,7 +368,7 @@ func _stores_plate() -> void:
 	_store_line.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_store_line.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_store_line.offset_left = 22
-	_store_line.offset_top = 118
+	_store_line.offset_top = 112
 	_store_line.visible = false
 	_store_line.add_theme_font_override("font", Ui.font("type_bold"))
 	_store_line.add_theme_font_size_override("font_size", 13)
@@ -363,9 +382,35 @@ func _stores_plate() -> void:
 	_store_line.rotation = -0.012
 	_store_line.pressed.connect(func() -> void: game.show_trouble())
 	add_child(_store_line)
+	var whole := HBoxContainer.new()
+	whole.add_theme_constant_override("separation", 14)
+	p.add_child(whole)
+	var lines := VBoxContainer.new()
+	lines.add_theme_constant_override("separation", 3)
+	whole.add_child(lines)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	p.add_child(row)
+	lines.add_child(row)
+	_chip_row = HBoxContainer.new()
+	_chip_row.add_theme_constant_override("separation", 12)
+	lines.add_child(_chip_row)
+	for id: String in GOODS:
+		var chip := HBoxContainer.new()
+		chip.add_theme_constant_override("separation", 4)
+		chip.tooltip_text = str(GOOD_TIPS[id])
+		chip.mouse_filter = Control.MOUSE_FILTER_PASS
+		chip.visible = false
+		_chip_row.add_child(chip)
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(22, 22)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.material = _pale_mat()
+		if ResourceLoader.exists("res://assets/ui/ink/%s.png" % id):
+			icon.texture = load("res://assets/ui/ink/%s.png" % id)
+		chip.add_child(icon)
+		_chips[id] = [chip, Ui.label(chip, "0", 18, Ui.INK, "display")]
 	var pair := HBoxContainer.new() # (the two that open something, side by side)
 	pair.add_theme_constant_override("separation", 4)
 	row.add_child(pair)
@@ -558,6 +603,7 @@ const _ENAMEL_LO := Color(0.82, 0.76, 0.64)
 const _LEATHER := Color(0.25, 0.18, 0.13) ## (Ui.PAPER: the tabs are cut from the same hide)
 const _SHORT := Color(0.78, 0.2, 0.1) ## the red of what can't be paid for
 const _MEDAL_R := 44.0
+const TILE := Vector2(118, 124) ## a building's card on the board
 
 
 func _build_bar() -> void:
@@ -608,8 +654,8 @@ func _build_bar() -> void:
 	_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_hint.offset_top = -206
-	_hint.offset_bottom = -174
+	_hint.offset_top = -236
+	_hint.offset_bottom = -204
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 
@@ -686,8 +732,9 @@ func show_category(i: int) -> void:
 func _build_button(kind: String, k: int) -> Button:
 	var def: Dictionary = ORDERS[kind] if ORDERS.has(kind) else BuildingDefs.DEFS[kind]
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(_MEDAL_R * 2.0 + 14.0, _MEDAL_R * 2.0 + 18.0)
+	b.custom_minimum_size = TILE
 	b.focus_mode = Control.FOCUS_NONE
+	b.set_meta("title", str(def.name))
 	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
 		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 	b.set_meta("kind", kind)
@@ -796,44 +843,55 @@ func _draw_medal(b: Button) -> void:
 	var locked: bool = b.get_meta("locked", false)
 	var short: bool = b.get_meta("short", false)
 	var held: float = 1.0 if b.get_meta("held", false) else 0.0
-	var r := _MEDAL_R * (1.0 + 0.04 * t)
-	var ctr := Vector2(b.size.x * 0.5, _MEDAL_R + 9.0 - 4.0 * t - 2.0 * held + (1.0 - enter) * 14.0)
-	_medal(b, ctr, r, b.get_meta("tex", null), t * (0.4 if locked else 1.0), locked, short and not locked, held)
-	# its key on a small enamel plaque riding the bezel's top
-	var f := Ui.face("type_bold", 12)
+	var card := Rect2(Vector2(3.0, 5.0 - 4.0 * t - 1.0 * held + (1.0 - enter) * 14.0), TILE - Vector2(6.0, 10.0))
+	b.draw_rect(Rect2(card.position + Vector2(0, 3), card.size), Color(0, 0, 0, 0.42), true)
+	var glow := maxf(t * (0.4 if locked else 1.0), held)
+	if glow > 0.01:
+		b.draw_rect(card.grow(3.0), Color(1.0, 0.72, 0.35, 0.3 * glow), true)
+	var paper := Color(0.9, 0.83, 0.69).lerp(Color(0.97, 0.9, 0.74), glow)
+	if locked:
+		paper = Color(0.62, 0.58, 0.51)
+	b.draw_rect(card, paper, true)
+	b.draw_rect(card.grow(-3.0), Color(0.36, 0.24, 0.13, 0.35), false, 1.0)
+	b.draw_rect(card, _BRASS_LO if held <= 0.0 else _AMBER, false, 2.0)
+	var tex: Texture2D = b.get_meta("tex", null)
+	if tex:
+		var pic := Rect2(card.position + Vector2((card.size.x - 84.0) * 0.5, 4.0), Vector2(84, 84))
+		b.draw_texture_rect(tex, pic, false, Color(0.55, 0.53, 0.5, 0.75) if locked else Color.WHITE)
+	# its name along the foot, smaller if it's long
+	var title := str(b.get_meta("title", ""))
+	var size := 14
+	var f := Ui.face("strong", size)
+	while size > 10 and f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > card.size.x - 8.0:
+		size -= 1
+	var w := f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	b.draw_string(f, Vector2(card.position.x + (card.size.x - w) * 0.5, card.end.y - 8.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, _SHORT if short and not locked else Ui.P_INK)
+	# its key, top left
+	var kf := Ui.face("type_bold", 12)
 	var key := str(int(b.get_meta("key", 0)) + 1)
-	var kw := f.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-	var tag := Rect2(ctr + Vector2(-9.0, -r - 5.0), Vector2(18.0, 15.0))
-	b.draw_rect(Rect2(tag.position + Vector2(0, 1.5), tag.size), Color(0, 0, 0, 0.35), true)
-	b.draw_rect(tag, _ENAMEL, true)
-	b.draw_rect(tag, _BRASS_LO, false, 1.0)
-	b.draw_string(f, Vector2(tag.position.x + (tag.size.x - kw) * 0.5, tag.end.y - 3.0), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.P_INK)
-	# how many stand: a brass coin at the lower right
+	b.draw_rect(Rect2(card.position + Vector2(4, 4), Vector2(16, 15)), Color(0.27, 0.19, 0.13), true)
+	b.draw_string(kf, card.position + Vector2(8, 16), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.INK)
+	# how many stand: a brass coin, top right
 	var count: int = b.get_meta("count", 0)
 	if count > 0:
-		var cc := ctr + Vector2(r * 0.74, r * 0.7)
+		var cc := card.position + Vector2(card.size.x - 15.0, 15.0)
 		b.draw_circle(cc + Vector2(0, 1.5), 10.5, Color(0, 0, 0, 0.4))
 		b.draw_circle(cc, 10.0, _BRASS_LO)
 		b.draw_circle(cc, 8.8, _AMBER)
-		b.draw_arc(cc, 7.6, PI * 1.0, PI * 1.8, 12, Color(_AMBER_HI, 0.9), 1.2, true)
 		var cs := str(count)
-		var cf := Ui.face("type_bold", 12)
-		var cw := cf.get_string_size(cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		b.draw_string(cf, cc + Vector2(-cw * 0.5, 4.5), cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.P_INK)
-	# new: a red dot at the upper right
+		var cw := kf.get_string_size(cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		b.draw_string(kf, cc + Vector2(-cw * 0.5, 4.5), cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.P_INK)
+	# new: a red dot
 	if b.get_meta("new", false):
-		var nc := ctr + Vector2(r * 0.72, -r * 0.7)
-		b.draw_circle(nc + Vector2(0, 1), 6.0, Color(0, 0, 0, 0.4))
+		var nc := card.position + Vector2(card.size.x - 12.0, 34.0)
 		b.draw_circle(nc, 5.5, _SHORT.lightened(0.1))
-		b.draw_circle(nc + Vector2(-1.5, -1.5), 1.8, Color(1, 1, 1, 0.6))
-	# locked: an engraved padlock at the foot of the face
+	# locked: a padlock on the picture
 	if locked:
-		var lc := ctr + Vector2(0, r * 0.52)
-		var ink := Color(Ui.P_INK, 0.85)
+		var lc := card.position + Vector2(card.size.x * 0.5, 54.0)
+		var ink := Color(Ui.P_INK, 0.9)
 		b.draw_arc(lc + Vector2(0, -5.5), 5.0, PI, TAU, 14, ink, 2.0, true)
 		b.draw_rect(Rect2(lc + Vector2(-7.5, -5.5), Vector2(15, 11)), Color(0.6, 0.59, 0.56), true)
 		b.draw_rect(Rect2(lc + Vector2(-7.5, -5.5), Vector2(15, 11)), ink, false, 1.4)
-		b.draw_circle(lc + Vector2(0, -0.5), 1.6, ink)
 
 
 ## The card over the board: the building's medallion small and its name, what it brings; under a

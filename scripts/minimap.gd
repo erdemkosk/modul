@@ -31,15 +31,6 @@ func _ready() -> void:
 	size = Vector2(side, side)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	tooltip_text = "Harita: tıkla, kamera oraya gitsin"
-	if not whole:
-		var big := Button.new()
-		big.text = "+"
-		big.focus_mode = Control.FOCUS_NONE
-		big.tooltip_text = "Keşif haritası (G)"
-		big.position = Vector2(side - 22, side - 22)
-		big.size = Vector2(20, 20)
-		big.pressed.connect(func() -> void: game.hud.toggle_map())
-		add_child(big)
 
 
 func _process(dt: float) -> void:
@@ -47,6 +38,20 @@ func _process(dt: float) -> void:
 	if _t >= 0.25:
 		_t = 0.0
 		queue_redraw()
+
+
+## The small map drawn nearer or further.
+func zoom(by: float) -> void:
+	reach = clampf(reach * by, 130.0, 900.0)
+	_paper = null
+	queue_redraw()
+
+
+## Where the town is, on the ground.
+func home_at() -> Vector3:
+	var p := _store_at()
+	p.y = game.village.nav.height(p.x, p.z)
+	return p
 
 
 func _store_at() -> Vector3:

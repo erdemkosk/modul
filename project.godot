@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Last Verst"
+config/name="Where Rails End"
 config/description="Bir vadide köy kurma ve yönetme oyunu."
 run/main_scene="res://scenes/main.tscn"
 config/use_custom_user_dir=true
