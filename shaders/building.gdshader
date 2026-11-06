@@ -11,6 +11,8 @@ uniform float roughness_base = 0.92;
 uniform vec3 daub = vec3(0.78, 0.69, 0.53); // a house's mud plaster over its logs
 uniform float daub_k = 0.0;
 instance uniform float weathering = 0.0; // the years on it (Building.age): greyed, streaked, mossed low down
+instance uniform float hue = 0.0; // a house's own paint (its trim and shutters): the colour turned round the wheel, radians
+instance uniform float tone = 0.0; // each building a shade off the next: its timber a little lighter or darker, warmer or cooler
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -33,7 +35,13 @@ void fragment() {
 	float grain = vnoise(wp * vec3(5.0, 1.2, 5.0)) * 0.55 + vnoise(wp * 22.0) * 0.45;
 	float up = clamp(wn.y, 0.0, 1.0);
 	float snow = smoothstep(0.4, 0.8, up) * smoothstep(0.05, 0.55, weather_snow);
-	vec3 c = COLOR.rgb * (0.86 + 0.26 * grain);
+	vec3 c = COLOR.rgb;
+	if (abs(hue) > 0.001) { // (turned about the grey axis: whites stay white, the paint goes another colour)
+		vec3 k = vec3(0.57735);
+		c = clamp(c * cos(hue) + cross(k, c) * sin(hue) + k * dot(k, c) * (1.0 - cos(hue)), 0.0, 1.0);
+	}
+	c *= vec3(1.0 + tone, 1.0 + tone * 0.85, 1.0 + tone * 0.55);
+	c *= 0.86 + 0.26 * grain;
 	// (the plaster's own patchiness: thicker here, worn thin there so the log shows through)
 	float worn = vnoise(wp * vec3(1.6, 3.5, 1.6)) * 0.6 + vnoise(wp * 9.0) * 0.4;
 	c = mix(c, daub * (0.86 + 0.28 * grain), daub_k * mix(0.6, 1.0, smoothstep(0.25, 0.6, worn)));

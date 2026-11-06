@@ -165,15 +165,38 @@ func setup(k: String) -> void:
 		p.stage = _stage_of(p)
 	pieces.sort_custom(func(a: Piece, b: Piece) -> bool: return a.stage * 1000.0 + a.aabb.position.y < b.stage * 1000.0 + b.aabb.position.y)
 	_share_cost()
+	var vary_seed := hash(get_instance_id())
 	for p in pieces:
 		body.add_child(p.shape)
 		add_child(p.mesh)
+		_vary(p, vary_seed)
 		if p.tag == "door":
 			var left := p.aabb.get_center().x <= 0.01
 			var hinge := Vector3(p.aabb.position.x if left else p.aabb.end.x, 0.0, p.aabb.get_center().z)
 			_doors.append([p, hinge, 1.0 if left else -1.0])
 	_link()
 	set_ghost(true)
+
+
+## Each building its own and light to draw far off: its timber a shade off the next one's, a house's
+## trim and shutters in its own paint (building.gdshader `tone`, `hue`), and the small things on it
+## (props, fittings, trim: under a metre) not drawn from further than the camera usually stands.
+const HOUSE_PAINTS := [0.0, -1.2, 2.6, -2.95, 0.6] ## the trim's colour turned (radians): blue, green, rose, ochre, violet
+const PAINTED_TAGS := ["trim", "shutter", "barge", "finial", "rail"]
+const DETAIL_SIZE := 1.0 ## m: a piece no longer than this is a detail
+const DETAIL_RANGE := 130.0 ## m: not drawn past this
+
+
+func _vary(p: Piece, vseed: int) -> void:
+	if p.mesh == null:
+		return
+	p.mesh.set_instance_shader_parameter(&"tone", (float(vseed % 1000) / 1000.0 - 0.5) * 0.12)
+	if def.get("role", "") == "house" and p.tag in PAINTED_TAGS:
+		p.mesh.set_instance_shader_parameter(&"hue", HOUSE_PAINTS[(vseed >> 3) % HOUSE_PAINTS.size()])
+	var big := maxf(p.aabb.size.x, maxf(p.aabb.size.y, p.aabb.size.z))
+	if big < DETAIL_SIZE and p.stuff != "window":
+		p.mesh.visibility_range_end = DETAIL_RANGE
+		p.mesh.visibility_range_end_margin = 15.0
 
 
 func _add_piece(spec: Dictionary) -> void:
@@ -1591,6 +1614,7 @@ func _add_extra(specs: Array[Dictionary], up: bool) -> void:
 		p.built = true
 		body.add_child(p.shape)
 		add_child(p.mesh)
+		_vary(p, hash(get_instance_id())) # (painted as the house it's on)
 		p.mesh.cast_shadow = _shadow()
 		if not up:
 			p.alive = false
@@ -1618,6 +1642,8 @@ func _put_back(p: Piece) -> void:
 	mi.transform = p.xf * p.mesh_local
 	add_child(mi)
 	p.mesh = mi
+	_vary(p, hash(get_instance_id()))
+	_weather_show()
 	p.shape.set_deferred("disabled", false)
 	p.alive = true
 	p.hp = p.max_hp

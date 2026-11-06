@@ -1,7 +1,9 @@
 """Builds the timber town's buildings, each one a GLB of separate pieces the game can burn and bring
 down one by one (scripts/building.gd):
 
-    blender --background --factory-startup --python tools/blender/build_buildings.py [-- --render] [-- --only=ev,ambar]
+    blender --background --factory-startup --python tools/blender/build_buildings.py [-- --render] [-- --only=ev,ambar] [-- --raw]
+
+(--raw: without the finish, the bevels, baked occlusion and grime at the foot: a quick look at shapes.)
 
 Every piece is its own object, its origin at the middle of its bounds, named "<stuff>-<n>" or
 "<stuff>-<tag>-<n>": the stuff (scripts/building_defs.gd STUFF: log, plank, dark, stone, shingle,
@@ -54,10 +56,11 @@ import math
 import os
 import random
 import sys
+import zlib
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -84,6 +87,7 @@ GLASS = (0.35, 0.42, 0.45)
 SAWDUST_C = (0.86, 0.74, 0.52)
 CHINK = (0.72, 0.68, 0.58)
 MOSS = (0.3, 0.38, 0.16)
+TUFT = (0.33, 0.4, 0.17) # grass grown up at a wall's foot
 BONE = (0.82, 0.78, 0.68)
 # painted trim and shutters, one pair to a building
 PAINTS = [((0.88, 0.86, 0.8), (0.22, 0.38, 0.55)), ((0.85, 0.82, 0.72), (0.25, 0.42, 0.3)), ((0.3, 0.45, 0.6), (0.8, 0.65, 0.3)),
@@ -221,6 +225,8 @@ class Piece:
         Piece.count[self.stuff] = Piece.count.get(self.stuff, 0) + 1
         name = "%s-%s-%03d" % (self.stuff, self.tag, Piece.count[self.stuff]) if self.tag else "%s-%03d" % (self.stuff, Piece.count[self.stuff])
         me = bpy.data.meshes.new(name)
+        if self.tag != "ground": # (every closed shape's faces turned outward, whichever way its axes ran)
+            bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
         self.bm.normal_update()
         self.bm.to_mesh(me)
         self.bm.free()
@@ -254,7 +260,8 @@ class Kit:
 
     def __init__(self, kind):
         self.kind = kind
-        self.rng = random.Random(hash(kind) & 0xFFFF)
+        self.rng = random.Random(zlib.crc32(kind.encode()) & 0xFFFF) # (the same building every run)
+        self.moss_seed = self.rng.uniform(0.0, 100.0)
         Piece.count = {}
         for ob in list(bpy.data.objects):
             bpy.data.objects.remove(ob, do_unlink=True)
@@ -274,6 +281,15 @@ class Kit:
         self.objects.append(p.to_object(self.coll))
 
     def finish(self):
+        if FINISH["bevel"]:
+            for ob in self.objects:
+                if ob.name.split("-")[0] in BEVELLED:
+                    _bevel(ob.data)
+        if FINISH["ao"]:
+            _bake_ao(self.objects)
+        if FINISH["grime"]:
+            for ob in self.objects:
+                _grime(ob)
         bpy.ops.object.select_all(action="DESELECT")
         for ob in self.objects:
             ob.select_set(True)
@@ -284,6 +300,121 @@ class Kit:
         kw = dict(filepath=path, export_format="GLB", use_selection=False, export_apply=True, export_yup=True)
         bpy.ops.export_scene.gltf(**kw)
         print("wrote", path, len(self.objects), "pieces")
+
+
+
+# --- the finish: edges eased, the shade of the corners, the dirt at the foot ------------------------
+# Every piece is a vertex-coloured mesh with no texture, so what makes it read as built and lived in
+# is put into its colours here, once it's all assembled: sawn edges bevelled a centimetre so they
+# catch the light, the occlusion (under the eaves, in the corners, between the logs, at the foot of
+# the walls on the ground) baked into the vertices by Cycles, and the splash of mud and grime that
+# darkens every wall's foot. (--raw leaves them off: a quick look at shapes.)
+
+FINISH = {"bevel": True, "ao": True, "grime": True}
+BEVELLED = ("plank", "dark", "wood", "plaster", "cloth")
+AO_DISTANCE = 1.1 # m: how far a thing shades what's near it
+AO_STRENGTH = 0.72
+GRIME = (0.2, 0.16, 0.11)
+GRIME_TOP = 0.95 # m above the ground the splash reaches
+
+
+def _bevel(me, width=0.012):
+    """Hard edges (between faces at more than ~70 degrees) bevelled `width`, a face of their own."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    if len(bm.verts) < 40000:
+        edges = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > 1.2]
+        if edges:
+            bmesh.ops.bevel(bm, geom=edges, offset=width, offset_type="OFFSET", segments=1, profile=0.5,
+                            affect="EDGES", clamp_overlap=True)
+    bm.to_mesh(me)
+    bm.free()
+
+
+def _colors(me):
+    import numpy as np
+    a = me.color_attributes["Col"]
+    buf = np.empty(len(a.data) * 4, dtype=np.float32)
+    a.data.foreach_get("color", buf)
+    return a, buf.reshape(-1, 4)
+
+
+def _bake_ao(objects, rays=20):
+    """The ambient occlusion: from each corner of each face (drawn in toward the face's middle, so a
+    corner tucked under the next shingle or log doesn't read its crevice for the whole face), rays
+    over the hemisphere it faces, against everything in the building and a ground under it; what's
+    hit within AO_DISTANCE shades it, the nearer the more. Multiplied into the piece's own colours."""
+    import numpy as np
+    from mathutils.bvhtree import BVHTree
+    rng = random.Random(7)
+    world = bmesh.new()
+    for ob in objects:
+        world.from_mesh(ob.data)
+    g = [world.verts.new(v) for v in ((-40, -40, 0), (40, -40, 0), (40, 40, 0), (-40, 40, 0))]
+    world.faces.new(g)
+    tree = BVHTree.FromBMesh(world)
+    world.free()
+    # cosine-weighted directions over the hemisphere about +Z
+    base = []
+    for i in range(rays):
+        u, v = (i + 0.5) / rays, (i * 0.618034) % 1.0
+        r, a = math.sqrt(u), v * math.tau
+        base.append(Vector((r * math.cos(a), r * math.sin(a), math.sqrt(max(0.0, 1.0 - u)))))
+    seen = []
+    for ob in objects:
+        me = ob.data
+        if not me.color_attributes.get("Col") or ob.name.startswith("window"):
+            continue
+        col, cbuf = _colors(me)
+        verts = me.vertices
+        occ = np.ones(len(me.loops), dtype=np.float32)
+        for poly in me.polygons:
+            n = poly.normal
+            c = poly.center
+            rot = n.to_track_quat("Z", "Y") @ Quaternion((0, 0, 1), rng.uniform(0, math.tau))
+            dirs = [rot @ d for d in base]
+            for li in poly.loop_indices:
+                q = verts[me.loops[li].vertex_index].co
+                if q.z < -0.05:
+                    continue
+                p = q.lerp(c, 0.45) + n * 0.012
+                shade = 0.0
+                for d in dirs:
+                    hit = tree.ray_cast(p, d, AO_DISTANCE)
+                    if hit[0] is not None:
+                        shade += 1.0 - (hit[3] / AO_DISTANCE) * 0.6
+                occ[li] = 1.0 - shade / rays
+        seen.append(occ)
+        k = 1.0 - AO_STRENGTH * (1.0 - occ)
+        cbuf[:, :3] *= k[:, None]
+        col.data.foreach_set("color", cbuf.ravel())
+    if seen:
+        allo = np.concatenate(seen)
+        print("ao: %d corners, mean %.2f, %.0f%% under 0.6" % (len(allo), allo.mean(), (allo < 0.6).mean() * 100))
+
+
+def _grime(ob):
+    """Mud splashed up the foot of whatever stands on the ground: the vertices darkened toward a muddy
+    brown the lower they are (not on faces turned up to the sky, which the rain washes)."""
+    import numpy as np
+    me = ob.data
+    if not me.color_attributes.get("Col") or ob.name.startswith("window"):
+        return
+    col, cbuf = _colors(me)
+    n = len(me.loops)
+    vi = np.empty(n, dtype=np.int32)
+    me.loops.foreach_get("vertex_index", vi)
+    co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+    me.vertices.foreach_get("co", co)
+    z = co.reshape(-1, 3)[vi, 2]
+    nz = np.empty(n * 3, dtype=np.float32)
+    me.corner_normals.foreach_get("vector", nz)
+    up = nz.reshape(-1, 3)[:, 2]
+    g = np.clip(1.0 - z / GRIME_TOP, 0.0, 1.0) ** 1.6 * 0.42 * np.clip(1.0 - up, 0.2, 1.0)
+    g[z < -0.05] = 0.0 # (underground: nobody sees it)
+    for i in range(3):
+        cbuf[:, i] = cbuf[:, i] * (1.0 - g) + GRIME[i] * g
+    col.data.foreach_set("color", cbuf.ravel())
 
 
 # --- parts of buildings ---------------------------------------------------------------------------
@@ -304,6 +435,20 @@ def plinth(k, w, d):
             else:
                 c = ((-1 if side == 2 else 1) * (w * 0.5 + 0.12), t * (d + 0.2), 0.18)
             p.stone(c, (0.5, 0.4, 0.32), rng=k.rng)
+        # grass and weeds grown up against the stones (none trodden away before the door)
+        for i in range(int(along / 0.3)):
+            t = k.rng.uniform(-0.5, 0.5)
+            out = k.rng.uniform(0.25, 0.55)
+            if side < 2:
+                if side == 0 and abs(t * along) < 1.0:
+                    continue
+                c = (t * (w + 0.4), (-1 if side == 0 else 1) * (d * 0.5 + out), -0.04)
+            else:
+                c = ((-1 if side == 2 else 1) * (w * 0.5 + out), t * (d + 0.4), -0.04)
+            g = jit(TUFT, 0.12, k.rng)
+            if k.rng.random() < 0.3:
+                g = (g[0] * 1.3, g[1] * 1.12, g[2] * 0.8) # (gone to seed, yellowing)
+            p.stone(c, (k.rng.uniform(0.22, 0.4), k.rng.uniform(0.2, 0.34), k.rng.uniform(0.22, 0.36)), color=g, rng=k.rng)
         k.add(p)
 
 
@@ -394,6 +539,24 @@ def log_gables(k, w, d, wall_top, rise, dia=0.3, ridge_axis="x", color=BARK, end
     return ridge, half, math.atan2(rise, half)
 
 
+def shingle_colour(k, base, x, frac, side=0, moss=1.0):
+    """A shingle's colour: a little off the roof's own, now and then an old one gone darker, and moss
+    where a roof stays wettest: toward the eave (`frac` of the way down), in drifts along it rather
+    than a scatter, more on the back slope (`side` > 0) than the front."""
+    sc = jit(base, 0.055, k.rng)
+    if k.rng.random() < 0.05:
+        sc = (sc[0] * 0.84, sc[1] * 0.83, sc[2] * 0.82)
+    if moss > 0.0:
+        drift = 0.5 + 0.5 * math.sin(x * 1.3 + k.moss_seed) * math.sin(x * 0.47 + frac * 3.1 + k.moss_seed * 1.7)
+        wet = max(0.0, (frac - 0.45) / 0.55)
+        amt = wet * drift * (1.3 if side > 0 else 0.75) * moss
+        if amt > 0.3 + k.rng.random() * 0.35:
+            m = jit(MOSS, 0.08, k.rng)
+            t = min(0.7, 0.35 + amt * 0.5)
+            sc = (sc[0] * (1 - t) + m[0] * t, sc[1] * (1 - t) + m[1] * t, sc[2] * (1 - t) + m[2] * t)
+    return sc
+
+
 def shingle_roof(k, w, ridge, half, slope, over=0.55, eave_over=0.6, strips=3, color=SHINGLE, stuff="shingle"):
     """Both slopes boarded and shingled, each in `strips` strips from the ridge down past the walls,
     shingles in staggered courses; fascia boards along the eaves, a ridge cap."""
@@ -422,12 +585,7 @@ def shingle_roof(k, w, ridge, half, slope, over=0.55, eave_over=0.6, strips=3, c
                     c = top + down * vv + normal * (0.045 + 0.012) + across * (x + sw * 0.5)
                     sh = Vector(c) + normal * 0.0
                     tilt = Matrix.Rotation(-0.08 * side, 3, across)
-                    sc = jit(color, 0.12, k.rng)
-                    if k.rng.random() < 0.12:
-                        sc = (sc[0] * 0.7, sc[1] * 0.68, sc[2] * 0.66) # (an old one, weathered dark)
-                    if vv > length * 0.6 and k.rng.random() < 0.18 + 0.3 * (vv / length - 0.6):
-                        m = jit(MOSS, 0.15, k.rng)
-                        sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+                    sc = shingle_colour(k, color, x, vv / length, side)
                     p.obox(sh, across, (tilt @ down), (tilt @ normal), (sw - 0.015, course * 1.6, 0.025), sc)
                     x += sw
             k.add(p)
@@ -670,7 +828,7 @@ def porch(k, w, front_y, depth=1.4, height=2.3, width=None, roof_top=None):
         x = -width * 0.5 - 0.2 + (0.14 if r % 2 else 0)
         while x < width * 0.5 + 0.15:
             sw = k.rng.uniform(0.22, 0.32)
-            p.obox(top + down * ((r + 0.5) * run / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), jit(SHINGLE, 0.12, k.rng))
+            p.obox(top + down * ((r + 0.5) * run / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), shingle_colour(k, SHINGLE, x, (r + 0.5) / rows, 0, 0.6))
             x += sw
     k.add(p)
 
@@ -727,9 +885,9 @@ def chopping_block(k, x, y):
 
 # --- the buildings ---------------------------------------------------------------------------------
 
-def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chimney_at=None, extra=None, double_door=False):
+def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chimney_at=None, extra=None, double_door=False, paint=None):
     k = Kit(kind)
-    k.paint = k.rng.choice(PAINTS)
+    k.paint = paint or k.rng.choice(PAINTS)
     plinth(k, w, d)
     floor(k, w, d)
     door_h = 2.0
@@ -881,12 +1039,7 @@ def ev_oda():
         x = -w * 0.5 - over + (0.15 if r % 2 else 0.0)
         while x < w * 0.5 + over - 0.05:
             sw = min(k.rng.uniform(0.22, 0.34), w * 0.5 + over - x)
-            sc = jit(SHINGLE, 0.12, k.rng)
-            if k.rng.random() < 0.12:
-                sc = (sc[0] * 0.7, sc[1] * 0.68, sc[2] * 0.66)
-            if vv > length * 0.6 and k.rng.random() < 0.25:
-                m = jit(MOSS, 0.15, k.rng)
-                sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+            sc = shingle_colour(k, SHINGLE, x, vv / length, 1)
             tilt = Matrix.Rotation(-0.08, 3, across)
             p.obox(start + down * vv + normal * 0.057 + across * (x + sw * 0.5), across, tilt @ down, tilt @ normal, (sw - 0.015, course * 1.6, 0.025), sc)
             x += sw
@@ -951,7 +1104,7 @@ def ev_soba():
 
 
 def ev():
-    cabin("ev", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.8), ("left", 0.0), ("back", 1.0)], chimney_at=(3.0 + 0.85, 0.8), extra=_house_extra)
+    cabin("ev", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.8), ("left", 0.0), ("back", 1.0)], chimney_at=(3.0 + 0.85, 0.8), extra=_house_extra, paint=EV_PAINT)
 
 
 def fener():
@@ -1095,13 +1248,13 @@ def kule():
             x = -width * 0.5
             while x < width * 0.5:
                 sw = min(k.rng.uniform(0.22, 0.32), width * 0.5 - x + 0.01)
-                p.obox(apex + down * v + nrm * 0.03 + across * (x + sw * 0.5), across, down, nrm, (sw - 0.012, L / rows * 1.5, 0.03), jit(SHINGLE, 0.12, k.rng))
+                p.obox(apex + down * v + nrm * 0.03 + across * (x + sw * 0.5), across, down, nrm, (sw - 0.012, L / rows * 1.5, 0.03), shingle_colour(k, SHINGLE, x, (r + 0.5) / rows, 0, 0.6))
                 x += sw
         k.add(p)
     k.finish()
 
 
-def shed(kind, w, d, props):
+def shed(kind, w, d, props, roof=SHINGLE):
     """An open-fronted work shed: a log back wall and log ends half way up, corner posts, a lean-to
     shingled roof sloping to the back; `props` adds what its work leaves about."""
     k = Kit(kind)
@@ -1132,7 +1285,7 @@ def shed(kind, w, d, props):
             x = -w * 0.5 - 0.45 + (0.14 if r % 2 else 0)
             while x < w * 0.5 + 0.4:
                 sw = k.rng.uniform(0.22, 0.32)
-                p.obox(top + down * (v0 + (r + 0.5) * (v1 - v0) / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), jit(SHINGLE, 0.12, k.rng))
+                p.obox(top + down * (v0 + (r + 0.5) * (v1 - v0) / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), shingle_colour(k, roof, x, (r + 0.5) / rows, 0, 0.6))
                 x += sw
         k.add(p)
     props(k, w, d)
@@ -1545,7 +1698,7 @@ def lean_to(k, x0, x1, y0, y1, h_front, h_back):
         x = -w * 0.5 + (0.14 if r % 2 else 0)
         while x < w * 0.5 - 0.05:
             sw = min(k.rng.uniform(0.22, 0.32), w * 0.5 - x)
-            p.obox(top + down * ((r + 0.5) * run / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), jit(SHINGLE, 0.12, k.rng))
+            p.obox(top + down * ((r + 0.5) * run / rows) + nrm * 0.05 + Vector((x + sw * 0.5, 0, 0)), (1, 0, 0), down, nrm, (sw - 0.015, 0.34, 0.025), shingle_colour(k, SHINGLE, x, (r + 0.5) / rows, 0, 0.6))
             x += sw
     k.add(p)
 
@@ -3342,12 +3495,7 @@ def roof_plane(k, top, across, down, width, length, color, course=0.22, moss=0.0
         x = -width * 0.5 + (0.13 if r % 2 else 0.0)
         while x < width * 0.5 - 0.05:
             sw = min(k.rng.uniform(*shingle_w), width * 0.5 - x)
-            sc = jit(color, 0.1, k.rng)
-            if k.rng.random() < 0.1:
-                sc = (sc[0] * 0.75, sc[1] * 0.74, sc[2] * 0.72)
-            if moss and vv > length * 0.55 and k.rng.random() < moss:
-                m = jit(MOSS, 0.15, k.rng)
-                sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+            sc = shingle_colour(k, color, x, vv / length, down.y, moss * 3.0)
             tilt = Matrix.Rotation(0.07, 3, across)
             rbox(p, top + down * vv + nrm * 0.055 + across * (x + sw * 0.5), across, tilt @ down, (sw - 0.015, course * 1.5, 0.025), sc)
             x += sw
@@ -3680,19 +3828,19 @@ def sod_roof(k, w, ridge, half, slope, over=0.5, eave_over=0.55):
         rbox(p, top + down * (length * 0.5), across, down, (width, length, 0.05), jit(PLANK, 0.05, k.rng))
         rbox(p, top + down * (length * 0.5 + 0.06) + nrm * 0.04, across, down, (width + 0.04, length + 0.08, 0.03), BIRCH)
         rbox(p, top + down * (length * 0.5 - 0.05) + nrm * 0.12, across, down, (width - 0.1, length - 0.1, 0.16), jit(SOD, 0.05, k.rng))
-        for i in range(int(width * length * 3.0)):
+        for i in range(int(width * length * 5.0)):
             u = k.rng.uniform(-width * 0.47, width * 0.47)
             v = k.rng.uniform(0.1, length - 0.2)
-            c = top + across * u + down * v + nrm * 0.2
-            col = jit(SOD, 0.25, k.rng)
-            if k.rng.random() < 0.3:
-                col = (col[0] * 1.3, col[1] * 1.15, col[2] * 0.8) # (drier grass)
-            p.stone(c, (k.rng.uniform(0.3, 0.6), k.rng.uniform(0.25, 0.5), 0.14), color=col, rng=k.rng)
-        for i in range(int(width * length * 0.6)):
+            c = top + across * u + down * v + nrm * 0.19
+            dry = 0.5 + 0.5 * math.sin(u * 0.9 + v * 1.7 + k.moss_seed) # (drier in drifts)
+            col = jit(SOD, 0.1, k.rng)
+            col = (col[0] * (1 + 0.35 * dry), col[1] * (1 + 0.15 * dry), col[2] * (1 - 0.15 * dry))
+            p.stone(c, (k.rng.uniform(0.18, 0.32), k.rng.uniform(0.16, 0.28), 0.09), color=col, rng=k.rng)
+        for i in range(int(width * length * 0.8)):
             u = k.rng.uniform(-width * 0.45, width * 0.45)
             v = k.rng.uniform(0.2, length - 0.3)
             col = k.rng.choice([(0.95, 0.85, 0.3), (0.92, 0.92, 0.88), (0.65, 0.4, 0.75)])
-            p.box(top + across * u + down * v + nrm * 0.3, (0.07, 0.07, 0.05), col)
+            p.box(top + across * u + down * v + nrm * 0.25, (0.04, 0.04, 0.04), col)
         k.add(p)
         # the turf log along the eave on hooks
         p = k.piece("log", "turflog")
@@ -3941,7 +4089,7 @@ BUILDERS = {
     "kamyon": kamyon, "tank": tank,
     "okuma": okuma, "demirci": demirci, "sifaci": sifaci, "hapishane": hapishane,
     "siper": siper, "makineli": makineli, "tel": tel,
-    "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props),
+    "arabaci": lambda: shed("arabaci", 6.0, 5.0, _cart_props, roof=(0.5, 0.47, 0.42)), # (split boards gone silver)
 }
 
 
@@ -3988,6 +4136,9 @@ def render(kind):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     only = None
+    if "--raw" in argv:
+        for key in FINISH:
+            FINISH[key] = False
     for a in argv:
         if a.startswith("--only="):
             only = a.split("=", 1)[1].split(",")
