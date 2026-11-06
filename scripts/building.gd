@@ -255,7 +255,7 @@ func _add_piece(spec: Dictionary) -> void:
 static func _stage_of(p: Piece) -> int:
 	if p.tag in ["plinth", "found", "path", "ground"] or (p.stuff == "plank" and p.tag == "" and p.aabb.end.y < 0.6 and p.aabb.size.x > 2.0):
 		return 0
-	if p.tag in ["chimney", "chimneytop"] or p.stuff == "log" or (p.stuff == "dark" and p.tag == "") or p.stuff == "stone":
+	if p.tag in ["chimney", "chimneytop", "wall", "gable"] or p.stuff == "log" or (p.stuff == "dark" and p.tag == "") or p.stuff == "stone":
 		return 1
 	if p.stuff in ["shingle", "thatch"] or p.tag in ["barge", "finial"]:
 		return 2
@@ -956,7 +956,7 @@ func _make_scaffold() -> void:
 	var sz: Vector2 = def.size
 	var top := 0.0
 	for p in pieces:
-		if p.aabb.get_center().x * p.aabb.get_center().x < sz.x * sz.x and p.tag != "finial":
+		if p.aabb.get_center().x * p.aabb.get_center().x < sz.x * sz.x and not p.tag in ["finial", "flagstaff"]:
 			top = maxf(top, p.aabb.end.y)
 	if top < 2.5:
 		return # (nothing so tall it wants one)
@@ -1222,19 +1222,18 @@ static var _mark_mats := {}
 static var _flag_shader: Shader
 
 
-## Every log building is a brown box from above, so each sort is given one thing of its own that
-## reads from the RTS camera, laid on the model as it stands when it's done, in the way of the time:
-## the smithy's forge stack capped with sooty iron, its coals glowing; the reading room's front gable
-## whitewashed and its ridge capped with white-painted boards, a public building; the store's
-## double doors painted ox-blood with white braces and its ridge in red-oxide iron; the armoury a
-## flag (white, a blue saltire) on a staff at its ridge's end. (The jail has its red roof, the
-## feldsher his green-cross flag, the workshops their piles.) Hidden while it's a ruin.
+## Each sort's built its own way (tools/blender/build_buildings.py: the store a red barn, the armoury a
+## blockhouse, the reading room a schoolhouse with a belfry, the feldsher's under sod, the smithy in
+## stone), and a few things are laid on the model as it stands when it's done: the smithy's forge
+## stack capped with sooty iron, its coals glowing; the store's double doors painted ox-blood with
+## white braces; the armoury's flag (white, a blue saltire) on the staff on its roof. Hidden while
+## it's a ruin.
 func _mark_role() -> void:
 	if _role_mark:
 		_role_mark.visible = true
 		_paint_marked_pieces()
 		return
-	if not kind in ["demirci", "okuma", "ambar", "silahlik"]:
+	if not kind in ["demirci", "ambar", "silahlik"]:
 		return
 	_role_mark = Node3D.new()
 	_role_mark.name = "RoleMark"
@@ -1287,33 +1286,7 @@ func _mark_role() -> void:
 					glow.shadow_enabled = false
 					glow.position = p.aabb.get_center() + Vector3(0, 0.35, 0)
 					_role_mark.add_child(glow)
-			if not ridge.is_empty():
-				_ridge_cap(ridge, _mark_mat("iron"))
-		"okuma":
-			if not ridge.is_empty():
-				_ridge_cap(ridge, _mark_mat("whitewash"))
-			# the gables boarded and whitewashed, framed by their barge boards
-			for p in pieces:
-				if p.tag != "barge" or ridge.is_empty():
-					continue
-				var bb := p.aabb
-				var base_y := bb.position.y + 0.12
-				var apex: float = (ridge[0] as Vector3).y - 0.2
-				var across_x := bb.size.x > bb.size.z # (the gable runs along x: it faces z)
-				var gable := MeshInstance3D.new()
-				var pr := PrismMesh.new()
-				pr.size = Vector3(maxf(bb.size.x, bb.size.z) - 0.6, apex - base_y, 0.05)
-				gable.mesh = pr
-				gable.material_override = _mark_mat("whitewash")
-				var c := bb.get_center()
-				var inward := -signf(c.z if across_x else c.x) * 0.12
-				gable.position = Vector3(c.x, (base_y + apex) * 0.5, c.z + inward) if across_x else Vector3(c.x + inward, (base_y + apex) * 0.5, c.z)
-				if not across_x:
-					gable.rotation.y = PI * 0.5
-				_role_mark.add_child(gable)
 		"ambar":
-			if not ridge.is_empty():
-				_ridge_cap(ridge, _mark_mat("oxide"))
 			for p in pieces:
 				if p.tag == "door" and p.mesh:
 					# white braces in a Z on each leaf (a rail across, a diagonal), on the leaf itself so
@@ -1336,7 +1309,22 @@ func _mark_role() -> void:
 					brace.position = face
 					p.mesh.add_child(brace)
 		"silahlik":
-			if not ridge.is_empty():
+			var staff_top := Vector3.INF # (the model's own staff on its roof's peak: the flag at its head)
+			for p in pieces:
+				if p.tag == "flagstaff":
+					staff_top = Vector3(p.aabb.get_center().x, p.aabb.end.y - 0.12, p.aabb.get_center().z)
+			if staff_top != Vector3.INF:
+				var out := Vector3.RIGHT
+				var flag := MeshInstance3D.new()
+				var q := QuadMesh.new()
+				q.size = Vector2(1.5, 1.0)
+				q.subdivide_width = 6
+				flag.mesh = q
+				flag.material_override = _flag_material()
+				flag.position = staff_top + Vector3(0, -0.45, 0) + out * 0.78
+				flag.basis = Basis(Vector3.UP, atan2(-out.z, out.x))
+				_role_mark.add_child(flag)
+			elif not ridge.is_empty():
 				var a: Vector3 = ridge[0]
 				var b: Vector3 = ridge[1]
 				var end := a if a.x + a.z > b.x + b.z else b

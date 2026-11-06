@@ -15,7 +15,8 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
 
   ev         a log cabin: saddle-notched log walls, log gables, purlins, a shingled roof, a fieldstone
              chimney, framed windows with shutters, a plank door, a porch, a woodpile
-  ambar      the store: a big log building, wide double doors, a loading platform, crates, barrels, sacks
+  ambar      the store: a red barn of boards and battens under a gambrel roof, wide double doors, a hay
+             door and hoist in the gable, a loading platform, crates, barrels, sacks
   kule       the lookout: a timber tower on a stone base, braced, a ladder, a railed platform, a roof
   fener      a lamp post: a squared post, an iron arm, a glazed lantern
   kuyu       a well: a fieldstone ring, a windlass, a little shingled roof, a bucket
@@ -23,7 +24,17 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
              sawdust, a lean-to with a tool rack and a grindstone
   tasci      the stone yard: a dressing bench with mallet and chisel, a tripod derrick lifting a
              block, rough blocks heaped, dressed ones stacked, rubble
-  toplayici  the gatherers' hut: drying racks hung with berries, a sorting table, baskets
+  toplayici  the gatherers' yard: a birch-bark cone hut, drying racks hung with berries, a sorting
+             table, baskets
+  silahlik   the armoury: a grey log blockhouse, its upper storey jutting out over the lower,
+             loopholes, a hipped roof, a flagstaff
+  okuma      the reading room: a white clapboard schoolhouse, tall shuttered windows, a slate-grey
+             roof, a belfry with its bell
+  sifaci     the feldsher's: a low hut of whitewashed logs under a turf roof, a herb garden
+  istasyon   the station: an ochre clapboard depot, a hipped green iron roof on carved brackets, a
+             clock and a bell, the platform and its canopy
+  demirci    the smithy: rubble-stone walls open at the front, a sooty iron roof, the forge's stack
+             up through it
   ev_oda     a house's back room (the game adds it to an "ev" when it's made bigger): log walls on
              three sides against the house's back wall, a shuttered window, a shingled lean-to
              roof running up under the house's eaves, boarded gable triangles
@@ -322,21 +333,23 @@ def _cut(span, holes):
     return out
 
 
-def log_walls(k, w, d, courses, openings, dia=0.3):
+def log_walls(k, w, d, courses, openings, dia=0.3, color=BARK, end=END_GRAIN, base=None):
     """Log walls, course on course, saddle-notched: the side walls' logs half a log higher, every
     log's ends past the corners. `openings`: (wall, centre along it, width, bottom, top) with wall
-    "front" (-Y), "back", "left" (-X), "right"; bottom and top above the floor. A log through an
-    opening is cut either side of it."""
+    "front" (-Y), "back", "left" (-X), "right"; bottom and top above the floor (`base`, the floor's
+    height unless given: an upper storey's). A log through an opening is cut either side of it;
+    `color` and `end` the bark's and the sawn ends' (whitewashed, weathered grey)."""
+    base = FLOOR if base is None else base
     hx, hy = w * 0.5 - dia * 0.5, d * 0.5 - dia * 0.5
-    top = FLOOR
+    top = base
     for c in range(courses):
         for wall in ("front", "back", "left", "right"):
             side = wall in ("left", "right")
-            z = FLOOR + dia * 0.5 + c * dia + (dia * 0.5 if side else 0.0)
+            z = base + dia * 0.5 + c * dia + (dia * 0.5 if side else 0.0)
             length = (d if side else w) + 0.55
             holes = []
             for ow, oc, owid, ob, ot in openings:
-                if ow == wall and FLOOR + ob - dia * 0.4 < z < FLOOR + ot + dia * 0.4:
+                if ow == wall and base + ob - dia * 0.4 < z < base + ot + dia * 0.4:
                     holes.append((oc - owid * 0.5, oc + owid * 0.5))
             for s0, s1 in _cut((-length * 0.5, length * 0.5), holes):
                 if side:
@@ -346,7 +359,7 @@ def log_walls(k, w, d, courses, openings, dia=0.3):
                     y = (-1 if wall == "front" else 1) * hy
                     a, b = (s0, y, z), (s1, y, z)
                 p = k.piece("log")
-                p.log(a, b, dia * 0.5, rng=k.rng, moss=0.5 if c < 2 else 0.05)
+                p.log(a, b, dia * 0.5, color=color, end=end, rng=k.rng, moss=(0.5 if c < 2 else 0.05) if color == BARK else 0.0)
                 # (the chinking between it and the log below, a pale line of moss and clay)
                 if c > 0:
                     ax = Vector(b) - Vector(a)
@@ -357,7 +370,7 @@ def log_walls(k, w, d, courses, openings, dia=0.3):
     return top
 
 
-def log_gables(k, w, d, wall_top, rise, dia=0.3, ridge_axis="x"):
+def log_gables(k, w, d, wall_top, rise, dia=0.3, ridge_axis="x", color=BARK, end=END_GRAIN):
     """The gable ends in logs, each course shorter, up to the ridge; the purlins and the ridge pole
     run through them and out past them, carrying the roof. Returns (ridge z, half span, slope)."""
     half = d * 0.5 + 0.0
@@ -368,7 +381,7 @@ def log_gables(k, w, d, wall_top, rise, dia=0.3, ridge_axis="x"):
         for sx in (-1, 1):
             x = sx * (w * 0.5 - dia * 0.5)
             p = k.piece("log")
-            p.log((x, -span, z), (x, span, z), dia * 0.5, rng=k.rng)
+            p.log((x, -span, z), (x, span, z), dia * 0.5, color=color, end=end, rng=k.rng)
             k.add(p)
     ridge = wall_top + rise
     # purlins: the ridge pole and one each side half way down
@@ -774,41 +787,6 @@ def _house_extra(k, w, d):
     k.add(p)
 
 
-def _store_extra(k, w, d):
-    # the loading platform along the front, and what waits on it
-    p = k.piece("plank")
-    for i in range(7):
-        p.box((0, -d * 0.5 - 0.15 - i * 0.22, 0.42), (w - 1.0, 0.21, 0.08), jit(PLANK, 0.08, k.rng))
-    k.add(p)
-    for i, (x, y) in enumerate([(-w * 0.5 + 0.9, -d * 0.5 - 0.9), (-w * 0.5 + 1.75, -d * 0.5 - 0.85), (w * 0.5 - 1.0, -d * 0.5 - 0.9)]):
-        crate(k, x, y, 0.46)
-    crate(k, -w * 0.5 + 1.3, -d * 0.5 - 0.88, 1.16, 0.55)
-    barrel(k, w * 0.5 - 1.9, -d * 0.5 - 0.95, 0.46)
-    barrel(k, w * 0.5 + 0.6, 0.0)
-    p = k.piece("wood", "sacks")
-    for i in range(5):
-        # grain sacks: soft, sagging, tied at the neck
-        x = -0.4 + i * 0.4 + (0.2 if i > 2 else 0)
-        y = -d * 0.5 - 1.0 - (0.3 if i > 2 else 0)
-        z = 0.7 + (0.36 if i == 4 else 0)
-        burlap = jit((0.62, 0.53, 0.38), 0.06, k.rng)
-        p.stone((x, y, z), (0.4, 0.34, 0.46), color=burlap, rng=k.rng, subdiv=2)
-        p.log((x, y, z + 0.2), (x, y, z + 0.3), 0.055, color=burlap, end=burlap, segs=6, rng=k.rng, taper=0.3)
-        p.log((x, y, z + 0.29), (x, y, z + 0.36), 0.075, color=burlap, end=burlap, segs=6, rng=k.rng, taper=-0.2)
-    k.add(p)
-    p = k.piece("dark", "sign")
-    p.box((0, -d * 0.5 - 0.02, 3.0), (2.0, 0.06, 0.45), jit(DARK, 0.04, k.rng))
-    for i in range(5):
-        p.box((-0.7 + i * 0.35, -d * 0.5 - 0.06, 3.0), (0.2, 0.02, 0.22), k.paint[0])
-    k.add(p)
-    p = k.piece("log", "hoist")
-    p.log((w * 0.5 + 1.4, 0.0, 4.2), (w * 0.5 - 0.6, 0.0, 4.2), 0.12, rng=k.rng)
-    p.log((w * 0.5 + 1.3, 0.0, 4.15), (w * 0.5 + 1.3, 0.0, 3.0), 0.012, color=(0.6, 0.5, 0.35), end=(0.6, 0.5, 0.35), segs=5)
-    p.log((w * 0.5 + 1.25, 0.0, 4.05), (w * 0.5 + 1.35, 0.0, 4.05), 0.09, color=DARK, end=DARK, taper=0.0)
-    k.add(p)
-    woodpile(k, w * 0.5 + 0.7, d * 0.5 - 1.2, length=2.0, height=1.2)
-
-
 def _watch_extra(k, w, d):
     # a bell on a post by the door, a rifle rack, a bench
     p = k.piece("log")
@@ -851,10 +829,6 @@ def _arms_extra(k, w, d):
     for r, c in ((0.42, (0.85, 0.82, 0.74)), (0.3, (0.12, 0.11, 0.1)), (0.18, (0.85, 0.82, 0.74)), (0.07, (0.62, 0.15, 0.1))):
         p.obox((tx, -0.09 - (0.42 - r) * 0.02, 1.05), (1, 0, 0), (0, 0, 1), (0, -1, 0), (r * 2, r * 2, 0.01), c)
     k.add(p)
-
-
-def silahlik():
-    cabin("silahlik", 5.0, 4.0, 8, 1.6, 1.0, windows=[("left", 0.0)], porch_on=False, extra=_arms_extra)
 
 
 # The house these are made for: ev() below (6 x 5, 8 courses, a 1.9 m rise; its trim and shutters
@@ -978,12 +952,6 @@ def ev_soba():
 
 def ev():
     cabin("ev", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.8), ("left", 0.0), ("back", 1.0)], chimney_at=(3.0 + 0.85, 0.8), extra=_house_extra)
-
-
-def ambar():
-    cabin("ambar", 9.0, 7.0, 10, 2.6, 2.4, windows=[("left", 0.0), ("right", -1.5)], porch_on=False, extra=_store_extra, double_door=True)
-
-
 
 
 def fener():
@@ -1701,32 +1669,77 @@ def tas_ocagi():
     k.finish()
 
 
+def bark_hut(k, x, y, r, h, door_at=-math.pi * 0.5, base=YARD_FLOOR):
+    """A conical hut of the forest's folk: a ring of poles leant together and lashed at the top, their
+    ends crossed out past it, sheathed in sheets of birch bark sewn in courses, a door gap with a hide
+    hung back over it, a smoke hole at the peak."""
+    rng = k.rng
+    apex = Vector((x, y, base + h))
+    n = 14
+    p = k.piece("wood", "poles")
+    for i in range(n):
+        a = i / n * math.tau
+        foot = Vector((x + math.cos(a) * r, y + math.sin(a) * r, base - 0.1))
+        tip = apex + (apex - foot).normalized() * 0.55
+        p.log(foot, tip, 0.04, rng=rng, taper=0.3)
+    k.add(p)
+    # the bark: courses of sheets round the cone, the door gap left open
+    courses = 6
+    for c in range(courses):
+        p = k.piece("thatch", "bark")
+        t0, t1 = c / courses * 0.86, (c + 1) / courses * 0.86 + 0.03
+        segs = 16
+        for j in range(segs):
+            a0, a1 = j / segs * math.tau, (j + 1) / segs * math.tau
+            mid = (a0 + a1) * 0.5
+            if c < 3 and abs((mid - door_at + math.pi) % math.tau - math.pi) < 0.4:
+                continue
+            def at(a, t, out=0.04):
+                return Vector((x + math.cos(a) * (r * (1 - t) + out), y + math.sin(a) * (r * (1 - t) + out), base + t * h))
+            col = jit(BIRCH, 0.06, rng)
+            if rng.random() < 0.3:
+                col = (col[0] * 0.8, col[1] * 0.75, col[2] * 0.65) # (an older sheet, gone tan)
+            slab(p, [at(a0, t0), at(a1, t0), at(a1, t1), at(a0, t1)], 0.02, col)
+            for q in range(2): # (the bark's dark marks)
+                aa = rng.uniform(a0, a1)
+                tt = rng.uniform(t0, t1)
+                p.box(at(aa, tt, 0.065), (0.08, 0.08, 0.02), (0.15, 0.14, 0.12), rot_z=aa)
+        # the course's seam: a withy round the cone
+        k.add(p)
+    p = k.piece("cloth", "hide")
+    for s in (-1, 1):
+        a = door_at + s * 0.42
+        foot = Vector((x + math.cos(a) * (r + 0.1), y + math.sin(a) * (r + 0.1), base))
+        rbox(p, foot + Vector((0, 0, 0.8)), (math.cos(a + math.pi * 0.5), math.sin(a + math.pi * 0.5), 0), (0, 0, 1), (0.45, 1.6, 0.03), jit((0.48, 0.34, 0.22), 0.05, rng))
+    k.add(p)
+
+
 def toplayici():
-    """The gatherers' hut: an open shelter of drying racks hung with berries, a sorting table out
-    front, baskets about."""
+    """The gatherers' hut: a birch-bark cone hut, drying racks hung with berries, a sorting table
+    out front, baskets about."""
     FLOOR = YARD_FLOOR # (a yard: its things on its own ground, not up on a floor)
     w, d = 6.0, 5.0
     k = Kit("toplayici")
     yard_pad(k, w, d)
-    lean_to(k, -2.4, 2.4, 0.4, 2.2, 2.5, 2.0)
+    bark_hut(k, 1.4, 0.9, 1.25, 3.2)
     p = k.piece("wood", "rack")
-    for sx in (-1, 1): # (its own posts, so it stands)
-        p.log((sx * 2.3, 1.3, FLOOR - 0.05), (sx * 2.3, 1.3, FLOOR + 2.15), 0.05, rng=k.rng, taper=0.0)
+    for sx in (-2.3, 0.0): # (its own posts, so it stands)
+        p.log((sx, 1.6, FLOOR - 0.05), (sx, 1.6, FLOOR + 2.15), 0.05, rng=k.rng, taper=0.0)
     for z in (1.0, 1.5, 2.0):
-        p.log((-2.3, 1.3, FLOOR + z), (2.3, 1.3, FLOOR + z), 0.03, rng=k.rng)
-        for i in range(18):
+        p.log((-2.3, 1.6, FLOOR + z), (0.0, 1.6, FLOOR + z), 0.03, rng=k.rng)
+        for i in range(9):
             x = -2.1 + i * 0.25
             c = (0.45, 0.08, 0.12) if i % 3 else (0.18, 0.15, 0.35)
-            p.stone((x, 1.3, FLOOR + z - 0.12), (0.12, 0.08, 0.18), color=c, rng=k.rng)
+            p.stone((x, 1.6, FLOOR + z - 0.12), (0.12, 0.08, 0.18), color=c, rng=k.rng)
     k.add(p)
     p = k.piece("plank", "work")
-    p.box((0, -0.8, FLOOR + 0.75), (1.6, 0.7, 0.06), jit(PLANK, 0.05, k.rng))
+    p.box((-1.0, -0.8, FLOOR + 0.75), (1.6, 0.7, 0.06), jit(PLANK, 0.05, k.rng))
     for sx in (-1, 1):
         for sy in (-1, 1):
-            p.box((sx * 0.7, -0.8 + sy * 0.28, FLOOR + 0.37), (0.06, 0.06, 0.74), DARK)
+            p.box((-1.0 + sx * 0.7, -0.8 + sy * 0.28, FLOOR + 0.37), (0.06, 0.06, 0.74), DARK)
     k.add(p)
     p = k.piece("thatch", "baskets")
-    for i, (x, y) in enumerate([(-1.6, -1.6), (-1.0, -1.8), (1.4, -1.7), (0.4, -0.75)]):
+    for i, (x, y) in enumerate([(-2.2, -1.6), (-1.6, -1.8), (0.4, -1.7), (-0.6, -0.75)]):
         z = FLOOR if i < 3 else FLOOR + 0.78
         p.log((x, y, z), (x, y, z + 0.32), 0.24, color=(0.62, 0.5, 0.3), end=(0.42, 0.1, 0.18), taper=-0.25)
     k.add(p)
@@ -2218,12 +2231,6 @@ def _station_extra(k, w, d):
     k.add(p)
     barrel(k, w * 0.5 + 0.5, -d * 0.5 + 0.4)
     woodpile(k, -w * 0.5 - 0.7, 0.4, length=2.2)
-
-
-def istasyon():
-    cabin("istasyon", 7.0, 5.0, 8, 1.8, 1.0, windows=[("front", -1.9), ("front", 1.9), ("left", 0.0), ("right", 0.0)],
-          chimney_at=(-3.5 - 0.85, 1.0), extra=_station_extra, porch_on=False)
-
 
 
 # --- the convoy: a lorry and an early tank (scripts/convoy.gd) ------------------------------------
@@ -2769,40 +2776,7 @@ def _sign(k, w, d, text_len=1.4, z=2.65):
     k.add(p)
 
 
-def _okuma_extra(k, w, d):
-    _sign(k, w, d, 1.8)
-    # a table on the porch with books open on it, a bench, a lamp hung under the porch roof
-    p = k.piece("plank", "table")
-    p.box((1.3, -d * 0.5 - 1.0, 0.95), (1.3, 0.6, 0.06), jit(PLANK, 0.05, k.rng))
-    for sx in (-0.55, 0.55):
-        for sy in (-0.22, 0.22):
-            p.box((1.3 + sx, -d * 0.5 - 1.0 + sy, 0.71), (0.06, 0.06, 0.48), DARK)
-    p.box((1.3, -d * 0.5 - 1.6, 0.68), (1.3, 0.3, 0.05), jit(PLANK, 0.05, k.rng))
-    k.add(p)
-    p = k.piece("cloth", "books")
-    for i, c in enumerate([(0.55, 0.15, 0.1), (0.2, 0.3, 0.5), (0.3, 0.4, 0.2), (0.6, 0.5, 0.3)]):
-        p.box((0.9 + i * 0.25, -d * 0.5 - 1.0, 1.0 + (i % 2) * 0.04), (0.2, 0.28, 0.05 + (i % 2) * 0.04), c, rot_z=i * 0.3)
-    p.box((1.6, -d * 0.5 - 1.05, 1.0), (0.36, 0.26, 0.02), (0.9, 0.86, 0.75)) # (one lying open)
-    k.add(p)
-    p = k.piece("window", "lamp")
-    p.box((-1.0, -d * 0.5 - 1.1, 2.1), (0.16, 0.16, 0.22), (1.0, 0.85, 0.55))
-    k.add(p)
-    p = k.piece("dark")
-    p.box((-1.0, -d * 0.5 - 1.1, 2.45), (0.02, 0.02, 0.45), IRON)
-    k.add(p)
-    # a stack of newspapers tied up by the door
-    p = k.piece("cloth", "papers")
-    for i in range(4):
-        p.box((-w * 0.5 + 0.9, -d * 0.5 - 0.02, FLOOR + 0.04 + i * 0.07), (0.5, 0.36, 0.06), (0.85, 0.82, 0.72), rot_z=i * 0.15)
-    k.add(p)
-
-
-def okuma():
-    cabin("okuma", 6.0, 5.0, 8, 1.8, 1.0, windows=[("front", -1.9), ("front", 1.9), ("left", 0.0), ("right", 0.0)],
-          chimney_at=(3.0 + 0.5, 1.2), extra=_okuma_extra)
-
-
-def _smith_props(k, w, d):
+def _smith_props(k, w, d, stack_top=None):
     # the forge: a fieldstone hearth with glowing coals, a stone stack up through the roof, leather
     # bellows on a frame; an anvil on a stump, a quench tub, tongs and hammers, iron bars, shoes on the wall
     p = k.piece("stone", "forge")
@@ -2810,8 +2784,19 @@ def _smith_props(k, w, d):
         a = i / 14 * math.tau
         p.stone((-1.3 + math.cos(a) * 0.55, 0.9 + math.sin(a) * 0.45, FLOOR + 0.35), (0.4, 0.34, 0.5), rng=k.rng)
     p.box((-1.3, 0.9, FLOOR + 0.35), (1.1, 0.9, 0.7), jit(STONE, 0.05, k.rng))
-    for i in range(10):
-        p.stone((-1.3 + k.rng.uniform(-0.25, 0.25), 1.2, FLOOR + 1.0 + i * 0.32), (0.55, 0.5, 0.34), rng=k.rng)
+    if stack_top is None:
+        for i in range(10):
+            p.stone((-1.3 + k.rng.uniform(-0.25, 0.25), 1.2, FLOOR + 1.0 + i * 0.32), (0.55, 0.5, 0.34), rng=k.rng)
+    else: # (a solid stack up through the roof, fieldstones on its faces, blackened at the top)
+        z0 = FLOOR + 0.7
+        p.box((-1.3, 1.2, (z0 + stack_top) * 0.5), (0.7, 0.6, stack_top - z0), jit((0.42, 0.41, 0.38), 0.04, k.rng))
+        z = z0
+        while z < stack_top - 0.2:
+            for j in range(8):
+                a = j / 8 * math.tau + z
+                c = (0.1, 0.1, 0.1) if z > stack_top - 0.8 else STONE
+                p.stone((-1.3 + math.cos(a) * 0.33, 1.2 + math.sin(a) * 0.28, z + 0.15), (0.3, 0.26, 0.22), color=c, rng=k.rng)
+            z += 0.3
     k.add(p)
     p = k.piece("window", "coals") # (stuff "window": it glows at night)
     for i in range(8):
@@ -2837,10 +2822,6 @@ def _smith_props(k, w, d):
     for i in range(5):
         p.obox((-0.8 + i * 0.35, d * 0.5 - 0.25, 1.8), (1, 0, 0), (0, 0, 1), (0, -1, 0), (0.18, 0.18, 0.02), IRON) # (shoes on the back wall)
     k.add(p)
-
-
-def demirci():
-    shed("demirci", 5.0, 4.0, _smith_props)
 
 
 def _felcer_extra(k, w, d):
@@ -2873,10 +2854,6 @@ def _felcer_extra(k, w, d):
     for i in range(6):
         p.obox((-w * 0.5 + 0.6 + i * 0.7, -d * 0.5 - 0.35, 2.15), (1, 0, 0), (0, 1, 0), (0, 0, 1), (0.16, 0.16, 0.45), (0.45, 0.5, 0.25) if i % 2 else (0.55, 0.45, 0.3))
     k.add(p)
-
-
-def sifaci():
-    cabin("sifaci", 5.0, 4.0, 7, 1.6, 1.0, windows=[("front", 1.4), ("left", 0.0)], porch_on=True, chimney_at=(-2.5 - 0.45, 0.8), extra=_felcer_extra)
 
 
 MORTAR = (0.6, 0.58, 0.53)
@@ -3202,6 +3179,645 @@ def hapishane():
     dv = (b - a).normalized()
     p.obox(a + dv * 0.3, (1, 0, 0), dv, Vector((1, 0, 0)).cross(dv), (0.05, 0.6, 0.1), (0.38, 0.26, 0.15)) # (the stock)
     p.obox(a + dv * 0.85, (1, 0, 0), dv, Vector((1, 0, 0)).cross(dv), (0.03, 0.55, 0.03), IRON) # (the barrel)
+    k.add(p)
+    k.finish()
+
+
+# --- each one its own: board walls, a gambrel, a blockhouse, a schoolhouse, a sod roof ---------------
+# From the camera every log cabin with a brown shingled roof is the same brown box, so the buildings
+# that aren't homes aren't log cabins: the store a red board barn under a gambrel, the armoury a
+# blockhouse with its upper storey jutting out, the reading room a white clapboard schoolhouse with a
+# belfry, the feldsher a low whitewashed hut under green sod, the station a yellow clapboard depot
+# under a green iron roof, the smithy a stone forge under sooty iron.
+
+BARN_RED = (0.47, 0.14, 0.09)
+OCHRE = (0.8, 0.62, 0.3)
+CLAP_WHITE = (0.88, 0.87, 0.82)
+SLATE = (0.34, 0.36, 0.4)
+SOD = (0.3, 0.4, 0.15)
+BIRCH = (0.88, 0.86, 0.8)
+GREY_LOG = (0.36, 0.33, 0.3)
+GREY_END = (0.58, 0.53, 0.46)
+LIMEWASH = (0.86, 0.85, 0.8)
+TRIM_BROWN = (0.32, 0.2, 0.12)
+RAIL_GREEN = (0.2, 0.34, 0.26)
+SOOT = (0.16, 0.16, 0.17)
+BRASS = (0.62, 0.48, 0.2)
+
+
+def rbox(p, c, a, b, size, col):
+    """A box on two axes and their cross (always right-handed, so its faces wind outward): `size`
+    along a, b and a x b."""
+    a = Vector(a).normalized()
+    b = Vector(b).normalized()
+    return p.obox(c, a, b, a.cross(b), size, col)
+
+
+def slab(p, pts, thick, col):
+    """A flat polygon (its points in order round it) made `thick`, centred on its plane."""
+    pts = [Vector(q) for q in pts]
+    nrm = (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+    a = [p.bm.verts.new(q + nrm * thick * 0.5) for q in pts]
+    b = [p.bm.verts.new(q - nrm * thick * 0.5) for q in pts]
+    faces = [p.bm.faces.new(a), p.bm.faces.new(list(reversed(b)))]
+    for i in range(len(pts)):
+        j = (i + 1) % len(pts)
+        faces.append(p.bm.faces.new([b[i], b[j], a[j], a[i]]))
+    for f in faces:
+        f.normal_update()
+    p._paint(faces, col)
+
+
+def _wall_frame(w, d, wall):
+    """A wall of a w x d building: (along it, out of it, the middle of its outer face, its span along)."""
+    if wall == "front":
+        return Vector((1, 0, 0)), Vector((0, -1, 0)), Vector((0, -d * 0.5, 0)), (-w * 0.5, w * 0.5)
+    if wall == "back":
+        return Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, d * 0.5, 0)), (-w * 0.5, w * 0.5)
+    if wall == "left":
+        return Vector((0, 1, 0)), Vector((-1, 0, 0)), Vector((-w * 0.5, 0, 0)), (-d * 0.5, d * 0.5)
+    return Vector((0, 1, 0)), Vector((1, 0, 0)), Vector((w * 0.5, 0, 0)), (-d * 0.5, d * 0.5)
+
+
+def board_walls(k, w, d, top, openings, color, vertical=False, trim=None, core=None):
+    """Walls of sawn boards on a frame, from the plinth up to `top`: clapboards lapped in rows, their
+    feet kicked out (or, `vertical`, upright boards with battens over the joints), a sheathing behind,
+    both cut round the openings (as log_walls takes them); corner boards and a plate in `trim`.
+    Stuff plank, tag "wall": they go up with the walls."""
+    rng = k.rng
+    up = Vector((0, 0, 1))
+    z0 = PLINTH_TOP
+    trim = trim or DARK
+    core = core or (color[0] * 0.55, color[1] * 0.55, color[2] * 0.55)
+    for wall in ("front", "back", "left", "right"):
+        along, out, o, span = _wall_frame(w, d, wall)
+        span = (span[0] + 0.08, span[1] - 0.08)
+        mine = [(oc, ow, FLOOR + ob, FLOOR + ot) for wl, oc, ow, ob, ot in openings if wl == wall]
+        if not vertical:
+            row = 0.2
+            n = int(math.ceil((top - z0) / row - 1e-6))
+            for r0 in range(0, n, 5):
+                p = k.piece("plank", "wall")
+                for r in range(r0, min(n, r0 + 5)):
+                    za, zb = z0 + r * row, min(z0 + (r + 1) * row, top)
+                    zc = (za + zb) * 0.5
+                    holes = [(oc - ow * 0.5, oc + ow * 0.5) for oc, ow, lo, hi in mine if lo < zb - 0.01 and hi > za + 0.01]
+                    kick = (up - out * 0.12).normalized()
+                    for s0, s1 in _cut(span, holes):
+                        mid = (s0 + s1) * 0.5
+                        rbox(p, o + along * mid - out * 0.1 + up * zc, along, up, (s1 - s0, zb - za, 0.16), core)
+                        c = jit(color, 0.035, rng)
+                        rbox(p, o + along * mid - out * 0.005 + up * zc, along, kick, (s1 - s0, row + 0.035, 0.028), c)
+                k.add(p)
+        else:
+            bw = 0.3
+            m = max(1, int((span[1] - span[0]) / bw))
+            step = (span[1] - span[0]) / m
+            for g0 in range(0, m, 5):
+                p = k.piece("plank", "wall")
+                for i in range(g0, min(m, g0 + 5)):
+                    s0 = span[0] + i * step
+                    s1 = s0 + step
+                    holes = [(lo, hi) for oc, ow, lo, hi in mine if oc - ow * 0.5 < s1 - 0.03 and oc + ow * 0.5 > s0 + 0.03]
+                    for za, zb in _cut((z0, top), holes):
+                        zc = (za + zb) * 0.5
+                        mid = (s0 + s1) * 0.5
+                        rbox(p, o + along * mid - out * 0.1 + up * zc, along, up, (step, zb - za, 0.16), core)
+                        rbox(p, o + along * mid + up * zc, along, up, (step - 0.012, zb - za, 0.03), jit(color, 0.05, rng))
+                        if i < m - 1: # (the batten over the joint)
+                            rbox(p, o + along * s1 + out * 0.025 + up * zc, along, up, (0.07, zb - za, 0.03), jit(color, 0.03, rng))
+                k.add(p)
+    # the corner boards and the plate along the walls' top, in the trim's colour
+    p = k.piece("plank", "wall")
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx * (w * 0.5 + 0.0), sy * (d * 0.5 + 0.0)
+            p.box((x, y, (z0 + top) * 0.5), (0.2, 0.2, top - z0), jit(trim, 0.03, rng))
+    for sy in (-1, 1):
+        p.box((0, sy * (d * 0.5 + 0.02), top - 0.08), (w + 0.12, 0.08, 0.16), jit(trim, 0.03, rng))
+    for sx in (-1, 1):
+        p.box((sx * (w * 0.5 + 0.02), 0, top - 0.08), (0.08, d + 0.12, 0.16), jit(trim, 0.03, rng))
+    k.add(p)
+    return top
+
+
+def board_gables(k, w, d, top, profile, color, trim=None):
+    """The ends (left and right: the ridge runs along x) filled in with upright boards and battens up
+    to the roof's underside, `profile(y)` its height."""
+    rng = k.rng
+    n = int(d / 0.3)
+    step = d / n
+    for sx in (-1, 1):
+        x = sx * w * 0.5
+        p = k.piece("plank", "gable")
+        for i in range(n):
+            y0, y1 = -d * 0.5 + i * step, -d * 0.5 + (i + 1) * step
+            h0, h1 = profile(y0) - 0.05, profile(y1) - 0.05
+            if max(h0, h1) - top < 0.05:
+                continue
+            pts = [(x, y0, top), (x, y1, top), (x, y1, max(h1, top + 0.01)), (x, y0, max(h0, top + 0.01))]
+            if sx < 0:
+                pts.reverse()
+            slab(p, pts, 0.05, jit(color, 0.05, rng))
+            if i < n - 1:
+                hm = min(h1, profile(y1)) - 0.05
+                if hm - top > 0.1:
+                    p.box((x + sx * 0.03, y1, (top + hm) * 0.5), (0.03, 0.07, hm - top), jit(color, 0.03, rng))
+        k.add(p)
+
+
+def roof_plane(k, top, across, down, width, length, color, course=0.22, moss=0.0, stuff="shingle", tag="", piece=None, shingle_w=(0.22, 0.34)):
+    """One slope: its boarding, and shingles in staggered courses from `top` down it (`across` along
+    its width, `down` down its fall)."""
+    across, down = Vector(across).normalized(), Vector(down).normalized()
+    nrm = across.cross(down)
+    if nrm.z < 0:
+        nrm = -nrm
+    top = Vector(top)
+    p = piece or k.piece(stuff, tag)
+    rbox(p, top + down * (length * 0.5), across, down, (width, length, 0.05), jit(PLANK, 0.05, k.rng))
+    rows = max(1, int(round(length / course)))
+    for r in range(rows):
+        vv = (r + 0.5) * length / rows
+        x = -width * 0.5 + (0.13 if r % 2 else 0.0)
+        while x < width * 0.5 - 0.05:
+            sw = min(k.rng.uniform(*shingle_w), width * 0.5 - x)
+            sc = jit(color, 0.1, k.rng)
+            if k.rng.random() < 0.1:
+                sc = (sc[0] * 0.75, sc[1] * 0.74, sc[2] * 0.72)
+            if moss and vv > length * 0.55 and k.rng.random() < moss:
+                m = jit(MOSS, 0.15, k.rng)
+                sc = (sc[0] * 0.4 + m[0] * 0.6, sc[1] * 0.4 + m[1] * 0.6, sc[2] * 0.4 + m[2] * 0.6)
+            tilt = Matrix.Rotation(0.07, 3, across)
+            rbox(p, top + down * vv + nrm * 0.055 + across * (x + sw * 0.5), across, tilt @ down, (sw - 0.015, course * 1.5, 0.025), sc)
+            x += sw
+    if piece is None:
+        k.add(p)
+    return nrm
+
+
+def plain_window(k, wall, at, w, d, width, bottom, height, trim, panes=(2, 3), sill=True, shutter=None):
+    """A sash window in a board or stone wall: the glass (lit at night), glazing bars, a plain frame
+    with a head and a sill in `trim`, and, `shutter` a colour, louvred shutters folded back."""
+    along, out, o, span = _wall_frame(w, d, wall)
+    up = Vector((0, 0, 1))
+    c = o + along * at + up * (FLOOR + bottom + height * 0.5)
+    g = k.piece("window")
+    rbox(g, c - out * 0.04, along, up, (width, height, 0.03), GLASS)
+    k.add(g)
+    p = k.piece("plank", "trim")
+    for sgn in (-1, 1):
+        rbox(p, c + along * sgn * (width * 0.5 + 0.05), along, up, (0.1, height + 0.2, 0.08), jit(trim, 0.02, k.rng))
+    rbox(p, c + up * (height * 0.5 + 0.1), along, up, (width + 0.34, 0.14, 0.1), jit(trim, 0.02, k.rng))
+    rbox(p, c + up * (height * 0.5 + 0.2) + out * 0.02, along, up, (width + 0.44, 0.05, 0.14), jit(trim, 0.02, k.rng))
+    if sill:
+        rbox(p, c - up * (height * 0.5 + 0.06) + out * 0.04, along, up, (width + 0.3, 0.06, 0.16), jit(trim, 0.02, k.rng))
+    nx, nz = panes
+    for i in range(1, nx):
+        rbox(p, c - out * 0.02 + along * (-width * 0.5 + i * width / nx), along, up, (0.025, height, 0.03), trim)
+    for j in range(1, nz):
+        rbox(p, c - out * 0.02 + up * (-height * 0.5 + j * height / nz), along, up, (width, 0.025, 0.03), trim)
+    k.add(p)
+    if shutter:
+        p = k.piece("plank", "shutter")
+        for sgn in (-1, 1):
+            sc = c + along * sgn * (width * 0.75 + 0.12) + out * 0.04
+            rbox(p, sc, along, up, (width * 0.5, height + 0.1, 0.03), jit(shutter, 0.04, k.rng))
+            for j in range(int(height / 0.09)):
+                rbox(p, sc + out * 0.02 + up * (-height * 0.5 + 0.05 + j * 0.09), along, up, (width * 0.44, 0.025, 0.015), jit(shutter, 0.08, k.rng))
+        k.add(p)
+
+
+def eave_brackets(k, w, d, top, n, color, depth=0.5):
+    """Carved brackets under the eaves along the front and back, from the wall up to the roof."""
+    p = k.piece("plank", "brackets")
+    for sy in (-1, 1):
+        for i in range(n):
+            x = -w * 0.5 + (i + 0.5) * w / n
+            y = sy * (d * 0.5 + depth * 0.5)
+            p.box((x, y, top - 0.1), (0.08, depth, 0.1), jit(color, 0.03, k.rng))
+            p.obox((x, sy * (d * 0.5 + depth * 0.3), top - 0.32), (1, 0, 0), (0, 0.7 * sy, 0.7), (0, -0.7 * sy, 0.7), (0.07, 0.55, 0.07), jit(color, 0.03, k.rng))
+    k.add(p)
+
+
+def bell(p, c, r, color=BRASS):
+    """A cast bell hung mouth down at `c` (its crown), its lip `r` across."""
+    c = Vector(c)
+    p.log(c - Vector((0, 0, r * 1.25)), c, r, color=color, end=color, taper=0.55, segs=12, jitter=0.0, bow=0.0)
+    cyl(p, c - Vector((0, 0, r * 1.3)), c - Vector((0, 0, r * 1.18)), r * 1.06, color, segs=12)
+    p.box(c + Vector((0, 0, 0.04)), (0.06, r * 0.5, 0.08), IRON)
+
+
+# -- the store: a red barn
+
+def gambrel(k, w, d, top, over=0.45, a1=1.05, a2=0.42, knee=0.18, color=SHINGLE, wall_color=BARN_RED, trim=None):
+    """A barn's roof along x: a steep lower pitch from the eaves (`a1`), a shallow upper one to the
+    ridge (`a2`), the knee `knee` of the depth in; shingled, a ridge board, the gable ends boarded up
+    in `wall_color` and edged with trim boards. Returns (knee z, knee y, ridge z)."""
+    trim = trim or CLAP_WHITE
+    yk = d * 0.5 - d * knee
+    zk = top + d * knee * math.tan(a1)
+    zr = zk + yk * math.tan(a2)
+    width = w + over * 2
+    for s in (-1, 1):
+        d1 = Vector((0, s * math.cos(a1), -math.sin(a1)))
+        l1 = (d * knee) / math.cos(a1) + over
+        roof_plane(k, (0, s * yk, zk + 0.05), (1, 0, 0), d1, width, l1, color, moss=0.15)
+        d2 = Vector((0, s * math.cos(a2), -math.sin(a2)))
+        l2 = yk / math.cos(a2) + 0.12
+        roof_plane(k, (0, 0, zr + 0.06), (1, 0, 0), d2, width, l2, color, moss=0.1)
+    p = k.piece("shingle", "ridge")
+    p.box((0, 0, zr + 0.16), (width + 0.06, 0.26, 0.08), jit(DARK, 0.05, k.rng))
+    k.add(p)
+
+    def profile(y):
+        y = abs(y)
+        if y >= yk:
+            return top + (d * 0.5 - y) * math.tan(a1)
+        return zk + (yk - y) * math.tan(a2)
+    board_gables(k, w, d, top, profile, wall_color)
+    # the trim boards up the gables' edges, and the fascia along the eaves
+    for sx in (-1, 1):
+        p = k.piece("plank", "barge")
+        x = sx * (w * 0.5 + over + 0.02)
+        pts = [(d * 0.5 + over * math.cos(a1), top - over * math.sin(a1)), (yk, zk), (0.0, zr)]
+        for s in (-1, 1):
+            for (y0, z0), (y1, z1) in zip(pts, pts[1:]):
+                a, b = Vector((x, s * y0, z0 + 0.12)), Vector((x, s * y1, z1 + 0.12))
+                rbox(p, (a + b) * 0.5, b - a, (0, 0, 1), ((b - a).length + 0.1, 0.2, 0.05), jit(trim, 0.02, k.rng))
+        k.add(p)
+    return zk, yk, zr
+
+
+def _barn_extra(k, w, d, zk, zr):
+    trim = CLAP_WHITE
+    # the loading platform along the front on squared posts, its edge boarded, and what waits on it
+    p = k.piece("plank")
+    for i in range(7):
+        p.box((0, -d * 0.5 - 0.15 - i * 0.22, 0.42), (w - 1.0, 0.21, 0.08), jit(PLANK, 0.08, k.rng))
+    p.box((0, -d * 0.5 - 1.63, 0.33), (w - 1.0, 0.06, 0.26), jit(DARK, 0.05, k.rng))
+    k.add(p)
+    for x, y in [(-w * 0.5 + 0.9, -d * 0.5 - 0.9), (-w * 0.5 + 1.75, -d * 0.5 - 0.85), (w * 0.5 - 1.0, -d * 0.5 - 0.9)]:
+        crate(k, x, y, 0.46)
+    crate(k, -w * 0.5 + 1.3, -d * 0.5 - 0.88, 1.16, 0.55)
+    barrel(k, w * 0.5 - 1.9, -d * 0.5 - 0.95, 0.46)
+    p = k.piece("wood", "sacks")
+    for i in range(5):
+        x = -0.4 + i * 0.4 + (0.2 if i > 2 else 0) + 2.2
+        y = -d * 0.5 - 1.0 - (0.3 if i > 2 else 0)
+        z = 0.7 + (0.36 if i == 4 else 0)
+        burlap = jit((0.62, 0.53, 0.38), 0.06, k.rng)
+        p.stone((x, y, z), (0.4, 0.34, 0.46), color=burlap, rng=k.rng, subdiv=2)
+        p.log((x, y, z + 0.2), (x, y, z + 0.3), 0.055, color=burlap, end=burlap, segs=6, rng=k.rng, taper=0.3)
+    k.add(p)
+    # the store's board over the doors, white with dark letters
+    p = k.piece("dark", "sign")
+    p.box((0, -d * 0.5 - 0.06, FLOOR + 2.62), (2.6, 0.05, 0.42), jit(trim, 0.03, k.rng))
+    for i in range(5):
+        p.box((-0.8 + i * 0.4, -d * 0.5 - 0.09, FLOOR + 2.62), (0.24, 0.02, 0.24), INK)
+    k.add(p)
+    # the hay door high in the right gable, and the hoist beam over it under the ridge, a rope and pulley
+    x = w * 0.5 + 0.03
+    p = k.piece("plank", "loft")
+    for i in range(5):
+        p.box((x, -0.48 + i * 0.24, zk - 0.35), (0.04, 0.22, 1.3), jit(BARN_RED, 0.08, k.rng))
+    for sy in (-1, 1):
+        p.box((x + 0.02, sy * 0.66, zk - 0.35), (0.04, 0.12, 1.5), jit(trim, 0.02, k.rng))
+    p.box((x + 0.02, 0, zk + 0.4), (0.04, 1.44, 0.12), jit(trim, 0.02, k.rng))
+    k.add(p)
+    p = k.piece("log", "hoist")
+    p.log((w * 0.5 + 1.3, 0.0, zr - 0.55), (w * 0.5 - 0.8, 0.0, zr - 0.55), 0.12, rng=k.rng)
+    p.log((w * 0.5 + 1.2, 0.0, zr - 0.62), (w * 0.5 + 1.2, 0.0, zk - 1.2), 0.012, color=(0.6, 0.5, 0.35), end=(0.6, 0.5, 0.35), segs=5)
+    p.log((w * 0.5 + 1.15, 0.0, zr - 0.72), (w * 0.5 + 1.25, 0.0, zr - 0.72), 0.09, color=DARK, end=DARK, taper=0.0)
+    k.add(p)
+    # a weathervane on the ridge
+    p = k.piece("dark", "finial")
+    p.box((-w * 0.25, 0, zr + 0.5), (0.03, 0.03, 0.8), IRON)
+    p.box((-w * 0.25, 0, zr + 0.75), (0.5, 0.02, 0.1), IRON)
+    p.obox((-w * 0.25 + 0.27, 0, zr + 0.75), (0.7, 0, 0.7), (0, 1, 0), (-0.7, 0, 0.7), (0.12, 0.02, 0.12), IRON)
+    k.add(p)
+    woodpile(k, w * 0.5 + 0.7, d * 0.5 - 1.6, length=2.0, height=1.2)
+
+
+def ambar():
+    """The store: a big barn of upright boards and battens painted red, white corner boards and
+    trim, under a gambrel roof; wide double doors, small square windows, a hay door in the gable
+    with a hoist beam over it, a loading platform with crates and sacks."""
+    w, d = 9.0, 7.0
+    k = Kit("ambar")
+    k.paint = (CLAP_WHITE, BARN_RED)
+    plinth(k, w, d)
+    floor(k, w, d)
+    top = FLOOR + 3.0
+    door_w, door_h = 2.4, 2.15
+    wins = [("left", -1.5), ("left", 1.5), ("right", -1.5), ("back", -2.5), ("back", 2.5), ("front", -3.0), ("front", 3.0)]
+    openings = [("front", 0.0, door_w + 0.2, -0.2, door_h + 0.1)] + [(wl, at, 0.7, 1.15, 1.85) for wl, at in wins]
+    board_walls(k, w, d, top, openings, BARN_RED, vertical=True, trim=CLAP_WHITE)
+    zk, yk, zr = gambrel(k, w, d, top, color=(0.36, 0.33, 0.3))
+    door(k, -door_w * 0.25, -d * 0.5 + 0.1, door_w * 0.5, door_h)
+    door(k, door_w * 0.25, -d * 0.5 + 0.1, door_w * 0.5, door_h)
+    for wl, at in wins:
+        plain_window(k, wl, at, w, d, 0.62, 1.2, 0.62, CLAP_WHITE, panes=(2, 2))
+    _barn_extra(k, w, d, zk, zr)
+    k.finish()
+
+
+# -- the armoury: a blockhouse
+
+def silahlik():
+    """The armoury: a blockhouse of weathered grey logs, its upper storey jutting out half a metre
+    all round over the lower on joists (to fire down the walls), loopholes in both storeys, a low
+    hipped roof, a flagstaff on its peak; the rifle rack, ammunition boxes and a target outside."""
+    w, d = 5.0, 4.0
+    k = Kit("silahlik")
+    k.paint = ((0.8, 0.78, 0.7), (0.3, 0.3, 0.32))
+    plinth(k, w, d)
+    floor(k, w, d)
+    low = log_walls(k, w, d, 8, [("front", 0.0, 1.25, 0.0, 2.05)], color=GREY_LOG, end=GREY_END)
+    door(k, 0.0, -d * 0.5 + 0.15, 1.0, 2.0)
+    # the joists out through the walls, the upper floor on them
+    p = k.piece("dark")
+    for i in range(6):
+        x = -w * 0.5 - 0.3 + i * (w + 0.6) / 5
+        p.box((x, 0, low + 0.1), (0.22, d + 1.3, 0.2), jit(DARK, 0.05, k.rng))
+    p.box((0, 0, low + 0.25), (w + 1.1, d + 1.1, 0.1), jit(DARK, 0.04, k.rng))
+    k.add(p)
+    W, D = w + 1.0, d + 1.0
+    up_top = log_walls(k, W, D, 5, [], dia=0.28, color=GREY_LOG, end=GREY_END, base=low + 0.3)
+    # loopholes: slits in the upper walls (the stuff of a window: lit from inside at night), in the lower
+    p = k.piece("window", "loophole")
+    for wall, ats in (("front", (-1.8, 0.0, 1.8)), ("back", (-1.8, 0.0, 1.8)), ("left", (-1.2, 1.2)), ("right", (-1.2, 1.2))):
+        along, out, o, span = _wall_frame(W, D, wall)
+        for at in ats:
+            rbox(p, o + along * at + out * 0.02 + Vector((0, 0, low + 1.05)), along, (0, 0, 1), (0.12, 0.5, 0.03), (0.05, 0.05, 0.05))
+    for wall, ats in (("front", (-1.6, 1.6)), ("left", (0.0,)), ("right", (0.0,)), ("back", (-1.0, 1.0))):
+        along, out, o, span = _wall_frame(w, d, wall)
+        for at in ats:
+            rbox(p, o + along * at + out * 0.02 + Vector((0, 0, FLOOR + 1.4)), along, (0, 0, 1), (0.1, 0.42, 0.03), (0.05, 0.05, 0.05))
+    k.add(p)
+    rz = hip_roof(k, W, D, up_top, over=0.45, pitch=0.6, color=(0.33, 0.28, 0.22), seam=0.26)
+    p = k.piece("dark", "flagstaff")
+    p.log((0, 0, rz - 0.2), (0, 0, rz + 2.6), 0.045, color=DARK, end=DARK, rng=k.rng, taper=0.25)
+    p.stone((0, 0, rz + 2.65), (0.1, 0.1, 0.1), color=BRASS, rng=k.rng)
+    k.add(p)
+    _arms_extra(k, w, d)
+    k.finish()
+
+
+# -- the reading room: a schoolhouse
+
+def okuma():
+    """The reading room: a schoolhouse of white clapboard with dark green corner boards, tall sash
+    windows with green shutters, a steep slate-grey roof, an open belfry on the ridge with its bell,
+    a pedimented hood over the door, a sign, a bench and a table out front, a brick flue."""
+    w, d = 6.0, 5.0
+    k = Kit("okuma")
+    trim = RAIL_GREEN
+    k.paint = (CLAP_WHITE, trim)
+    plinth(k, w, d)
+    floor(k, w, d)
+    top = FLOOR + 3.1
+    wins = [("front", -1.9), ("front", 1.9), ("left", -1.1), ("left", 1.1), ("right", -1.1), ("right", 1.1), ("back", -1.5), ("back", 1.5)]
+    openings = [("front", 0.0, 1.25, -0.2, 2.25)] + [(wl, at, 0.85, 0.75, 2.35) for wl, at in wins]
+    board_walls(k, w, d, top, openings, CLAP_WHITE, trim=trim)
+    rise = 2.3
+    half = d * 0.5
+    slope = math.atan2(rise, half)
+    ridge = top + rise
+    for s in (-1, 1):
+        down = Vector((0, s * math.cos(slope), -math.sin(slope)))
+        roof_plane(k, (0, 0, ridge + 0.06), (1, 0, 0), down, w + 0.7, (half + 0.45) / math.cos(slope), SLATE, course=0.18, shingle_w=(0.18, 0.26))
+    p = k.piece("shingle", "ridge")
+    p.box((0, 0, ridge + 0.16), (w + 0.76, 0.24, 0.08), jit(DARK, 0.05, k.rng))
+    k.add(p)
+    board_gables(k, w, d, top, lambda y: top + (half - abs(y)) * math.tan(slope), CLAP_WHITE)
+    for sx in (-1, 1): # (the rake boards up the gables, green)
+        p = k.piece("plank", "barge")
+        x = sx * (w * 0.5 + 0.37)
+        for s in (-1, 1):
+            a, b = Vector((x, s * (half + 0.45), top - 0.45 * math.tan(slope) + 0.12)), Vector((x, 0, ridge + 0.12))
+            rbox(p, (a + b) * 0.5, b - a, (0, 0, 1), ((b - a).length, 0.22, 0.05), jit(trim, 0.02, k.rng))
+        k.add(p)
+    door(k, 0.0, -d * 0.5 + 0.1, 1.05, 2.15)
+    for wl, at in wins:
+        plain_window(k, wl, at, w, d, 0.75, 0.8, 1.5, CLAP_WHITE, panes=(2, 4), shutter=trim)
+    # the hood over the door: a little pediment on two brackets
+    p = k.piece("plank", "hood")
+    hz = FLOOR + 2.55
+    for sx in (-1, 1):
+        a, b = Vector((sx * 0.85, -d * 0.5 - 0.35, hz)), Vector((0, -d * 0.5 - 0.35, hz + 0.45))
+        rbox(p, (a + b) * 0.5, b - a, (0, 1, 0), ((b - a).length + 0.1, 0.75, 0.06), jit(SLATE, 0.04, k.rng))
+        p.obox((sx * 0.62, -d * 0.5 - 0.2, hz - 0.25), (1, 0, 0), (0, -0.7, 0.7), (0, 0.7, 0.7), (0.07, 0.5, 0.07), jit(trim, 0.03, k.rng))
+    slab(p, [(-0.8, -d * 0.5 - 0.66, hz + 0.02), (0.8, -d * 0.5 - 0.66, hz + 0.02), (0, -d * 0.5 - 0.66, hz + 0.42)], 0.04, CLAP_WHITE)
+    k.add(p)
+    # the belfry on the ridge: a boarded base, four posts, a pyramid cap, the bell inside
+    bx = 0.0
+    p = k.piece("plank", "belfry")
+    p.box((bx, 0, ridge + 0.3), (0.95, 0.95, 0.7), jit(CLAP_WHITE, 0.02, k.rng))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            p.box((bx + sx * 0.4, sy * 0.4, ridge + 1.0), (0.1, 0.1, 0.75), jit(CLAP_WHITE, 0.02, k.rng))
+    p.box((bx, 0, ridge + 0.68), (1.05, 1.05, 0.06), jit(trim, 0.02, k.rng))
+    p.box((bx, 0, ridge + 1.4), (1.15, 1.15, 0.08), jit(trim, 0.02, k.rng))
+    for (ax, ay), (cx, cy) in (((-1, -1), (1, -1)), ((1, -1), (1, 1)), ((1, 1), (-1, 1)), ((-1, 1), (-1, -1))):
+        slab(p, [(bx + ax * 0.62, ay * 0.62, ridge + 1.44), (bx + cx * 0.62, cy * 0.62, ridge + 1.44), (bx, 0, ridge + 2.15)], 0.04, jit(SLATE, 0.04, k.rng))
+    p.box((bx, 0, ridge + 2.35), (0.03, 0.03, 0.45), IRON)
+    k.add(p)
+    p = k.piece("stone", "schoolbell")
+    bell(p, (bx, 0, ridge + 1.3), 0.17)
+    k.add(p)
+    # the brick flue at the back
+    p = k.piece("stone", "chimneytop")
+    fx, fy = 1.6, d * 0.5 - 0.6
+    p.box((fx, fy, ridge - 0.2), (0.45, 0.45, 1.2), jit((0.56, 0.3, 0.22), 0.05, k.rng))
+    p.box((fx, fy, ridge + 0.45), (0.55, 0.55, 0.1), jit((0.4, 0.38, 0.35), 0.05, k.rng))
+    k.add(p)
+    # a table and benches out on the grass, books on it, a stack of papers by the door
+    p = k.piece("plank", "table")
+    tx, ty = 2.0, -d * 0.5 - 1.6
+    p.box((tx, ty, 0.78), (1.4, 0.65, 0.05), jit(PLANK, 0.05, k.rng))
+    for sx in (-0.6, 0.6):
+        for sy in (-0.25, 0.25):
+            p.box((tx + sx, ty + sy, 0.38), (0.06, 0.06, 0.76), DARK)
+    for sy in (-0.65, 0.65):
+        p.box((tx, ty + sy, 0.45), (1.4, 0.28, 0.05), jit(PLANK, 0.05, k.rng))
+        for sx in (-0.6, 0.6):
+            p.box((tx + sx, ty + sy, 0.22), (0.06, 0.24, 0.44), DARK)
+    k.add(p)
+    p = k.piece("cloth", "books")
+    for i, c in enumerate([(0.55, 0.15, 0.1), (0.2, 0.3, 0.5), (0.3, 0.4, 0.2)]):
+        p.box((tx - 0.4 + i * 0.3, ty, 0.83 + (i % 2) * 0.03), (0.2, 0.28, 0.05 + (i % 2) * 0.04), c, rot_z=i * 0.3)
+    p.box((tx + 0.45, ty - 0.05, 0.82), (0.36, 0.26, 0.02), (0.9, 0.86, 0.75))
+    k.add(p)
+    p = k.piece("cloth", "papers")
+    for i in range(4):
+        p.box((-1.2, -d * 0.5 - 0.35, 0.05 + i * 0.07), (0.5, 0.36, 0.06), (0.85, 0.82, 0.72), rot_z=i * 0.15)
+    k.add(p)
+    # steps up to the door
+    p = k.piece("plank", "steps")
+    for i, (dy, z) in enumerate(((0.2, 0.3), (0.48, 0.15))):
+        p.box((0, -d * 0.5 - dy, z), (1.5, 0.3, 0.06), jit(PLANK, 0.06, k.rng))
+        for sx in (-1, 1):
+            p.box((sx * 0.72, -d * 0.5 - dy, z * 0.5), (0.06, 0.3, z), DARK)
+    k.add(p)
+    k.finish()
+
+
+# -- the feldsher: a whitewashed hut under sod
+
+def sod_roof(k, w, ridge, half, slope, over=0.5, eave_over=0.55):
+    """A turf roof: boards, birch bark under them showing white along the eaves, then the sod, lumpy,
+    thick with grass and a few flowers, a log along the eave holding it on."""
+    run = half + eave_over
+    length = run / math.cos(slope)
+    width = w + over * 2
+    top = Vector((0, 0, ridge + 0.42))
+    for side in (-1, 1):
+        down = Vector((0, side * math.cos(slope), -math.sin(slope)))
+        nrm = Vector((0, side * math.sin(slope), math.cos(slope)))
+        across = Vector((1, 0, 0))
+        p = k.piece("shingle", "sod")
+        rbox(p, top + down * (length * 0.5), across, down, (width, length, 0.05), jit(PLANK, 0.05, k.rng))
+        rbox(p, top + down * (length * 0.5 + 0.06) + nrm * 0.04, across, down, (width + 0.04, length + 0.08, 0.03), BIRCH)
+        rbox(p, top + down * (length * 0.5 - 0.05) + nrm * 0.12, across, down, (width - 0.1, length - 0.1, 0.16), jit(SOD, 0.05, k.rng))
+        for i in range(int(width * length * 3.0)):
+            u = k.rng.uniform(-width * 0.47, width * 0.47)
+            v = k.rng.uniform(0.1, length - 0.2)
+            c = top + across * u + down * v + nrm * 0.2
+            col = jit(SOD, 0.25, k.rng)
+            if k.rng.random() < 0.3:
+                col = (col[0] * 1.3, col[1] * 1.15, col[2] * 0.8) # (drier grass)
+            p.stone(c, (k.rng.uniform(0.3, 0.6), k.rng.uniform(0.25, 0.5), 0.14), color=col, rng=k.rng)
+        for i in range(int(width * length * 0.6)):
+            u = k.rng.uniform(-width * 0.45, width * 0.45)
+            v = k.rng.uniform(0.2, length - 0.3)
+            col = k.rng.choice([(0.95, 0.85, 0.3), (0.92, 0.92, 0.88), (0.65, 0.4, 0.75)])
+            p.box(top + across * u + down * v + nrm * 0.3, (0.07, 0.07, 0.05), col)
+        k.add(p)
+        # the turf log along the eave on hooks
+        p = k.piece("log", "turflog")
+        e = top + down * (length - 0.1) + nrm * 0.25
+        p.log(e - across * width * 0.5, e + across * width * 0.5, 0.09, rng=k.rng)
+        k.add(p)
+
+
+def _herb_garden(k, x0, y0, w, d):
+    """A little plot in a wattle fence: raised beds of herbs in rows."""
+    p = k.piece("wood", "fence")
+    for (ax, ay), (bx, by) in (((0, 0), (w, 0)), ((w, 0), (w, d)), ((w, d), (0, d)), ((0, d), (0, 0))):
+        n = max(2, int(math.hypot(bx - ax, by - ay) / 0.5))
+        for i in range(n + 1):
+            t = i / n
+            x, y = x0 + ax + (bx - ax) * t, y0 + ay + (by - ay) * t
+            p.log((x, y, -0.1), (x, y, 0.65), 0.025, rng=k.rng, taper=0.1)
+        for z in (0.25, 0.4, 0.55):
+            p.log((x0 + ax, y0 + ay, z), (x0 + bx, y0 + by, z), 0.02, color=(0.45, 0.36, 0.24), rng=k.rng, bow=0.03)
+    k.add(p)
+    p = k.piece("thatch", "herbs")
+    for r in range(3):
+        y = y0 + 0.35 + r * (d - 0.7) / 2
+        p.box((x0 + w * 0.5, y, 0.06), (w - 0.4, 0.4, 0.12), jit((0.3, 0.22, 0.15), 0.05, k.rng))
+        for i in range(int((w - 0.5) / 0.28)):
+            col = [(0.3, 0.45, 0.2), (0.4, 0.5, 0.25), (0.35, 0.4, 0.45), (0.55, 0.45, 0.6)][r % 4]
+            p.stone((x0 + 0.35 + i * 0.28, y, 0.2), (0.22, 0.22, 0.24), color=jit(col, 0.1, k.rng), rng=k.rng)
+    k.add(p)
+
+
+def sifaci():
+    """The feldsher's: a low hut of whitewashed logs (clean, as a sick room should be) under a turf
+    roof green with grass, green shutters, a stone chimney, a white flag with a green cross, bandages
+    drying, a stretcher by the wall, herbs under the eave and a fenced herb garden."""
+    w, d = 5.0, 4.0
+    k = Kit("sifaci")
+    k.paint = ((0.92, 0.9, 0.85), (0.2, 0.45, 0.25))
+    plinth(k, w, d)
+    floor(k, w, d)
+    wins = [("front", 1.4), ("left", 0.0), ("right", 0.0)]
+    openings = [("front", -0.6, 1.25, 0.0, 2.1)] + [(wl, at, 0.95, 0.85, 1.85) for wl, at in wins]
+    top = log_walls(k, w, d, 7, openings, color=LIMEWASH, end=LIMEWASH)
+    ridge, half, slope = log_gables(k, w, d, top, 1.15, color=LIMEWASH, end=LIMEWASH)
+    sod_roof(k, w, ridge, half, slope)
+    door(k, -0.6, -d * 0.5 + 0.15, 1.0, 2.0)
+    for wl, at in wins:
+        window(k, wl, at, w, d)
+    chimney(k, w * 0.5 + 0.45, 0.8, 0.0, ridge + 0.9, size=0.6)
+    _felcer_extra(k, w, d)
+    _herb_garden(k, -w * 0.5 - 0.2, -d * 0.5 - 3.2, 2.6, 2.2)
+    k.finish()
+
+
+# -- the station: a yellow clapboard depot
+
+def istasyon():
+    """The station: a depot of ochre clapboard with brown trim, tall windows, carved brackets under
+    a wide-eaved hipped roof of green-painted iron, a bell by the door, a clock over it; the platform,
+    its canopy, a bench, the name board."""
+    w, d = 7.0, 5.0
+    k = Kit("istasyon")
+    k.paint = (TRIM_BROWN, TRIM_BROWN)
+    plinth(k, w, d)
+    floor(k, w, d)
+    top = FLOOR + 3.5
+    wins = [("front", -2.2), ("front", 2.2), ("left", 0.0), ("right", -1.0), ("right", 1.0), ("back", -2.0), ("back", 0.0), ("back", 2.0)]
+    openings = [("front", 0.0, 1.35, -0.2, 2.45)] + [(wl, at, 0.85, 0.8, 2.45) for wl, at in wins]
+    board_walls(k, w, d, top, openings, OCHRE, trim=TRIM_BROWN)
+    eave_brackets(k, w, d, top, 6, TRIM_BROWN)
+    rz = hip_roof(k, w, d, top, over=0.65, pitch=0.5, color=RAIL_GREEN, seam=0.4)
+    door(k, 0.0, -d * 0.5 + 0.1, 1.1, 2.35)
+    for wl, at in wins:
+        plain_window(k, wl, at, w, d, 0.75, 0.85, 1.55, CLAP_WHITE, panes=(2, 3))
+    # the clock over the door, the bell beside it on a bracket
+    p = k.piece("plank", "clock")
+    cyl(p, (0, -d * 0.5 - 0.02, FLOOR + 2.95), (0, -d * 0.5 - 0.1, FLOOR + 2.95), 0.3, TRIM_BROWN, segs=16)
+    cyl(p, (0, -d * 0.5 - 0.1, FLOOR + 2.95), (0, -d * 0.5 - 0.12, FLOOR + 2.95), 0.25, CLAP_WHITE, segs=16)
+    p.box((0, -d * 0.5 - 0.13, FLOOR + 3.02), (0.02, 0.01, 0.16), INK)
+    p.box((0.05, -d * 0.5 - 0.13, FLOOR + 2.95), (0.12, 0.01, 0.02), INK)
+    k.add(p)
+    p = k.piece("dark", "bracket")
+    p.box((1.05, -d * 0.5 - 0.2, FLOOR + 2.55), (0.04, 0.4, 0.04), IRON)
+    p.box((1.05, -d * 0.5 - 0.02, FLOOR + 2.45), (0.12, 0.04, 0.3), IRON)
+    k.add(p)
+    p = k.piece("stone", "stationbell")
+    bell(p, (1.05, -d * 0.5 - 0.36, FLOOR + 2.52), 0.12)
+    k.add(p)
+    # the flue through the roof
+    p = k.piece("stone", "chimneytop")
+    p.box((-1.6, 0.8, rz - 0.3), (0.45, 0.45, 1.6), jit((0.56, 0.3, 0.22), 0.05, k.rng))
+    p.box((-1.6, 0.8, rz + 0.52), (0.55, 0.55, 0.1), jit((0.4, 0.38, 0.35), 0.05, k.rng))
+    k.add(p)
+    _station_extra(k, w, d)
+    k.finish()
+
+
+# -- the smithy: stone, under sooty iron
+
+def demirci():
+    """The smithy: walls of rubble stone (the fire's kept in by stone), the front open under a great
+    timber lintel to let the heat and the smoke out, a hipped roof of sooty sheet iron, the forge and
+    its stack up through it; a horseshoe over the opening, coal heaped by the side, a wheel waiting."""
+    w, d = 5.0, 4.0
+    k = Kit("demirci")
+    plinth(k, w, d)
+    floor(k, w, d)
+    thick = 0.45
+    top = stone_walls(k, w, d, 2.9, [("front", 0.0, 3.2, -0.12, 2.0), ("left", 0.6, 0.55, 1.3, 1.85), ("right", -0.5, 0.55, 1.3, 1.85)], thick=thick)
+    for wl, at in (("left", 0.6), ("right", -0.5)):
+        barred_window(k, wl, at, w, d, 1.3, 0.55, 0.55, thick)
+    rz = hip_roof(k, w, d, top, over=0.45, pitch=0.5, color=SOOT, seam=0.38)
+    _smith_props(k, w, d, stack_top=rz + 0.9)
+    # a horseshoe hung over the opening, points up, for luck
+    p = k.piece("dark", "shoe")
+    for i in range(9):
+        a = math.pi * (0.1 + 0.8 * i / 8)
+        rbox(p, (math.cos(a) * 0.2, -d * 0.5 - 0.08, 2.84 - math.sin(a) * 0.2), (math.sin(a), 0, math.cos(a)), (0, 1, 0), (0.1, 0.03, 0.05), IRON)
+    k.add(p)
+    # coal heaped against the right wall, a cart wheel waiting for its tyre, a grindstone
+    p = k.piece("stone", "coal")
+    for i in range(16):
+        p.stone((w * 0.5 + 0.6 + k.rng.uniform(-0.4, 0.4), -0.6 + k.rng.uniform(-0.7, 0.7), k.rng.uniform(0.05, 0.35)), (0.3, 0.25, 0.2), color=(0.1, 0.1, 0.1), rng=k.rng)
+    k.add(p)
+    p = k.piece("wood", "wheel")
+    cart_wheel(p, Vector((-w * 0.5 - 0.25, -0.6, 0.62)), (1, 0, 0), 0.6, rng=k.rng)
     k.add(p)
     k.finish()
 
