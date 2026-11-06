@@ -24,8 +24,8 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   kuyu       a well: a fieldstone ring, a windlass, a little shingled roof, a bucket
   oduncu     the felling camp's yard: a sawhorse with a log and a frame saw, a deck of raw logs,
              sawdust, a lean-to with a tool rack and a grindstone
-  tasci      the stone yard: a dressing bench with mallet and chisel, a tripod derrick lifting a
-             block, rough blocks heaped, dressed ones stacked, rubble
+  tasci      the stone yard: a dressing bench with mallet and chisel under a canvas sunshade, a tripod
+             derrick lifting a block, rough blocks heaped, dressed ones stacked, rubble
   toplayici  the gatherers' yard: a birch-bark cone hut, drying racks hung with berries, a sorting
              table, baskets
   silahlik   the armoury: a grey log blockhouse, its upper storey jutting out over the lower,
@@ -35,8 +35,12 @@ Output: assets/buildings/<kind>.glb, assets/buildings/previews/<kind>.png (--ren
   sifaci     the feldsher's: a low hut of whitewashed logs under a turf roof, a herb garden
   istasyon   the station: an ochre clapboard depot, a hipped green iron roof on carved brackets, a
              clock and a bell, the platform and its canopy
-  demirci    the smithy: rubble-stone walls open at the front, a sooty iron roof, the forge's stack
-             up through it
+  demirci    the smithy: rubble-stone walls open at the front, a steep gable of smoke-blackened
+             shingles with a louvre on its ridge, a pent roof on posts over the opening, the forge's
+             stack up through the roof
+  ev_b, ev_c the house built other ways (Building picks one by where it stands): no porch, the door
+             under a hood to one side, the chimney up the other gable, a kitchen garden; or a veranda
+             the length of the front and a dormer in the roof
   ev_oda     a house's back room (the game adds it to an "ev" when it's made bigger): log walls on
              three sides against the house's back wall, a shuttered window, a shingled lean-to
              roof running up under the house's eaves, boarded gable triangles
@@ -885,13 +889,14 @@ def chopping_block(k, x, y):
 
 # --- the buildings ---------------------------------------------------------------------------------
 
-def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chimney_at=None, extra=None, double_door=False, paint=None):
+def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chimney_at=None, extra=None, double_door=False, paint=None,
+          door_x=0.0, porch_width=None, dormer_x=None):
     k = Kit(kind)
     k.paint = paint or k.rng.choice(PAINTS)
     plinth(k, w, d)
     floor(k, w, d)
     door_h = 2.0
-    openings = [("front", 0.0, door_w + 0.25, 0.0, door_h + 0.1)]
+    openings = [("front", door_x, door_w + 0.25, 0.0, door_h + 0.1)]
     for wall, at in windows:
         openings.append((wall, at, 0.95, 0.85, 1.85))
     wall_top = log_walls(k, w, d, courses, openings)
@@ -902,14 +907,16 @@ def cabin(kind, w, d, courses, rise, door_w=1.0, windows=(), porch_on=True, chim
         door(k, -door_w * 0.25, -d * 0.5 + 0.15, door_w * 0.5, door_h)
         door(k, door_w * 0.25, -d * 0.5 + 0.15, door_w * 0.5, door_h)
     else:
-        door(k, 0.0, -d * 0.5 + 0.15, door_w, door_h)
+        door(k, door_x, -d * 0.5 + 0.15, door_w, door_h)
     for wall, at in windows:
         window(k, wall, at, w, d)
     if chimney_at:
         chimney(k, chimney_at[0], chimney_at[1], 0.0, ridge + 0.8)
     if porch_on:
         eave_z = ridge + 0.42 - (half + 0.6) * math.tan(slope)
-        porch(k, w, -d * 0.5, width=max(door_w + 1.6, w * 0.55), roof_top=eave_z - 0.25)
+        porch(k, w, -d * 0.5, width=porch_width or max(door_w + 1.6, w * 0.55), roof_top=eave_z - 0.25)
+    if dormer_x is not None:
+        dormer(k, dormer_x, ridge, slope)
     if extra:
         extra(k, w, d)
     k.finish()
@@ -1814,12 +1821,46 @@ def tas_ocagi():
         z = FLOOR + 0.2 + (i // 4) * 0.42
         p.box((x, 2.3, z), (0.58, 0.45, 0.4), jit((0.62, 0.61, 0.57), 0.05, k.rng))
     k.add(p)
-    lean_to(k, 1.0, 3.2, 1.2, 1.9, 2.3, 2.0)
+    canvas_awning(k, -1.3, 1.4, -0.7, 1.3, 2.5, 2.1)
     p = k.piece("stone")
     for i in range(12):
         p.stone((k.rng.uniform(-3.0, 3.0), k.rng.uniform(-2.6, -1.2), FLOOR - 0.05), (0.18, 0.15, 0.12), rng=k.rng)
     k.add(p)
     k.finish()
+
+
+def canvas_awning(k, x0, x1, y0, y1, h_front, h_back, base=YARD_FLOOR):
+    """A mason's sunshade: a sheet of canvas sagging between four peeled poles, higher at the front,
+    its edges hemmed, guy ropes from the front poles out to pegs."""
+    rng = k.rng
+    p = k.piece("wood", "poles")
+    for x in (x0, x1):
+        for y, h in ((y0, h_front), (y1, h_back)):
+            p.log((x, y, base - 0.1), (x, y, base + h + 0.12), 0.05, rng=rng, taper=0.05)
+    for x in (x0, x1): # (the guys)
+        a = Vector((x, y0, base + h_front))
+        b = Vector((x + (x - (x0 + x1) * 0.5) * 0.25, y0 - 1.1, base))
+        p.log(a, b, 0.008, color=(0.7, 0.65, 0.52), end=(0.7, 0.65, 0.52), segs=4, taper=0.0, bow=0.0)
+        p.box(b + Vector((0, 0, 0.08)), (0.04, 0.04, 0.2), DARK)
+    k.add(p)
+    p = k.piece("canvas", "awning")
+    nu, nv = 6, 4
+
+    def at(i, j):
+        u, v = i / nu, j / nv
+        x = x0 + (x1 - x0) * u
+        y = y0 + (y1 - y0) * v
+        z = base + h_front + (h_back - h_front) * v - 0.16 * math.sin(math.pi * u) * math.sin(math.pi * v)
+        return (x, y, z + 0.13)
+    for i in range(nu):
+        for j in range(nv):
+            c = jit((0.74, 0.7, 0.58), 0.025, rng)
+            slab(p, [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)], 0.02, c)
+    for i in range(nu): # (the hems, a darker strip front and back)
+        for j in (0, nv):
+            a, b = Vector(at(i, j)), Vector(at(i + 1, j))
+            rbox(p, (a + b) * 0.5 + Vector((0, 0, 0.012)), b - a, (0, 1, 0), ((b - a).length, 0.08, 0.02), (0.55, 0.5, 0.4))
+    k.add(p)
 
 
 def bark_hut(k, x, y, r, h, door_at=-math.pi * 0.5, base=YARD_FLOOR):
@@ -3647,6 +3688,134 @@ def _barn_extra(k, w, d, zk, zr):
     woodpile(k, w * 0.5 + 0.7, d * 0.5 - 1.6, length=2.0, height=1.2)
 
 
+def dormer(k, x, ridge, slope, width=1.3, face_y=-1.45, height=1.05):
+    """A gabled dormer on the front slope: a boarded face with a window in it, boarded cheeks down
+    to the roof, its own little shingled roof running back into the main one."""
+    trim = k.paint[0]
+    R = ridge + 0.42 + 0.06 # (the shingles' face at the ridge)
+    t = math.tan(slope)
+    zf = R + face_y * t # (the main roof's face where the dormer's front stands)
+    top = zf + height
+    yb = -(R - top) / t # (where the main roof rises to the dormer's eave)
+    p = k.piece("plank", "dormer")
+    hw = width * 0.5
+    for i in range(int(width / 0.25)):
+        bx = x - hw + (i + 0.5) * width / int(width / 0.25)
+        p.box((bx, face_y, (zf + top) * 0.5), (width / int(width / 0.25) - 0.01, 0.05, height), jit(PLANK, 0.06, k.rng))
+    # its gable over the face
+    slab(p, [(x - hw - 0.05, face_y - 0.01, top), (x + hw + 0.05, face_y - 0.01, top), (x, face_y - 0.01, top + 0.5)], 0.05, jit(PLANK, 0.05, k.rng))
+    for sx in (-1, 1):
+        pts = [(x + sx * hw, face_y, zf), (x + sx * hw, face_y, top), (x + sx * hw, yb, top)]
+        if sx > 0:
+            pts.reverse()
+        slab(p, pts, 0.05, jit(PLANK, 0.06, k.rng))
+    k.add(p)
+    p = k.piece("plank", "trim")
+    wc = Vector((x, face_y - 0.04, (zf + top) * 0.5 + 0.05))
+    for sx in (-1, 1):
+        p.box(wc + Vector((sx * 0.36, 0, 0)), (0.08, 0.06, 0.75), jit(trim, 0.03, k.rng))
+    for sz in (-1, 1):
+        p.box(wc + Vector((0, 0, sz * 0.36)), (0.8, 0.06, 0.08), jit(trim, 0.03, k.rng))
+    p.box(wc + Vector((0, -0.01, 0)), (0.025, 0.04, 0.65), trim)
+    p.box(wc + Vector((0, -0.01, 0)), (0.64, 0.04, 0.025), trim)
+    for sgn in (-1, 1): # (barge boards on its gable)
+        a, b = Vector((x + sgn * (hw + 0.2), face_y - 0.05, top - 0.1)), Vector((x, face_y - 0.05, top + 0.55))
+        rbox(p, (a + b) * 0.5, b - a, (0, 1, 0), ((b - a).length, 0.06, 0.18), jit(trim, 0.03, k.rng))
+    k.add(p)
+    g = k.piece("window")
+    g.box(wc + Vector((0, 0.02, 0)), (0.62, 0.03, 0.62), GLASS)
+    k.add(g)
+    a2 = 0.75
+    for sx in (-1, 1):
+        dn = Vector((sx * math.cos(a2), 0, -math.sin(a2)))
+        roof_plane(k, (x, face_y - 0.2, top + 0.5 + 0.08), (0, 1, 0), dn, (yb - face_y) + 0.35, (hw + 0.25) / math.cos(a2), SHINGLE, course=0.2)
+
+
+def door_hood(k, x, y, z, width=1.5):
+    """A little shingled gable over a door on two carved brackets."""
+    trim = k.paint[0]
+    p = k.piece("plank", "hood")
+    for sx in (-1, 1):
+        a, b = Vector((x + sx * width * 0.55, y - 0.4, z)), Vector((x, y - 0.4, z + 0.42))
+        rbox(p, (a + b) * 0.5, b - a, (0, 1, 0), ((b - a).length + 0.1, 0.85, 0.05), jit(SHINGLE, 0.05, k.rng))
+        p.obox((x + sx * width * 0.42, y - 0.22, z - 0.25), (1, 0, 0), (0, -0.7, 0.7), (0, 0.7, 0.7), (0.07, 0.5, 0.07), jit(trim, 0.03, k.rng))
+    slab(p, [(x - width * 0.5, y - 0.78, z + 0.02), (x + width * 0.5, y - 0.78, z + 0.02), (x, y - 0.78, z + 0.38)], 0.04, jit(trim, 0.03, k.rng))
+    k.add(p)
+    p = k.piece("log", "steps")
+    for i, (dy, zz) in enumerate(((0.3, 0.3), (0.62, 0.12))):
+        p.log((x - 0.65, y - dy, zz), (x + 0.65, y - dy, zz), 0.13, rng=k.rng)
+    k.add(p)
+
+
+def _kitchen_garden(k, x0, y0, w, d):
+    """A fenced vegetable patch: cabbages, onions and beans on poles."""
+    _herb_garden(k, x0, y0, w, d)
+    p = k.piece("wood", "beans")
+    for i in range(4):
+        bx = x0 + 0.4 + i * (w - 0.8) / 3
+        p.log((bx - 0.15, y0 + d - 0.35, 0.0), (bx, y0 + d - 0.35, 1.5), 0.02, rng=k.rng, taper=0.2)
+        p.log((bx + 0.15, y0 + d - 0.35, 0.0), (bx, y0 + d - 0.35, 1.5), 0.02, rng=k.rng, taper=0.2)
+        for j in range(5):
+            p.stone((bx + k.rng.uniform(-0.12, 0.12), y0 + d - 0.35, 0.3 + j * 0.25), (0.16, 0.14, 0.2), color=jit((0.25, 0.4, 0.16), 0.1, k.rng), rng=k.rng)
+    k.add(p)
+
+
+def _house_b_extra(k, w, d):
+    # the door's to the right under a little hood; the woodpile against the right wall under its lean-to,
+    # a kitchen garden out to the left front, a bench by the door and a rain barrel at the corner
+    door_hood(k, 1.0, -d * 0.5, FLOOR + 2.25)
+    woodpile(k, w * 0.5 + 0.6, 0.4, length=2.4, height=1.1)
+    p = k.piece("plank")
+    p.obox((w * 0.5 + 0.6, 0.4, 1.55), (0.95, 0, 0.3), (0, 1, 0), (-0.3, 0, 0.95), (0.9, 2.7, 0.04), jit(PLANK, 0.06, k.rng))
+    for yy in (-0.8, 1.6):
+        p.box((w * 0.5 + 1.0, yy, 0.7), (0.06, 0.06, 1.4), DARK)
+    k.add(p)
+    _kitchen_garden(k, -w * 0.5 - 0.1, -d * 0.5 - 3.4, 3.2, 2.4)
+    p = k.piece("plank", "bench")
+    p.box((-0.6, -d * 0.5 - 0.35, 0.45), (1.3, 0.32, 0.05), jit(PLANK, 0.06, k.rng))
+    for sx in (-0.5, 0.5):
+        p.box((-0.6 + sx, -d * 0.5 - 0.35, 0.22), (0.06, 0.28, 0.44), DARK)
+    k.add(p)
+    barrel(k, w * 0.5 - 0.35, -d * 0.5 - 0.45)
+    chopping_block(k, w * 0.5 + 1.4, -d * 0.5 - 0.9)
+    p = k.piece("stone", "path")
+    for i in range(5):
+        p.stone((1.0 + k.rng.uniform(-0.15, 0.15), -d * 0.5 - 1.3 - i * 0.55, 0.02), (0.5, 0.42, 0.08), rng=k.rng)
+    k.add(p)
+
+
+def _house_c_extra(k, w, d):
+    # the veranda's across the front: a woodpile at the left end, a washing line out at the right
+    woodpile(k, -w * 0.5 - 0.6, 0.6, length=2.4, height=1.1)
+    chopping_block(k, -w * 0.5 - 1.2, -d * 0.5 - 0.9)
+    barrel(k, w * 0.5 + 0.5, d * 0.5 - 0.6)
+    p = k.piece("wood", "line")
+    x0 = w * 0.5 + 1.2
+    p.log((x0, -1.6, -0.3), (x0, -1.6, 2.0), 0.04, rng=k.rng)
+    p.log((x0, 1.8, -0.3), (x0, 1.8, 2.0), 0.04, rng=k.rng)
+    p.box((x0, 0.1, 1.9), (0.01, 3.4, 0.01), (0.7, 0.65, 0.55))
+    for i, col in enumerate([(0.75, 0.7, 0.55), (0.3, 0.35, 0.25), (0.82, 0.8, 0.74)]):
+        p.box((x0, -0.9 + i * 0.95, 1.6), (0.01, 0.6, 0.55), col)
+    k.add(p)
+    p = k.piece("stone", "path")
+    for i in range(4):
+        p.stone((k.rng.uniform(-0.15, 0.15), -d * 0.5 - 2.4 - i * 0.55, 0.02), (0.5, 0.42, 0.08), rng=k.rng)
+    k.add(p)
+
+
+def ev_b():
+    """The second kind of house: no porch, the door to one side under a hood, its chimney up the left
+    gable, a kitchen garden."""
+    cabin("ev_b", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.5), ("right", -0.6), ("back", 1.4)], porch_on=False,
+          chimney_at=(-3.0 - 0.85, -0.7), extra=_house_b_extra, paint=EV_PAINT, door_x=1.0)
+
+
+def ev_c():
+    """The third: a veranda the length of its front, a dormer window in the roof."""
+    cabin("ev_c", 6.0, 5.0, 8, 1.9, 1.0, windows=[("front", -1.8), ("front", 1.8), ("left", 0.0)],
+          chimney_at=(3.0 + 0.85, 0.8), extra=_house_c_extra, paint=EV_PAINT, porch_width=6.3, dormer_x=1.3)
+
+
 def ambar():
     """The store: a big barn of upright boards and battens painted red, white corner boards and
     trim, under a gambrel roof; wide double doors, small square windows, a hay door in the gable
@@ -3940,9 +4109,10 @@ def istasyon():
 # -- the smithy: stone, under sooty iron
 
 def demirci():
-    """The smithy: walls of rubble stone (the fire's kept in by stone), the front open under a great
-    timber lintel to let the heat and the smoke out, a hipped roof of sooty sheet iron, the forge and
-    its stack up through it; a horseshoe over the opening, coal heaped by the side, a wheel waiting."""
+    """The smithy: walls of rubble stone (the fire's kept in by stone), the front open to let the heat
+    and the smoke out, a steep gable of smoke-blackened shingles with a louvre along its ridge, a pent
+    roof on posts over the opening to shoe under, the forge and its stack up through the roof; a
+    horseshoe over the opening, coal heaped by the side, a wheel waiting."""
     w, d = 5.0, 4.0
     k = Kit("demirci")
     plinth(k, w, d)
@@ -3951,8 +4121,43 @@ def demirci():
     top = stone_walls(k, w, d, 2.9, [("front", 0.0, 3.2, -0.12, 2.0), ("left", 0.6, 0.55, 1.3, 1.85), ("right", -0.5, 0.55, 1.3, 1.85)], thick=thick)
     for wl, at in (("left", 0.6), ("right", -0.5)):
         barred_window(k, wl, at, w, d, 1.3, 0.55, 0.55, thick)
-    rz = hip_roof(k, w, d, top, over=0.45, pitch=0.5, color=SOOT, seam=0.38)
-    _smith_props(k, w, d, stack_top=rz + 0.9)
+    rise = 1.9
+    half = d * 0.5
+    slope = math.atan2(rise, half)
+    rz = top + rise
+    roof_c = (0.27, 0.25, 0.24) # (shingles gone black with the smoke)
+    for sgn in (-1, 1):
+        dn = Vector((0, sgn * math.cos(slope), -math.sin(slope)))
+        roof_plane(k, (0, 0, rz + 0.06), (1, 0, 0), dn, w + 0.6, (half + 0.45) / math.cos(slope), roof_c, moss=0.0)
+    board_gables(k, w, d, top, lambda y: top + (half - abs(y)) * math.tan(slope), (0.3, 0.24, 0.18))
+    for sx in (-1, 1):
+        p = k.piece("plank", "barge")
+        x = sx * (w * 0.5 + 0.32)
+        for sgn in (-1, 1):
+            a, b = Vector((x, sgn * (half + 0.45), top - 0.45 * math.tan(slope) + 0.12)), Vector((x, 0, rz + 0.12))
+            rbox(p, (a + b) * 0.5, b - a, (0, 0, 1), ((b - a).length, 0.2, 0.05), jit(DARK, 0.04, k.rng))
+        k.add(p)
+    # the smoke louvre along the ridge: a little roof on slatted sides, the heat let out under it
+    p = k.piece("shingle", "louvre")
+    lx = 0.6
+    for sgn in (-1, 1):
+        for i in range(4):
+            p.box((lx, sgn * 0.32, rz + 0.12 + i * 0.12), (1.5, 0.03, 0.06), jit(DARK, 0.05, k.rng))
+        dn = Vector((0, sgn * math.cos(0.5), -math.sin(0.5)))
+        rbox(p, Vector((lx, 0, rz + 0.72)) + dn * 0.3, (1, 0, 0), dn, (1.8, 0.62, 0.05), jit(roof_c, 0.05, k.rng))
+    for sx in (-1, 1):
+        p.box((lx + sx * 0.72, 0, rz + 0.33), (0.06, 0.62, 0.5), jit(DARK, 0.05, k.rng))
+    k.add(p)
+    # the pent roof over the opening on two posts, for shoeing out of the rain
+    p = k.piece("log", "posts")
+    for sx in (-1.55, 1.55):
+        p.log((sx, -d * 0.5 - 1.3, -0.1), (sx, -d * 0.5 - 1.3, 2.75), 0.08, rng=k.rng)
+    p.log((-1.9, -d * 0.5 - 1.3, 2.8), (1.9, -d * 0.5 - 1.3, 2.8), 0.09, rng=k.rng)
+    k.add(p)
+    pent = math.atan2(top - 0.15 - 2.85, 1.45)
+    dn = Vector((0, -math.cos(pent), -math.sin(pent)))
+    roof_plane(k, (0, -d * 0.5 + 0.05, top - 0.12), (1, 0, 0), dn, 4.2, 1.45 / math.cos(pent) + 0.3, roof_c, moss=0.0)
+    _smith_props(k, w, d, stack_top=rz + 0.7)
     # a horseshoe hung over the opening, points up, for luck
     p = k.piece("dark", "shoe")
     for i in range(9):
@@ -4081,7 +4286,7 @@ def tel():
 
 
 BUILDERS = {
-    "ev": ev, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
+    "ev": ev, "ev_b": ev_b, "ev_c": ev_c, "ambar": ambar, "fener": fener, "kuyu": kuyu, "kule": kule,
     "silahlik": silahlik, "istasyon": istasyon, # (the square: BuildingDefs._square)
     "tren_lokomotif": lokomotif, "tren_tender": tender, "tren_vagon": vagon, "tren_yuk": yuk,
     "oduncu": kesim, "tasci": tas_ocagi, "toplayici": toplayici, "camur": camur_ocagi,

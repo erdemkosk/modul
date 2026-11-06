@@ -1979,9 +1979,9 @@ func base_height(kind: String, pos: Vector3, yaw: float) -> float:
 
 ## A building site (or, `instant`, the building itself) of `kind` at `pos` turned `yaw`. What grows
 ## on its ground (trees, bushes, rocks) is cleared away.
-func place(kind: String, pos: Vector3, yaw: float) -> Building:
+func place(kind: String, pos: Vector3, yaw: float, way := "") -> Building:
 	var b := Building.new()
-	b.setup(kind)
+	b.setup(kind, way if way != "" else BuildingDefs.variant(kind, pos), BuildingDefs.look_seed(pos))
 	add_child(b)
 	b.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(pos.x, base_height(kind, pos, yaw), pos.z))
 	b.cells = footprint(kind, pos, yaw, 0.0 if BuildingDefs.DEFS[kind].role == "farm" else 0.5) # (a margin: paths keep off the walls)
@@ -2096,7 +2096,7 @@ func ground_at(p: Vector3) -> float:
 		if b.kind == "istasyon" and absf(l.x) <= sz.x * 0.5 + 3.0 and l.z > sz.y * 0.5 and l.z <= sz.y * 0.5 + 3.4:
 			g = maxf(g, b.global_position.y + 0.96) # (on the platform's boards)
 			continue
-		var deck := float(Building.STEPPED.get(b.kind, 0.0))
+		var deck := b.deck_out()
 		if absf(l.x) <= sz.x * 0.5 and l.z >= -sz.y * 0.5 and l.z <= sz.y * 0.5 + deck:
 			g = maxf(g, b.global_position.y + (0.47 if l.z <= sz.y * 0.5 else 0.45))
 	return g

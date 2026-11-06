@@ -232,6 +232,24 @@ static func annex() -> Array[Dictionary]:
 const MODEL := "res://assets/buildings/%s.glb"
 static var _models := {}
 
+## The ways a kind's built (its models, tools/blender/build_buildings.py): which one a building is
+## goes by where it stands, so a saved town comes back the same.
+const VARIANTS := {"ev": ["ev", "ev_b", "ev_c"]}
+
+
+## A number of its own for whatever stands at `pos` (the same every time it's put there).
+static func look_seed(pos: Vector3) -> int:
+	return hash(Vector2i(roundi(pos.x * 2.0), roundi(pos.z * 2.0)))
+
+
+## The model `kind` is built from at `pos`.
+static func variant(kind: String, pos: Vector3) -> String:
+	var ways: Array = VARIANTS.get(kind, [])
+	if ways.is_empty():
+		return kind
+	var pick := str(ways[look_seed(pos) % ways.size()])
+	return pick if ResourceLoader.exists(MODEL % pick) else kind
+
 
 static func recipe(kind: String) -> Array[Dictionary]:
 	if ResourceLoader.exists(MODEL % kind):

@@ -33,7 +33,7 @@ static func save(game: Node) -> bool:
 			charred.append(1 if p.charred else 0)
 			built.append(1 if p.built else 0)
 		var x := b.global_transform
-		bl.append({"kind": b.kind, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
+		bl.append({"kind": b.kind, "model": b.model, "x": x.origin.x, "z": x.origin.z, "yaw": x.basis.get_euler().y,
 			"state": b.state, "work": b.work, "delivered": b.delivered.duplicate(), "goods": b.goods.duplicate(),
 			"wanted": b.wanted, "level": b.level, "upgrading": b.upgrading, "plastered": b.plastered, "stove": b.stove,
 			"mode": b.mode, "casting": b.casting, "bowing": b.bowing, "ox": b.ox, "spur": b.spur, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
@@ -202,7 +202,11 @@ static func restore(game: Node, d: Dictionary) -> void:
 		if not BuildingDefs.DEFS.has(str(bd.kind)): # (a kind there is no more: folded into another)
 			made.append(null)
 			continue
-		var b := v.place(str(bd.kind), Vector3(float(bd.x), 0, float(bd.z)), float(bd.yaw))
+		# (the way it was built: a save from before there were others was the kind's own)
+		var way := str(bd.get("model", bd.kind))
+		if not ResourceLoader.exists(BuildingDefs.MODEL % way):
+			way = ""
+		var b := v.place(str(bd.kind), Vector3(float(bd.x), 0, float(bd.z)), float(bd.yaw), way)
 		made.append(b)
 		var st := str(bd.state)
 		if st == "site":

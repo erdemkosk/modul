@@ -144,8 +144,12 @@ static var _mats := {}
 static var _streams := {}
 
 
-func setup(k: String) -> void:
+## `way`: the way it's built (BuildingDefs.variant; its kind's own if none), `look`: its number for
+## the shade and paint it's given (BuildingDefs.look_seed; any, if none).
+func setup(k: String, way := "", look := -1) -> void:
 	kind = k
+	model = way if way != "" else k
+	_look_seed = look if look >= 0 else hash(get_instance_id())
 	def = BuildingDefs.def(k)
 	cost = (def.cost as Dictionary).duplicate()
 	for r: String in cost:
@@ -159,17 +163,16 @@ func setup(k: String) -> void:
 	body.collision_mask = 0
 	body.set_meta("building", self)
 	add_child(body)
-	for spec in BuildingDefs.recipe(k):
+	for spec in BuildingDefs.recipe(model):
 		_add_piece(spec)
 	for p in pieces:
 		p.stage = _stage_of(p)
 	pieces.sort_custom(func(a: Piece, b: Piece) -> bool: return a.stage * 1000.0 + a.aabb.position.y < b.stage * 1000.0 + b.aabb.position.y)
 	_share_cost()
-	var vary_seed := hash(get_instance_id())
 	for p in pieces:
 		body.add_child(p.shape)
 		add_child(p.mesh)
-		_vary(p, vary_seed)
+		_vary(p, _look_seed)
 		if p.tag == "door":
 			var left := p.aabb.get_center().x <= 0.01
 			var hinge := Vector3(p.aabb.position.x if left else p.aabb.end.x, 0.0, p.aabb.get_center().z)
@@ -181,6 +184,8 @@ func setup(k: String) -> void:
 ## Each building its own and light to draw far off: its timber a shade off the next one's, a house's
 ## trim and shutters in its own paint (building.gdshader `tone`, `hue`), and the small things on it
 ## (props, fittings, trim: under a metre) not drawn from further than the camera usually stands.
+var _look_seed := 0
+var model := "" ## the way it's built: its kind, or one of BuildingDefs.VARIANTS
 const HOUSE_PAINTS := [0.0, -1.2, 2.6, -2.95, 0.6] ## the trim's colour turned (radians): blue, green, rose, ochre, violet
 const PAINTED_TAGS := ["trim", "shutter", "barge", "finial", "rail"]
 const DETAIL_SIZE := 1.0 ## m: a piece no longer than this is a detail
@@ -345,12 +350,11 @@ static func material(stuff: String) -> Material:
 				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 				m.cull_mode = BaseMaterial3D.CULL_DISABLED
-			"char":
-				m.albedo_color = Color(0.07, 0.06, 0.05)
-				m.roughness = 1.0
-				m.emission_enabled = true
-				m.emission = Color(0.9, 0.25, 0.05)
-				m.emission_energy_multiplier = 0.25
+			"char": # (charcoal crazed in blocks, ash on it, a few cracks still glowing: char.gdshader)
+				var cm := ShaderMaterial.new()
+				cm.shader = preload("res://shaders/char.gdshader")
+				_mats[stuff] = cm
+				return cm
 			"window":
 				m.albedo_color = BuildingDefs.STUFF.window.color
 				m.emission_enabled = true
@@ -508,7 +512,7 @@ func show_laundry(on: bool) -> void:
 	if state != "done":
 		return
 	if _laundry == null:
-		if hash(get_instance_id()) % 2 == 0:
+		if _look_seed % 2 == 0:
 			return # (not every house has one)
 		_laundry = Node3D.new()
 		add_child(_laundry)
@@ -533,14 +537,14 @@ func show_laundry(on: bool) -> void:
 		line.position = Vector3(0, 1.9, back)
 		_laundry.add_child(line)
 		var cloths := [Color(0.85, 0.83, 0.76), Color(0.62, 0.2, 0.15), Color(0.35, 0.4, 0.5), Color(0.8, 0.78, 0.7), Color(0.5, 0.45, 0.35)]
-		var n := 3 + hash(get_instance_id()) % 3
+		var n := 3 + _look_seed % 3
 		for k in n:
 			var c := MeshInstance3D.new()
 			var cm := QuadMesh.new()
 			cm.size = Vector2(0.45 + 0.2 * (k % 2), 0.6 + 0.25 * ((k + 1) % 2))
 			c.mesh = cm
 			var m := StandardMaterial3D.new()
-			m.albedo_color = cloths[(k + hash(get_instance_id())) % cloths.size()]
+			m.albedo_color = cloths[(k + _look_seed) % cloths.size()]
 			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m.roughness = 1.0
 			c.material_override = m
@@ -586,7 +590,7 @@ func set_trim(on: bool) -> void:
 		add_child(_shutters)
 		var paints := [Color(0.18, 0.38, 0.32), Color(0.2, 0.3, 0.5), Color(0.55, 0.16, 0.12), Color(0.85, 0.82, 0.72), Color(0.3, 0.45, 0.2)]
 		var m := StandardMaterial3D.new()
-		m.albedo_color = paints[hash(get_instance_id()) % paints.size()]
+		m.albedo_color = paints[_look_seed % paints.size()]
 		m.roughness = 0.8
 		var white := StandardMaterial3D.new()
 		white.albedo_color = Color(0.9, 0.88, 0.82)
@@ -1007,6 +1011,26 @@ func _make_scaffold() -> void:
 				var o: Vector3 = at + (Vector3(0, 0, off) if side < 2 else Vector3(off, 0, 0))
 				mi.position = o + Vector3(0, (h + 0.6) * 0.5 - 0.3, 0)
 				_scaffold.add_child(mi)
+		# a brace across each bay on the outer face, one way then the other, so it stands stiff
+		for k in n:
+			var t0 := -along * 0.5 + along * float(k) / n
+			var t1 := -along * 0.5 + along * float(k + 1) / n
+			var run := Vector2(t1 - t0, h).length()
+			var brace := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.06, run, 0.06)
+			brace.mesh = bm
+			brace.material_override = wood
+			var lean := atan2(t1 - t0, h) * (1.0 if k % 2 == 0 else -1.0)
+			var mid := (t0 + t1) * 0.5
+			var face := 0.42
+			if side < 2:
+				brace.position = Vector3(mid, h * 0.5, (-oz - face) if side == 0 else (oz + face))
+				brace.rotation = Vector3(0, 0, -lean)
+			else:
+				brace.position = Vector3((-ox - face) if side == 2 else (ox + face), h * 0.5, mid)
+				brace.rotation = Vector3(lean, 0, 0)
+			_scaffold.add_child(brace)
 	# the decks: ledgers and planks all round at each level
 	var y := DECK
 	while y < h:
@@ -1020,6 +1044,13 @@ func _make_scaffold() -> void:
 			deck.material_override = plank
 			deck.position = (Vector3(0, y, -oz if side == 0 else oz)) if side < 2 else Vector3(-ox if side == 2 else ox, y, 0)
 			_scaffold.add_child(deck)
+			var toe := MeshInstance3D.new() # (a toe board along its outer edge, so nothing's kicked off)
+			var tm := BoxMesh.new()
+			tm.size = Vector3(long, 0.16, 0.03) if side < 2 else Vector3(0.03, 0.16, long)
+			toe.mesh = tm
+			toe.material_override = plank
+			toe.position = deck.position + ((Vector3(0, 0.1, -0.34 if side == 0 else 0.34)) if side < 2 else Vector3(-0.34 if side == 2 else 0.34, 0.1, 0))
+			_scaffold.add_child(toe)
 			var rail := MeshInstance3D.new()
 			var rm := BoxMesh.new()
 			rm.size = Vector3(long, 0.05, 0.05) if side < 2 else Vector3(0.05, 0.05, long)
@@ -1614,7 +1645,7 @@ func _add_extra(specs: Array[Dictionary], up: bool) -> void:
 		p.built = true
 		body.add_child(p.shape)
 		add_child(p.mesh)
-		_vary(p, hash(get_instance_id())) # (painted as the house it's on)
+		_vary(p, _look_seed) # (painted as the house it's on)
 		p.mesh.cast_shadow = _shadow()
 		if not up:
 			p.alive = false
@@ -1642,7 +1673,7 @@ func _put_back(p: Piece) -> void:
 	mi.transform = p.xf * p.mesh_local
 	add_child(mi)
 	p.mesh = mi
-	_vary(p, hash(get_instance_id()))
+	_vary(p, _look_seed)
 	_weather_show()
 	p.shape.set_deferred("disabled", false)
 	p.alive = true
@@ -2378,6 +2409,12 @@ func door() -> Vector3:
 
 
 const STEPPED := {"ev": 1.7, "ambar": 1.7, "kamp": 0.0} ## kinds with a floor to climb to: their deck, m past the front wall
+const STEPPED_MODEL := {"ev_b": 0.0} ## a way of building a kind whose deck's other than its kind's (a house with no porch)
+
+
+## How far its deck runs out past its front wall (its model's, its kind's).
+func deck_out() -> float:
+	return float(STEPPED_MODEL.get(model, STEPPED.get(kind, 0.0)))
 const FLOOR := 0.45 ## m the floor stands over its base
 
 var steps_out := 0.0 ## m the steps run out from the front
@@ -2385,7 +2422,7 @@ var steps_rise := 0.0 ## m they climb
 
 
 func _front() -> float:
-	return (def.size as Vector2).y * 0.5 + float(STEPPED.get(kind, 0.0))
+	return (def.size as Vector2).y * 0.5 + deck_out()
 
 
 ## Where it stands high off the ground at its front: steps up, with cheeks, and the door at their foot.
