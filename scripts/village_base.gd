@@ -1546,14 +1546,7 @@ func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 	# the sleepers
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	var sl := BoxMesh.new()
-	sl.size = Vector3(2.5 * gauge, 0.14, 0.24)
-	var sm := StandardMaterial3D.new()
-	sm.vertex_color_use_as_albedo = true
-	sm.roughness = 0.95
-	sl.material = sm
-	mm.mesh = sl
+	mm.mesh = RailWorks.sleeper_mesh() # (top at 0, the rails' foot)
 	var every := 2
 	mm.instance_count = lines.size() / every
 	for j in mm.instance_count:
@@ -1565,12 +1558,16 @@ func _rail_mesh(line: PackedVector3Array, gauge := 1.0) -> void:
 		var tie := Vector3(c.x, maxf(nav.height(c.x, c.z), c.y) + 0.2, c.z)
 		if nav.height(c.x, c.z) > c.y + RailWorks.UNDER:
 			tie.y -= 30.0 # (in a tunnel)
-		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), tie))
-		var shade := randf_range(0.26, 0.38)
-		mm.set_instance_color(j, Color(shade, shade * 0.8, shade * 0.6))
+		var yaw := Basis(Vector3.UP, randf_range(-0.03, 0.03)) # (laid by hand: none quite square)
+		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP) * yaw * Basis.from_scale(Vector3(gauge, 1, 1)), tie))
 	var smi := MultiMeshInstance3D.new()
 	smi.multimesh = mm
 	add_child(smi)
+	# where a side line stops, a buffer stop across it (the main line runs on off the map)
+	if gauge != 1.0:
+		var dead := lines.duplicate() # (a side line runs from the building's door to the main line)
+		dead.reverse()
+		RailWorks.buffer_stop(self, dead, gauge)
 	if gauge == 1.0:
 		RailWorks.portals(self, lines, nav)
 	# the trestle under it where it's up off the ground: a bent of two piles every 3 m, braced

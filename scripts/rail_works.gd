@@ -421,7 +421,17 @@ static func buffer_stop(parent: Node3D, line: PackedVector3Array, gauge := 1.0) 
 	back.y = 0.0
 	back = back.normalized() if back.length() > 0.01 else Vector3.FORWARD
 	var b := Basis.looking_at(-back, Vector3.UP).scaled(Vector3.ONE * gauge)
-	return model(parent, "tampon", Transform3D(b, end + Vector3.UP * 0.14 - back * 0.4))
+	# set back down the line, clear of the loading deck at its end, on the line's own height there
+	var at := end
+	var run := 0.0
+	for k in range(line.size() - 2, -1, -1):
+		var step := Vector2(line[k].x - line[k + 1].x, line[k].z - line[k + 1].z).length()
+		if run + step >= 3.4:
+			at = line[k + 1].lerp(line[k], (3.4 - run) / maxf(step, 0.001))
+			break
+		run += step
+		at = line[k]
+	return model(parent, "tampon", Transform3D(b, at + Vector3.UP * 0.14))
 
 
 static var _sleeper: ArrayMesh
