@@ -4,6 +4,7 @@ extends Node3D
 ## -> village_work -> village.gd)
 
 signal message(text: String, kind: String) ## kind: "info", "good", "bad"
+signal grown(camp: Building, depot: Building) ## a camp store taken down, the depot built round it in its place
 
 
 const START_STOCK := {"odun": 40, "tas": 12, "yiyecek": 250}
@@ -2788,8 +2789,11 @@ func _on_finished(b: Building) -> void:
 			"oda": message.emit("%s büyütüldü: artık %d yatak" % [b.display_name(), b.beds()], "good")
 			"siva": message.emit("%s sıvandı: daha az yakacak yakar" % b.display_name(), "good")
 			"soba": message.emit("%s evine kerpiç soba yapıldı" % b.display_name(), "good")
+			"hucre": message.emit("%s yanına hücre yapıldı: artık %d esir alır" % [b.display_name(), b.cell_count()], "good")
 		_house_people()
 		return
+	if b.kind == "ambar" and not b.repaired:
+		_grown(b)
 	if b.kind != "yigin":
 		message.emit("%s %s" % [b.display_name(), "onarıldı" if b.repaired else "tamamlandı"], "good")
 	if b.kind == "istasyon" and not b.repaired:
@@ -3249,16 +3253,29 @@ func mud_near(p: Vector3) -> bool:
 ## `what` done to a house (BuildingDefs.UPGRADES): its stuff to be carried in and built
 ## (Building.start_upgrade); the back room's ground staked out first.
 func upgrade(b: Building, what := "oda") -> String:
-	if b.def.role != "house":
-		return "Yalnızca evlere yapılır"
+	var role := str(BuildingDefs.UPGRADES[what].get("for", "house"))
+	if b.def.role != role:
+		return "Yalnızca evlere yapılır" if role == "house" else "Yalnızca silahlığa yapılır"
 	if b.has_upgrade(what):
-		return "Bu evde zaten var"
+		return "Bu evde zaten var" if role == "house" else "Yanında yeterince hücre var"
 	if b.upgrading != "":
-		return "Bu evde zaten iş var"
+		return "Bu evde zaten iş var" if role == "house" else "Burada zaten iş var"
 	if b.is_burning():
 		return "Önce yangın sönmeli"
 	if b.state != "done" or b.fallen_count() > 0:
 		return "Önce onarılmalı"
+	if what == "hucre":
+		var why := cell_room_check(b)
+		if why != "":
+			return why
+		var side := cell_side(b)
+		b.cell_sides.resize(b.cell_rooms)
+		b.cell_sides.append(side)
+		if not b.start_upgrade(what):
+			b.cell_sides.resize(b.cell_rooms)
+			return "Şu an yapılamaz"
+		_close_rect(b, BuildingDefs.cell_rect(side))
+		return "" # (its guards stay at their posts while it's built on)
 	if what != "oda":
 		if not b.start_upgrade(what):
 			return "Şu an yapılamaz"
@@ -3288,6 +3305,158 @@ func upgrade(b: Building, what := "oda") -> String:
 	_close_annex(b)
 	_let_go(b)
 	return ""
+
+
+## The side of an armoury its next lock-up goes on: the right first, the left if that's taken
+## (or won't do and the left will).
+func cell_side(b: Building) -> int:
+	if b.cell_rooms >= 1 and not b.cell_sides.is_empty():
+		return 1 - b.cell_sides[0]
+	return 0 if _rect_why(b, BuildingDefs.cell_rect(0)) == "" or _rect_why(b, BuildingDefs.cell_rect(1)) != "" else 1
+
+
+## Why a lock-up can't go on beside armoury `b` ("" if it can).
+func cell_room_check(b: Building) -> String:
+	var why := _rect_why(b, BuildingDefs.cell_rect(cell_side(b)))
+	return "" if why == "" else "Hücre sığmıyor: " + why
+
+
+## Why `r` (in `b`'s own x, z) can't be built on beside it ("" if it can): too steep, water, another
+## building in the way.
+func _rect_why(b: Building, r: Rect2) -> String:
+	var y0 := b.global_position.y
+	for c: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
+		var l := r.position + r.size * c
+		var w := b.global_transform * Vector3(l.x, 0, l.y)
+		var h := terrain.height_at(w.x, w.z)
+		if h > y0 + 0.25 or h < y0 - 2.8:
+			return "yanı çok eğimli"
+	for c in _rect_cells(b, r.grow(0.3)):
+		if not nav.is_ground_open(Nav.center_of(c)):
+			return "yanında su ya da uçurum var"
+	var room := r.grow(0.4)
+	for o in buildings:
+		if o == b or o.state == "gone":
+			continue
+		var os: Vector2 = o.def.size
+		for c: Vector2 in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-0.5, 0.5), Vector2(0.5, 0.5), Vector2.ZERO]:
+			var l := b.global_transform.affine_inverse() * (o.global_transform * Vector3(c.x * os.x, 0, c.y * os.y))
+			if room.has_point(Vector2(l.x, l.z)):
+				return "yanında %s var" % o.display_name()
+	return ""
+
+
+## `r`'s ground (in `b`'s own x, z) shut to walkers, its cells `b`'s.
+func _close_rect(b: Building, r: Rect2) -> void:
+	var cells := _rect_cells(b, r.grow(0.3))
+	nav.set_building(cells, true)
+	for c in cells:
+		if not c in b.cells:
+			b.cells.append(c)
+
+
+## The nav cells under `r`, in `b`'s own x, z.
+func _rect_cells(b: Building, r: Rect2) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var inv := b.global_transform.affine_inverse()
+	var reach := b.radius + r.size.length() + absf(r.get_center().x) + 6.0
+	var c0 := Nav.cell_of(b.global_position - Vector3(reach, 0, reach))
+	var c1 := Nav.cell_of(b.global_position + Vector3(reach, 0, reach))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var c := Vector2i(cx, cz)
+			var l := inv * Nav.center_of(c)
+			if r.has_point(Vector2(l.x, l.z)):
+				out.append(c)
+	return out
+
+
+# --- A camp store grown into a depot (BÜYÜT) ---------------------------------------------------------
+
+## The depot being built round camp store `camp`, if one is (a site of a depot on its very spot).
+func grow_site(camp: Building) -> Building:
+	for o in buildings:
+		if o.kind == "ambar" and o.state == "site" and Vector2(o.global_position.x - camp.global_position.x, o.global_position.z - camp.global_position.z).length() < 0.5:
+			return o
+	return null
+
+
+## Why camp store `camp` can't be grown into a depot where it stands ("" if it can): the depot's
+## 9 x 7 m has to fit round its 6 x 5.
+func grow_why(camp: Building) -> String:
+	if camp.kind != "kamp":
+		return "Yalnızca kamp deposu büyür"
+	if camp.state != "done" or camp.fallen_count() > 0:
+		return "Önce onarılmalı"
+	if camp.is_burning():
+		return "Önce yangın sönmeli"
+	if grow_site(camp) != null:
+		return "Zaten büyütülüyor"
+	var pos := camp.global_position
+	var yaw := camp.global_basis.get_euler().y
+	var sz: Vector2 = BuildingDefs.def("ambar").size
+	var bs := Basis(Vector3.UP, yaw)
+	var lo := INF
+	var hi := -INF
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1), Vector2(0, 0), Vector2(0, 1.4)]:
+		var p := pos + bs * Vector3(c.x * sz.x * 0.5, 0, c.y * sz.y * 0.5)
+		var h := terrain.height_at(p.x, p.z)
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+	if hi - lo > 2.6:
+		return "Depo 9 × 7 m: bu yerde zemin çok eğimli"
+	var own := {}
+	for c in camp.cells:
+		own[c] = true
+	for c in footprint("ambar", pos, yaw, 1.0):
+		if not nav.is_ground_open(Nav.center_of(c)):
+			return "Depo 9 × 7 m: yanında su ya da uçurum var"
+		if not nav.can_build(Nav.center_of(c)) and not own.has(c):
+			var by := ""
+			for o in buildings:
+				if o != camp and o.state != "gone" and c in o.cells:
+					by = o.display_name()
+					break
+			return "Depo 9 × 7 m: sığmıyor, %s çok yakın" % by if by != "" else "Depo 9 × 7 m: sığmıyor, yanı dolu"
+	var mine := _rect_poly(pos, yaw, Rect2(-sz * 0.5, sz))
+	for o in buildings:
+		if o == camp or o.state == "gone" or o.state == "ghost" or o.def.role != "house":
+			continue
+		if not Geometry2D.intersect_polygons(mine, _rect_poly(o.global_position, o.global_rotation.y, yard_rect(o.def.size))).is_empty():
+			return "Depo 9 × 7 m: %s bahçesine giriyor" % o.display_name()
+	return ""
+
+
+## Camp store `camp` to be grown into a depot: a depot's site staked out round it, the difference
+## in cost to be carried to it (BuildingDefs.grow_cost). The camp goes on storing till the depot's
+## up, then what's in it is in the depot and the camp's gone. "" or why not.
+func grow(camp: Building) -> String:
+	var why := grow_why(camp)
+	if why != "":
+		return why
+	var site := place("ambar", camp.global_position, camp.global_basis.get_euler().y)
+	site.set_cost(BuildingDefs.grow_cost())
+	return ""
+
+
+## A depot finished round a camp store: the camp's goods in it, the camp taken down.
+func _grown(depot: Building) -> void:
+	for camp: Building in buildings.duplicate():
+		if camp.kind != "kamp" or camp.state == "gone" or Vector2(camp.global_position.x - depot.global_position.x, camp.global_position.z - depot.global_position.z).length() > 0.5:
+			continue
+		var goods: Dictionary = camp.goods.duplicate()
+		camp.goods.clear()
+		grown.emit(camp, depot)
+		_unplace(camp)
+		camp.state = "gone"
+		camp.queue_free()
+		nav.set_building(depot.cells, true) # (the camp's cells let go: the depot's own shut again)
+		for r: String in goods:
+			var n := int(goods[r])
+			if n > 0:
+				depot.add_goods(r, n)
+		message.emit("Kamp deposu Depo'ya büyütüldü: içindekiler yerinde, artık 400 yük alır", "good")
+		return
 
 
 ## The nav cells under a house's back room.

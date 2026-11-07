@@ -32,7 +32,7 @@ const STEPS := [
 	["Köyü bildir", "İstasyon > TELGRAFHANE > KÖYÜ BİLDİR: göçmenler gelsin"],
 	["Sözleşme al", "TELGRAFHANE: bir sözleşmeyi kabul et,
      mallarını trene yükle"],
-	["Korun", "SAVUNMA > GÖZCÜ KULESİ ya da SİLAHLIK: baskın gelmeden"],
+	["Korun", "SAVUNMA > SİLAHLIK (tüfek, bekçi), GÖZCÜ KULESİ (görür,\n     haber verir): baskın gelmeden"],
 ]
 var _guide: PanelContainer
 var _guide_head: Label
@@ -357,6 +357,9 @@ func _troubles() -> Array:
 			waiting += 1
 	if idle:
 		out.append(["%d işyeri boş" % nidle, "Kartından işçi ata", idle.global_position, false])
+	var dry := v.dry_houses()
+	if dry.size() >= 2:
+		out.append(["%d ev kuyuya uzak" % dry.size(), "Suyu uzaktan taşıyorlar, işleri yavaş: yakınlarına KUYU kur (45 m)", dry[0].global_position, false])
 	if crowded:
 		out.append(["Ev dolu: oda ekle", "Karttaki ODA EKLE ile büyüt (malzeme varsa kendileri de ekler)", crowded.global_position, false])
 	if v.knows("telgraf") and not v.trade.offers.is_empty():

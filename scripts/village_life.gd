@@ -336,6 +336,8 @@ func _morning() -> void:
 				v.think("home", "Sıvalı, sıcak bir evde oturuyor", 3.0, day_s * 1.05)
 			if h.residents.size() >= h.beds() and h.beds() > 0:
 				v.think("crowd", "Evi dolu, sıkışık", -3.0, day_s)
+		if is_instance_valid(h) and h.state == "done" and h.water_far and not v.is_child:
+			v.think("water", "Suyu her gün uzaktan kovayla taşıyor", -4.0, day_s)
 	for b in buildings:
 		if b.def.role == "house" and b.cold_night:
 			b.cold_night = false
@@ -625,6 +627,40 @@ func _plan_idle(v: Villager) -> void:
 	else:
 		what = [{"t": "go", "to": p}, {"t": "work", "time": randf_range(2.0, 5.0), "anim": "idle"}, {"t": "go", "to": at + Vector3(randf_range(-8, 8), 0, randf_range(1.5, 9))}]
 	v.give(what, "Boşta", null, true)
+
+
+## Water for each house: a finished well within WELL_REACH, or the river within RIVER_REACH. Short
+## of both, its people lose time every day walking for it (Villager.knack) and grumble.
+func _water() -> void:
+	var wells := _wells()
+	for b in buildings:
+		if b.def.role != "house" or b.state != "done":
+			continue
+		var w := _nearest(wells, b.global_position)
+		b.water_m = w.global_position.distance_to(b.global_position) if w else INF
+		if b._river_near < 0:
+			b._river_near = 1 if _river_within(b.global_position, BuildingDefs.RIVER_REACH) else 0
+		b.water_far = b.water_m > BuildingDefs.WELL_REACH and b._river_near == 0
+
+
+## Whether there's open water (the river, the lake) within `r` m of `p`.
+func _river_within(p: Vector3, r: float) -> bool:
+	for ring in [0.35, 0.7, 1.0]:
+		for k in 16:
+			var a := k * TAU / 16.0
+			var q := p + Vector3(cos(a), 0, sin(a)) * r * float(ring)
+			if terrain.is_water(q.x, q.z):
+				return true
+	return false
+
+
+## The houses short of water (Building.water_far).
+func dry_houses() -> Array[Building]:
+	var out: Array[Building] = []
+	for b in buildings:
+		if b.def.role == "house" and b.state == "done" and b.water_far:
+			out.append(b)
+	return out
 
 
 func _wells() -> Array[Building]:

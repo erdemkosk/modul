@@ -184,6 +184,9 @@ func _ready() -> void:
 	marks.game = self
 	add_child(marks)
 	village.message.connect(hud.toast)
+	village.grown.connect(func(camp: Building, depot: Building) -> void:
+		if selected == camp:
+			selected = depot)
 	raids.message.connect(hud.toast)
 	raids.hud = hud
 	village.hud = hud
@@ -2165,8 +2168,15 @@ func clear_work_area() -> void:
 func upgrade_selected(what := "oda") -> void:
 	if selected and is_instance_valid(selected):
 		var why := village.upgrade(selected, what)
-		var done := {"oda": "%s büyütülecek: arkasına oda eklenecek", "siva": "%s sıvanacak: çamur taşınacak", "soba": "%s evine soba yapılacak: kerpiç taşınacak"}
+		var done := {"oda": "%s büyütülecek: arkasına oda eklenecek", "siva": "%s sıvanacak: çamur taşınacak", "soba": "%s evine soba yapılacak: kerpiç taşınacak", "hucre": "%s yanına hücre yapılacak: odun ve taş taşınacak"}
 		hud.toast(why if why != "" else str(done[what]) % selected.display_name(), "info")
+
+
+## The selected camp store grown into a depot where it stands (BÜYÜT).
+func grow_selected() -> void:
+	if selected and is_instance_valid(selected):
+		var why := village.grow(selected)
+		hud.toast(why if why != "" else "Kamp deposu Depo'ya büyütülecek: %s taşınacak, yük yerinde kalır" % BuildingDefs.cost_text_of(BuildingDefs.grow_cost()), "info")
 
 
 ## A mud pit put to bricks, or back to mud.

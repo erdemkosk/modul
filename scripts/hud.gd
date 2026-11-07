@@ -15,12 +15,12 @@ extends CanvasLayer
 const WEATHER_NAMES := {"clear": "Açık", "cloudy": "Bulutlu", "overcast": "Kapalı", "rain": "Yağmurlu",
 	"storm": "Fırtına", "fog": "Sisli", "snow": "Karlı", "frost": "Ayaz"}
 const CATS := [["KASABA", ["kamp", "ev", "ambar", "kuyu", "fener", "meydan", "okuma"]], ["ÜRETİM", ["tarla", "oduncu", "sifaci"]],
-	["TAŞIMA", ["istasyon", "yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci", "hapishane"]], ["EMİRLER", ["kes", "kesme", "tuzak", "mayin", "hendek"]]]
+	["TAŞIMA", ["istasyon", "yol", "arabaci"]], ["SAVUNMA", ["sur", "kapi", "kule", "silahlik", "siper", "tel", "makineli", "demirci"]], ["EMİRLER", ["kes", "kesme", "tuzak", "mayin", "hendek"]]]
 ## What's ordered on the ground rather than built (Main.AREA_ORDERS): the build bar's EMİRLER.
 const ORDERS := {"kes": {"name": "Kes", "gives": "herkes önce bunları keser", "desc": "Bir alan sürükle ya da bir ağaca tıkla: kırmızı kurdele bağlanır, oduncu becerisi 'hiç' olmayan herkes işini bırakıp önce bu ağaçları keser, tomrukları depoya taşınır. Bitince herkes işine döner. Bina gerekmez."},
 	"kesme": {"name": "Kesme", "gives": "kesim işaretini kaldırır", "desc": "Bir alan sürükle: içindeki ağaçların kesim işareti kalkar."},
 	"mayin": {"name": "Mayın", "gives": "düşmanı, kamyonu, tankı uçurur", "needs": "patlayici", "desc": "Bir alan sürükle ya da bir yere tıkla: toprağa gizli kara mayınları gömülür (mayın başı 1 demir, 1 kömür; 5 m arayla). Üstüne basan firari ya da asker, üstünden geçen kamyon ya da tank havaya uçar; tankın paleti kopar, yerinde kalır. Köylüler yerini bilir, basmaz."},
-	"hendek": {"name": "Hendek", "gives": "milise siper", "desc": "Bir çizgi sürükle: boştaki köylüler kürekle bir siper hendeği kazar. Hendekteki milis siperdedir: onu vurmak iki kat zor. Bedava, emek ister."},
+	"hendek": {"name": "Hendek", "gives": "bedava · yavaş · en iyi siper", "desc": "Bir çizgi sürükle: boştaki köylüler kürekle bir siper hendeği kazar. Bedava ama yavaş: her 3 m'si bir kişinin yarım dakikalık kürek işi. Kazılınca kum torbasından iyi korur: içindekini vurmak dört kat zor, top parçası da çeyrek işler. Hemen siper gerekirse KUM TORBASI MEVZİ kur (taş ister)."},
 	"tuzak": {"name": "Tuzak", "gives": "firariyi yaralar, yavaşlatır", "desc": "Bir alan sürükle ya da bir yere tıkla: gizli kazık çukurları kazılır (çukur başı 2 odun). Üstünden geçen firari yaralanır, topallar; çukur bozulur. Aynı yere yeniden TUZAK verince bozulanlar kurulur. Köylüler yerini bilir, düşmez."}}
 const SPEEDS := [1.0, 2.0, 4.0]
 ## Every key, in one place (the help card, F1), by what it's for: the keys of each line (a "+" or
@@ -1029,6 +1029,10 @@ func kind_at(n: int) -> String:
 var _dial: SeasonDial
 var _card_jail: VBoxContainer ## a jail's card: a row each held, with what to do with them
 var _jail_rows: Array = [] ## the prisoner each row was built for
+var _why_t := 0.0 ## seconds to the next look at why BÜYÜT / HÜCRE EKLE can't be done
+var _why_for: Building
+var _grow_why := ""
+var _cell_why := ""
 var _card_extra: VBoxContainer ## a station's orders, a reading room's studies
 var _extra_sig := "" ## what it was last built for (rebuilt only when that changes)
 var _extra_status: Label
@@ -1129,6 +1133,7 @@ func _make_card() -> void:
 		var up: Dictionary = BuildingDefs.UPGRADES[what]
 		_btn["up_" + what] = _add(_card_acts, str(up.name), func() -> void: game.upgrade_selected(what),
 			"%s (%s)" % [up.tip, BuildingDefs.cost_text_of(up.cost)])
+	_btn.grow = _add(_card_acts, "BÜYÜT: DEPO", func() -> void: game.grow_selected(), "")
 	_btn.mode = _add(_card_acts, "KERPİÇ YAP", func() -> void: game.toggle_mode_selected(), "Çamuru kalıba döküp kerpiç kurutsunlar / yalnızca çamur kazsınlar")
 	_btn.demolish = _add(_card_acts, "YIK", func() -> void: game.demolish_selected(), "Binayı kaldır (Del)")
 	_btn.look = _add(_card_acts, "ODAKLAN", func() -> void: game.focus_building(), "Kamerayı binaya götür")
@@ -2329,8 +2334,10 @@ func _update_card() -> void:
 	(_btn.gate_lock as Button).visible = false
 	(_btn.gates_on as Button).visible = false
 	(_btn.gates_off as Button).visible = false
+	if game.selected != null and not is_instance_valid(game.selected): # (taken down under the card: a camp grown into a depot)
+		game.selected = null
 	var b: Building = game.selected
-	if b == null or not is_instance_valid(b) or b.state == "gone":
+	if b == null or b.state == "gone":
 		_card.visible = false
 		return
 	_card.visible = true
@@ -2353,6 +2360,7 @@ func _update_card() -> void:
 	_fill_extra(b)
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = b.can_upgrade(what)
+	_fill_grow(b)
 	(_btn.mode as Button).visible = b.state == "done" and b.kind == "camur"
 	(_btn.spur as Button).visible = b.state == "done" and not b.spur and b != game.village.depot() and b.def.role in ["store", "work"] and game.village.knows("dekovil")
 	if (_btn.spur as Button).visible:
@@ -2373,7 +2381,7 @@ func _update_card() -> void:
 	var lines: Array[String] = []
 	match b.state:
 		"site", "repair":
-			lines.append(({"oda": "Büyütülüyor: %%%d", "siva": "Sıvanıyor: %%%d", "soba": "Soba yapılıyor: %%%d"}.get(b.upgrading, "Onarılıyor: %%%d") if b.state == "repair" else "İnşa ediliyor: %%%d · " + b.stage_name()) % int(b.progress() * 100.0))
+			lines.append(({"oda": "Büyütülüyor: %%%d", "siva": "Sıvanıyor: %%%d", "soba": "Soba yapılıyor: %%%d", "hucre": "Hücre yapılıyor: %%%d"}.get(b.upgrading, "Onarılıyor: %%%d") if b.state == "repair" else "İnşa ediliyor: %%%d · " + b.stage_name()) % int(b.progress() * 100.0))
 			var need: Array[String] = []
 			for r: String in b.cost:
 				need.append("%s %d/%d" % [BuildingDefs.RES_NAMES[r], int(b.delivered[r]), int(b.cost[r])])
@@ -2415,6 +2423,12 @@ func _update_card() -> void:
 			has.append("kerpiç soba")
 		if not has.is_empty():
 			lines.append("Ev: %s · yakacak %%%d" % [", ".join(has), roundi(b.fuel_mul() * 100.0)])
+		if b.water_far:
+			lines.append(("Kuyu uzak: en yakını %d m" % roundi(b.water_m) if b.water_m < INF else "Kuyu yok") + " (45 m içinde olmalı). Su uzaktan taşınıyor: ev halkı %%%d yavaş çalışır, morali düşer" % roundi((1.0 - BuildingDefs.WATER_FAR_WORK) * 100.0))
+		elif b.water_m <= BuildingDefs.WELL_REACH:
+			lines.append("Su: kuyu %d m" % roundi(b.water_m))
+		else:
+			lines.append("Su: ırmak yakın")
 	if b.kind == "camur" and b.state == "done":
 		lines.append("Yapılan: " + ("kerpiç" if b.mode == "kerpic" else "çamur"))
 		if b.drying_count() > 0:
@@ -2424,6 +2438,13 @@ func _update_card() -> void:
 			elif Weather.rain_now > 0.15:
 				why = " (yağmurda yavaş)"
 			lines.append("Rafta kuruyan: %d kerpiç%s" % [b.drying_count(), why])
+	if b.kind == "kamp" and b.state == "done":
+		var gs: Building = game.village.grow_site(b)
+		if gs:
+			lines.append("Depoya büyütülüyor: %%%d (yük yerinde kalır)" % int(gs.progress() * 100.0))
+	if b.def.role == "tower" and b.state == "done":
+		var up := b.workers.any(func(x: Variant) -> bool: return is_instance_valid(x) and (x as Villager).perched == b)
+		lines.append(("Gözcü kulede: %d m içini karanlıkta da görür" % roundi(Raids.TOWER_SEE) if up else "Kulede gözcü yok: göremez, haber veremez") + ((" · şu an %d düşman görüyor" % game.village.raids.spotted) if up and game.village.raids and game.village.raids.spotted > 0 else ""))
 	if b.state == "done" and b.def.role in ["work", "farm", "research", "smith", "healer"] and b.idle_note != "":
 		lines.append(b.idle_note)
 	var standing := b.standing_share()
@@ -2451,6 +2472,10 @@ func _update_card() -> void:
 		lines.append("Rafta: %d Mosin · %d fişek · %d yay · %d ok" % [b.arms, b.ammo, b.bows, b.arrows])
 		lines.append("Fişek dökümü: %s" % ("açık · her sabah 6 fişek (2 taş, 1 odun)" if b.casting else "kapalı"))
 		lines.append("Milis: %d tüfekçi · %d okçu%s" % [rifles, archers, (" · %d elle işaretli" % any) if any > 0 else ""])
+		if b.cell_count() > 0:
+			lines.append("Hücreler: %d esir / %d yer" % [b.prisoners.size(), b.cell_count()])
+		else:
+			lines.append("Hücre yok: HÜCRE EKLE ile yaralı düşen firariler buraya kapatılır")
 		if not b.training.is_empty():
 			var q: Array[String] = []
 			for t in b.training:
@@ -2490,6 +2515,29 @@ func _update_card() -> void:
 		_card_count.tooltip_text += "\n+ ile işçi iste ya da ATA'dan birini seç"
 
 
+## The camp store's BÜYÜT (into a depot where it stands) and the armoury's HÜCRE EKLE: shown when
+## they can be asked for, greyed with the reason when the ground won't have them.
+func _fill_grow(b: Building) -> void:
+	var v: Village = game.village
+	var gb: Button = _btn.grow
+	gb.visible = b.kind == "kamp" and b.state == "done" and v.grow_site(b) == null
+	var cb: Button = _btn.up_hucre
+	_why_t -= get_process_delta_time()
+	if _why_for != b or _why_t <= 0.0:
+		_why_for = b
+		_why_t = 0.5
+		_grow_why = v.grow_why(b) if gb.visible else ""
+		_cell_why = v.cell_room_check(b) if cb.visible else ""
+	if gb.visible:
+		gb.disabled = _grow_why != ""
+		gb.text = "BÜYÜT: DEPO" if _grow_why == "" else "BÜYÜTÜLEMEZ"
+		gb.tooltip_text = ("Yerinde Depo'ya çevir: 400 yük, içindekiler kalır (%s; tam depo %s)" % [BuildingDefs.cost_text_of(BuildingDefs.grow_cost()), BuildingDefs.cost_text("ambar")]) if _grow_why == "" else _grow_why
+	if cb.visible:
+		var up: Dictionary = BuildingDefs.UPGRADES.hucre
+		cb.disabled = _cell_why != ""
+		cb.tooltip_text = ("%s (%s)" % [up.tip, BuildingDefs.cost_text_of(up.cost)]) if _cell_why == "" else _cell_why
+
+
 ## A gate's card: how it stands, and the bar.
 func _gate_card(g: Gate) -> void:
 	_wall_card(g.wall)
@@ -2520,6 +2568,7 @@ func _wall_card(w: Wall) -> void:
 	(_btn.repair as Button).visible = false
 	for what: String in BuildingDefs.UPGRADES:
 		(_btn["up_" + what] as Button).visible = false
+	(_btn.grow as Button).visible = false
 	(_btn.mode as Button).visible = false
 	(_btn.area as Button).visible = false
 	(_btn.no_area as Button).visible = false
@@ -2812,7 +2861,7 @@ func _fill_extra(b: Building) -> void:
 
 
 func _fill_jail(b: Building) -> void:
-	var held: Array = b.prisoners if b.def.role == "jail" and b.state == "done" else []
+	var held: Array = b.prisoners if b.cell_count() > 0 and b.state in ["done", "repair"] else []
 	_card_jail.visible = not held.is_empty()
 	if held != _jail_rows: # (rebuilt only when who's held changes)
 		_jail_rows = held.duplicate()

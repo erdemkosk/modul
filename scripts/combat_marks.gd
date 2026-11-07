@@ -18,7 +18,7 @@ const HEAD := 2.15 ## m over the feet the slip sits
 const FAR := 260.0 ## m from the view where the slips have faded out
 const BAR := Vector2(30.0, 5.0) ## the strip at its full size, px
 const FLASH := 0.45 ## s a strip flares red when struck
-const TOWN := Color(0.2, 0.27, 0.52) ## Ui.P_BLUE
+const TOWN := Color(0.5, 0.3, 0.07) ## Ui.P_BLUE
 const ALLY := Color(0.18, 0.4, 0.2) ## Ui.P_GREEN
 const FOE := Color(0.6, 0.17, 0.12) ## Ui.P_RED, dulled
 

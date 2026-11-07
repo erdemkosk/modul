@@ -74,7 +74,7 @@ func _plan_raid(v: Villager) -> bool:
 func armories() -> Array[Building]:
 	var out: Array[Building] = []
 	for b in buildings:
-		if b.state == "done" and b.kind == "silahlik":
+		if b.kind == "silahlik" and (b.state == "done" or (b.state == "repair" and b.upgrading == "hucre")): # (a lock-up being built on: its rack's still there)
 			out.append(b)
 	return out
 
@@ -401,21 +401,20 @@ func _disarm(v: Villager) -> void:
 ## The wounded lying out: the nearest one free to come picks it up and carries it in to a bed.
 # --- Prisoners -------------------------------------------------------------------------------------
 
-## The jails with a cell free.
+## Where there's a cell free: an armoury's lock-ups (HÜCRE EKLE), an old jail.
 func _jails_free() -> Array[Building]:
 	var out: Array[Building] = []
 	for b in buildings:
-		if b.state == "done" and b.def.role == "jail" and b.prisoners.size() < int(b.def.cells):
+		if b.takes_prisoners():
 			out.append(b)
 	return out
 
 
-## How many are held, all the jails together.
+## How many are held, all the cells together.
 func prisoner_count() -> int:
 	var n := 0
 	for b in buildings:
-		if b.def.role == "jail":
-			n += b.prisoners.size()
+		n += b.prisoners.size()
 	return n
 
 
@@ -431,7 +430,7 @@ func _captures() -> void:
 		if jails.is_empty():
 			if not o.has_meta("said"):
 				o.set_meta("said", true)
-				message.emit("Yaralı bir firari yerde: bir Hapishane olsaydı yakalanabilirdi.", "info")
+				message.emit("Yaralı bir firari yerde: silahlıkta boş hücre olsaydı yakalanabilirdi (silahlık kartı > HÜCRE EKLE).", "info")
 			continue
 		var to := _nearest(jails, o.position)
 		var best: Villager = null
@@ -459,7 +458,7 @@ func _captures() -> void:
 			{"t": "go", "to": to.door()},
 			{"t": "do", "f": func() -> bool:
 				v.set_carry("", 0)
-				if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.state == "done" and to.prisoners.size() < int(to.def.cells):
+				if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.takes_prisoners():
 					imprison(o, to)
 					message.emit("%s bir firariyi yakalayıp hapse kapattı." % v.display_name, "good")
 				return true}], "Haydudu hapse taşıyor", o)
@@ -527,7 +526,7 @@ func _prison_morning() -> void:
 	var day_s := maxf(weather.day_length_minutes * 60.0, 60.0)
 	var forced := 0
 	for b in buildings:
-		if b.def.role != "jail":
+		if b.prisoners.is_empty():
 			continue
 		for o in b.prisoners.duplicate():
 			if not is_instance_valid(o):
@@ -974,7 +973,7 @@ func ctl_capture(v: Villager, o: Villager) -> String:
 		return "Esir alınacak yaralı düşman yok"
 	var jails := _jails_free()
 	if jails.is_empty():
-		return "Hapishanede yer yok: önce bir Hapishane kur"
+		return "Boş hücre yok: silahlığın kartından HÜCRE EKLE"
 	var to := _nearest(jails, o.position)
 	o.set_meta("taker", v)
 	v.abort()
@@ -989,7 +988,7 @@ func ctl_capture(v: Villager, o: Villager) -> String:
 		{"t": "go", "to": to.door()},
 		{"t": "do", "f": func() -> bool:
 			v.set_carry("", 0)
-			if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.state == "done" and to.prisoners.size() < int(to.def.cells):
+			if is_instance_valid(o) and not o.dead and o.down and is_instance_valid(to) and to.takes_prisoners():
 				imprison(o, to)
 				message.emit("%s yaralı düşmanı hapse taşıdı." % v.display_name, "good")
 			return true}], "Haydudu hapse taşıyor", o)

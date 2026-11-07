@@ -19,9 +19,10 @@ extends Node3D
 ## the store and carry off what they can. Hurt badly, one runs; a shooter who falls drops his
 ## rifle, and what a looter carried is got back.
 ##
-## The town's answer is light, and its few rifles. The watchmen (at the armoury) and the lookout up a
-## tower shoot what they can see: anything in the light, or close by, or that's just fired (its
-## flash shows it); what stays in the dark they can't. The militia take the armoury's rifles to
+## The town's answer is light, and its few rifles. The watchmen (at the armoury) shoot what they can
+## see: anything in the light, or close by, or that's just fired (its flash shows it), or that the
+## lookout up a tower has spotted (he sees in the dark within TOWER_SEE and calls out where; he
+## doesn't shoot, but for a warning shot); what stays in the dark unseen they can't. The militia take the armoury's rifles to
 ## their posts. Everyone else runs for a house or the store and hides till it's over (if that
 ## catches fire, they come out). With a tower standing, the band's heard coming before it's there.
 
@@ -33,6 +34,8 @@ const EVERY := 2 ## days between raids
 const ARRIVE_HOUR := 0.5
 const OUTLAW_TUNIC := Color(0.17, 0.12, 0.11)
 const SEE_CLOSE := 12.0 ## m within which a foe is seen in any dark
+const TOWER_SEE := 100.0 ## m a manned watchtower's lookout sees in the dark (and calls out)
+const FOREWARN := 1.0 ## hours before a band comes that a manned tower hears it
 
 var village: Village
 var nav: Nav
@@ -50,7 +53,10 @@ var _started := 0.0
 var _burnt := 0
 var _size := 0
 var _think_t := 0.0
-var _shoot_t := {} ## tower -> seconds to its next shot
+var _warned := {} ## tower -> it's fired its warning shot this raid
+var spotted := 0 ## how many of the band (and wolves) the towers have in sight just now
+var forewarned := -1 ## the raid day a tower has heard coming already
+var _early_origin := Vector3.INF ## where the band heard coming will come from
 var _wolf_night := -1 ## the day whose night the wolves have had
 var loot: Array[Dictionary] = [] ## rifles the outlaws dropped: {at, node, ammo, claimed}
 var _lamp_said := false
@@ -98,6 +104,8 @@ func _process(dt: float) -> void:
 	var h := weather.hour
 	if not active and village.day == next_day - 1 and h >= 19.0 and _asked_for != next_day:
 		_ask_food()
+	if not active and village.day == next_day - 1 and h >= 24.0 - FOREWARN and forewarned != next_day and not is_instance_valid(_ask_card):
+		_forewarn()
 	if not active and village.day >= next_day and h >= ARRIVE_HOUR and h < 3.5:
 		if is_instance_valid(_ask_card):
 			_ask_card.queue_free() # (no answer by midnight: taken for a no)
@@ -113,7 +121,7 @@ func _process(dt: float) -> void:
 		if active:
 			_think()
 		_think_wolves()
-	_tower_shots(dt)
+	_tower_watch(dt)
 	_mg_shots(dt)
 	_turret_shots(dt)
 	if _camp_day != village.day:
@@ -356,7 +364,9 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 	var store := _main_store()
 	if store == null:
 		return
-	_origin = from if from != Vector3.INF else _edge_point(store.global_position)
+	_origin = from if from != Vector3.INF else (_early_origin if _early_origin != Vector3.INF and forewarned == village.day else _edge_point(store.global_position))
+	_early_origin = Vector3.INF
+	_warned.clear()
 	self.soldiers = soldiers
 	active = true
 	_started = village.clock
@@ -389,7 +399,7 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 	_lamp_said = false
 	Ambience.alarm()
 	_to_arms()
-	if not _towers().is_empty():
+	if not _towers().is_empty() and forewarned != village.day:
 		message.emit("Gözcü ormanda ses duydu: %s yönünden %d kişi geliyor!" % [_compass(_origin - store.global_position), n], "bad")
 	if not village.bells().is_empty():
 		village.ring_bells(8, 0.8)
@@ -399,10 +409,10 @@ func start(n: int, from := Vector3.INF, soldiers := "") -> void:
 ## A fight starting: the game back to its own pace (no fast-forwarding through it), and the militia
 ## under the player's hand: each to its armoury for a rifle if it hasn't one, then to a post, and
 ## from then on where it's sent (right-click), shooting by itself at what it can see.
-func _to_arms() -> void:
+func _to_arms(early := false) -> void:
 	if hud and Engine.time_scale > 1.0:
 		hud.game.set_speed(1.0)
-		message.emit("Çatışma başladı: hız 1x. Milisi seç (V), R ile emre al, sağ tıkla: mevzi.", "bad")
+		message.emit(("Baskın yakın" if early else "Çatışma başladı") + ": hız 1x. Milisi seç (V), R ile emre al, sağ tıkla: mevzi.", "bad")
 	for side: String in Village.SIDES:
 		if village.help_why_not(side) == "":
 			message.emit("%s dost: TELGRAF'tan yardım isteyebilirsin." % Village.SIDES[side], "info")
@@ -875,32 +885,60 @@ func _think_wolves() -> void:
 
 # --- Shots ----------------------------------------------------------------------------------------
 
-## The lookouts up the towers shoot what they can see in reach.
-func _tower_shots(dt: float) -> void:
+## A manned watchtower an hour before the band: the lookout hears them in the woods, says from where,
+## and the militia are called to arms (and the bell rung) while there's time.
+func _forewarn() -> void:
+	var store := _main_store()
+	if store == null or _manned_towers().is_empty():
+		return
+	forewarned = next_day
+	_early_origin = _edge_point(store.global_position)
+	Ambience.alarm()
+	message.emit("Gözcü kulesinden haber: ormanda %s yönünde ses ve ışık var, firariler bir saate kalmaz gelir. Milis silaha!" % _compass(_early_origin - store.global_position), "bad")
+	if not village.bells().is_empty():
+		village.ring_bells(6, 0.9)
+	_to_arms(true)
+
+
+## The towers with their lookout up on them.
+func _manned_towers() -> Array[Building]:
+	var out: Array[Building] = []
 	for t in _towers():
+		for v in t.workers:
+			if is_instance_valid(v) and v.perched == t:
+				out.append(t)
+				break
+	return out
+
+
+## The lookouts up the towers don't shoot: they see. Whatever of the band (or the wolves) is within
+## TOWER_SEE of a manned tower is seen in the dark as well as the light, and called out, so the
+## watchmen and the militia can shoot it (Raids.can_see: `revealed`). The first one seen in a raid
+## gets a warning shot fired into the air.
+func _tower_watch(_dt: float) -> void:
+	var n := 0
+	for t in _manned_towers():
 		var man: Villager = null
 		for v in t.workers:
-			if v.perched == t:
+			if is_instance_valid(v) and v.perched == t:
 				man = v
-		if man == null:
-			continue
-		_shoot_t[t] = float(_shoot_t.get(t, 0.0)) - dt
-		if float(_shoot_t[t]) > 0.0:
-			continue
-		var foe: Villager = null
-		var bd := 70.0
+		var first: Villager = null
 		for list: Array[Villager] in [raiders, wolves, camp_men]:
 			for r in list:
-				if is_instance_valid(r) and not r.dead and village.is_lit(r.position):
-					var d := r.position.distance_to(t.global_position)
-					if d < bd:
-						bd = d
-						foe = r
-		if foe == null:
-			continue
-		_shoot_t[t] = randf_range(2.2, 3.0)
-		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
-		shoot(man.muzzle(), foe, randf_range(28.0, 40.0), 0.6)
+				if is_instance_valid(r) and not r.dead and not r.down and r.position.distance_to(t.global_position) < TOWER_SEE:
+					r.revealed = maxf(r.revealed, 0.6)
+					n += 1
+					if first == null:
+						first = r
+		if first and not _warned.has(t) and man and (active or first in wolves):
+			_warned[t] = true
+			man.look_at(Vector3(first.position.x, man.position.y, first.position.z), Vector3.UP)
+			_flash(man.muzzle() + Vector3.UP * 0.6, "war/rifle")
+			if active and not village.is_lit(first.position):
+				message.emit("Gözcü uyarı ateşi açtı: karanlıkta gelenleri görüyor, bekçiler ve milis onları vurabilir.", "bad")
+	spotted = n
+	if not active and wolves.is_empty():
+		_warned.clear()
 
 
 ## A hostile armoured train's turret gun, while its men are at the town: a heavy crack and a gout of
@@ -946,7 +984,7 @@ func _turret_shots(dt: float) -> void:
 		FireFx.explosion(self, at, 0.7)
 		for v in town_folk():
 			if not v.dead and v.team == 0 and v.position.distance_to(at) < 3.5:
-				v.hurt(randf_range(18.0, 30.0) * (0.5 if v.in_cover else 1.0)))
+				v.hurt(randf_range(18.0, 30.0) * (TRENCH_SHELL if village.in_trench(v.position) else (0.5 if v.in_cover else 1.0))))
 
 
 ## The Maxims: a gunner at the gun (within a couple of metres of where it stands) and one it can see
@@ -1009,6 +1047,12 @@ func _mg_shots(dt: float) -> void:
 ## shooter is above it (from up a tower or a rise, a man in a trench or behind a low wall shows
 ## more; shooting uphill, less). [the multiplier on the chance to hit, what covers it]. The same for
 ## both sides.
+const POST_COVER := 0.32 ## behind sandbags: a third of the hits (ready the moment it's up)
+const TRENCH_COVER := 0.25 ## down in a dug trench: a quarter (slow to dig, free)
+const TRENCH_COVER_ABOVE := 0.5 ## a trench looked into from well above
+const TRENCH_SHELL := 0.25 ## what a shell's burst does to a man down in a trench (behind sandbags, half)
+
+
 func cover(from: Vector3, foe: Villager) -> Array:
 	var to := foe.position
 	var dir := Vector3(from.x - to.x, 0, from.z - to.z)
@@ -1033,7 +1077,10 @@ func cover(from: Vector3, foe: Villager) -> Array:
 				match str(b.def.role):
 					"obstacle":
 						m = 1.0 # (wire stops no bullet)
-					"post", "mg":
+					"post":
+						m = POST_COVER
+						name = "kum torbası"
+					"mg":
 						m = 0.28
 						name = "kum torbası"
 					"tower":
@@ -1084,7 +1131,7 @@ func cover(from: Vector3, foe: Villager) -> Array:
 			what = "kazık sur"
 	# a trench: down in it, unless looked into from well above
 	if village.in_trench(to):
-		var m := 0.35 if rise < 2.5 else 0.7
+		var m := TRENCH_COVER if rise < 2.5 else TRENCH_COVER_ABOVE
 		if m < best:
 			best = m
 			what = "hendek"

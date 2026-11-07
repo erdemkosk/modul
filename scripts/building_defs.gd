@@ -12,12 +12,12 @@ extends RefCounted
 ## name "<stuff>-<n>" or "<stuff>-<tag>-<n>".
 
 ## What each brings, in a few words (the build bar's buttons).
-const GIVES := {"ev": "+4 yatak", "ambar": "mal saklar", "kuyu": "su · yangına kova", "fener": "geceye ışık",
-	"meydan": "akşam ateşi · çan", "istasyon": "tren durur · telgraf", "kamp": "ucuz çatı · 150 yük", "tarla": "60 yiyecek/hasat",
+const GIVES := {"ev": "+4 yatak", "ambar": "400 yük · kamptan büyür", "kuyu": "evlere su · yangına kova", "fener": "geceye ışık",
+	"meydan": "akşam ateşi · çan", "istasyon": "tren durur · telgraf", "kamp": "ucuz çatı · 150 yük · depoya büyür", "tarla": "60 yiyecek/hasat",
 	"oduncu": "odun · taş · çamur · yemiş",
 	"yol": "hızlı, çamursuz yol", "arabaci": "araba · öküz",
-	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yara sarar · sargı", "kapi": "sur kapısı", "kule": "gözcü", "silahlik": "tüfek · bekçi · milis",
-	"okuma": "araştırma", "demirci": "tüfek · fişek", "siper": "milise siper", "tel": "engel", "makineli": "makineli tüfek"}
+	"sur": "kazık duvar", "hapishane": "3 esir tutar", "sifaci": "yara sarar · sargı", "kapi": "sur kapısı", "kule": "gözcü · karanlıkta görür", "silahlik": "tüfek · bekçi · milis · hücre",
+	"okuma": "araştırma", "demirci": "tüfek · fişek", "siper": "hemen siper · taş ister", "tel": "engel", "makineli": "makineli tüfek"}
 
 const RES_NAMES := {"odun": "Odun", "tas": "Taş", "yiyecek": "Yiyecek", "camur": "Çamur", "kerpic": "Kerpiç", "ot": "Sargı ve ot", "komur": "Kömür", "demir": "Demir"}
 
@@ -36,7 +36,7 @@ const DEFS := {
 	"yigin": {"name": "Yük yığını", "size": Vector2(6, 4), "cost": {}, "time": 0.0, "role": "store", "holds": 1000, "open": true,
 		"desc": "Trenin rayın yanına bıraktığı sandıklar ve çuvallar. Üstünde çatı yok: yiyecek ve odun açıkta yavaş yavaş bozulur, yağmurda daha hızlı. Bir depo kurulunca köylüler yığını oraya taşır, boşalınca kaldırılır."},
 	"kamp": {"name": "Kamp deposu", "size": Vector2(6, 5), "cost": {"odun": 10}, "time": 14.0, "role": "store", "holds": 150,
-		"desc": "Direkler ve bir çatı: 150 yük alır, altındakiler bozulmaz. İstediğin yere kur; yükü köylüler sırtlarında taşır, yani yer seçimi önemli."},
+		"desc": "Direkler ve bir çatı: 150 yük alır, altındakiler bozulmaz. İstediğin yere kur; yükü köylüler sırtlarında taşır, yani yer seçimi önemli. Sonra kartındaki BÜYÜT ile yerinde Depo'ya çevrilir: aradaki farkı ödersin, içindekiler kalır."},
 	"sur": {"name": "Kazık sur", "size": Vector2(1, 1), "cost": {"odun": 1}, "time": 0.0, "role": "wall",
 		"desc": "Sivri kütüklerden çit: nokta nokta çiz, kasabalılar parça parça diker (4 kazığa bir odun). Kapı kendiliğinden konmaz: SUR KAPISI ile sen koyarsın, kapısız surdan kasabalılar geçemez. Firariler ancak kırarak geçer."},
 	"kapi": {"name": "Sur kapısı", "size": Vector2(3, 1), "cost": {"odun": 6}, "time": 0.0, "role": "gate",
@@ -58,33 +58,33 @@ const DEFS := {
 		"res": "yiyecek", "reach": 85.0, "station": Vector3(0, 0, 1.35), "face": Vector3(0, 0, 0.8), "pile": Vector3(-1.9, 0, 1.6), "work": "gather",
 		"desc": "Atölye, yemiş için kurulu: Çalılardan yaban mersini toplar, masada ayıklar. Yemiş kulübede yığılır, depoya taşınır. Toplanan çalı bir süre sonra yeniden verir."},
 	"ambar": {"name": "Depo", "size": Vector2(9, 7), "cost": {"odun": 30, "tas": 6}, "time": 40.0, "role": "store", "holds": 400,
-		"desc": "Her şey burada saklanır: 400 yük alır. İşçiler ve arabacılar yükleri yeri olan en yakın depoya götürür. Depolar dolunca işyerlerinin yığınları dolar, üretim durur."},
+		"desc": "Her şey burada saklanır: 400 yük alır. İşçiler ve arabacılar yükleri yeri olan en yakın depoya götürür. Depolar dolunca işyerlerinin yığınları dolar, üretim durur. Kamp deposu varsa yenisini kurma: kartındaki BÜYÜT onu yerinde depoya çevirir, daha ucuza."},
 	"arabaci": {"name": "Arabacı", "size": Vector2(6, 5), "cost": {"odun": 16}, "time": 22.0, "role": "carts", "slots": 3,
 		"desc": "İşçileri el arabasıyla çalışır, bir seferde 15 yük taşır, yürüyenden hızlıdır. Arabacı varken uzaktaki işyerleri malını kapısının önüne yığar; arabacılar yığınları depoya taşır. Araba patikayı çok aşındırır, yağmurda ve çamurda yavaşlar, saplanır. Kartından ÖKÜZ AL ile arabalar öküz arabası olur: bir seferde 30 yük, ama daha yavaş, yolu daha çok aşındırır; her öküz bir kişi kadar yer."},
 	"kuyu": {"name": "Kuyu", "size": Vector2(3, 3), "cost": {"tas": 8, "odun": 2}, "time": 14.0, "role": "well",
-		"desc": "Yangında kasabalılar buradan su taşır. Kuyu yoksa yangın söndürülemez."},
+		"desc": "Evlerin suyu buradan çekilir: 45 m içinde kuyusu (ya da 30 m içinde ırmağı) olmayan evin halkı her gün kovayla uzaktan su taşır, işleri %10 yavaşlar, morali düşer. Yangında da kova buradan dolar: kuyu yoksa yangın söndürülemez."},
 	"fener": {"name": "Fener", "size": Vector2(1, 1), "cost": {"odun": 3, "tas": 1}, "time": 6.0, "role": "light", "light": 20.0,
 		"desc": "Gece çevresini aydınlatır, çıra yakar (her gece bir odun; kasabalılar akşamüstü getirir). Bekçiler firariyi ve kurdu yalnızca aydınlıkta görür; firariler karanlıktan sızar. Rüzgârda kıvılcım saçabilir."},
 	"sifaci": {"name": "Felçer kulübesi", "size": Vector2(5, 4), "cost": {"odun": 12, "tas": 2}, "time": 20.0, "role": "healer", "slots": 2,
 		"res": "ot", "reach": 110.0, "station": Vector3(0, 0, 1.2), "face": Vector3(0, 0, 0.5), "pile": Vector3(2.0, 0, 1.6), "work": "gather",
 		"desc": "Felçer, köyün doktor yardımcısı: yaralıların yarasını sarar, kanamayı durdurur, iyileşmeyi hızlandırır, kalıcı iz kalmasını çoğu zaman önler. Her tedavi bir sargı ya da şifalı ot ister. Yaralı yoksa ilkbahar ve yazda ormandan ot toplar; kışın ot yetişmez. Her tren de felçere birkaç sargı bezi ve ilaç bırakır."},
 	"hapishane": {"name": "Hapishane", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 8}, "time": 26.0, "role": "jail", "cells": 3,
-		"desc": "Kalın kütüklü, demir parmaklıklı küçük bir hücre: üç esir alır. Baskında yaralı düşen firarileri köylüler buraya taşır. Esirleri kazanabilir (köye katılırlar), çalıştırabilir ya da serbest bırakabilirsin. Esirler de yer; köy aç kalırsa kaçmaya çalışırlar."},
+		"desc": "Eski hapishane (artık silahlığa HÜCRE EKLE ile yapılıyor). Kalın kütüklü, demir parmaklıklı küçük bir hücre: üç esir alır. Baskında yaralı düşen firarileri köylüler buraya taşır. Esirleri kazanabilir (köye katılırlar), çalıştırabilir ya da serbest bırakabilirsin. Esirler de yer; köy aç kalırsa kaçmaya çalışırlar."},
 	"kule": {"name": "Gözcü kulesi", "size": Vector2(4, 4), "cost": {"odun": 18, "tas": 10}, "time": 36.0, "role": "tower", "slots": 2,
-		"desc": "Tüfekli bir gözcü çıkar, 70 m içinde aydınlıkta gördüğü firariyi ve kurdu vurur. Yaklaşanları duyar, kasabayı uyarır."},
+		"desc": "Ateş etmez, görür ve haber verir. Gözcü 100 m içindeki firariyi ve kurdu karanlıkta da görür, yerini bildirir: bekçiler ve milis onları gece de vurabilir. Baskını bir saat önceden duyar, milisi silaha çağırır; düşmanı ilk görünce havaya bir uyarı ateşi açar. Vurmak silahlığın bekçileriyle milisin işidir."},
 	"okuma": {"name": "Okuma odası", "size": Vector2(6, 5), "cost": {"odun": 20, "tas": 6}, "time": 30.0, "role": "research", "slots": 2,
 		"desc": "Kitaplar, gazeteler, bir masa ve lamba. Buraya verilenler okur, yazar, hesap yapar: seçtiğin konu araştırılır. Okuryazarlığı yüksek olan çok daha çabuk ilerler. Telgraf, madencilik, demircilik buradan açılır."},
 	"demirci": {"name": "Demirci", "size": Vector2(5, 4), "cost": {"odun": 14, "tas": 10}, "time": 30.0, "role": "smith", "slots": 1, "needs": "demircilik",
 		"desc": "Körük, örs, ocak. Demirci depodan demir ve kömür alıp tüfek (3 demir, 2 kömür) ve fişek (1 demir, 1 kömürden 10 fişek) döver, silahlığa taşır."},
 	"siper": {"name": "Kum torbası mevzi", "size": Vector2(3, 2), "cost": {"tas": 3, "odun": 1}, "time": 8.0, "role": "post",
-		"desc": "Toprak doldurulmuş çuvallardan alçak bir duvar. Tehlike çanında milis, firarilerin geldiği yöne en yakın mevzinin arkasına geçer: siperdeki adamı vurmak iki kat zordur."},
+		"desc": "Toprak doldurulmuş çuvallardan alçak bir duvar: taş ister ama çabuk kurulur, biter bitmez siperdir. Tehlike çanında milis, firarilerin geldiği yöne en yakın mevzinin arkasına geçer: arkasındakini vurmak üç kat zordur. Hendek bedavadır ve daha iyi korur (top parçasından da), ama kazması uzun sürer."},
 	"tel": {"name": "Dikenli tel", "size": Vector2(3.8, 1), "cost": {"odun": 2, "demir": 1}, "time": 4.0, "role": "obstacle",
 		"desc": "Çarpı kazıklara gerilmiş dikenli tel. Kasabalılar geçmez, firariler dolaşır. Yol bulamayan firari teli keser: kesene kadar durur, yaralanır, sen de vurursun; kesilen parça gedik açar."},
 	"makineli": {"name": "Maxim yuvası", "size": Vector2(3, 3), "cost": {"odun": 4, "tas": 6, "demir": 8}, "time": 24.0, "role": "mg", "slots": 2, "needs": "makineli",
 		"station": Vector3(0, 0, -0.9),
 		"desc": "Kum torbası çember içinde tekerlekli bir Maxim makineli tüfeği. İki kişi verilir: biri ateş eder, öteki şeridi besler. 65 m içinde gördüğü düşmana kısa kısa taramalar yapar; her tarama silahlıktan bir fişek yer. Fişek yoksa susar."},
 	"silahlik": {"name": "Silahlık", "size": Vector2(5, 4), "cost": {"odun": 16, "tas": 6}, "time": 26.0, "role": "barracks", "slots": 6,
-		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Buraya verilenler tüfekli bekçi olur: gördükleri firariyle ve kurtla çarpışır (karanlıktakini göremezler). Kartından tüfekçi ya da okçu yetiştir; milis işaretli kasabalılar tehlike çanında buradan silah alıp mevziye geçer. FİŞEK DÖK ve YAY YAP açıksa her sabah depodan alınanla fişek, yay ve ok yapılır."},
+		"desc": "Kasabanın tüfekleri, yayları, okları ve fişekleri burada durur. Buraya verilenler tüfekli bekçi olur: gördükleri firariyle ve kurtla çarpışır (karanlıktakini göremezler; gözcü kulesinin gördüğünü görürler). Kartından tüfekçi ya da okçu yetiştir; milis işaretli kasabalılar tehlike çanında buradan silah alıp mevziye geçer. FİŞEK DÖK ve YAY YAP açıksa her sabah depodan alınanla fişek, yay ve ok yapılır. HÜCRE EKLE ile yanına demir parmaklıklı bir hücre yapılır (iki kez): her biri üç esir alır; baskında yaralı düşen firariler buraya taşınır."},
 }
 
 ## What's found out in a reading room, one at a time: what it takes (points of work at the desk),
@@ -173,9 +173,60 @@ const UPGRADES := {
 	"oda": {"name": "ODA EKLE", "cost": {"odun": 10, "tas": 6}, "time": 24.0, "tip": "Arkasına bir oda: 6 yatak"},
 	"siva": {"name": "SIVA", "cost": {"camur": 8}, "time": 16.0, "tip": "Kütükleri çamurla sıvar: %30 daha az yakacak"},
 	"soba": {"name": "SOBA", "cost": {"kerpic": 12, "tas": 4}, "time": 20.0, "tip": "Kerpiç soba: %40 daha az yakacak, gece boyu sıcak"},
+	"hucre": {"name": "HÜCRE EKLE", "cost": {"odun": 10, "tas": 8}, "time": 22.0, "for": "barracks", "tip": "Yanına demir parmaklıklı bir hücre: 3 esir alır (en çok iki hücre)"},
 }
 const ANNEX := Rect2(-3.3, -6.1, 3.9, 3.6) ## the back room's ground, roof and logs' ends, in the house's space (x, z)
 const UPGRADE_BEDS := 6
+const CELLS_PER_ROOM := 3 ## prisoners a lock-up beside an armoury holds (HÜCRE EKLE)
+const CELL_ROOMS_MAX := 2 ## lock-ups an armoury can have, one each side
+const CELL_SCALE := 0.62 ## the old jail's model, made small, is the lock-up
+## A lock-up's ground in the armoury's space (x, z), by which side it's on (0 right, 1 left).
+static func cell_rect(k: int) -> Rect2:
+	var w := 5.0 * CELL_SCALE
+	var d := 4.0 * CELL_SCALE
+	var x := 2.55 + w * 0.5
+	return Rect2((x if k == 0 else -x) - w * 0.5, -0.35 - d * 0.5, w, d)
+
+
+## The lock-up's pieces, beside an armoury on side `k`: the old jail's model shrunk (Building's
+## "scale" on a model piece), or a lean-to of logs with bars if there's no model.
+static func cell_room(k: int) -> Array[Dictionary]:
+	var r := cell_rect(k)
+	var at := Vector3(r.get_center().x, 0, r.get_center().y)
+	var out: Array[Dictionary] = []
+	if ResourceLoader.exists(MODEL % "hapishane"):
+		for spec: Dictionary in _from_model("hapishane"):
+			var s := spec.duplicate()
+			var xf: Transform3D = spec.xf
+			s["xf"] = Transform3D(xf.basis, at + xf.origin * CELL_SCALE)
+			s["scale"] = CELL_SCALE
+			s["pos"] = (s["xf"] as Transform3D).origin
+			out.append(s)
+		return out
+	_p(out, "box", Vector3(r.size.x, 1.2, r.size.y), at + Vector3(0, -0.4, 0), "stone")
+	for sx in [-1.0, 1.0]:
+		_p(out, "box", Vector3(0.2, 1.9, r.size.y), at + Vector3(sx * (r.size.x * 0.5 - 0.1), 1.15, 0), "log")
+	_p(out, "box", Vector3(r.size.x, 1.9, 0.2), at + Vector3(0, 1.15, -r.size.y * 0.5 + 0.1), "log")
+	for k2 in 6:
+		_p(out, "box", Vector3(0.04, 1.6, 0.04), at + Vector3(-r.size.x * 0.4 + k2 * r.size.x * 0.16, 1.0, r.size.y * 0.5 - 0.1), "dark")
+	_p(out, "box", Vector3(r.size.x + 0.4, 0.12, r.size.y + 0.4), at + Vector3(0, 2.2, 0), "shingle", Vector3(-8, 0, 0))
+	return out
+
+
+## Where water's near enough a house: a well within this (m), or the river within RIVER_REACH.
+const WELL_REACH := 45.0
+const RIVER_REACH := 30.0
+const WATER_FAR_WORK := 0.9 ## the pace of those whose house is far from water (the walks for it)
+## A camp store grown into a depot where it stands (BÜYÜT): what's to pay is the difference.
+static func grow_cost() -> Dictionary:
+	var out := {}
+	var big: Dictionary = DEFS.ambar.cost
+	var small: Dictionary = DEFS.kamp.cost
+	for r: String in big:
+		var n := int(big[r]) - int(small.get(r, 0))
+		if n > 0:
+			out[r] = n
+	return out
 const SIVA_FUEL := 0.7 ## what a plastered house burns, of what it did
 const SOBA_FUEL := 0.6
 

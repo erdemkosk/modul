@@ -474,7 +474,7 @@ func _plan_build(v: Villager) -> bool:
 		v.give([
 			{"t": "go", "to": _spot_by(site, v.position)},
 			{"t": "work", "anim": "build", "face": site.global_position, "tick": func(dt: float) -> bool: return site.add_work(dt)},
-		], "%s: %s" % ["Sıvıyor" if site.upgrading == "siva" else "Soba yapıyor", site.display_name()], site)
+		], "%s: %s" % [{"siva": "Sıvıyor", "soba": "Soba yapıyor", "hucre": "Hücre yapıyor"}.get(site.upgrading, "Yapıyor"), site.display_name()], site)
 		return true
 	if site.state == "repair":
 		v.give([

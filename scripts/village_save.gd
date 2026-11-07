@@ -39,7 +39,8 @@ static func save(game: Node) -> bool:
 			"mode": b.mode, "casting": b.casting, "bowing": b.bowing, "ox": b.ox, "spur": b.spur, "prisoners": b.prisoners.filter(func(o: Variant) -> bool: return is_instance_valid(o)).map(func(o: Villager) -> Dictionary:
 				return {"name": o.display_name, "family": o.family, "skills": o.skills.duplicate(), "traits": o.traits.duplicate(), "keen": o.keen.duplicate(),
 					"look": o.look_seed, "mode": o.held_mode, "won": o.won}), "area": [b.work_area.position.x, b.work_area.position.y, b.work_area.size.x, b.work_area.size.y], "poly": Array(b.work_poly).map(func(q: Vector2) -> Array: return [q.x, q.y]), "drying": b.drying.map(func(dr: Vector2) -> Array: return [dr.x, dr.y]), "yard": b.yard_has.duplicate(), "alive": alive, "charred": charred, "built": built, "arms": [b.arms, b.ammo, b.bows, b.arrows], "training": b.training.duplicate(), "age": b.age,
-			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else []})
+			"crop": [b.crop.stage, b.crop.sown, b.crop.growth, b.crop.reaped, b.crop.cleared] if b.crop else [],
+			"cells": b.cell_rooms, "cell_sides": Array(b.cell_sides), "cost": b.cost.duplicate() if b.state == "site" and b.cost != b.def.cost else {}})
 	# What's on its way to a site goes back to where it came from.
 	for vl in v.villagers:
 		if vl.owed.is_empty():
@@ -210,6 +211,12 @@ static func restore(game: Node, d: Dictionary) -> void:
 		made.append(b)
 		var st := str(bd.state)
 		if st == "site":
+			var sc: Dictionary = bd.get("cost", {}) # (a camp being grown into a depot pays only the difference)
+			if not sc.is_empty():
+				var c := {}
+				for r: String in sc:
+					c[r] = int(sc[r])
+				b.set_cost(c)
 			b.restore_site(bd.delivered, bd.get("built", PackedByteArray()))
 		else:
 			b.complete_now()
@@ -222,6 +229,15 @@ static func restore(game: Node, d: Dictionary) -> void:
 			b.stove = bool(bd.get("stove", false))
 			if b.stove or up == "soba":
 				b.add_stove(true)
+			# an armoury's lock-ups (and the one being built on), each on its side
+			b.cell_rooms = int(bd.get("cells", 0))
+			for sd: Variant in bd.get("cell_sides", []):
+				b.cell_sides.append(int(sd))
+			for k in b.cell_rooms + (1 if up == "hucre" else 0):
+				if b.cell_sides.size() <= k:
+					b.cell_sides.append(k % 2)
+				b.add_cell_room(b.cell_sides[k], true)
+				v._close_rect(b, BuildingDefs.cell_rect(b.cell_sides[k]))
 			b.apply_damage(bd.alive, bd.charred)
 			if bool(bd.get("plastered", false)):
 				b.plaster()

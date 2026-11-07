@@ -431,7 +431,12 @@ func skill(k: String) -> float:
 
 ## How quick at `k` it is: 0.7 at nothing, 1 at middling (5), 1.3 at the best (10).
 func knack(k: String) -> float:
-	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work") * mood_mul() * (BUILD_PACE if k == "insa" else 1.0)
+	return (0.7 + skill(k) * 0.06 if k != "" else 1.0) * trait_mul("work") * mood_mul() * (BUILD_PACE if k == "insa" else 1.0) * water_mul()
+
+
+## The time lost walking for water, its house far from a well (and the river): BuildingDefs.WATER_FAR_WORK.
+func water_mul() -> float:
+	return BuildingDefs.WATER_FAR_WORK if is_instance_valid(home) and home.water_far and team == 0 else 1.0
 
 
 ## Better at `k` for `secs` s of doing it (slower the better it already is).

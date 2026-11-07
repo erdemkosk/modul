@@ -98,6 +98,11 @@ var upgrading := "" ## a house: what's being done to it ("oda", "siva", "soba": 
 var upgraded_now := "" ## (what its last finish did to it)
 var plastered := false ## a house: its logs plastered with mud
 var stove := false ## a house: a brick stove in it
+var cell_rooms := 0 ## an armoury: the lock-ups built on beside it (HÜCRE EKLE), each holding CELLS_PER_ROOM
+var cell_sides: Array[int] = [] ## an armoury: which side each lock-up's on (or going on), 0 right, 1 left
+var water_far := false ## a house: no well (nor the river) near; its people walk for their water
+var water_m := INF ## a house: m to the nearest finished well
+var _river_near := -1 ## a house: whether the river's near enough (-1 not yet looked)
 var mode := "" ## a mud pit: "" mud, "kerpic" bricks; a quarry: "" stone, "demir" iron
 var work_poly := PackedVector2Array() ## the same as it was dragged on the screen (inside `work_area`)
 var work_area := Rect2() ## a workplace: the ground (x, z) its workers keep to, if it's been drawn (ALAN ÇİZ)
@@ -222,8 +227,11 @@ func _add_piece(spec: Dictionary) -> void:
 			mesh = spec.mesh
 			p.xf = spec.xf
 			var bb := mesh.get_aabb()
-			p.ext = bb.size.max(Vector3(0.04, 0.04, 0.04))
-			p.center = bb.get_center()
+			var k := float(spec.get("scale", 1.0)) # (a model shrunk: the mesh scaled in the piece, its box with it)
+			p.ext = (bb.size * k).max(Vector3(0.04, 0.04, 0.04))
+			p.center = bb.get_center() * k
+			if k != 1.0:
+				p.mesh_local = Transform3D(Basis.from_scale(Vector3.ONE * k), Vector3.ZERO)
 			p.painted = true
 		"box":
 			var m := BoxMesh.new()
@@ -1564,6 +1572,22 @@ func _mend(what: Dictionary, secs: float) -> void:
 		_make_scaffold()
 
 
+## What's to be brought for it, set anew (a site that costs less than its kind: a camp grown into
+## a depot pays only the difference).
+func set_cost(c: Dictionary) -> void:
+	cost = c.duplicate()
+	delivered = {}
+	incoming = {}
+	used = {}
+	for r: String in cost:
+		delivered[r] = 0
+		incoming[r] = 0
+		used[r] = 0.0
+	_share_cost()
+	if _stack:
+		_update_stack()
+
+
 # --- Made better ------------------------------------------------------------------------------------
 
 ## How many sleep here.
@@ -1582,11 +1606,30 @@ func has_upgrade(what: String) -> bool:
 		"oda": return level >= 2
 		"siva": return plastered
 		"soba": return stove
+		"hucre": return cell_rooms >= BuildingDefs.CELL_ROOMS_MAX
 	return false
 
 
 func can_upgrade(what := "oda") -> bool:
-	return def.role == "house" and not has_upgrade(what) and upgrading == "" and state == "done" and not is_burning() and fallen_count() == 0
+	return def.role == str(BuildingDefs.UPGRADES[what].get("for", "house")) and not has_upgrade(what) and upgrading == "" and state == "done" and not is_burning() and fallen_count() == 0
+
+
+## How many prisoners it can hold: a jail its cells, an armoury its lock-ups'.
+func cell_count() -> int:
+	if def.role == "jail":
+		return int(def.get("cells", 0))
+	return cell_rooms * BuildingDefs.CELLS_PER_ROOM
+
+
+## Whether it can take a prisoner in now: cells, and standing (an armoury having another lock-up
+## built on still keeps those it has).
+func takes_prisoners() -> bool:
+	return cell_count() > prisoners.size() and (state == "done" or (state == "repair" and upgrading == "hucre"))
+
+
+## A lock-up's pieces beside the armoury on side `k`: standing (`up`), or not yet built.
+func add_cell_room(k: int, up: bool) -> void:
+	_add_extra(BuildingDefs.cell_room(k), up)
 
 
 ## `what` done to the house as a mending: its stuff carried in and built on (the back room's or the
@@ -1599,6 +1642,7 @@ func start_upgrade(what := "oda", resume := false) -> bool:
 		match what:
 			"oda": add_annex(false)
 			"soba": add_stove(false)
+			"hucre": add_cell_room(cell_sides[cell_rooms] if cell_sides.size() > cell_rooms else cell_rooms, false)
 	upgrading = what
 	var up: Dictionary = BuildingDefs.UPGRADES[what]
 	_mend((up.cost as Dictionary).duplicate(), float(up.time))
@@ -1611,6 +1655,7 @@ func _upgraded(what: String) -> void:
 		"oda": level = 2
 		"siva": plaster()
 		"soba": stove = true
+		"hucre": cell_rooms += 1
 
 
 ## Its logs plastered over with mud (a lighter, earthen look; mended ones are plastered too).
