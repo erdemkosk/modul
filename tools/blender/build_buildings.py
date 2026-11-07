@@ -287,7 +287,7 @@ class Kit:
     def finish(self):
         if FINISH["bevel"]:
             for ob in self.objects:
-                if ob.name.split("-")[0] in BEVELLED:
+                if ob.name.split("-")[0] in BEVELLED and "-wire-" not in ob.name: # (barbed wire: too fine to ease)
                     _bevel(ob.data)
         if FINISH["ao"]:
             _bake_ao(self.objects)
@@ -1184,7 +1184,12 @@ def kuyu():
 
 
 def kule():
+    """The lookout: four raking log posts on a stone base, X-braced at two stages, joists and
+    knee-braces under a platform that juts out over them, a breastwork of boards round it with
+    loopholes and the ladder's gap, a pyramid of shingles on the posts over it, a finial, and the
+    alarm bell under its eaves."""
     k = Kit("kule")
+    rng = k.rng
     plinth(k, 4.0, 4.0)
     p = k.piece("stone")
     for c in range(4):
@@ -1195,48 +1200,97 @@ def kule():
                     ctr = (t * 3.6, (-1 if side == 0 else 1) * 1.8, 0.5 + c * 0.42)
                 else:
                     ctr = ((-1 if side == 2 else 1) * 1.8, t * 3.6, 0.5 + c * 0.42)
-                p.stone(ctr, (0.62, 0.45, 0.4), rng=k.rng)
-    p.box((0, 0, 1.1), (3.4, 3.4, 1.5), jit((0.4, 0.39, 0.36), 0.03, k.rng))
+                p.stone(ctr, (0.62, 0.45, 0.4), rng=rng)
+    p.box((0, 0, 1.1), (3.4, 3.4, 1.5), jit((0.4, 0.39, 0.36), 0.03, rng))
     k.add(p)
     base = 2.2
     top = 9.4
+
+    def post_at(z):
+        """Where the posts stand at height z (they rake in from 1.55 at the base to 1.35 at the roof)."""
+        return 1.55 - 0.2 * (z - base) / (top + 2.2 - base)
     for sx in (-1, 1):
         for sy in (-1, 1):
             p = k.piece("log")
-            p.log((sx * 1.55, sy * 1.55, base), (sx * 1.35, sy * 1.35, top + 2.2), 0.16, rng=k.rng)
+            p.log((sx * 1.55, sy * 1.55, base - 0.1), (sx * 1.35, sy * 1.35, top + 2.2), 0.16, rng=rng, moss=0.15)
             k.add(p)
-    for lvl in (base + 2.3, base + 4.8):
+    # two stages of ties and crossed braces on every face
+    for lvl in (base + 2.4, base + 4.8, top - 0.25):
+        lo = lvl - 2.4 if lvl < top - 1 else base + 4.8
         for side in range(4):
             p = k.piece("log")
-            a = [(-1.5, -1.5), (1.5, -1.5), (1.5, 1.5), (-1.5, 1.5)][side]
-            b = [(1.5, -1.5), (1.5, 1.5), (-1.5, 1.5), (-1.5, -1.5)][side]
-            p.log((a[0], a[1], lvl), (b[0], b[1], lvl), 0.09, rng=k.rng)
-            p.log((a[0], a[1], lvl - 2.2), (b[0], b[1], lvl), 0.07, rng=k.rng)
+            r0, r1 = post_at(lvl), post_at(lo)
+            corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+            a, b = corners[side], corners[(side + 1) % 4]
+            p.log((a[0] * r0, a[1] * r0, lvl), (b[0] * r0, b[1] * r0, lvl), 0.1, rng=rng)
+            p.log((a[0] * r1, a[1] * r1, lo), (b[0] * r0, b[1] * r0, lvl), 0.07, rng=rng)
+            p.log((b[0] * r1, b[1] * r1, lo), (a[0] * r0, a[1] * r0, lvl), 0.07, rng=rng)
             k.add(p)
-    # the platform, its rail, the ladder up the front
+    # joists under the platform, and knee-braces out to the corners it juts to
+    p = k.piece("log")
+    for x in (-1.6, -0.55, 0.55, 1.6):
+        p.log((x, -2.2, top - 0.13), (x, 2.2, top - 0.13), 0.08, rng=rng, segs=8)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            r = post_at(top - 1.4)
+            p.log((sx * r, sy * r, top - 1.4), (sx * 2.0, sy * 2.0, top - 0.2), 0.07, rng=rng, segs=8)
+    k.add(p)
+    # the platform, a hatch in it over the ladder
     p = k.piece("plank")
     for i in range(16):
-        p.box((-2.1 + (i + 0.5) * 4.2 / 16, 0, top), (4.2 / 16 - 0.01, 4.4, 0.08), jit(PLANK, 0.08, k.rng))
+        x = -2.1 + (i + 0.5) * 4.2 / 16
+        p.box((x, 0, top), (4.2 / 16 - 0.012, 4.4, 0.08), jit(SHINGLE if i % 5 == 0 else PLANK, 0.08, rng))
+    k.add(p)
+    # the breastwork: rail posts, a cap rail, boards up the outside; a gap for the ladder at the front
+    p = k.piece("wood")
+    for sx in (-2.15, -1.07, 0.0, 1.07, 2.15):
+        for sy in (-2.15, 2.15):
+            if sy < 0 and sx == 0.0:
+                continue
+            p.box((sx, sy, top + 0.55), (0.1, 0.1, 1.1), jit(DARK, 0.06, rng))
+            p.box((sy, sx, top + 0.55), (0.1, 0.1, 1.1), jit(DARK, 0.06, rng))
     k.add(p)
     for side in range(4):
         p = k.piece("plank")
-        for z in (top + 0.5, top + 0.95):
+        n = 20
+        for i in range(n):
+            t = -2.15 + (i + 0.5) * 4.3 / n
+            if side == 0 and abs(t) < 0.45:
+                continue # (the ladder comes up here)
+            hgt = 0.72 if i % 6 == 3 else 0.95 # (a loophole: a board cut short)
+            col = jit(PLANK, 0.1, rng)
             if side < 2:
-                p.box((0, (-1 if side == 0 else 1) * 2.15, z), (4.3, 0.06, 0.1), jit(PLANK, 0.06, k.rng))
+                yy = (-1 if side == 0 else 1) * 2.21
+                p.box((t, yy, top + 0.04 + hgt * 0.5), (4.3 / n - 0.018, 0.04, hgt), col)
             else:
-                p.box(((-1 if side == 2 else 1) * 2.15, 0, z), (0.06, 4.3, 0.1), jit(PLANK, 0.06, k.rng))
+                xx = (-1 if side == 2 else 1) * 2.21
+                p.box((xx, t, top + 0.04 + hgt * 0.5), (0.04, 4.3 / n - 0.018, hgt), col)
+        cap = jit(DARK, 0.05, rng)
+        if side == 0:
+            for sx in (-1, 1):
+                p.box((sx * 1.33, -2.17, top + 1.12), (1.75, 0.16, 0.05), cap)
+        elif side == 1:
+            p.box((0, 2.17, top + 1.12), (4.5, 0.16, 0.05), cap)
+        else:
+            p.box(((-1 if side == 2 else 1) * 2.17, 0, top + 1.12), (0.16, 4.5, 0.05), cap)
         k.add(p)
     p = k.piece("wood")
     for sx in (-0.25, 0.25):
-        p.log((sx, -2.4, 0.3), (sx, -2.0, top + 0.6), 0.04, rng=k.rng)
+        p.log((sx, -2.55, 0.3), (sx, -2.25, top + 1.1), 0.045, rng=rng)
     n = int((top - 0.3) / 0.35)
     for i in range(n):
         t = (i + 0.5) / n
-        y = -2.4 + 0.4 * t
-        z = 0.3 + (top + 0.3) * t
-        p.log((-0.27, y, z), (0.27, y, z), 0.03, segs=6, rng=k.rng)
+        y = -2.55 + 0.3 * t
+        z = 0.3 + (top + 0.8) * t
+        p.log((-0.28, y, z), (0.28, y, z), 0.03, segs=6, rng=rng)
     k.add(p)
-    # a pyramid roof of shingles on four posts
+    # the bell, hung from a beam under the eaves at the front
+    p = k.piece("dark", "bell")
+    p.log((-1.38, -1.38, top + 1.95), (1.38, -1.38, top + 1.95), 0.07, color=BARK, end=END_GRAIN, rng=rng, segs=8)
+    bell(p, (-0.7, -1.38, top + 1.88), 0.16)
+    p.box((-0.7, -1.38, top + 1.25), (0.012, 0.012, 0.6), (0.55, 0.47, 0.32))
+    k.add(p)
+    # a pyramid roof of shingles on the four posts, a fascia board round its eaves, a finial
     roof_base = top + 2.2
     for side in range(4):
         p = k.piece("shingle")
@@ -1254,10 +1308,18 @@ def kule():
             width = 2 * (v * math.cos(slope)) + 0.3
             x = -width * 0.5
             while x < width * 0.5:
-                sw = min(k.rng.uniform(0.22, 0.32), width * 0.5 - x + 0.01)
+                sw = min(rng.uniform(0.22, 0.32), width * 0.5 - x + 0.01)
                 p.obox(apex + down * v + nrm * 0.03 + across * (x + sw * 0.5), across, down, nrm, (sw - 0.012, L / rows * 1.5, 0.03), shingle_colour(k, SHINGLE, x, (r + 0.5) / rows, 0, 0.6))
                 x += sw
         k.add(p)
+        p = k.piece("plank")
+        eave = apex + down * L
+        p.obox(eave - nrm * 0.08 + out * 0.02, across, out, (0, 0, 1), (2 * L * math.cos(slope) + 0.4, 0.04, 0.2), jit(DARK, 0.05, rng))
+        k.add(p)
+    p = k.piece("wood")
+    cyl(p, (0, 0, roof_base + 1.5), (0, 0, roof_base + 2.15), 0.06, DARK, segs=8, taper=0.5)
+    p.box((0, 0, roof_base + 1.95), (0.3, 0.04, 0.04), DARK)
+    k.add(p)
     k.finish()
 
 
@@ -4178,109 +4240,322 @@ def demirci():
 # --- the defences: a sandbag post, a Maxim nest, barbed wire ----------------------------------------
 
 SACK = (0.5, 0.44, 0.31)
+SACK_TIE = (0.4, 0.34, 0.23)
+RUST_WIRE = (0.3, 0.22, 0.16)
+OD = (0.27, 0.29, 0.21) # the Maxim's olive paint
+GUN_BLACK = (0.13, 0.13, 0.12)
+FRESH_EARTH = (0.33, 0.26, 0.18)
 
 
-def sandbag(p, x, y, z, rot, rng, length=0.62):
-    """A sack of earth: a fat block, its ends pinched in, a tie at one end."""
-    c = jit(SACK, 0.08, rng)
+def sandbag(p, x, y, z, rot, rng, length=0.62, tilt=0.0, squash=1.0):
+    """A sack filled with earth and tied, `z` its middle: plump, flattened top and bottom under the
+    weight, its corners pinched into ears, the burlap mottled, the tied neck at one end. `tilt` rolls
+    it about its length (a bag settled on the uneven one under it)."""
+    base = jit(SACK, 0.1, rng)
     a = Vector((math.cos(rot), math.sin(rot), 0))
     b = Vector((-math.sin(rot), math.cos(rot), 0))
-    p.obox((x, y, z), a, b, (0, 0, 1), (length * 0.8, 0.34, 0.2), c)
-    for s in (-1, 1):
-        q = Vector((x, y, z)) + a * s * length * 0.42
-        p.obox(tuple(q), a, b, (0, 0, 1), (length * 0.12, 0.26, 0.15), c)
-    q = Vector((x, y, z)) + a * length * 0.52
-    p.obox(tuple(q), a, b, (0, 0, 1), (0.05, 0.1, 0.06), (0.35, 0.3, 0.2))
+    up = Vector((0, 0, 1))
+    if tilt:
+        b, up = b * math.cos(tilt) + up * math.sin(tilt), up * math.cos(tilt) - b * math.sin(tilt)
+    half = length * 0.5 * rng.uniform(0.95, 1.04)
+    w = 0.17 * rng.uniform(0.94, 1.06)
+    h = 0.1 * squash * rng.uniform(0.92, 1.05)
+    ctr = Vector((x, y, z))
+    bm = p.bm
+    nu, nv = 9, 10
+    rings = []
+    for i in range(nu):
+        u = -0.94 + 1.88 * i / (nu - 1)
+        fw = (1.0 - abs(u) ** 5) ** 0.3
+        fh = (1.0 - abs(u) ** 2.4) ** 0.55
+        ring = []
+        for j in range(nv):
+            t = j / nv * math.tau
+            cx, sz = math.cos(t), math.sin(t)
+            px = w * fw * math.copysign(abs(cx) ** 0.55, cx) * (1.0 + 0.06 * (1.0 - abs(sz)))
+            pz = h * fh * math.copysign(abs(sz) ** (0.4 if sz < 0 else 0.5), sz)
+            lump = 1.0 + rng.uniform(-0.05, 0.05)
+            ring.append(bm.verts.new(ctr + a * (u * half) + b * (px * lump) + up * (pz * lump)))
+        rings.append(ring)
+    ends = [bm.verts.new(ctr - a * half * 1.02 + up * rng.uniform(-0.02, 0.02)), bm.verts.new(ctr + a * half * 1.02 + up * rng.uniform(-0.02, 0.02))]
+    faces = []
+    for i in range(nu - 1):
+        for j in range(nv):
+            j1 = (j + 1) % nv
+            faces.append(bm.faces.new((rings[i][j], rings[i][j1], rings[i + 1][j1], rings[i + 1][j])))
+    for j in range(nv):
+        j1 = (j + 1) % nv
+        faces.append(bm.faces.new((rings[0][j1], rings[0][j], ends[0])))
+        faces.append(bm.faces.new((rings[-1][j], rings[-1][j1], ends[1])))
+    for f in faces:
+        f.smooth = True
+        f.normal_update()
+        k = 1.0 + rng.uniform(-0.05, 0.05)
+        if f.normal.dot(up) < -0.5:
+            k *= 0.85
+        p._face_color(f, (base[0] * k, base[1] * k, base[2] * k))
+    q = ctr + a * (half + 0.03)
+    p.obox(tuple(q), a, b, up, (0.06, 0.07, 0.05), SACK_TIE)
+    p.obox(tuple(q + a * 0.05), a, b, up, (0.05, 0.1, 0.03), jit(SACK, 0.1, rng))
+
+
+def _bag_course(p, rng, pts, z, squash=1.0, tilt=0.07):
+    """Bags laid one after another through `pts` ((x, y, along-angle) each) at height `z`."""
+    for x, y, rot in pts:
+        sandbag(p, x + rng.uniform(-0.025, 0.025), y + rng.uniform(-0.025, 0.025), z + rng.uniform(-0.012, 0.012), rot + rng.uniform(-0.09, 0.09), rng,
+                tilt=rng.uniform(-tilt, tilt), squash=squash * rng.uniform(0.9, 1.04))
+
+
+def _spill(k, x, y, rx, ry, rng, grass=0.5):
+    """Earth spilt and thrown up round a work: a low heap, some of it grassed over."""
+    p = k.piece("sand")
+    p.stone((x, y, -0.05), (rx * 2, ry * 2, 0.32), color=FRESH_EARTH, rng=rng, subdiv=2)
+    for f in p.bm.faces:
+        f.smooth = True
+        if f.normal.z > 0.6 and rng.random() < grass:
+            p._face_color(f, jit(TURF, 0.12, rng))
+    k.add(p)
 
 
 def siper():
+    """A breastwork of sandbags: the front four courses high, each set a little back on the one under
+    it, two bags thick at the foot, the joints broken; short wings curving back; the earth spilt in
+    front of it; an ammunition box behind."""
     k = Kit("siper")
     rng = k.rng
     p = k.piece("sand", "bags")
-    for c in range(3):
-        z = 0.11 + c * 0.2
-        for i in range(5):
-            x = -1.2 + i * 0.6 + (0.3 if c % 2 else 0.0)
-            if x > 1.25:
-                continue
-            sandbag(p, x, -0.65, z, rng.uniform(-0.06, 0.06), rng)
-        for sx in (-1, 1):
-            for j in range(2):
-                sandbag(p, sx * 1.32, -0.1 + j * 0.6 - (0.25 if c % 2 else 0.0), z, math.pi * 0.5 + rng.uniform(-0.06, 0.06), rng)
+    for c in range(4):
+        z = 0.1 + c * 0.172
+        yb = -0.64 + c * 0.045
+        n = 5 if c % 2 == 0 else 4
+        if c == 3:
+            n = 4
+        span = (n - 1) * 0.58
+        _bag_course(p, rng, [(-span * 0.5 + i * 0.58, yb, 0.0) for i in range(n)], z, tilt=0.1 if c == 3 else 0.06)
+        if c < 2: # (the second skin behind)
+            _bag_course(p, rng, [(-span * 0.5 + i * 0.58 + 0.12, yb + 0.33, 0.0) for i in range(n - 1)], z)
+    for sx in (-1, 1):
+        for c in range(3):
+            pts = []
+            for j in range(2 if c < 2 else 1):
+                y = -0.22 + j * 0.56 + (0.18 if c % 2 else 0.0)
+                pts.append((sx * (1.32 - 0.07 * j - 0.03 * c), y, math.pi * 0.5 - sx * 0.12 * j))
+            _bag_course(p, rng, pts, 0.1 + c * 0.172)
+    sandbag(p, sx * 0.9, 0.62, 0.09, 0.4, rng, tilt=0.2) # (one left lying)
     k.add(p)
     p = k.piece("sand", "ground")
-    p.box((0, 0, 0.01), (3.0, 2.0, 0.02), (0.3, 0.24, 0.16))
+    p.stone((0, 0.15, -0.02), (2.9, 1.7, 0.06), color=(0.3, 0.24, 0.16), rng=rng, subdiv=2)
     k.add(p)
-    crate(k, 0.7, 0.55, 0.0, 0.4)
+    _spill(k, 0.0, -0.98, 1.45, 0.32, rng)
+    crate(k, 0.55, 0.5, 0.0, 0.4)
     k.finish()
 
 
-def makineli():
-    k = Kit("makineli")
-    rng = k.rng
-    p = k.piece("sand", "bags")
-    for c in range(4):
-        z = 0.11 + c * 0.2
-        for i in range(9):
-            if c == 3 and i == 4:
-                continue # (the embrasure)
-            a = math.radians(-120 + i * 30 + (15 if c % 2 else 0))
-            sandbag(p, math.sin(a) * 1.25, -math.cos(a) * 1.25, z, a, rng)
-    k.add(p)
-    p = k.piece("sand", "platform")
-    p.box((0, 0.15, 0.18), (1.0, 1.1, 0.36), (0.36, 0.28, 0.19))
-    k.add(p)
-    # the Maxim on its wheeled mount: a fluted water jacket, the barrel, the receiver and its spade
-    # grips, the shield, a belt of rounds feeding from a box
+def _maxim(k, rng):
+    """The Maxim on its Sokolov mount: the fluted water jacket and muzzle cone, the receiver with its
+    spade grips, the feed block and the belt from its box, the shield, the trail and two small iron
+    wheels. (The barrel 0.95 m up, pointing -Y.)"""
     p = k.piece("dark", "gun")
-    cyl(p, (0, -0.05, 0.95), (0, -0.82, 0.95), 0.09, (0.26, 0.28, 0.22), segs=14)
-    for i in range(6):
-        cyl(p, (0, -0.12 - i * 0.12, 0.95), (0, -0.15 - i * 0.12, 0.95), 0.1, (0.18, 0.19, 0.16), segs=14)
-    cyl(p, (0, -0.82, 0.95), (0, -1.15, 0.95), 0.025, (0.12, 0.12, 0.12), segs=8)
-    p.box((0, 0.12, 0.95), (0.2, 0.36, 0.2), (0.2, 0.21, 0.18))
+    cyl(p, (0, -0.02, 0.95), (0, -0.8, 0.95), 0.085, OD, segs=14)
+    for i in range(7):
+        cyl(p, (0, -0.1 - i * 0.1, 0.95), (0, -0.13 - i * 0.1, 0.95), 0.093, jit(OD, 0.04, rng), segs=14)
+    cyl(p, (0, -0.8, 0.95), (0, -0.88, 0.95), 0.06, GUN_BLACK, segs=10)
+    cyl(p, (0, -0.88, 0.95), (0, -1.0, 0.95), 0.045, GUN_BLACK, segs=10, taper=0.4)
+    cyl(p, (0, -1.0, 0.95), (0, -1.14, 0.95), 0.02, GUN_BLACK, segs=8)
+    cyl(p, (0, -0.4, 1.03), (0, -0.36, 1.07), 0.015, GUN_BLACK, segs=6) # (the filler cap)
+    p.box((0, 0.17, 0.95), (0.17, 0.42, 0.19), jit(OD, 0.03, rng))
+    p.box((0, 0.17, 1.05), (0.15, 0.4, 0.02), GUN_BLACK)
+    p.box((0.11, -0.0, 0.96), (0.07, 0.1, 0.07), GUN_BLACK) # (the feed block)
+    p.box((0, 0.4, 0.95), (0.2, 0.04, 0.12), GUN_BLACK)
     for sx in (-0.08, 0.08):
-        p.box((sx, 0.34, 0.92), (0.03, 0.12, 0.1), (0.35, 0.25, 0.15))
-    p.box((0, 0.0, 0.78), (0.08, 0.08, 0.2), (0.18, 0.18, 0.16))
+        cyl(p, (sx, 0.42, 0.95), (sx, 0.5, 0.92), 0.012, GUN_BLACK, segs=6)
+        cyl(p, (sx, 0.5, 0.92), (sx, 0.58, 0.9), 0.022, (0.36, 0.24, 0.14), segs=7)
+    p.box((0, -0.02, 0.84), (0.1, 0.1, 0.1), GUN_BLACK) # (the cradle)
+    cyl(p, (0, -0.02, 0.62), (0, -0.02, 0.8), 0.04, GUN_BLACK, segs=8) # (the pivot)
     k.add(p)
     p = k.piece("dark", "shield")
-    p.obox((0, -0.3, 1.0), (1, 0, 0), (0, 0.97, 0.25), (0, -0.25, 0.97), (0.62, 0.03, 0.55), (0.25, 0.27, 0.21))
+    p.obox((0, -0.32, 0.98), (1, 0, 0), (0, 0.97, 0.25), (0, -0.25, 0.97), (0.62, 0.025, 0.56), jit(OD, 0.04, rng))
+    p.obox((0.14, -0.335, 1.12), (1, 0, 0), (0, 0.97, 0.25), (0, -0.25, 0.97), (0.07, 0.01, 0.05), GUN_BLACK) # (the sight window)
+    p.obox((0, -0.3, 0.7), (1, 0, 0), (0, 0.97, 0.25), (0, -0.25, 0.97), (0.62, 0.03, 0.03), GUN_BLACK)
     k.add(p)
-    p = k.piece("dark", "belt")
-    for i in range(10):
-        p.box((0.16 + i * 0.03, 0.1 + i * 0.04, 0.9 - i * 0.04), (0.03, 0.05, 0.08), (0.72, 0.56, 0.26))
-    k.add(p)
-    crate(k, 0.5, 0.55, 0.36, 0.3)
     p = k.piece("dark", "frame")
-    p.box((0, 0.05, 0.72), (0.5, 0.9, 0.06), (0.2, 0.21, 0.18))
-    p.box((0, 0.6, 0.6), (0.06, 0.6, 0.06), (0.2, 0.21, 0.18)) # (the trail)
+    p.box((0, -0.02, 0.6), (0.7, 0.08, 0.06), GUN_BLACK) # (the axle-tree)
+    for sx in (-1, 1):
+        cyl(p, (sx * 0.12, 0.0, 0.6), (sx * 0.05, 0.85, 0.42), 0.022, jit(OD, 0.04, rng), segs=6)
+    cyl(p, (-0.05, 0.85, 0.42), (0.05, 0.85, 0.42), 0.022, OD, segs=6)
+    p.box((0, 0.95, 0.42), (0.18, 0.12, 0.03), GUN_BLACK)
     k.add(p)
     for sx in (-1, 1):
         p = k.piece("dark", "wheel")
-        cyl(p, (sx * 0.32 - 0.03, -0.05, 0.6), (sx * 0.32 + 0.03, -0.05, 0.6), 0.22, (0.15, 0.15, 0.13), segs=14)
+        c = Vector((sx * 0.36, -0.02, 0.6))
+        _ring(p, c, (1, 0, 0), 0.21, 0.025, 0.05, GUN_BLACK, n=16)
+        for i in range(8):
+            t = i / 8 * math.tau
+            d = Vector((0, math.cos(t), math.sin(t)))
+            p.obox(c + d * 0.11, (1, 0, 0), d, Vector((1, 0, 0)).cross(d), (0.018, 0.2, 0.018), jit(OD, 0.04, rng))
+        cyl(p, c - Vector((0.04, 0, 0)), c + Vector((0.04, 0, 0)), 0.04, GUN_BLACK, segs=8)
         k.add(p)
+    p = k.piece("dark", "belt")
+    for i in range(12): # (the rounds from the box up into the feed block)
+        t = i / 11
+        p.box((0.16 + t * 0.26, -0.0 + t * 0.48, 0.96 - t * 0.48), (0.03, 0.06, 0.09), (0.72, 0.56, 0.26))
+    for _ in range(14): # (spent cases on the floor)
+        p.box((rng.uniform(-0.4, 0.5), rng.uniform(-0.2, 0.6), 0.375), (0.012, 0.05, 0.012), (0.7, 0.54, 0.25), rot_z=rng.uniform(0, math.pi))
+    k.add(p)
+    p = k.piece("dark", "boxes")
+    for x, y, col in ((0.45, 0.5, OD), (0.42, 0.88, OD)):
+        p.box((x, y, 0.5), (0.2, 0.3, 0.24), jit(col, 0.05, rng))
+        p.box((x, y, 0.63), (0.22, 0.32, 0.025), GUN_BLACK)
+    cyl(p, (-0.45, 0.6, 0.38), (-0.45, 0.6, 0.72), 0.1, (0.3, 0.28, 0.22), segs=10) # (the water can for the jacket)
+    k.add(p)
+
+
+def makineli():
+    """A Maxim nest: a ring of sandbags five courses high, open at the back, the embrasure left in the
+    top course at the front; four posts inside carrying a roof of logs laid across, sandbags along
+    its front edge and turf on it; the gun on its trodden platform under the roof's edge."""
+    k = Kit("makineli")
+    rng = k.rng
+    p = k.piece("sand", "bags")
+    for c in range(5):
+        z = 0.1 + c * 0.172
+        pts = []
+        for i in range(9):
+            deg = -120 + i * 30 + (15 if c % 2 else 0)
+            if c % 2 and deg > 120:
+                continue
+            if c == 4 and abs(deg) < 40:
+                continue # (the embrasure)
+            a = math.radians(deg)
+            r = 1.25 - c * 0.03
+            pts.append((math.sin(a) * r, -math.cos(a) * r, a))
+        _bag_course(p, rng, pts, z, tilt=0.09 if c == 4 else 0.06)
+    k.add(p)
+    p = k.piece("sand", "platform")
+    p.box((0, 0.15, 0.17), (1.0, 1.1, 0.34), (0.34, 0.27, 0.18))
+    k.add(p)
+    p = k.piece("plank")
+    for i in range(5):
+        p.box((-0.4 + i * 0.2, 0.15, 0.355), (0.19, 1.08, 0.03), jit(PLANK, 0.08, rng))
+    k.add(p)
+    _spill(k, 0.0, -1.5, 1.2, 0.3, rng)
+    # the posts and the roof over them
+    for deg in (-58, 58, -140, 140):
+        a = math.radians(deg)
+        p = k.piece("log")
+        p.log((math.sin(a) * 0.98, -math.cos(a) * 0.98, 0.0), (math.sin(a) * 0.98, -math.cos(a) * 0.98, 1.66), 0.085, rng=rng, taper=0.05)
+        k.add(p)
+    p = k.piece("log", "roof")
+    for sx in (-1, 1):
+        p.log((sx * 0.8, -0.72, 1.7), (sx * 0.8, 0.9, 1.7), 0.09, rng=rng, taper=0.04)
+    for i in range(11):
+        y = -0.66 + i * 0.155
+        half = 1.15 + rng.uniform(-0.08, 0.1)
+        p.log((-half, y, 1.86), (half, y + rng.uniform(-0.03, 0.03), 1.86), 0.075, rng=rng, taper=0.06, moss=0.3)
+    k.add(p)
+    p = k.piece("sand", "turf")
+    p.stone((0, 0.12, 1.92), (2.2, 1.7, 0.32), color=FRESH_EARTH, rng=rng, subdiv=2)
+    for f in p.bm.faces:
+        f.smooth = True
+        f.normal_update()
+    for f in p.bm.faces: # (turf over the top, earth showing down its sides; graded corner by corner, not face by face)
+        for loop in f.loops:
+            v = loop.vert
+            t = max(0.0, min(1.0, (v.co.z - 1.9) / 0.12)) * (0.75 + 0.25 * math.sin(v.co.x * 6.0) * math.sin(v.co.y * 5.0))
+            c = tuple(FRESH_EARTH[i] * (1 - t) + TURF[i] * t for i in range(3))
+            loop[p.col] = (c[0], c[1], c[2], 1.0)
+    k.add(p)
+    p = k.piece("sand", "bags")
+    _bag_course(p, rng, [(-0.6 + i * 0.6, -0.72, 0.0) for i in range(3)], 2.02, tilt=0.12)
+    k.add(p)
+    _maxim(k, rng)
     k.finish()
 
 
+def _wire(p, pts, col=RUST_WIRE, t=0.011):
+    """A strand of wire through `pts`: thin bars end to end."""
+    pts = [Vector(q) for q in pts]
+    for a, b in zip(pts, pts[1:]):
+        d = b - a
+        if d.length < 1e-4:
+            continue
+        ax = d.normalized()
+        side = ax.cross(Vector((0, 0, 1)))
+        if side.length < 0.1:
+            side = ax.cross(Vector((1, 0, 0)))
+        p.obox((a + b) * 0.5, ax, side.normalized(), ax.cross(side).normalized(), (d.length + t, t, t), col)
+
+
+def _barbs(p, pts, rng, every=0.13, col=RUST_WIRE):
+    """The barbs twisted on a strand, every `every` along it: two short wires crossed."""
+    pts = [Vector(q) for q in pts]
+    run = rng.uniform(0, every)
+    for a, b in zip(pts, pts[1:]):
+        d = b - a
+        L = d.length
+        ax = d.normalized()
+        while run < L:
+            c = a + ax * run
+            for k in range(2):
+                ang = rng.uniform(0, math.pi) + k * math.pi * 0.5
+                side = ax.cross(Vector((0, 0, 1)))
+                if side.length < 0.1:
+                    side = Vector((1, 0, 0))
+                side.normalize()
+                up = ax.cross(side)
+                dirn = (side * math.cos(ang) + up * math.sin(ang) + ax * 0.3).normalized()
+                p.obox(c, dirn, ax, dirn.cross(ax), (0.06, 0.008, 0.008), col)
+            run += every
+        run -= L
+
+
 def tel():
+    """A barbed-wire fence: three driven pickets, four strands strung between them and barbed, an
+    apron of wire run down from each picket's top to pegs on either side with strands along it, and a
+    loose coil about the pickets' feet."""
     k = Kit("tel")
     rng = k.rng
-    # knife-rests: crossed stakes at either end and in the middle, the wire strung between, barbed,
-    # and a coil of it sagging along the foot
-    for x in (-1.8, 0.0, 1.8):
+    xs = (-1.75, 0.0, 1.75)
+    tops = []
+    for x in xs:
         p = k.piece("wood")
+        lean = Vector((rng.uniform(-0.04, 0.04), rng.uniform(-0.05, 0.05), 0))
+        top = Vector((x, 0, 1.25)) + lean
+        p.log((x, 0, -0.45), top, 0.055, color=(0.42, 0.36, 0.29), rng=rng, taper=0.15, segs=8)
+        tops.append(top)
         for s in (-1, 1):
-            p.log((x, s * 0.45, 0.0), (x, -s * 0.45, 1.25), 0.05, rng=rng, taper=0.1)
+            p.log((x + s * 0.02, s * 0.47, -0.3), (x, s * 0.45, 0.24), 0.032, color=(0.42, 0.36, 0.29), rng=rng, taper=0.2, segs=6)
         k.add(p)
     p = k.piece("dark", "wire")
-    for z, yy in ((0.35, 0.2), (0.65, 0.0), (0.95, -0.15)):
-        p.box((0, yy, z), (3.8, 0.012, 0.012), (0.25, 0.24, 0.22))
-        for i in range(30):
-            x = -1.85 + i * 0.128
-            p.obox((x, yy, z), (0, 0.7, 0.7), (0, -0.7, 0.7), (1, 0, 0), (0.06, 0.008, 0.008), (0.25, 0.24, 0.22))
-    for i in range(40): # (the coil)
-        a = i / 40 * math.tau * 9
-        x = -1.85 + i / 40 * 3.7
-        p.obox((x, math.cos(a) * 0.32, 0.34 + math.sin(a) * 0.3), (1, 0, 0), (0, -math.sin(a), math.cos(a)), (0, math.cos(a), math.sin(a)), (0.11, 0.01, 0.01), (0.3, 0.29, 0.27))
+
+    def strand(f, n_per=6):
+        pts = []
+        for i in range(len(xs) - 1):
+            a, b = f(i), f(i + 1)
+            for j in range(n_per):
+                t = j / n_per
+                pts.append(a.lerp(b, t) - Vector((0, 0, 0.035 * 4 * t * (1 - t))))
+        pts.insert(0, f(0) - Vector((0.15, 0, 0)))
+        pts.append(f(len(xs) - 1))
+        pts.append(f(len(xs) - 1) + Vector((0.15, 0, -0.02)))
+        return pts
+    for h in (0.25, 0.58, 0.9, 1.2):
+        pts = strand(lambda i, h=h: Vector((tops[i].x * h / 1.25 + xs[i] * (1 - h / 1.25), tops[i].y * h / 1.25, h)))
+        _wire(p, pts)
+        _barbs(p, pts, rng)
+    for s in (-1, 1):
+        for i, top in enumerate(tops):
+            _wire(p, [top, Vector((xs[i], s * 0.45, 0.24))])
+        for f in (0.35, 0.7):
+            pts = strand(lambda i, f=f, s=s: tops[i].lerp(Vector((xs[i], s * 0.45, 0.24)), f))
+            _wire(p, pts)
+            _barbs(p, pts, rng, every=0.2)
+    coil = []
+    for i in range(160):
+        t = i / 159
+        a = t * math.tau * 13
+        coil.append((-1.85 + t * 3.7, math.cos(a) * 0.3, 0.27 + math.sin(a) * 0.27 * (0.85 + 0.15 * math.sin(t * 20))))
+    _wire(p, coil, col=(0.34, 0.26, 0.19), t=0.01)
     k.add(p)
     k.finish()
 

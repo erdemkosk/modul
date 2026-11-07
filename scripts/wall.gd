@@ -32,9 +32,10 @@ const STRONG := 3.0
 const BURN := 0.55 ## a stake's hp burnt away a second
 const WALK_H := 1.45 ## m the walkway stands off the ground
 
-var _solid: MultiMeshInstance3D
+var _solid: Array[MultiMeshInstance3D] = [] ## the standing stakes, a MultiMesh to each of the three stakes made (Details: stake_0..2)
 var _marks: MultiMeshInstance3D
 var _walk: MultiMeshInstance3D
+var _walk_frames: MultiMeshInstance3D ## the walkway's trestles, their legs into the ground
 var _bind: MultiMeshInstance3D ## the rails binding the standing stakes on the inside
 var _trench: MultiMeshInstance3D ## the trench dug along what's still to be raised
 var _berm: MultiMeshInstance3D ## the earth banked up round the stakes' feet, outside
@@ -45,8 +46,8 @@ var _burn_t := 0.0
 static var _stake_mesh: Mesh
 
 
-## A stake: a barked log, a little knobbly (its own shade, the stake's instance colour), its top hewn
-## to a point (the fresh-cut wood pale: a surface of its own, coloured once).
+## A stake's plain shape (a stake still to raise, faint; Main's palisade drawn to the mouse): a log,
+## its top hewn to a point. (The standing stakes are the models: Details, stake_0..2.)
 static func stake_mesh() -> Mesh:
 	if _stake_mesh == null:
 		var sides := 8
@@ -106,25 +107,6 @@ static func bark_material(lvl: int) -> StandardMaterial3D:
 	return _barks[lvl]
 
 
-static var _rail_mesh: Mesh
-
-
-## A binding rail: a thinner barked log, lying along x, 1 m long (scaled to the gap it spans).
-static func rail_mesh() -> Mesh:
-	if _rail_mesh == null:
-		var c := CylinderMesh.new()
-		c.top_radius = 0.075
-		c.bottom_radius = 0.075
-		c.height = 1.0
-		c.radial_segments = 6
-		c.rings = 1
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		st.append_from(c, 0, Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3.ZERO))
-		_rail_mesh = st.commit()
-	return _rail_mesh
-
-
 func setup(points: PackedVector3Array, v: Node, n: Nav) -> void:
 	line = points
 	village = v
@@ -137,13 +119,17 @@ func setup(points: PackedVector3Array, v: Node, n: Nav) -> void:
 
 
 func _ready() -> void:
-	_solid = MultiMeshInstance3D.new()
-	add_child(_solid)
+	for i in 3:
+		var mmi := MultiMeshInstance3D.new()
+		add_child(mmi)
+		_solid.append(mmi)
 	_marks = MultiMeshInstance3D.new()
 	_marks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_marks)
 	_walk = MultiMeshInstance3D.new()
 	add_child(_walk)
+	_walk_frames = MultiMeshInstance3D.new()
+	add_child(_walk_frames)
 	_bind = MultiMeshInstance3D.new()
 	add_child(_bind)
 	_trench = MultiMeshInstance3D.new()
@@ -175,9 +161,15 @@ func redraw() -> void:
 			up.append(k)
 		elif built[k] == 0 and not in_gap(k):
 			todo.append(k)
-	_solid.multimesh = _stakes(up, false)
+	for i in 3:
+		var mine: Array[int] = []
+		for k in up:
+			if k % 3 == i:
+				mine.append(k)
+		_solid[i].multimesh = _stakes(mine, false, i)
 	_marks.multimesh = _stakes(todo, true)
 	_walk.multimesh = _walkway(up)
+	_walk_frames.multimesh = _trestles(up)
 	_bind.multimesh = _binding()
 	_trench.multimesh = _ditch(todo)
 	_dress(up)
@@ -188,7 +180,7 @@ func _binding() -> MultiMesh:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
-	mm.mesh = rail_mesh()
+	mm.mesh = Details.mesh("rail")
 	var xfs: Array[Transform3D] = []
 	var k := 0
 	while k + BIND_EVERY < line.size():
@@ -213,15 +205,14 @@ func _binding() -> MultiMesh:
 	mm.instance_count = xfs.size()
 	for j in xfs.size():
 		mm.set_instance_transform(j, xfs[j])
-		var shade := (0.27 if level >= 2 else 0.33) + fposmod(sin(j * 3.7) * 437.5, 1.0) * 0.1
-		mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.56))
-	_bind.material_override = bark_material(level)
+		var shade := (0.74 if level >= 2 else 0.92) + fposmod(sin(j * 3.7) * 437.5, 1.0) * 0.14
+		mm.set_instance_color(j, Color(shade, shade * 0.97, shade * 0.94))
 	return mm
 
 
 ## What makes a standing palisade look built rather than stuck in: the earth thrown up against its
-## feet on the outside (grassed over, stones in it), rope lashings where the rails meet the stakes,
-## and every so often a raking prop shoring it from inside.
+## feet on the outside (grassed over, stones in it), withies lashing the rails to the stakes, and
+## every so often a raking prop shoring it from inside. (The models: Details berm, lashing, brace.)
 func _dress(up: Array[int]) -> void:
 	var stand := {}
 	for k in up:
@@ -237,52 +228,26 @@ func _dress(up: Array[int]) -> void:
 		var g := line[k]
 		g.y = nav.height(g.x, g.z)
 		var h := fposmod(sin(k * 41.7) * 2671.3, 1.0)
-		# the bank: low, long, flat mounds run into one another, outside and a little off the line
-		var heap := g - left * (0.45 + h * 0.2) - Vector3.UP * 0.06
-		bank.append(Transform3D(Basis.looking_at(dir, Vector3.UP).scaled(Vector3(1.1 + h * 0.3, 0.2 + h * 0.08, 2.2)), heap))
+		# the bank: low, long mounds run into one another, outside and a little off the line
+		if k % 4 == 0:
+			var heap := g - left * (0.5 + h * 0.15)
+			heap.y = minf(nav.height(heap.x, heap.z), g.y) - 0.05 # (never standing off a bank that drops away)
+			bank.append(Transform3D(Basis.looking_at(dir, Vector3.UP).rotated(Vector3.UP, (h - 0.5) * 0.3).scaled(Vector3(0.85 + h * 0.3, 0.7 + h * 0.4, 1.0)), heap))
 		if k % BIND_EVERY == 0 and stand.has(mini(k + BIND_EVERY, line.size() - 1)):
 			for hgt in [0.75, 1.95]:
-				var at: Vector3 = g + left * 0.19 + Vector3.UP * (float(hgt) - 0.3)
+				var at: Vector3 = g + left * 0.1 + Vector3.UP * (float(hgt) - 0.3)
 				ties.append(Transform3D(Basis.looking_at(dir, Vector3.UP), at))
 		if k % 9 == 4 and stand.has(maxi(k - 1, 0)) and stand.has(mini(k + 1, line.size() - 1)):
 			# a prop: from the ground 1.6 m inside up to just under the top rail
 			var foot := g + left * 1.6
 			foot.y = nav.height(foot.x, foot.z)
 			var top := g + left * 0.22 + Vector3.UP * 1.75
-			var mid := (foot + top) * 0.5
-			var along := (top - foot)
+			var along := top - foot
 			var b := Basis.looking_at(along.normalized(), Vector3.UP if absf(along.normalized().y) < 0.99 else Vector3.FORWARD)
-			props.append(Transform3D(b.scaled(Vector3(1, 1, along.length())), mid))
-	var mound := SphereMesh.new()
-	mound.radius = 0.5
-	mound.height = 1.0
-	mound.radial_segments = 16
-	mound.rings = 8
-	var em := StandardMaterial3D.new()
-	em.albedo_color = Color(0.34, 0.33, 0.19) # (turned earth gone grassy)
-	em.roughness = 1.0
-	mound.material = em
-	_berm.multimesh = _mm(mound, bank)
-	var ring := TorusMesh.new()
-	ring.inner_radius = 0.17
-	ring.outer_radius = 0.23
-	ring.rings = 10
-	ring.ring_segments = 5
-	var rm := StandardMaterial3D.new()
-	rm.albedo_color = Color(0.55, 0.47, 0.32)
-	ring.material = rm
-	_ropes.multimesh = _mm(ring, ties)
-	var pole := CylinderMesh.new()
-	pole.top_radius = 0.07
-	pole.bottom_radius = 0.09
-	pole.height = 1.0
-	pole.radial_segments = 6
-	pole.rings = 1
-	pole.material = bark_material(level)
-	var turned: Array[Transform3D] = []
-	for t in props:
-		turned.append(Transform3D(t.basis * Basis(Vector3.RIGHT, PI * 0.5), t.origin)) # (the cylinder's along its y)
-	_braces.multimesh = _mm(pole, turned)
+			props.append(Transform3D(b.scaled(Vector3(1, 1, along.length())), (foot + top) * 0.5))
+	_berm.multimesh = _mm(Details.mesh("berm"), bank)
+	_ropes.multimesh = _mm(Details.mesh("lashing"), ties)
+	_braces.multimesh = _mm(Details.mesh("brace"), props)
 
 
 static func _mm(mesh: Mesh, xfs: Array[Transform3D]) -> MultiMesh:
@@ -295,43 +260,30 @@ static func _mm(mesh: Mesh, xfs: Array[Transform3D]) -> MultiMesh:
 	return mm
 
 
-## Turned earth along the stretches still to be raised: a dug trench for the stakes to stand in.
+## The trench dug along the stretches still to be raised, the spoil thrown up outside it.
 func _ditch(todo: Array[int]) -> MultiMesh:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	var box := BoxMesh.new()
-	box.size = Vector3(0.55, 0.06, 0.42)
-	mm.mesh = box
-	var spots: Array[int] = []
+	var xfs: Array[Transform3D] = []
 	for j in range(0, todo.size(), 2):
-		spots.append(todo[j])
-	mm.instance_count = spots.size()
-	for j in spots.size():
-		var k := spots[j]
+		var k := todo[j]
 		var dir := line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]
 		dir.y = 0.0
 		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
 		var p := line[k]
-		p.y = nav.height(p.x, p.z) + 0.02
-		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), p))
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.24, 0.18, 0.12)
-	m.roughness = 1.0
-	_trench.material_override = m
-	return mm
+		p.y = nav.height(p.x, p.z) + 0.01
+		var b := Basis.looking_at(dir, Vector3.UP) # (its +x, where the spoil's thrown, outward)
+		if inward < 0.0:
+			b = b.rotated(Vector3.UP, PI)
+		xfs.append(Transform3D(b, p))
+	return _mm(Details.mesh("ditch"), xfs)
 
 
-func _stakes(which: Array[int], ghost: bool) -> MultiMesh:
+## The stakes in `which`: standing (the model `variant`, each its own shade), or still to raise
+## (`ghost`: faint marks of the plain shape).
+func _stakes(which: Array[int], ghost: bool, variant := 0) -> MultiMesh:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
-	mm.mesh = stake_mesh()
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.95
-	if ghost:
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.mesh = stake_mesh() if ghost else Details.mesh("stake_%d" % variant)
 	mm.instance_count = which.size()
 	for j in which.size():
 		var k := which[j]
@@ -340,37 +292,47 @@ func _stakes(which: Array[int], ghost: bool) -> MultiMesh:
 			mm.set_instance_color(j, Color(0.95, 0.85, 0.68, 0.13))
 		else:
 			var h := fposmod(sin(k * 12.9898) * 43758.5453, 1.0)
-			var shade := (0.28 if level >= 2 else 0.36) + h * 0.14
-			mm.set_instance_color(j, Color(shade, shade * 0.78, shade * 0.55))
+			var shade := (0.72 if level >= 2 else 0.88) + h * 0.2
+			mm.set_instance_color(j, Color(shade, shade * (0.96 + h * 0.04), shade * 0.92))
 	if ghost:
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_marks.material_override = m
-	else:
-		_solid.material_override = null # (the stake's own bark and its cut point)
 	return mm
 
 
 ## The walkway along the inside of the standing stretches: planks laid across, a plank to a stake.
 func _walkway(up: Array[int]) -> MultiMesh:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	var plank := BoxMesh.new()
-	plank.size = Vector3(0.9, 0.06, 0.28)
-	mm.mesh = plank
-	mm.instance_count = up.size()
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.5, 0.38, 0.25)
-	m.roughness = 0.95
-	_walk.material_override = m
-	for j in up.size():
-		var k: int = up[j]
-		var dir := line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]
-		dir.y = 0.0
-		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
-		var left := Vector3.UP.cross(dir).normalized() * inward
-		var c := line[k] + left * 0.62
-		c.y = nav.height(line[k].x, line[k].z) + WALK_H
-		mm.set_instance_transform(j, Transform3D(Basis.looking_at(dir, Vector3.UP), c))
-	return mm
+	var xfs: Array[Transform3D] = []
+	for k: int in up:
+		xfs.append(_walk_xf(k))
+	return _mm(Details.mesh("walk_board"), xfs)
+
+
+## The walkway's trestles: one under every third plank whose neighbours stand too, its legs down
+## into the ground.
+func _trestles(up: Array[int]) -> MultiMesh:
+	var stand := {}
+	for k in up:
+		stand[k] = true
+	var xfs: Array[Transform3D] = []
+	for k: int in up:
+		if k % 3 == 1 and stand.has(k - 1) and stand.has(k + 1):
+			xfs.append(_walk_xf(k))
+	return _mm(Details.mesh("walk_frame"), xfs)
+
+
+## A walkway plank's place over stake `k`.
+func _walk_xf(k: int) -> Transform3D:
+	var dir := line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+	var left := Vector3.UP.cross(dir).normalized() * inward
+	var c := line[k] + left * 0.62
+	c.y = nav.height(line[k].x, line[k].z) + WALK_H
+	return Transform3D(Basis.looking_at(dir, Vector3.UP), c)
 
 
 ## A spot on the walkway near `p`: {at (standing on it), down (on the ground beside it)}, or empty
@@ -530,22 +492,18 @@ func _footing() -> void:
 	if _foot == null:
 		_foot = MultiMeshInstance3D.new()
 		add_child(_foot)
-		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(0.46, 0.45, 0.42)
-		m.roughness = 0.97
-		_foot.material_override = m
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = Building.rock(1)
+	mm.mesh = Details.mesh("footing")
 	var spots: Array[int] = []
-	for k in range(0, line.size(), 2):
+	for k in range(0, line.size(), 3):
 		if built[k] != 2:
 			spots.append(k)
 	mm.instance_count = spots.size()
 	for j in spots.size():
 		var p := line[spots[j]]
-		p.y = nav.height(p.x, p.z) + 0.05
-		mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, spots[j] * 1.7).scaled(Vector3(0.62, 0.38, 0.55)), p))
+		p.y = nav.height(p.x, p.z) - 0.04
+		mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, spots[j] * 1.7), p))
 	_foot.multimesh = mm
 
 
@@ -598,10 +556,7 @@ func hit(at: Vector3, dmg: float) -> bool:
 
 func _fall(k: int) -> void:
 	var mi := MeshInstance3D.new()
-	mi.mesh = stake_mesh()
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.4, 0.3, 0.2)
-	mi.material_override = m
+	mi.mesh = Details.mesh("stake_%d" % (k % 3))
 	add_child(mi)
 	var xf := stake_xf(line[k], k)
 	mi.global_transform = xf

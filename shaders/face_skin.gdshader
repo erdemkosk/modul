@@ -74,7 +74,7 @@ void fragment() {
 	// a little shade in the sockets, the lids' redness (the texture's) toned toward the skin's hue
 	float lum = dot(c, vec3(0.3, 0.59, 0.11));
 	c = mix(c, lum * tint / max(dot(tint, vec3(0.3, 0.59, 0.11)), 0.01), m.g * 0.4);
-	c *= mix(1.0, 0.86, m.g * 0.6);
+	c *= mix(1.0, 0.7, m.g * 0.8); // (deep enough to read the eyes from the game's camera)
 	// older: paler, greyer
 	c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), age * 0.1);
 	// graded toward the painted world

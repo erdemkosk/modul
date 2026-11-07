@@ -20,6 +20,7 @@ const FLAT_ENOUGH := 0.03 ## the grade that costs nothing extra to walk the way 
 ## The opening of a tunnel, and the facing stone round it, point for point (m across, m up).
 const MOUTH: Array[Vector2] = [Vector2(-2.9, -1.0), Vector2(-2.9, 3.6), Vector2(-2.0, 4.9), Vector2(0, 5.5), Vector2(2.0, 4.9), Vector2(2.9, 3.6), Vector2(2.9, -1.0)]
 const FACE: Array[Vector2] = [Vector2(-5.4, -1.0), Vector2(-5.4, 5.0), Vector2(-3.6, 7.2), Vector2(0, 7.9), Vector2(3.6, 7.2), Vector2(5.4, 5.0), Vector2(5.4, -1.0)]
+const MODEL := "res://assets/train/%s.glb" ## (what's made in Blender for the line: tools/blender/build_train.py)
 const AROUND: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 	Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1), Vector2i(1, 2), Vector2i(1, -2), Vector2i(-1, 2), Vector2i(-1, -2)]
 
@@ -387,3 +388,64 @@ static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector
 	st.add_vertex(a)
 	st.add_vertex(c)
 	st.add_vertex(d)
+
+
+## A model from assets/train set down under `parent` at `xf`: its pieces in their own (vertex) colours.
+static func model(parent: Node3D, kind: String, xf: Transform3D) -> Node3D:
+	var root := (load(MODEL % kind) as PackedScene).instantiate() as Node3D
+	for n: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var stuff := String(mi.name).split("-")[0]
+		mi.material_override = Building.material((stuff if BuildingDefs.STUFF.has(stuff) else "dark") + "+")
+	parent.add_child(root)
+	root.global_transform = xf
+	return root
+
+
+## The water tower standing on the ground at `at`, its spout swung out toward `track` (a point on the
+## line: the spout reaches 4.6 m from the tower's middle).
+static func water_tower(parent: Node3D, at: Vector3, track: Vector3) -> Node3D:
+	var to := track - at
+	to.y = 0.0
+	to = to.normalized() if to.length() > 0.01 else Vector3.FORWARD
+	return model(parent, "su_kulesi", Transform3D(Basis.looking_at(-to, Vector3.UP), at))
+
+
+## The buffer stop at the last point of `line` (rails `gauge` times the main line's), its beam
+## facing back down the line at what comes.
+static func buffer_stop(parent: Node3D, line: PackedVector3Array, gauge := 1.0) -> Node3D:
+	if line.size() < 2:
+		return null
+	var end := line[line.size() - 1]
+	var back := line[maxi(line.size() - 4, 0)] - end
+	back.y = 0.0
+	back = back.normalized() if back.length() > 0.01 else Vector3.FORWARD
+	var b := Basis.looking_at(-back, Vector3.UP).scaled(Vector3.ONE * gauge)
+	return model(parent, "tampon", Transform3D(b, end + Vector3.UP * 0.14 - back * 0.4))
+
+
+static var _sleeper: ArrayMesh
+
+## One sleeper with its tie plates, a surface to each stuff (for the line's MultiMesh: its top at 0,
+## running across x, the rails at x +-0.76).
+static func sleeper_mesh() -> Mesh:
+	if _sleeper:
+		return _sleeper
+	_sleeper = ArrayMesh.new()
+	var root := (load(MODEL % "travers") as PackedScene).instantiate()
+	for n: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var xf := mi.transform
+		var stuff := String(mi.name).split("-")[0]
+		for i in mi.mesh.get_surface_count():
+			var st := SurfaceTool.new()
+			st.create_from(mi.mesh, i)
+			var arr := st.commit_to_arrays()
+			var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			for k in vs.size():
+				vs[k] = xf * vs[k]
+			arr[Mesh.ARRAY_VERTEX] = vs
+			_sleeper.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			_sleeper.surface_set_material(_sleeper.get_surface_count() - 1, Building.material((stuff if BuildingDefs.STUFF.has(stuff) else "dark") + "+"))
+	root.free()
+	return _sleeper

@@ -1,10 +1,13 @@
 class_name Townsfolk
 extends Node3D
 ## A townsman's body: a skinned, rigged man (assets/townsfolk/townsman.glb, the Mud Run survivor
-## with a MakeHuman head; the army kit hidden) dressed as the taiga dressed in the years of the war
-## and after: a wool coat or a canvas smock, or an old army greatcoat (khaki, or the prisoners'
-## blue-grey), canvas trousers, boots, a knit cap, a slouch hat or a fur hat, a beard more often than
-## not. The deserters who come raiding wear what's left of their uniforms. It moves by motion-captured clips (walking, carrying, picking up, eating, talking,
+## with a MakeHuman head; all his own kit put away but the head and hands) dressed as the taiga
+## dressed in 1918, in clothes made in Blender like the buildings and skinned to his bones
+## (assets/townsfolk/kit.glb, tools/blender/build_villagers.py): a linen shirt belted with a cord
+## or a quilted jacket, an army tunic or greatcoat brought home, in the winter the sheepskin coat;
+## wool trousers, boots, bast shoes and leg wraps, felt boots; a peaked cap, a fur hat; a woman's
+## blouse, long skirt and apron, her kerchief, her winter shawl; a beard more often than not. The
+## sides' soldiers in their uniforms, the deserters who come raiding in what's left of theirs. It moves by motion-captured clips (walking, carrying, picking up, eating, talking,
 ## a torch, pushing; Quaternius' UAL, CC0) and, for the work no clip has (felling, the pick, the
 ## sickle, the saw, the hammer...), by Villager._animate's numbers turned onto the bones over the
 ## standing clip (TownsfolkPose).
@@ -14,28 +17,6 @@ const UAL := "res://assets/townsfolk/anims/ual.res"
 const HEADS_DIR := "res://assets/townsfolk/heads/"
 const FACE_SHADER := preload("res://shaders/face_skin.gdshader")
 
-## Kept: what a man of the town wears. Everything else on the model (plate carriers, helmets,
-## packs, patches) stays hidden.
-const COATS := ["Survivor_Jacket", "Survivor_JacketSmock"]
-const HATS := ["Survivor_Headwear", "Survivor_Boonie", "Survivor_Ushanka", ""]
-const ALWAYS := ["Survivor_Body", "Survivor_Trousers", "Survivor_Boots"]
-
-const WOOL := [Color("#5a4632"), Color("#3e4440"), Color("#6b2e26"), Color("#4a4f3a"), Color("#2f3646"),
-	Color("#7a6a4f"), Color("#5d5a52"), Color("#3b2f28"), Color("#55402e")]
-## Army cloth: Russian khaki and the prisoners' (Austro-Hungarian) blue-grey, worn thin, the
-## greatcoats a good many brought with them out of the war.
-const SURPLUS := [Color("#5b5a3c"), Color("#4e4d34"), Color("#66634a"), Color("#5a6470"), Color("#4c5560")]
-const CANVAS := [Color("#4a3d30"), Color("#3a3a38"), Color("#5b5444"), Color("#2e3340"), Color("#6a5a44")]
-const KNIT := [Color("#7a2f25"), Color("#4a4a46"), Color("#6b5a3e"), Color("#2f3a4a"), Color("#8a7a5c")]
-const FELT := [Color("#4b3a2a"), Color("#3a332c"), Color("#5e4e3a"), Color("#2c2826")]
-const SKINS := [Color("#e0ac8a"), Color("#d29a78"), Color("#c48a68"), Color("#a8714f")]
-const HAIR := [Color("#2a1d14"), Color("#4a3322"), Color("#6b4a2e"), Color("#8a6a44"), Color("#1a1714"), Color("#7a3a1e")]
-const BOOTS := [Color("#3e2a1c"), Color("#2a2420"), Color("#5a4330")]
-const SCARF := [Color("#7a2f25"), Color("#5a5040"), Color("#3a4a5a"), Color("#8a7a5c")]
-## A woman's kerchief (tied over the head and under the chin) and her long skirt.
-const KERCHIEF := [Color("#9a2a22"), Color("#c8b48a"), Color("#3a4f7a"), Color("#6a2f4a"), Color("#d8d0bc"), Color("#4a6a3a")]
-const SKIRT := [Color("#3a2f28"), Color("#2f3646"), Color("#4a3a30"), Color("#55402e"), Color("#2c2826"), Color("#5a4a3a")]
-const WOMAN_KEYS := ["JawNarrow", "ChinWeak", "NoseSmall", "LipsFull", "Cheekbones", "Gaunt"]
 ## The skin textures by age and beard (heads/), each with its mean colour over the face.
 const SKIN_TEX := {
 	"young": ["skin_young_light.png", Color("#df997c")], "tan": ["skin_young_tan.png", Color("#d28059")],
@@ -165,100 +146,82 @@ func weapon_mount() -> Node3D:
 
 
 ## The two sides' cloth, so a man can be told from above by his coat alone: the Centre's soldiers
-## in khaki from cap to puttees, a leather belt and pouches; Free Kordal's in dark coats (whatever
-## was to hand, dyed black or near it), a red band on the arm and a red rag at the neck.
+## in khaki from cap to boots, a peaked cap with a cockade, a leather belt and pouches; Free
+## Kordal's in dark coats (whatever was to hand, dyed black or near it), the pointed cloth helmet
+## with its red star, a red band on the arm and a red rag at the neck.
 const KHAKI := Color("#6b6844")
 const KHAKI_DARK := Color("#55533a")
-const KORDAL_COAT := [Color("#23201d"), Color("#2b2622"), Color("#1f2226")]
+const KHAKI_COAT := Color("#6a6650")
+const KORDAL_COAT := [Color("#23201d"), Color("#2b2622"), Color("#2a2724")]
 const KORDAL_RED := Color("#9a1c14")
+
+## The clothes (assets/townsfolk/kit.glb, tools/blender/build_villagers.py): skinned to this same
+## skeleton, each piece dyed per person by its materials' names.
+const KIT := "res://assets/townsfolk/kit.glb"
+## Every Survivor_ piece but the head and the hands is put away when the kit is worn.
+const KEEP := ["Survivor_Body", "Survivor_Hands", "Survivor_Gloves"]
+
+## The cloth of the town, cold and worn: bleached and unbleached linen, a madder red gone pale,
+## undyed wool and wool dyed with bark, the army's khaki and grey brought home from the war.
+const LINEN := [Color("#c4bca8"), Color("#b5ab94"), Color("#a69a7e"), Color("#7e5446"), Color("#7e7a70"), Color("#957c52"), Color("#bab4a6")]
+const WOOL := [Color("#5a4632"), Color("#3e4440"), Color("#4a4f3a"), Color("#6b5e4a"), Color("#5d5a52"), Color("#3b2f28"),
+	Color("#55402e"), Color("#46423a"), Color("#6b2e26")]
+const SURPLUS := [Color("#5b5a3c"), Color("#4e4d34"), Color("#66634a"), Color("#6a6a62"), Color("#5c5a54")]
+const HIDE := [Color("#b89a6e"), Color("#a5835a"), Color("#c4aa80"), Color("#8a6a48"), Color("#9c7c56")]
+const FLEECE := [Color("#e0d6c2"), Color("#cfc2a8"), Color("#d8cdb6"), Color("#8a7458")]
+const FUR := [Color("#2a221c"), Color("#4a3a2c"), Color("#5e4a36"), Color("#3a302a"), Color("#6a5a48")]
+const TROUSERS := [Color("#3a3a36"), Color("#4a3d30"), Color("#5b5444"), Color("#2c2a26"), Color("#6a5a44"), Color("#55524a")]
+const FELT := [Color("#d8d2c4"), Color("#bdb5a5"), Color("#7a7268"), Color("#4a4440"), Color("#5e544a")]
+const LEATHER := [Color("#2a2420"), Color("#3e2a1c"), Color("#1c1a18"), Color("#4a3322")]
+const CAP := [Color("#2c2a26"), Color("#3a3631"), Color("#4a4238"), Color("#3b3a30")]
+const EMBROIDERY := [Color("#a3352a"), Color("#8a2a22"), Color("#b04a30"), Color("#3a3028")]
+const SKINS := [Color("#e0ac8a"), Color("#d29a78"), Color("#c48a68"), Color("#a8714f")]
+const HAIR := [Color("#2a1d14"), Color("#4a3322"), Color("#6b4a2e"), Color("#8a6a44"), Color("#1a1714"), Color("#7a3a1e"), Color("#a08a64")]
+## A woman's kerchief, her skirt and apron, her winter shawl.
+const KERCHIEF := [Color("#8a2e26"), Color("#b4a27e"), Color("#5e3444"), Color("#c4bca8"), Color("#4a5440"), Color("#94602e"), Color("#cfcabd")]
+const SKIRT := [Color("#3a2f28"), Color("#4a3a30"), Color("#55402e"), Color("#2c2826"), Color("#5a4a3a"), Color("#6a2a24"), Color("#4a4a3a")]
+const APRON := [Color("#c4bca8"), Color("#b5ab94"), Color("#ccc6b6"), Color("#a69a7e")]
+const SHAWL := [Color("#8a7a5c"), Color("#5a4a3a"), Color("#c8bca4"), Color("#6a2a24"), Color("#4a4238"), Color("#9a8a6a")]
+const RAG := [Color("#4a4236"), Color("#1c1a18"), Color("#3a2e24"), Color("#5a5040")] ## (an outlaw's: never the red, that's Kordal's)
+const WOMAN_KEYS := ["JawNarrow", "ChinWeak", "NoseSmall", "LipsFull", "Cheekbones", "Gaunt"]
+
+static var _kit := {} ## piece -> [mesh, kit skin]
+static var _kit_skins := {} ## piece -> the skin rebound to the townsman's own rest
+static var _mats := {} ## "material:colour" -> a shared material
+
+var _summer: Array = [] ## [piece, {material: colour}] worn out of the winter
+var _winter_fit: Array = [] ## ... and in it
+var _militia_fit: Array = [] ## what a man of the militia puts on over his own
+var _worn: Array[MeshInstance3D] = []
+var _blend := {} ## the face's blend shapes (the head's and what sits on it)
+var _kind := ""
+var _winter := false
+var _militia := false
+var _girl := false
 
 
 func _dress(kind: String, rng: RandomNumberGenerator) -> void:
+	_girl = kind == "girl"
+	if _girl:
+		kind = "child"
+	_kind = kind
 	var soldier := kind in ["merkez", "kordal"]
 	var child := kind == "child"
 	var outlaw := kind == "outlaw"
 	var woman := kind == "woman"
 	var age := 0.0 if child else rng.randf_range(0.05, 1.0)
 	var beard := not child and not woman and rng.randf() < (0.8 if outlaw else 0.65)
-	var mask := outlaw and rng.randf() < 0.5
-	var coat: String = COATS[rng.randi() % COATS.size()]
-	var hat: String = HATS[rng.randi() % HATS.size()]
-	if outlaw:
-		coat = "Survivor_Jacket" if rng.randf() < 0.7 else "Survivor_JacketSmock"
-		mask = rng.randf() < 0.12
-		hat = "" if mask else ("Survivor_Ushanka" if rng.randf() < 0.6 else "Survivor_Headwear")
-	if mask:
-		hat = ""
-		beard = false
-	if woman:
-		hat = "Survivor_Headwear" # (the kerchief: the knit cap in its colours, the neckerchief the knot under the chin)
-		coat = "Survivor_Jacket"
-	var extra: Array[String] = [] ## (kit worn over the clothes: a belt and pouches, an armband)
-	if soldier:
-		mask = false
-		coat = "Survivor_Jacket"
-		extra.append("Survivor_BeltGear")
-		if kind == "merkez":
-			hat = "Survivor_PatrolCap" if rng.randf() < 0.75 else "Survivor_CapBack"
-		else:
-			hat = ["Survivor_Ushanka", "Survivor_CapBack", "Survivor_Headwear"][rng.randi() % 3]
-			extra.append("Survivor_Armband")
-	var scarf := outlaw or woman or kind == "kordal" or (not soldier and rng.randf() < 0.3)
-	var gloves := not child and rng.randf() < 0.2
-	var wool: Color = WOOL[rng.randi() % WOOL.size()]
-	if outlaw:
-		# (khaki gone dark with the woods, or a coat taken off someone)
-		wool = (SURPLUS[rng.randi() % 3] if rng.randf() < 0.5 else WOOL[rng.randi() % WOOL.size()]).darkened(rng.randf_range(0.1, 0.3))
-	elif not child and rng.randf() < 0.3:
-		wool = SURPLUS[rng.randi() % SURPLUS.size()]
 	var hair: Color = HAIR[rng.randi() % HAIR.size()]
 	var grey := hair.lerp(Color(0.62, 0.6, 0.58), smoothstep(0.55, 1.0, age) * 0.7)
 	var skin: Color = SKINS[rng.randi() % SKINS.size()]
-	var hat_c: Color = (KNIT if hat == "Survivor_Headwear" else FELT)[rng.randi() % (KNIT if hat == "Survivor_Headwear" else FELT).size()]
-	var trousers: Color = CANVAS[rng.randi() % CANVAS.size()]
-	var boots: Color = BOOTS[rng.randi() % BOOTS.size()]
-	var scarf_c: Color = SCARF[rng.randi() % SCARF.size()]
-	if woman:
-		hat_c = KERCHIEF[rng.randi() % KERCHIEF.size()]
-		scarf_c = hat_c
-		trousers = SKIRT[rng.randi() % SKIRT.size()]
-	if kind == "merkez":
-		wool = KHAKI.darkened(rng.randf_range(0.0, 0.12))
-		trousers = KHAKI_DARK.darkened(rng.randf_range(0.0, 0.1))
-		hat_c = KHAKI_DARK
-	elif kind == "kordal":
-		wool = KORDAL_COAT[rng.randi() % KORDAL_COAT.size()]
-		trousers = Color("#2a2a2a").lightened(rng.randf_range(0.0, 0.08))
-		hat_c = Color("#1e1c1a")
-		scarf_c = KORDAL_RED
-	var patch := wool.darkened(0.06)
-	var trouser_patch := trousers.darkened(0.17)
-	if outlaw:
-		scarf_c = [Color("#4a4236"), Color("#1c1a18"), Color("#3a2e24"), Color("#5a5040")][rng.randi() % 4] # (rags: never the red, that's Kordal's)
-		trousers = (SURPLUS[rng.randi() % 3] if rng.randf() < 0.6 else CANVAS[rng.randi() % CANVAS.size()]).darkened(0.3)
-		hat_c = SURPLUS[rng.randi() % 3].darkened(0.2)
-		# what's left of a uniform, ragged: patched with whatever cloth came to hand, the knees out
-		patch = WOOL[rng.randi() % WOOL.size()].lightened(0.08)
-		trouser_patch = CANVAS[rng.randi() % CANVAS.size()].lightened(0.12)
-	var colours := {
-		"Jacket": wool, "JacketDark": wool.darkened(0.2), "Patch": patch,
-		"Trousers": trousers, "TrouserPatch": trouser_patch,
-		"Boot": boots, "Leather": boots.lightened(0.08), "Glove": Color("#6a4a33"), "GloveDark": Color("#4e3626"),
-		"Skin": skin, "Beanie": hat_c, "Boonie": hat_c, "BoonieDark": hat_c.darkened(0.3),
-		"UshankaTop": Color("#4a3426"), "LeatherBand": Color("#3a2a1e"),
-		"Scarf": scarf_c, "Hoodie": scarf_c.darkened(0.25), "Balaclava": Color("#2a2826"),
-		"HeadBrow": grey.darkened(0.2), "HeadBrowHeavy": grey.darkened(0.15), "HeadLash": hair.darkened(0.3),
-		"HeadBeard": grey, "HeadMoustache": grey,
-		"FieldCap": hat_c, "FieldCapDark": hat_c.darkened(0.3), "Badge": Color("#8a6a2a"),
-		"Webbing": Color("#4a3322"), "Metal": Color("#5a5650"), "PackDark": Color("#3a2a1e"), "Handle": Color("#3a2a1e"),
-		"HiVis": KORDAL_RED, "Reflect": KORDAL_RED.darkened(0.2), "PatchWhite": KORDAL_RED, "PatchMark": KORDAL_RED.darkened(0.35),
-	}
+	var gloves := not child and not woman and rng.randf() < 0.15
+	# the face
 	var head: String = HEADS[rng.randi() % HEADS.size()] if not child else "Head_Base"
 	if age > 0.8 and rng.randf() < 0.6:
 		head = "Head_Old"
 	var keys := {}
 	for k in 3:
-		if woman:
+		if woman or _girl:
 			keys[WOMAN_KEYS[rng.randi() % WOMAN_KEYS.size()]] = rng.randf_range(0.35, 0.8)
 		else:
 			keys[FACE_KEYS[rng.randi() % FACE_KEYS.size()]] = rng.randf_range(0.15, 0.6)
@@ -266,38 +229,29 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 		head = "Head_Lean" if rng.randf() < 0.6 else "Head_Base"
 	if head == "Head_Old" or age > 0.85:
 		keys["Old"] = rng.randf_range(0.4, 1.0)
-	var heavy_brows := not woman and rng.randf() < 0.35
-	var beard_cut: Array = [[0.3, 0.32], [2.0, 0.3], [0.52, 0.4]][rng.randi() % 3]
+	keys[head] = 1.0
+	_blend = keys
+	var heavy_brows := not woman and not child and rng.randf() < 0.35
+	# the clothes, summer and winter, chosen now (so the same each time the seed is built)
+	_summer = _outfit(kind, false, rng, grey, age, beard)
+	_winter_fit = _outfit(kind, true, rng, grey, age, beard)
+	var torso_s := str(_summer[0][0])
+	var belt := "belt_kit_thin" if torso_s in ["shirt", "tunic", "smock", "blouse"] else "belt_kit"
+	_militia_fit = [["furazhka", {"Cloth": Color("#4f5240"), "Band": Color("#2e2c26"), "Sole": Color("#1c1a18"), "Metal": Color("#8a6a2a")}],
+		[belt, {"Leather": Color("#4a3322"), "Metal": Color("#6a6050")}]]
+	var colours := {"Skin": skin, "Glove": Color("#6a4a33"), "GloveDark": Color("#4e3626"),
+		"HeadBrow": grey.darkened(0.2), "HeadBrowHeavy": grey.darkened(0.15), "HeadLash": hair.darkened(0.3)}
 	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
 		var n := String(mi.name)
-		var show := n in ALWAYS or n == coat or n == hat or n in extra
-		match n:
-			"Survivor_Beard":
-				show = beard
-			"Survivor_Neckwear":
-				show = scarf
-			"Survivor_Gloves":
-				show = gloves
-			"Survivor_Hands":
-				show = not gloves
-			"Survivor_Balaclava":
-				show = mask
+		var show := n in KEEP and (n != "Survivor_Gloves" or gloves) and (n != "Survivor_Hands" or not gloves)
 		mi.visible = show
 		if not show:
 			continue
-		# (small things not worth drawing from far off)
-		if n in ["Survivor_Beard", "Survivor_Hands", "Survivor_Gloves", "Survivor_Neckwear"]:
+		if n in ["Survivor_Hands", "Survivor_Gloves"]:
 			mi.visibility_range_end = 70.0
+		_shape(mi)
 		var mesh := mi.mesh
-		for b in mesh.get_blend_shape_count():
-			var key := String(mesh.get_blend_shape_name(b))
-			var v := float(keys.get(key, 0.0))
-			if key.begins_with("Head_"):
-				v = 1.0 if key == head else 0.0
-			elif key == "Layer":
-				v = 0.0
-			mi.set_blend_shape_value(b, v)
 		for s in mesh.get_surface_count():
 			var base := mesh.surface_get_material(s) as BaseMaterial3D
 			if base == null:
@@ -310,111 +264,297 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 				continue
 			var m := base.duplicate() as StandardMaterial3D
 			m.albedo_color = colours[name]
-			if name in ["HeadBeard", "HeadMoustache"]:
-				m.alpha_scissor_threshold = beard_cut[0 if name == "HeadBeard" else 1]
-			elif name in ["HeadBrow", "HeadBrowHeavy", "HeadLash"]:
+			if name in ["HeadBrow", "HeadBrowHeavy", "HeadLash"]:
 				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				m.cull_mode = BaseMaterial3D.CULL_DISABLED
 				if name != "HeadLash":
 					m.albedo_color.a = 1.0 if heavy_brows == (name == "HeadBrowHeavy") else 0.0
 			mi.set_surface_override_material(s, m)
-			if name == "Jacket":
+	_winter = Weather.snow_cover_now > 0.3 # (a body built in the winter comes dressed for it)
+	_wear()
+
+
+## A blend shape per key in `_blend` (the head chosen, the face's own), on `mi`.
+func _shape(mi: MeshInstance3D) -> void:
+	var mesh := mi.mesh
+	for b in mesh.get_blend_shape_count():
+		var key := String(mesh.get_blend_shape_name(b))
+		mi.set_blend_shape_value(b, 0.0 if key == "Layer" else float(_blend.get(key, 0.0)))
+
+
+func _pick(list: Array, rng: RandomNumberGenerator) -> Color:
+	return list[rng.randi() % list.size()]
+
+
+## What `kind` wears in the summer or the winter: [[piece, {material: colour}], ...], the coat (or
+## the shirt) first. Each call takes the same draws from `rng` whatever it chooses.
+func _outfit(kind: String, winter: bool, rng: RandomNumberGenerator, hair: Color, age: float, beard: bool) -> Array:
+	var r: Array[float] = [rng.randf(), rng.randf(), rng.randf(), rng.randf(), rng.randf(), rng.randf()]
+	var wool := _pick(WOOL, rng)
+	var linen := _pick(LINEN, rng)
+	var trousers := _pick(TROUSERS, rng)
+	var leather := _pick(LEATHER, rng)
+	var felt := _pick(FELT, rng)
+	var hide := _pick(HIDE, rng)
+	var fleece := _pick(FLEECE, rng)
+	var fur := _pick(FUR, rng)
+	var cap := _pick(CAP, rng)
+	var trim := _pick(EMBROIDERY, rng)
+	var kerchief := _pick(KERCHIEF, rng)
+	var skirt := _pick(SKIRT, rng)
+	var apron := _pick(APRON, rng)
+	var shawl := _pick(SHAWL, rng)
+	var surplus := _pick(SURPLUS, rng)
+	var rag := _pick(RAG, rng)
+	var sash := _pick([Color("#8a2a22"), Color("#5a4a32"), Color("#6a5a3a"), Color("#3a3028")], rng)
+	var out: Array = []
+	var feet := ""
+	var legs := "trousers"
+	var on_head := ""
+	var head_c := {}
+	var brass := Color("#8a6a2a")
+	var buttons := Color("#2a2420")
+	var shirt := {"Cloth": linen, "Trim": trim, "Belt": sash, "Metal": Color("#c8c0ac")}
+	var padded := {"Cloth": wool.darkened(0.1), "ClothDark": wool.darkened(0.3), "Button": buttons}
+	var shinel := {"Cloth": surplus, "ClothDark": surplus.darkened(0.15), "Metal": brass, "Leather": leather.lightened(0.1)}
+	var tulup := {"Hide": hide, "Fur": fleece, "Belt": sash}
+	match kind:
+		"man", "outlaw":
+			if winter:
+				out.append(["tulup", tulup] if r[0] < 0.35 else (["shinel", shinel] if r[0] < 0.6 else ["padded", padded]))
+				feet = "valenki" if r[1] < 0.65 else "boots"
+				on_head = "ushanka" if r[2] < 0.55 else "papakha"
+			else:
+				if r[0] < 0.55:
+					out.append(["shirt", shirt])
+				elif r[0] < 0.75:
+					out.append(["padded", padded])
+				elif r[0] < 0.9:
+					out.append(["tunic", {"Cloth": surplus, "Leather": leather.lightened(0.1), "Metal": brass}])
+				else:
+					out.append(["shinel", shinel])
+				feet = "boots" if r[1] < 0.6 else "lapti"
+				on_head = "kartuz" if r[2] < 0.5 else ("" if r[2] < 0.78 else ("papakha" if r[2] < 0.9 else "ushanka"))
+			if kind == "outlaw":
+				# what's left of a uniform, gone dark with the woods; a rag at the neck
+				for e: Array in out:
+					var c: Dictionary = (e[1] as Dictionary).duplicate()
+					for k: String in c:
+						if k in ["Cloth", "ClothDark", "Hide"]:
+							c[k] = (c[k] as Color).darkened(0.25)
+					e[1] = c
+				if r[3] < 0.6:
+					out.append(["neck_rag", {"Cloth": rag}])
+				if on_head == "kartuz" or on_head == "":
+					on_head = "ushanka" if r[4] < 0.5 else "papakha"
+				feet = "boots"
+			if feet == "lapti":
+				legs = "trousers_long"
+			head_c = {"Cloth": cap, "ClothDark": cap.darkened(0.2), "Leather": Color("#1c1a18"), "Fur": fur, "Top": cap, "Trim": cap.darkened(0.3)}
+		"woman":
+			if winter:
+				var long_coat := {"Cloth": wool, "ClothDark": wool.darkened(0.2), "Metal": buttons, "Leather": sash}
+				out.append(["tulup", tulup] if r[0] < 0.45 else (["padded", padded] if r[0] < 0.75 else ["shinel", long_coat]))
+				out.append(["skirt", {"Cloth": skirt, "Trim": skirt.darkened(0.3), "ClothDark": skirt.darkened(0.2)}])
+				on_head = "shawl_head"
+				head_c = {"Cloth": shawl, "Trim": shawl.darkened(0.25)}
+				feet = "valenki"
+			else:
+				out.append(["blouse", {"Cloth": linen if r[0] < 0.6 else linen.lerp(Color("#d8d0bc"), 0.6), "Trim": trim}])
+				out.append(["skirt", {"Cloth": skirt, "Trim": skirt.darkened(0.3), "ClothDark": skirt.darkened(0.2)}])
+				if r[1] < 0.6:
+					out.append(["apron", {"Apron": apron}])
+				if r[3] < 0.3:
+					out.append(["shawl", {"Cloth": shawl, "Trim": shawl.darkened(0.25)}])
+				on_head = "kerchief"
+				head_c = {"Cloth": kerchief}
+				feet = "boots" if r[2] < 0.7 else "lapti"
+			legs = ""
+		"child":
+			if winter:
+				out.append(["tulup", tulup] if r[0] < 0.5 else ["padded", padded])
+				feet = "valenki"
+				on_head = "shawl_head" if _girl else "ushanka"
+				head_c = {"Cloth": shawl, "Trim": shawl.darkened(0.25)} if _girl else {"Cloth": cap, "Fur": fur}
+			else:
+				out.append(["smock", shirt])
+				feet = "lapti" if r[1] < 0.6 else "boots"
+				on_head = "kerchief" if _girl else ("kartuz" if r[2] < 0.35 else "")
+				head_c = {"Cloth": kerchief} if _girl else {"Cloth": cap, "ClothDark": cap.darkened(0.2), "Leather": Color("#1c1a18")}
+			if _girl and not winter:
+				out.append(["skirt", {"Cloth": skirt, "Trim": skirt.darkened(0.3), "ClothDark": skirt.darkened(0.2)}])
+				legs = ""
+			elif feet == "lapti":
+				legs = "trousers_long"
+		"merkez":
+			var kh := KHAKI.darkened(r[5] * 0.12)
+			if winter:
+				out.append(["shinel", {"Cloth": KHAKI_COAT.darkened(r[5] * 0.1), "ClothDark": KHAKI_DARK, "Metal": brass, "Leather": Color("#4a3322")}])
+				out.append(["belt_kit", {"Leather": Color("#4a3322"), "Metal": Color("#6a6050")}])
+				on_head = "papakha" if r[2] < 0.5 else "ushanka"
+				head_c = {"Fur": Color("#5e5648") if r[3] < 0.5 else Color("#2a221c"), "Top": KHAKI_DARK, "Trim": brass, "Cloth": KHAKI_DARK}
+				feet = "valenki" if r[1] < 0.4 else "boots"
+			else:
+				out.append(["tunic", {"Cloth": kh, "Leather": Color("#4a3322"), "Metal": brass}])
+				out.append(["belt_kit_thin", {"Leather": Color("#4a3322"), "Metal": Color("#6a6050")}])
+				on_head = "furazhka"
+				head_c = {"Cloth": KHAKI_DARK, "Band": Color("#2e2c26"), "Sole": Color("#1c1a18"), "Metal": brass}
+				feet = "boots"
+			trousers = KHAKI_DARK.darkened(r[4] * 0.1)
+			leather = Color("#2a2420")
+		"kordal":
+			var coat: Color = KORDAL_COAT[int(r[5] * 3) % 3]
+			if winter:
+				out.append(["shinel", {"Cloth": coat, "ClothDark": coat.darkened(0.2), "Metal": Color("#5a5650"), "Leather": Color("#2a2420")}] if r[0] < 0.6 else
+					["tulup", {"Hide": Color("#4a3a2c"), "Fur": Color("#2a221c"), "Belt": KORDAL_RED}])
+				out.append(["armband_wide", {"Star": KORDAL_RED}])
+				out.append(["belt_kit" if r[0] < 0.6 else "belt_kit_wide", {"Leather": Color("#2a2420"), "Metal": Color("#5a5650")}])
+				feet = "valenki" if r[1] < 0.5 else "boots"
+			else:
+				out.append(["padded", {"Cloth": coat, "ClothDark": coat.darkened(0.2), "Button": Color("#1a1816")}])
+				out.append(["armband", {"Star": KORDAL_RED}])
+				out.append(["belt_kit", {"Leather": Color("#2a2420"), "Metal": Color("#5a5650")}])
+				feet = "boots"
+			out.append(["neck_rag", {"Cloth": KORDAL_RED}])
+			on_head = "budenovka" if (winter or r[2] < 0.6) else "kartuz"
+			head_c = {"Cloth": Color("#2e2b27"), "ClothDark": Color("#262420"), "Metal": Color("#5a5650"), "Star": KORDAL_RED, "Leather": Color("#1c1a18")}
+			trousers = Color("#2a2a2a").lightened(r[4] * 0.08)
+			legs = "trousers"
+	if legs != "":
+		out.append([legs, {"Cloth": trousers}])
+	match feet:
+		"boots":
+			out.append(["boots", {"Leather": leather, "Sole": Color("#1a1614")}])
+		"valenki":
+			out.append(["valenki", {"Felt": felt}])
+		"lapti":
+			out.append(["lapti", {"Linen": Color("#cfc5ad"), "Bast": Color("#b39a62")}])
+	if on_head != "":
+		out.append([on_head, head_c])
+	if kind in ["man", "outlaw", "merkez", "kordal"]:
+		var bald := age > 0.7 and r[4] < 0.35
+		if not bald:
+			out.append(["hair", {"Hair": hair}])
+		# (a beard a shade lighter than the hair, so it reads as hair and not a mask)
+		var bc := hair.lerp(Color("#6a5440"), 0.18)
+		if beard:
+			out.append([("beard_full" if age > 0.45 or kind == "outlaw" else "beard_short") if r[5] < 0.75 else "moustache", {"Hair": bc}])
+		elif r[5] < 0.3:
+			out.append(["moustache", {"Hair": bc}])
+	return out
+
+
+static func _load_kit() -> void:
+	if not _kit.is_empty() or not ResourceLoader.exists(KIT):
+		return
+	var root := (load(KIT) as PackedScene).instantiate()
+	for n: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var names: Array[String] = []
+		var sk := mi.get_node_or_null(mi.skeleton) as Skeleton3D
+		for i in mi.skin.get_bind_count():
+			var bn := String(mi.skin.get_bind_name(i))
+			if bn == "" and sk:
+				bn = sk.get_bone_name(mi.skin.get_bind_bone(i))
+			names.append(bn)
+		_kit[String(mi.name)] = [mi.mesh, names]
+	root.free()
+
+
+## The piece's skin bound to this skeleton's rest (the kit was made on the same rest pose).
+func _skin_for(piece: String) -> Skin:
+	if _kit_skins.has(piece):
+		return _kit_skins[piece]
+	var s := Skin.new()
+	for bn: String in _kit[piece][1]:
+		var b := skeleton.find_bone(bn)
+		s.add_named_bind(bn, skeleton.get_bone_global_rest(b).affine_inverse() if b >= 0 else Transform3D.IDENTITY)
+	_kit_skins[piece] = s
+	return s
+
+
+func _material(name: String, c: Color, own := false) -> StandardMaterial3D:
+	var key := "%s:%s" % [name, c.to_html()]
+	if not own and _mats.has(key):
+		return _mats[key]
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = c
+	m.roughness = {"Leather": 0.6, "Sole": 0.55, "Metal": 0.45, "Button": 0.6, "Band": 0.85}.get(name, 0.95)
+	if name == "Metal":
+		m.metallic = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED # (peaks, flaps, a shawl's edge: seen from either side)
+	if not own:
+		_mats[key] = m
+	return m
+
+
+## The clothes for now (the winter's or the summer's, the militia's over them) put on.
+func _wear() -> void:
+	_load_kit()
+	if _kit.is_empty():
+		return
+	for mi in _worn:
+		mi.free() # (now: two changes in one frame would otherwise draw both sets once)
+	_worn.clear()
+	var fit: Array = (_winter_fit if _winter else _summer).duplicate()
+	if _militia and _kind == "man":
+		var hats := ["kartuz", "papakha", "ushanka", ""]
+		if not _winter:
+			fit = fit.filter(func(e: Array) -> bool: return not str(e[0]) in hats)
+			fit.append(_militia_fit[0])
+		var belt := str(_militia_fit[1][0])
+		var torso := str(fit[0][0])
+		if torso == "tulup":
+			belt = "belt_kit_wide"
+		elif torso in ["shinel", "padded"]:
+			belt = "belt_kit"
+		fit.append([belt, _militia_fit[1][1]])
+	coat_material = null
+	for e: Array in fit:
+		var piece := str(e[0])
+		if not _kit.has(piece):
+			continue
+		var colours: Dictionary = e[1]
+		var mi := MeshInstance3D.new()
+		mi.name = "Kit_" + piece
+		mi.mesh = _kit[piece][0]
+		skeleton.add_child(mi)
+		mi.skeleton = NodePath("..")
+		mi.skin = _skin_for(piece)
+		if piece in ["hair", "beard_full", "beard_short", "moustache", "armband", "armband_wide", "neck_rag"]:
+			mi.visibility_range_end = 70.0 # (small things not worth drawing from far off)
+		var first := coat_material == null
+		for s in mi.mesh.get_surface_count():
+			var base := mi.mesh.surface_get_material(s)
+			var name := base.resource_name.trim_prefix("kit_") if base else "Cloth"
+			var c: Color = colours.get(name, Color(0.5, 0.48, 0.44))
+			var own := first and name in ["Cloth", "Hide"]
+			var m := _material(name, c, own)
+			mi.set_surface_override_material(s, m)
+			if own:
 				coat_material = m
-	if woman:
-		_skirt(trousers)
+		_shape(mi)
+		_worn.append(mi)
+	if coat_material == null:
+		coat_material = _material("Cloth", Color(0.5, 0.48, 0.44), true)
 
 
-## The fur hat and the scarf for the winter (a woman's kerchief stays): the summer's hat put away.
-## One of the militia wears a soldier's field cap in place of his own (not over a fur hat in the
-## winter) and a leather belt with its pouches: told from the others from above, nothing more.
-var _summer := {} ## mesh name -> visible, as dressed
-var _kind := ""
-var _winter := false
-var _militia := false
-
-
+## In the winter: the winter's clothes, fur and felt; out of it, the summer's.
 func set_winter(on: bool) -> void:
+	if on == _winter:
+		return
 	_winter = on
-	_refit()
+	_wear()
 
 
+## One of the militia wears a service cap in place of his own (not over a fur hat in the winter)
+## and a leather belt with its pouches and strap: told from the others from above, nothing more.
 func set_militia(on: bool) -> void:
 	if on == _militia:
 		return
 	_militia = on
-	_refit()
-
-
-func _refit() -> void:
-	if model == null or _kind in ["outlaw", "merkez", "kordal"]:
-		return
-	var man := _kind != "woman"
-	for node in model.find_children("Survivor_*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		var n := String(mi.name)
-		if not _summer.has(n):
-			_summer[n] = mi.visible
-		var vis := mi.visible
-		if n in HATS and n != "":
-			if not man:
-				continue
-			vis = (n == "Survivor_Ushanka") if _winter else (bool(_summer[n]) and not _militia)
-		elif n == "Survivor_PatrolCap":
-			vis = man and _militia and not _winter
-		elif n == "Survivor_BeltGear":
-			vis = _militia
-		elif n == "Survivor_Neckwear":
-			if not man:
-				continue
-			vis = _winter or bool(_summer[n])
-		else:
-			continue
-		mi.visible = vis
-		if not vis or mi.has_meta("kitted"):
-			continue
-		mi.set_meta("kitted", true)
-		# (first worn: coloured as a man of the town would have it)
-		_colour(mi, {"UshankaTop": Color("#4a3426"), "LeatherBand": Color("#3a2a1e"), "Fur": Color("#5a4632"),
-			"FieldCap": Color("#4f5240"), "FieldCapDark": Color("#3a3c30"), "Badge": Color("#7a5a26"),
-			"Leather": Color("#4a3322"), "Webbing": Color("#4a3322"), "Metal": Color("#5a5650"), "PackDark": Color("#3a2a1e"), "Handle": Color("#3a2a1e")})
-
-
-## Each of `mi`'s surfaces with a colour in `colours` (by its material's name) painted so.
-func _colour(mi: MeshInstance3D, colours: Dictionary) -> void:
-	for s in mi.mesh.get_surface_count():
-		var base := mi.mesh.surface_get_material(s) as BaseMaterial3D
-		if base == null or not colours.has(base.resource_name):
-			continue
-		var m := base.duplicate() as StandardMaterial3D
-		m.albedo_color = colours[base.resource_name]
-		mi.set_surface_override_material(s, m)
-
-
-## A long skirt to the ankles, hung from the hips: a cone of wool over the trousers.
-func _skirt(c: Color) -> void:
-	var at := BoneAttachment3D.new()
-	at.bone_name = "Hips"
-	skeleton.add_child(at)
-	var mi := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.19
-	cm.bottom_radius = 0.33
-	cm.height = 0.78
-	cm.radial_segments = 14
-	cm.cap_top = false
-	cm.cap_bottom = false
-	mi.mesh = cm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.roughness = 0.95
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mi.material_override = m
-	at.add_child(mi)
-	# (the hips' bone points up the spine: the skirt hangs down from it, in the model's own scale)
-	var hips := skeleton.get_bone_global_rest(skeleton.find_bone("Hips"))
-	var down := hips.basis.inverse() * Vector3.DOWN
-	mi.position = down.normalized() * 0.36
-	mi.basis = Basis(Quaternion(Vector3.DOWN, down.normalized())) if down.normalized().dot(Vector3.DOWN) < 0.999 else Basis.IDENTITY
+	_wear()
 
 
 func _face(age: float, beard: bool, skin: Color, hair: Color, rng: RandomNumberGenerator) -> ShaderMaterial:
@@ -434,7 +574,9 @@ func _face(age: float, beard: bool, skin: Color, hair: Color, rng: RandomNumberG
 	m.set_shader_parameter("tint", skin)
 	m.set_shader_parameter("hair_color", hair)
 	m.set_shader_parameter("age", age)
-	m.set_shader_parameter("stubble", 0.0 if age < 0.05 else rng.randf_range(0.3, 0.9))
+	var shaven := _kind in ["woman", "child"] or age < 0.05
+	var st := rng.randf_range(0.3, 0.9) if age >= 0.05 else 0.0 # (drawn as before, so a seed keeps its face)
+	m.set_shader_parameter("stubble", 0.0 if shaven else st)
 	m.set_shader_parameter("beard", 1.0 if beard else 0.0)
 	return m
 

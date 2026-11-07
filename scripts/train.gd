@@ -1,6 +1,7 @@
 class_name Train
 extends Node3D
-## The train that brings the first settlers: a black engine, its tender, a coach and a boxcar, rolling
+## The train that brings the first settlers: a black 0-8-0 engine, its tender, a coach, a teplushka and an
+## open wagon of logs (assets/train, tools/blender/build_train.py), rolling
 ## in along the railway (Village.rail) to the station at its end. It slows to a stop beside the
 ## platform, the people step down from the coach, the boxcar's load is handed out onto the platform;
 ## then it backs out the way it came and is gone. Smoke from its stack, the chuff of each stroke,
@@ -9,8 +10,17 @@ extends Node3D
 signal arrived
 signal unloaded
 
-const CARS := ["tren_lokomotif", "tren_tender", "tren_vagon", "tren_yuk"]
+const CARS := ["lokomotif", "tender", "vagon", "yuk", "platforma"] ## (the coach third, the boxcar fourth: door, cargo_door)
+const PATH := "res://assets/train/%s.glb" ## (tools/blender/build_train.py)
 const TOP := 0.32 ## m from the ground to the rail's top
+const COUPLED := 0.06 ## m between one car's buffer heads and the next's
+## The engine's motion, as it's built (build_train.py: DRIVER_R, CRANK, MAIN_ROD, DRIVERS, MAIN_AXLE):
+## the drivers' radius, the crank's throw, the main rod's length between its pins, the main pair's axle
+## (m back from the model's middle; Godot +z is the front)
+const DRIVER_R := 0.65
+const CRANK := 0.3
+const MAIN_ROD := 3.3
+const MAIN_AXLE_Z := -0.6
 const MAX_SPEED := 9.0
 const BRAKE := 0.55 ## m/s2
 const HARD_BRAKE := 3.0 ## m/s2: pulled up short (the first train, stopped by hand)
@@ -22,7 +32,11 @@ var stop_at := 0.0 ## m along the line where the engine's front stops
 var _len := PackedFloat32Array() ## m along the line at each point
 var _cars: Array[Node3D] = []
 var _gap: Array[float] = [] ## m from the engine's front back to each car's middle
-var _wheels: Array = [] ## per car: [wheel node, radius]
+var _wheels: Array = [] ## every carrying wheel: [node, radius]
+var _drivers: Array[Node3D] = [] ## the engine's driving wheels (turned together, the cranks on them)
+var _rods: Array = [] ## the motion, each side: {kind: siderod/mainrod/crosshead, node, rest (its rest position), side (+1 right, -1 left)}
+var _steam: GPUParticles3D ## white steam: from the cylinder cocks getting under way, a wisp off the safety valves standing
+var _metal: Material ## the engine's black iron, a little sheen on it
 var _s := 0.0 ## the engine's front, m along the line
 var _v := 0.0
 var _state := "coming" ## coming, standing, going
@@ -69,29 +83,37 @@ func length() -> float:
 
 func _ready() -> void:
 	var back := 0.0
+	var stack := Vector3(0, 4.7, 4.0)
 	for kind: String in CARS:
-		var scene := load("res://assets/buildings/%s.glb" % kind) as PackedScene
+		var scene := load(PATH % kind) as PackedScene
 		var car := scene.instantiate() as Node3D
 		add_child(car)
 		# (its length along the track, from what it's made of)
 		var box := AABB()
 		var first := true
-		var wheels: Array = []
 		for n in car.find_children("*", "MeshInstance3D", true, false):
 			var mi := n as MeshInstance3D
 			# (its colours are in its vertices, as the buildings' are: "<stuff>-<tag>-<n>")
-			var stuff := String(mi.name).split("-")[0]
-			mi.material_override = Building.material((stuff if BuildingDefs.STUFF.has(stuff) else "dark") + "+")
+			var parts := String(mi.name).split("-")
+			var stuff := parts[0]
+			var tag := parts[1] if parts.size() >= 3 else ""
+			mi.material_override = _metal_look() if stuff == "dark" else Building.material((stuff if BuildingDefs.STUFF.has(stuff) else "dark") + "+")
 			var b := mi.transform * mi.get_aabb()
 			box = b if first else box.merge(b)
 			first = false
-			if String(mi.name).contains("wheel"):
-				wheels.append([mi, maxf(mi.get_aabb().size.y * 0.5, 0.3)])
+			match tag:
+				"wheel":
+					_wheels.append([mi, maxf(mi.get_aabb().size.y * 0.5 - 0.03, 0.3)])
+				"driver":
+					_drivers.append(mi)
+				"siderod", "mainrod", "crosshead":
+					_rods.append({"kind": tag, "node": mi, "rest": mi.position, "side": signf(mi.position.x)})
+				"stack":
+					stack = Vector3(b.get_center().x, b.end.y - 0.1, b.get_center().z)
 		var half := box.size.z * 0.5
-		_gap.append(back + half)
-		back += half * 2.0 + 0.5
+		_gap.append(back + box.end.z)
+		back += half * 2.0 + COUPLED
 		_cars.append(car)
-		_wheels.append(wheels)
 	_smoke = FireFx.smoke(false)
 	_smoke.amount = 70
 	_smoke.lifetime = 6.0
@@ -99,7 +121,24 @@ func _ready() -> void:
 	(_smoke.process_material as ParticleProcessMaterial).color_ramp = FireFx._ramp([Color(0.08, 0.08, 0.08, 0.0),
 		Color(0.12, 0.12, 0.12, 0.7), Color(0.35, 0.35, 0.36, 0.3), Color(0.5, 0.5, 0.5, 0.0)], [0.0, 0.1, 0.55, 1.0])
 	_cars[0].add_child(_smoke)
-	_smoke.position = Vector3(0, 4.7, 4.6) # (the stack: the model's -y is our +z)
+	_smoke.position = stack
+	# steam, white and quick to go: the cylinder cocks blowing as it gets under way, the valves
+	# simmering while it stands
+	_steam = FireFx.smoke(false)
+	_steam.amount = 40
+	_steam.lifetime = 2.2
+	var stm := _steam.process_material as ParticleProcessMaterial
+	stm.emission_box_extents = Vector3(1.1, 0.1, 0.3)
+	stm.direction = Vector3(0, 0.4, 1.0)
+	stm.spread = 35.0
+	stm.initial_velocity_min = 1.0
+	stm.initial_velocity_max = 2.4
+	stm.scale_min = 0.18
+	stm.scale_max = 0.34
+	stm.color_ramp = FireFx._ramp([Color(0.9, 0.9, 0.88, 0.0), Color(0.92, 0.92, 0.9, 0.55), Color(0.86, 0.86, 0.84, 0.25), Color(0.85, 0.85, 0.84, 0.0)], [0.0, 0.12, 0.5, 1.0])
+	_steam.emitting = false
+	_cars[0].add_child(_steam)
+	_steam.position = Vector3(0, 0.45, 4.2)
 	# sparks thrown up the stack, seen only by night
 	var spm := ParticleProcessMaterial.new()
 	spm.direction = Vector3.UP
@@ -145,7 +184,7 @@ func _ready() -> void:
 	_lamp.light_volumetric_fog_energy = 1.5
 	_lamp.shadow_enabled = false
 	_cars[0].add_child(_lamp)
-	_lamp.position = Vector3(0, 3.35, 5.2)
+	_lamp.position = Vector3(0, 3.45, 4.85)
 	_lamp.rotation = Vector3(-0.08, PI, 0) # (pointing down +z, the way it runs)
 	_whistle = AudioStreamPlayer3D.new()
 	_whistle.stream = load("res://assets/audio/war/whistle.wav") as AudioStream
@@ -153,12 +192,13 @@ func _ready() -> void:
 	_whistle.unit_size = 40.0
 	_whistle.volume_db = 2.0
 	_cars[0].add_child(_whistle)
-	_whistle.position = Vector3(0, 3.6, 1.0)
+	_whistle.position = Vector3(0, 3.7, -2.35)
 	if armour != "":
 		_plate()
 	stop_at = minf(stop_at + _gap[2], length() - 2.0)
 	_s = minf(_s, stop_at)
 	_place()
+	_turn()
 	if not quiet:
 		_whistle.play()
 
@@ -238,7 +278,7 @@ func _plate() -> void:
 	polem.height = 1.6
 	pole.mesh = polem
 	pole.material_override = Building.material("wood")
-	pole.position = Vector3(0, 5.0, -1.2)
+	pole.position = Vector3(0.9, 4.95, -3.7) # (up from the cab roof)
 	_cars[0].add_child(pole)
 	var flag := MeshInstance3D.new()
 	var fm := BoxMesh.new()
@@ -247,6 +287,45 @@ func _plate() -> void:
 	flag.material_override = paint
 	flag.position = pole.position + Vector3(0, 0.5, -0.42)
 	_cars[0].add_child(flag)
+
+
+## The engine's black: the models' "dark" (vertex colours, snow and wet on it) with a dull sheen.
+func _metal_look() -> Material:
+	if _metal == null:
+		_metal = (Building.material("dark+") as ShaderMaterial).duplicate()
+		(_metal as ShaderMaterial).set_shader_parameter("roughness_base", 0.6)
+	return _metal
+
+
+## The wheels turned to how far it's come (each by its own radius), the drivers together, and their
+## motion with them: the side rod carried round on the crank pins, the crosshead sliding in its
+## guides, the main rod between the two. The right side's crank is a quarter turn ahead of the left.
+func _turn() -> void:
+	for w: Array in _wheels:
+		(w[0] as Node3D).basis = Basis(Vector3.RIGHT, _s / float(w[1]))
+	var a := _s / DRIVER_R
+	var turn := Basis(Vector3.RIGHT, a)
+	for d in _drivers:
+		d.basis = turn
+	for r: Dictionary in _rods:
+		var side: float = r.side
+		# (the pin's place on the crank at rest: forward on the right, up on the left)
+		var rest := Vector3(0, 0, CRANK) if side > 0.0 else Vector3(0, CRANK, 0)
+		var pin := turn * rest
+		var node: Node3D = r.node
+		var at: Vector3 = r.rest
+		match str(r.kind):
+			"siderod":
+				node.position = at + pin - rest
+			"crosshead", "mainrod":
+				var p := Vector3(at.x, DRIVER_R, MAIN_AXLE_Z) + pin
+				var dy := p.y - DRIVER_R
+				var x := Vector3(at.x, DRIVER_R, p.z + sqrt(maxf(MAIN_ROD * MAIN_ROD - dy * dy, 0.0)))
+				if r.kind == "crosshead":
+					node.position = x
+				else:
+					node.position = (p + x) * 0.5
+					node.basis = Basis(Vector3.RIGHT, atan2(-(x.y - p.y), x.z - p.z))
 
 
 ## The point and the way along the line `s` m in.
@@ -347,9 +426,20 @@ func _process(dt: float) -> void:
 	var moved := _s - was
 	if absf(moved) > 0.0001:
 		_place()
-		for car in _wheels:
-			for w: Array in car:
-				(w[0] as Node3D).rotate_object_local(Vector3.RIGHT, moved / float(w[1]))
+		_turn()
+	# the cocks open as it starts and as it draws up; a simmer off the valves standing
+	if absf(_v) > 0.05 and absf(_v) < 3.0:
+		_steam.position = Vector3(0, 0.45, 4.2)
+		(_steam.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(1.1, 0.1, 0.3)
+		_steam.amount_ratio = 1.0
+		_steam.emitting = true
+	elif _state == "standing":
+		_steam.position = Vector3(0, 3.65, -2.1)
+		(_steam.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(0.12, 0.05, 0.12)
+		_steam.amount_ratio = 0.12
+		_steam.emitting = true
+	else:
+		_steam.emitting = false
 	# the stack: thick when it works, a wisp standing still; a chuff a stroke
 	_smoke.amount_ratio = clampf(0.25 + absf(_v) / MAX_SPEED, 0.25, 1.0)
 	var stack := _cars[0].global_position

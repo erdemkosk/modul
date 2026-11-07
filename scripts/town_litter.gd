@@ -2,21 +2,22 @@ class_name TownLitter
 extends Node3D
 ## The things lying about a settlement's trodden ground, round a building but outside its fence: a
 ## stack of split wood, a barrel or two, crates, a chopping block with chips round it, a handcart, a
-## hay bale, boards stacked on bearers; and the war's leavings: sandbags piled into a breastwork,
-## ammunition crates, oil drums, kerosene tins. A few to each building, put where there's room (not in a
-## yard, a building or the water), each laid out from the building's place so it's the same on a
-## loaded game; baked into a few meshes (MeshBake).
+## haystack, boards stacked on bearers, the wash hung out by a house, a hand-lettered sign by a
+## workplace; and the war's leavings: sandbags piled into a breastwork, ammunition crates, oil drums,
+## kerosene tins. A few to each building, put where there's room (not in a yard, a building or the
+## water), each laid out from the building's place so it's the same on a
+## loaded game; baked into a few meshes (MeshBake). (The models: Props, and Details, made in Blender.)
 
 const KINDS := {
-	"house": ["wood", "block", "barrel", "boards", "cart", "logs"],
-	"store": ["crates", "barrel", "drum", "sacks", "cart", "tins", "drum"],
+	"house": ["wood", "block", "barrel", "boards", "cart", "logs", "washing", "washing"],
+	"store": ["crates", "barrel", "drum", "sacks", "cart", "tins", "drum", "sign"],
 	"square": ["barrel", "crates", "boards"],
 	"well": ["barrel", "trough"],
-	"work": ["wood", "logs", "boards", "block", "cart", "logs"],
+	"work": ["wood", "logs", "boards", "block", "cart", "logs", "sign"],
 	"carts": ["cart", "cart", "hay", "drum"],
 	"barracks": ["sandbags", "sandbags", "ammo", "drum", "ammo"],
 	"tower": ["sandbags", "ammo"],
-	"smith": ["drum", "tins", "crates"],
+	"smith": ["drum", "tins", "crates", "sign"],
 }
 
 var building: Building
@@ -74,29 +75,6 @@ func _room(p: Vector3, placed: Array[Vector3]) -> bool:
 	return true
 
 
-func _box(size: Vector3, mat: Material, xf: Transform3D) -> void:
-	var m := BoxMesh.new()
-	m.size = size
-	var mi := MeshInstance3D.new()
-	mi.mesh = m
-	mi.material_override = mat
-	add_child(mi)
-	mi.global_transform = xf
-
-
-func _cyl(r: float, h: float, mat: Material, xf: Transform3D, sides := 10) -> void:
-	var m := CylinderMesh.new()
-	m.top_radius = r
-	m.bottom_radius = r
-	m.height = h
-	m.radial_segments = sides
-	var mi := MeshInstance3D.new()
-	mi.mesh = m
-	mi.material_override = mat
-	add_child(mi)
-	mi.global_transform = xf
-
-
 ## A place in the world, put in this node's terms.
 func _at(b: Basis, p: Vector3) -> Transform3D:
 	return global_transform.affine_inverse() * Transform3D(b, p)
@@ -104,29 +82,16 @@ func _at(b: Basis, p: Vector3) -> Transform3D:
 
 func _make(kind: String, p: Vector3, yaw: float) -> void:
 	var b := Basis(Vector3.UP, yaw)
-	var wood := Building.material("wood")
-	var plank := Building.material("plank")
-	var dark := Building.material("dark")
-	var log := Building.material("log")
+	p.y -= 0.03 # (settled into the ground a little)
 	match kind:
 		"wood": # (split wood stacked between two stakes)
-			for row in 4:
-				for i in 6:
-					var x := (i - 2.5) * 0.17 + (0.08 if row % 2 else 0.0)
-					_cyl(0.075, 0.5, wood, Transform3D(b * Basis(Vector3.RIGHT, PI * 0.5), p + b * Vector3(x, 0.08 + row * 0.15, 0)), 5)
-			for s in [-1.0, 1.0]:
-				_box(Vector3(0.06, 0.8, 0.06), dark, Transform3D(b, p + b * Vector3(s * 0.6, 0.4, 0)))
+			Details.place(self, "woodpile", _at(b, p))
 		"block": # (a chopping block, an axe in it, chips about)
-			_cyl(0.27, 0.5, log, Transform3D(Basis.IDENTITY, p + Vector3.UP * 0.25), 10)
-			var ab := b * Basis(Vector3.RIGHT, 0.5)
-			_box(Vector3(0.035, 0.7, 0.035), wood, Transform3D(ab, p + Vector3.UP * 0.5 + ab * Vector3(0, 0.33, 0)))
-			for k in 6:
-				var c := p + Vector3(_rng.randf_range(-0.8, 0.8), 0.02, _rng.randf_range(-0.8, 0.8))
-				_box(Vector3(0.12, 0.03, 0.06), plank, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), c))
+			Details.place(self, "chopping_block", _at(b, p))
 		"logs":
 			Props.place(self, "logs", _at(b, p))
 		"barrel":
-			Props.place(self, "barrel", _at(Basis(Vector3.UP, yaw), p))
+			Props.place(self, "barrel", _at(b, p))
 		"crates":
 			for k in 3:
 				var off := Vector3((k % 2) * 0.72 - 0.36, (k / 2) * 0.68, 0)
@@ -136,66 +101,26 @@ func _make(kind: String, p: Vector3, yaw: float) -> void:
 				var lie := Basis(Vector3.UP, yaw + _rng.randf_range(-0.25, 0.25))
 				Props.place(self, "sack", _at(lie, p + b * Vector3((k % 2) * 0.68 - 0.34, (k / 2) * 0.34, (k / 2) * 0.1)))
 		"boards": # (boards stacked on two bearers)
-			for s in [-0.8, 0.8]:
-				_box(Vector3(0.12, 0.12, 1.0), dark, Transform3D(b, p + b * Vector3(s, 0.06, 0)))
-			for row in 5:
-				_box(Vector3(2.2, 0.05, 0.9), plank, Transform3D(b * Basis(Vector3.UP, _rng.randf_range(-0.04, 0.04)), p + b * Vector3(0, 0.15 + row * 0.055, 0)))
-		"cart": # (a handcart left on its legs)
-			_box(Vector3(0.9, 0.08, 1.4), plank, Transform3D(b * Basis(Vector3.RIGHT, -0.12), p + b * Vector3(0, 0.55, 0)))
-			for s in [-1.0, 1.0]:
-				_box(Vector3(0.05, 0.25, 1.4), plank, Transform3D(b * Basis(Vector3.RIGHT, -0.12), p + b * Vector3(s * 0.45, 0.7, 0)))
-				_cyl(0.35, 0.06, dark, Transform3D(b * Basis(Vector3.BACK, PI * 0.5), p + b * Vector3(s * 0.55, 0.35, 0.25)), 12)
-				_box(Vector3(0.05, 0.05, 1.1), wood, Transform3D(b * Basis(Vector3.RIGHT, 0.25), p + b * Vector3(s * 0.3, 0.45, -1.1)))
-		"hay":
-			var hay := StandardMaterial3D.new()
-			hay.albedo_color = Color(0.72, 0.62, 0.34)
-			_box(Vector3(1.1, 0.5, 0.6), hay, Transform3D(b, p + Vector3.UP * 0.25))
-			_box(Vector3(1.1, 0.5, 0.6), hay, Transform3D(b * Basis(Vector3.UP, 0.15), p + b * Vector3(0.2, 0.75, 0)))
+			Details.place(self, "boards", _at(b, p))
+		"cart": # (a handcart left on its prop)
+			Props.place(self, "hand_cart", _at(b, p))
+		"hay": # (a stack of hay round its pole)
+			Details.place(self, "haystack", _at(b, p))
 		"sandbags": # (a breastwork: courses of filled sacks, laid in a shallow arc)
-			var sack := StandardMaterial3D.new()
-			sack.albedo_color = Color(0.5, 0.45, 0.33)
-			sack.roughness = 1.0
-			for row in 3:
-				for i in 5 - row:
-					var a := (i - (4 - row) * 0.5) * 0.24
-					var at := p + b * Vector3(sin(a) * 2.2, 0.13 + row * 0.24, cos(a) * 2.2 - 2.2)
-					var sm := SphereMesh.new()
-					sm.radius = 0.32
-					sm.height = 0.26
-					var mi := MeshInstance3D.new()
-					mi.mesh = sm
-					mi.material_override = sack
-					add_child(mi)
-					mi.global_transform = Transform3D((b * Basis(Vector3.UP, a)).scaled(Vector3(1.4, 1, 0.9)), at)
-		"ammo": # (stencilled ammunition boxes, olive, stacked)
-			var olive := StandardMaterial3D.new()
-			olive.albedo_color = Color(0.3, 0.32, 0.2)
-			for k in 4:
-				var off := Vector3((k % 2) * 0.62 - 0.31, 0.16 + (k / 2) * 0.32, 0)
-				var bb := b * Basis(Vector3.UP, _rng.randf_range(-0.1, 0.1))
-				_box(Vector3(0.6, 0.3, 0.36), olive, Transform3D(bb, p + b * off))
-				_box(Vector3(0.62, 0.04, 0.38), dark, Transform3D(bb, p + b * off + Vector3.UP * 0.1))
-		"drum": # (an oil drum, its paint gone, ribs round it)
-			var steel := StandardMaterial3D.new()
-			steel.albedo_color = [Color(0.22, 0.27, 0.2), Color(0.3, 0.16, 0.12), Color(0.2, 0.2, 0.22)][_rng.randi() % 3]
-			steel.metallic = 0.5
-			steel.roughness = 0.6
-			var lying := _rng.randf() < 0.3
-			var db := b * Basis(Vector3.RIGHT, PI * 0.5) if lying else Basis.IDENTITY
-			var dc := p + Vector3.UP * (0.29 if lying else 0.44)
-			_cyl(0.29, 0.88, steel, Transform3D(db, dc), 14)
-			for hy: float in [-0.22, 0.22]:
-				_cyl(0.3, 0.03, steel, Transform3D(db, dc + db * Vector3(0, hy, 0)), 14)
+			Details.place(self, "breastwork", _at(b, p))
+		"ammo": # (ammunition boxes, olive, stencilled, stacked)
+			Details.place(self, "ammo", _at(b, p))
+		"drum": # (an oil drum, its paint gone: standing, or now and then on its side)
+			var which := "drum_%d" % (_rng.randi() % 3)
+			if _rng.randf() < 0.3:
+				Details.place(self, which, _at(b * Basis(Vector3.RIGHT, PI * 0.5), p + Vector3.UP * 0.29 + b * Vector3(0, 0, 0.44)))
+			else:
+				Details.place(self, which, _at(b, p))
 		"tins": # (square kerosene tins, a pair and one on its side)
-			var tin := StandardMaterial3D.new()
-			tin.albedo_color = Color(0.55, 0.5, 0.36)
-			tin.metallic = 0.7
-			tin.roughness = 0.35
-			for k in 3:
-				var tb := b * Basis(Vector3.UP, k * 0.3)
-				if k == 2:
-					tb = tb * Basis(Vector3.BACK, PI * 0.5)
-				_box(Vector3(0.24, 0.36, 0.24), tin, Transform3D(tb, p + b * Vector3(k * 0.3 - 0.3, 0.18 if k < 2 else 0.12, 0)))
+			Details.place(self, "tins", _at(b, p))
 		"trough":
-			_box(Vector3(1.5, 0.4, 0.5), plank, Transform3D(b, p + Vector3.UP * 0.2))
-			_box(Vector3(1.4, 0.02, 0.4), Building.material("water"), Transform3D(b, p + Vector3.UP * 0.38))
+			Details.place(self, "trough", _at(b, p))
+		"washing": # (the wash hung out on a line between two posts)
+			Details.place(self, "washing", _at(b, p + Vector3.UP * 0.03))
+		"sign": # (a hand-lettered board on two posts)
+			Details.place(self, "signboard", _at(b, p + Vector3.UP * 0.03))

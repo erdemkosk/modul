@@ -1,11 +1,12 @@
 class_name Gate
 extends Node3D
-## A gate in a palisade: two stout posts and a beam over them, two leaves of planks on battens that
-## swing inward on their hinges. Shut as a rule; it opens for one of the town going through (unless
-## an outlaw's close by) and shuts behind them. Locked (the bar dropped across it, by order) it opens
-## for no one: the townsfolk know it and go round by another, or wait at it if there's none. An
-## outlaw who meets it shut hacks at it (Villager._walk), locked or not; beaten in, its leaves hang
-## off their hinges and it stays open.
+## A gate in a palisade: two stout posts and a lintel log over them under a little plank roof, an
+## icon in its case over the way out, two leaves of pointed planks on battens that swing inward on
+## their strap hinges (the models: Details gate_frame, gate_leaf_l/_r, gate_bar). Shut as a rule;
+## it opens for one of the town going through (unless an outlaw's close by) and shuts behind them.
+## Locked (the bar dropped across it, by order) it opens for no one: the townsfolk know it and go
+## round by another, or wait at it if there's none. An outlaw who meets it shut hacks at it
+## (Villager._walk), locked or not; beaten in, its leaves hang off their hinges and it stays open.
 ## (Its frame: the wall runs along x, -z is the way out of the town.)
 
 const HP := 160.0
@@ -25,56 +26,14 @@ var _t := 0.0
 
 
 func _ready() -> void:
-	var dark := Building.material("dark")
-	var plank := Building.material("plank")
-	var log := Building.material("log")
-	for sx in [-1.0, 1.0]:
-		var post := MeshInstance3D.new()
-		var pm := CylinderMesh.new()
-		pm.top_radius = 0.2
-		pm.bottom_radius = 0.22
-		pm.height = 4.0
-		pm.radial_segments = 8
-		post.mesh = pm
-		post.material_override = log
-		post.position = Vector3(sx * (WIDTH * 0.5 + 0.2), 1.7, 0)
-		add_child(post)
-	var beam := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(WIDTH + 1.2, 0.3, 0.32)
-	beam.mesh = bm
-	beam.material_override = log
-	beam.position = Vector3(0, 3.45, 0)
-	add_child(beam)
+	# the frame (Details: gate_frame): its posts down into the ground, the lintel, a little roof
+	Details.place(self, "gate_frame")
 	# the leaves, each hung at its post and reaching to the middle
 	for sx in [-1.0, 1.0]:
 		var hinge := Node3D.new()
 		hinge.position = Vector3(sx * WIDTH * 0.5, 0.15, 0)
 		add_child(hinge)
-		for k in 5:
-			var p := MeshInstance3D.new()
-			var b := BoxMesh.new()
-			b.size = Vector3(0.28, 2.5 + (k % 2) * 0.12, 0.07)
-			p.mesh = b
-			p.material_override = plank
-			p.position = Vector3(-sx * (0.15 + k * 0.29), 1.25, 0)
-			hinge.add_child(p)
-		for y in [0.45, 2.1]:
-			var batten := MeshInstance3D.new()
-			var b := BoxMesh.new()
-			b.size = Vector3(1.45, 0.14, 0.06)
-			batten.mesh = b
-			batten.material_override = dark
-			batten.position = Vector3(-sx * 0.73, y, 0.06)
-			hinge.add_child(batten)
-		var brace := MeshInstance3D.new()
-		var b2 := BoxMesh.new()
-		b2.size = Vector3(0.12, 1.9, 0.06)
-		brace.mesh = b2
-		brace.material_override = dark
-		brace.position = Vector3(-sx * 0.73, 1.27, 0.06)
-		brace.rotation.z = sx * 0.65
-		hinge.add_child(brace)
+		Details.place(hinge, "gate_leaf_l" if sx < 0.0 else "gate_leaf_r")
 		_leaves.append(hinge)
 	# swing toward the town (its store)
 	var stores: Array = wall.village.stores() if wall and wall.village else []
@@ -84,20 +43,7 @@ func _ready() -> void:
 	_swing(false, 0.01)
 	# the bar dropped across the leaves on the town's side, in its two iron brackets
 	_bar = Node3D.new()
-	var bar := MeshInstance3D.new()
-	var barm := BoxMesh.new()
-	barm.size = Vector3(WIDTH + 0.5, 0.2, 0.18)
-	bar.mesh = barm
-	bar.material_override = log
-	_bar.add_child(bar)
-	for sx in [-1.0, 1.0]:
-		var br := MeshInstance3D.new()
-		var brm := BoxMesh.new()
-		brm.size = Vector3(0.1, 0.34, 0.26)
-		br.mesh = brm
-		br.material_override = dark
-		br.position = Vector3(sx * 0.75, 0, 0)
-		_bar.add_child(br)
+	Details.place(_bar, "gate_bar")
 	_bar.position = Vector3(0, 1.45, 0.17 * _inward)
 	_bar.visible = locked
 	add_child(_bar)

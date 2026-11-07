@@ -649,7 +649,7 @@ func _build_look() -> void:
 			uniform = "merkez"
 		elif tunic_color.is_equal_approx(Color(0.3, 0.1, 0.08)):
 			uniform = "kordal"
-		look_kind = uniform if uniform != "" else ("outlaw" if team == 1 else ("child" if is_child else ("woman" if female else "man")))
+		look_kind = uniform if uniform != "" else ("outlaw" if team == 1 else (("girl" if female else "child") if is_child else ("woman" if female else "man")))
 		_body = Townsfolk.new()
 		add_child(_body)
 		_body.build(look_kind, rng)
@@ -1255,9 +1255,10 @@ func _body_mood(walking: bool) -> void:
 	pose.slump = move_toward(pose.slump, 1.0 if mood < 25.0 else 0.0, 0.01)
 
 
-## In the winter, a fur hat (the women keep their kerchiefs) and a scarf; out of it, as before.
+## In the winter, the winter's clothes (a sheepskin or a greatcoat, felt boots, a fur hat or a
+## shawl); out of it, the summer's.
 func dress_warm(on: bool) -> void:
-	if _body and team == 0 and not is_child:
+	if _body:
 		_body.set_winter(on)
 
 
