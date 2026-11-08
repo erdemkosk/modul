@@ -725,7 +725,7 @@ func _plan_work(v: Villager) -> void:
 				v.set_carry(res, 2)
 				return true})
 		"yiyecek":
-			steps.append({"t": "work", "time": 5.0, "anim": "gather", "face": o})
+			steps.append({"t": "work", "time": 5.0, "anim": "berry", "face": o}) # (on the knees at the bush)
 			steps.append({"t": "do", "f": func() -> bool:
 				reserved.erase(i)
 				bush_rest[i] = clock + 240.0
@@ -880,7 +880,7 @@ func _plan_healer(v: Villager, b: Building) -> void:
 	var o: Vector3 = props.prop_info(i).origin
 	var spot := o + (v.position - o).normalized() * 0.8
 	spot.y = nav.height(spot.x, spot.z)
-	var steps: Array = [{"t": "go", "to": spot}, {"t": "work", "time": 5.0, "anim": "gather", "face": o},
+	var steps: Array = [{"t": "go", "to": spot}, {"t": "work", "time": 5.0, "anim": "herb", "face": o},
 		{"t": "do", "f": func() -> bool:
 			reserved.erase(i)
 			bush_rest[i] = clock + 300.0
@@ -1430,9 +1430,11 @@ func _plan_shovel(v: Villager, b: Building) -> void:
 	at.y = nav.height(at.x, at.z)
 	v.give([
 		{"t": "go", "to": at + side},
-		{"t": "work", "time": 6.0, "anim": "dig", "face": at},
+		# the snow shovel: stood beside the rails facing along them, the snow thrown off to the side
+		# away from the line (LifePoses._shovel), a dozen seconds a stint
+		{"t": "work", "time": 12.0, "anim": "shovel", "face": at + side + Vector3.UP.cross(side.normalized()) * 3.0},
 		{"t": "do", "f": func() -> bool:
-			drift = maxf(drift - SHOVEL * v.knack(""), 0.0)
+			drift = maxf(drift - SHOVEL * 2.0 * v.knack(""), 0.0)
 			return true},
 	], "%s: hattı küreyor" % b.display_name(), b)
 

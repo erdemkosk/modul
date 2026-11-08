@@ -89,6 +89,9 @@ const PLACES := {
 	"fire": ["Ateşe bir odun daha atın.", "Bir şarkı söyle de ısınalım.", "Ateşin başı gibisi yok."],
 	"fish": ["Bugün balık vurmuyor.", "Dün bir turna yakaladım, kolum kadardı."],
 	"porch": ["Akşam serinliği iyi geliyor.", "Şu yorgunluk bir geçse."],
+	"argue": ["Sen ne anlarsın bu işten!", "Bana bak, bir daha söylemeyeceğim!", "Haksızlık bu, herkes biliyor.",
+		"Senin yüzünden iş yarım kaldı!", "Bırak şimdi bu lafları.", "Sen önce kendine bak!"],
+	"welcome": ["Hoş geldin, yol nasıldı?", "Sonunda geldin!", "Burası soğuktur ama insanı iyidir.", "Gel, sana yer gösterelim."],
 }
 
 
@@ -191,7 +194,7 @@ static func line(v: Villager, to: Villager = null, where := "") -> String:
 				_add(pool, 3.0, e[1])
 				break
 	if PLACES.has(where):
-		_add(pool, 2.0, PLACES[where])
+		_add(pool, 6.0 if where in ["argue", "welcome"] else 2.0, PLACES[where]) # (a row or a welcome: that is what is said)
 	if v.is_child:
 		_add(pool, 2.0, ["Bana da tüfek verecekler mi?", "Annem eve çağırıyor.", "Istasyona gidelim mi?"])
 	else:

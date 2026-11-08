@@ -37,6 +37,12 @@ func _plan_raid(v: Villager) -> bool:
 			v.wake()
 			call("_plan_work", v)
 		return true
+	if v.has_meta("snatch_for"):
+		return true # (a child waiting to be snatched up, or held: its parent has it)
+	if v.has_meta("snatching"):
+		if not v.plan.is_empty() and v.job == "Çocuğunu kapıp kaçıyor":
+			return true
+		_let_child_go(v)
 	if v.job == "Saklanıyor" and not v.plan.is_empty():
 		return true
 	if v.has_trait("brave") and not v.is_child:
@@ -56,6 +62,10 @@ func _plan_raid(v: Villager) -> bool:
 		if b.state == "done" and b.def.role in ["house", "store", "barracks"] and not b.is_burning():
 			shelters.append(b)
 	var to := _nearest(shelters, v.position)
+	var kid: Villager = _child_to_snatch(v) if not v.is_child and not v.armed else null
+	if kid:
+		_snatch(v, kid, to, near)
+		return true
 	v.abort()
 	if to == null:
 		var away := (v.position - near.position).normalized() * 40.0
@@ -69,6 +79,89 @@ func _plan_raid(v: Villager) -> bool:
 
 
 # --- The defence -----------------------------------------------------------------------------------
+
+
+## A child of `v`'s family out in the open close by, nobody come for it yet.
+func _child_to_snatch(v: Villager) -> Villager:
+	if v.family == "" or v._body == null:
+		return null
+	var best: Villager = null
+	var bd := 35.0
+	for c in villagers:
+		if not c.is_child or c.family != v.family or c.dead or c.down or c.sleeping or not c.visible or c.has_meta("snatch_for") or c._body == null:
+			continue
+		var d := c.position.distance_to(v.position)
+		if d < bd:
+			bd = d
+			best = c
+	return best
+
+
+## `v` runs to `kid`, snatches it up to its chest and runs on into `to` (or away from `near`) with it.
+func _snatch(v: Villager, kid: Villager, to: Building, near: Villager) -> void:
+	v.abort()
+	kid.abort()
+	v.set_meta("snatching", kid)
+	kid.set_meta("snatch_for", v)
+	kid.give([{"t": "work", "anim": "idle", "tick": func(_d: float) -> bool:
+		return _cling(kid, v)}], "Saklanıyor")
+	var steps: Array = [{"t": "go", "to": kid.position},
+		{"t": "work", "time": 0.45, "anim": "gather", "face": kid.position},
+		{"t": "do", "f": func() -> bool:
+			if not is_instance_valid(kid) or kid.dead or kid.down or kid.sleeping:
+				return false
+			kid.set_meta("snatched_by", v)
+			kid.carried_by = v # (out of the shoving about while it's held)
+			return true}]
+	if to:
+		steps += _go_in(to) + [{"t": "do", "f": func() -> bool:
+			_let_child_go(v)
+			if is_instance_valid(to) and to.state == "done" and not to.is_burning():
+				if is_instance_valid(kid) and not kid.dead and not kid.down:
+					kid.abort()
+					kid.sleep_in(to, true)
+				v.sleep_in(to, true)
+			return true}]
+	else:
+		var away := (v.position - near.position)
+		away.y = 0.0
+		steps += [{"t": "go", "to": v.position + away.normalized() * 40.0}, {"t": "do", "f": func() -> bool:
+			_let_child_go(v)
+			return true}]
+	for st: Dictionary in steps:
+		if str(st.t) == "go":
+			st["run"] = true
+	v.give(steps, "Çocuğunu kapıp kaçıyor", to)
+
+
+## (the child's tick) Held against `v`'s chest while it has it; let go if `v`'s gone or put it down.
+func _cling(kid: Villager, v: Villager) -> bool:
+	if not is_instance_valid(kid):
+		return false
+	if not is_instance_valid(v) or v.dead or v.down or v.get_meta("snatching", null) != kid:
+		_drop_child(kid)
+		return false
+	if kid.has_meta("snatched_by"):
+		kid.position = v.position + v.global_basis * Vector3(0.0, 0.42, -0.26)
+		kid.rotation.y = v.rotation.y + PI
+	return true
+
+
+func _drop_child(kid: Villager) -> void:
+	for k in ["snatched_by", "snatch_for"]:
+		if kid.has_meta(k):
+			kid.remove_meta(k)
+	if kid.carried_by != null and not kid.down:
+		kid.carried_by = null
+		kid.position.y = ground_at(kid.position)
+
+
+func _let_child_go(v: Villager) -> void:
+	var kid: Variant = v.get_meta("snatching", null)
+	if v.has_meta("snatching"):
+		v.remove_meta("snatching")
+	if is_instance_valid(kid):
+		_drop_child(kid)
 
 
 func armories() -> Array[Building]:
@@ -626,9 +719,23 @@ func interrogate(o: Villager) -> void:
 func hand_over(o: Villager) -> void:
 	if is_instance_valid(o.held_in):
 		o.held_in.prisoners.erase(o)
+	var from: Vector3 = o.held_in.door() if is_instance_valid(o.held_in) else o.position
 	o.held_in = null
 	var name := o.display_name.split(" ")[0]
-	o.queue_free()
+	# walked off up the line with his hands on his head, to the station if there is one
+	var station: Building = null
+	for b in buildings:
+		if b.kind == "istasyon" and b.state == "done":
+			station = b
+	if station and o._body:
+		o.wake()
+		o.position = from
+		o.set_meta("led_off", true)
+		o.give([{"t": "go", "to": station.door()}, {"t": "do", "f": func() -> bool:
+			o.queue_free()
+			return true}], "Merkez'e götürülüyor")
+	else:
+		o.queue_free()
 	rubles += 20
 	call("_shift", "merkez", 10)
 	call("_shift", "isyan", -5)

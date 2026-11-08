@@ -4,6 +4,14 @@ extends "res://scripts/village_base.gd"
 ## play, fires and lightning.
 
 var _rung := {} ## "<day>-<hour>" -> true: the bell's rung for it
+var _life: LifeScenes ## the scenes of the daily round (the chains, the dance, the yoke...): life()
+
+
+## The daily round's scenes (made the first time).
+func life() -> LifeScenes:
+	if _life == null:
+		_life = LifeScenes.new(self)
+	return _life
 
 
 func squares() -> Array[Building]:
@@ -42,6 +50,7 @@ func _evenings() -> void:
 		if h >= float(hour) and h < float(hour) + 0.5 and not _rung.has(key):
 			_rung[key] = true
 			ring_bells(3 if hour == 6 else 5)
+	life().tick()
 
 
 func _eat(dt: float) -> void:
@@ -560,7 +569,7 @@ func _plan_home(v: Villager) -> void:
 	var h := v.home
 	if v.idle:
 		v.abort()
-	v.give(_go_in(h) + [{"t": "do", "f": func() -> bool:
+	v.give(life().at_door(_go_in(h), h) + [{"t": "do", "f": func() -> bool:
 		if is_instance_valid(h) and h.state == "done" and not h.is_burning():
 			v.sleep_in(h)
 		return true}], "Eve gidiyor", h)
@@ -577,7 +586,12 @@ func _plan_idle(v: Villager) -> void:
 	# Of an evening, round the fire on the square.
 	var sq := _nearest(squares(), v.position)
 	if sq and sq.lit and sq.global_position.distance_to(v.position) < 200.0 and randf() < 0.8:
+		if randf() < 0.55 and life().plan_dance(v, sq):
+			return
 		_plan_square(v, sq)
+		return
+	# A house short of water: its water fetched on the yoke, twice a day.
+	if life().plan_water(v):
 		return
 	var near: Building = v.workplace if v.workplace else _nearest(stores(), v.position)
 	var at := near.door() if near else v.position
@@ -588,25 +602,22 @@ func _plan_idle(v: Villager) -> void:
 	# By day, a chore about the house: splitting wood at the block, hanging the washing, hoeing the
 	# garden; or a bucket fetched from the well.
 	var h := weather.hour
-	if not v.is_child and h > 7.0 and h < 19.0 and randf() < 0.45:
+	if not v.is_child and h > 6.5 and h < 19.0 and randf() < 0.5:
+		if randf() < 0.55 and life().plan_chore(v):
+			return
 		var y := _yard_of(v.home) if is_instance_valid(v.home) else null
-		var well := _nearest(_wells(), v.position)
-		if well and randf() < 0.2:
-			v.give([{"t": "go", "to": well.door()},
-				{"t": "work", "time": 5.0, "anim": "draw", "face": well.global_position},
-				{"t": "do", "f": func() -> bool:
-					v.set_carry("su", 1)
-					return true},
-				{"t": "go", "to": v.home.door() if is_instance_valid(v.home) else v.position + Vector3(4, 0, 4)},
-				{"t": "do", "f": func() -> bool:
-					v.set_carry("", 0)
-					return true}], "Kuyudan su taşıyor", null, true)
+		if randf() < 0.15 and life().plan_water(v, true):
 			return
 		if y:
 			var list := y.chores()
 			if not list.is_empty():
 				var c: Dictionary = list[randi() % list.size()]
 				var step := {"t": "work", "time": float(c.time), "anim": c.anim, "face": c.face}
+				var walk := {"t": "go", "to": c.at}
+				if str(c.job) == "Çamaşır asıyor":
+					step["anim"] = "hang" # (the basket on the hip to the line, the pieces pegged up)
+					step["time"] = 24.0
+					walk["life"] = "basket"
 				if c.has("split"):
 					var t := [0.0]
 					step["tick"] = func(dt: float) -> bool:
@@ -614,7 +625,7 @@ func _plan_idle(v: Villager) -> void:
 						if fmod(t[0], 1.37) < dt and is_instance_valid(y):
 							y.split_one()
 						return t[0] < float(c.time)
-				v.give([{"t": "go", "to": c.at}, step], c.job, null, true)
+				v.give([walk, step], c.job, null, true)
 				return
 	if randf() < 0.75 and _pastime(v):
 		return
@@ -748,7 +759,20 @@ func _plan_chat(v: Villager) -> bool:
 	var r := 0.68 if group.size() == 2 else 0.85
 	var a0 := randf() * TAU
 	var talk := {"folk": group, "t0": clock, "seed": randi() % 1000, "reach": 3.2}
+	var mood := LifeScenes.talk_mood(group)
+	if mood != "":
+		talk["mood"] = mood
+		talk["where"] = mood
 	var time := randf_range(12.0, 20.0)
+	# two meeting: a handshake first now and then (the men), or kin an embrace
+	if group.size() == 2 and mood == "" and randf() < 0.35:
+		var a: Villager = group[0]
+		var b: Villager = group[1]
+		var kin := a.family != "" and a.family == b.family
+		var greet := "embrace" if kin and randf() < 0.5 else ("handshake" if not a.female and not b.female else "")
+		if greet != "":
+			life().meet(a, b, mid, greet, "Sohbet ediyor", "Sohbet ediyor")
+			return true
 	for i in group.size():
 		var o: Villager = group[i]
 		var a := a0 + TAU * i / group.size()
@@ -1114,7 +1138,9 @@ func _plan_pray(v: Villager) -> bool:
 	if g.distance_to(v.position) > 160.0 or not nav.is_open(at):
 		return false
 	at.y = ground_at(at)
-	v.give([{"t": "go", "to": at}, {"t": "work", "time": randf_range(18.0, 30.0), "anim": "pray", "face": g}], "Mezarlıkta dua ediyor", null, true)
+	# knelt at it (or stood, the old and the stiff), crossing oneself as the Orthodox do
+	var anim := "cross" if v.has_trait("tembel") or v.look_seed % 4 == 0 else "kneel_cross"
+	v.give([{"t": "go", "to": at}, {"t": "step", "to": at}, {"t": "work", "time": randf_range(22.0, 34.0), "anim": anim, "face": g}], "Mezarlıkta dua ediyor", null, true)
 	return true
 
 
@@ -1156,6 +1182,8 @@ func _plan_play(v: Villager) -> void:
 		if o != v and o.is_child and not o.dead and not o.sleeping and (o.plan.is_empty() or (o.idle and o.job == "Oynuyor")) \
 				and o.position.distance_to(v.position) < 25.0:
 			kids.append(o)
+	if life().plan_child(v, kids):
+		return
 	var mid := v.position.lerp(kids[0].position, 0.5) if not kids.is_empty() else v.position
 	if not nav.is_open(mid):
 		mid = v.position
@@ -1200,7 +1228,7 @@ func _plan_meal(v: Villager, key: String) -> void:
 		v.abort()
 	var h := v.home
 	if is_instance_valid(h) and h.state == "done" and not h.is_burning() and h.global_position.distance_to(v.position) < 120.0:
-		v.give(_go_in(h) + [{"t": "do", "f": func() -> bool:
+		v.give(life().at_door(_go_in(h), h) + [{"t": "do", "f": func() -> bool:
 			v.visible = false
 			return true}, {"t": "work", "time": randf_range(10.0, 15.0), "anim": "idle"}, {"t": "do", "f": func() -> bool:
 			v.visible = true

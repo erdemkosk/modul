@@ -120,7 +120,13 @@ func _process(dt: float) -> void:
 		_think_t = 0.0
 		if active:
 			_think()
+			CombatPose.ensure(raiders)
+			CombatPose.ensure(village.villagers)
+			CombatPose.ensure(allies)
 		_think_wolves()
+		for b in village.buildings:
+			if not b.prisoners.is_empty():
+				CombatPose.ensure(b.prisoners) # (walked out to work: the hands on the head)
 	_tower_watch(dt)
 	_mg_shots(dt)
 	_turret_shots(dt)
@@ -519,7 +525,7 @@ func nearest_raider(p: Vector3, reach: float, seen := false) -> Villager:
 	var bd := reach
 	for list: Array[Villager] in [raiders, wolves, camp_men]:
 		for r in list:
-			if not is_instance_valid(r) or r.dead or r.down:
+			if not is_instance_valid(r) or r.dead or r.down or r.job == "Teslim oluyor":
 				continue
 			var d := r.position.distance_to(p)
 			if d < bd and (not seen or can_see(p, r)):
@@ -543,24 +549,7 @@ func _on_raider_down(r: Villager) -> void:
 	corpses.append(r)
 	corpses = corpses.filter(func(c: Villager) -> bool: return is_instance_valid(c))
 	if r.role == "shooter":
-		var node := Node3D.new()
-		add_child(node)
-		node.global_position = r.position + Vector3.UP * 0.06
-		node.rotation.y = randf() * TAU
-		var wood := StandardMaterial3D.new()
-		wood.albedo_color = Color(0.3, 0.2, 0.12)
-		var iron := StandardMaterial3D.new()
-		iron.albedo_color = Color(0.2, 0.2, 0.21)
-		iron.metallic = 0.6
-		for part: Array in [[Vector3(0.06, 0.06, 0.75), Vector3(0, 0, 0.1), wood], [Vector3(0.03, 0.03, 0.7), Vector3(0, 0.02, -0.55), iron]]:
-			var mi := MeshInstance3D.new()
-			var bm := BoxMesh.new()
-			bm.size = part[0]
-			mi.mesh = bm
-			mi.position = part[1]
-			mi.material_override = part[2]
-			node.add_child(mi)
-		loot.append({"at": r.position, "node": node, "ammo": randi_range(3, 12), "claimed": false})
+		_drop_rifle(r)
 		message.emit("Bir firari nişancı düştü: tüfeği yerde kaldı.", "good")
 	if r.has_meta("haul"):
 		var store := _main_store()
@@ -569,6 +558,28 @@ func _on_raider_down(r: Villager) -> void:
 			for res: String in haul:
 				store.add_goods(res, int(haul[res]))
 		message.emit("Yağmacı düştü: taşıdığı mal geri alındı.", "good")
+
+
+## A raider's rifle left on the ground where he is, to be picked up.
+func _drop_rifle(r: Villager) -> void:
+	var node := Node3D.new()
+	add_child(node)
+	node.global_position = r.position + Vector3.UP * 0.06
+	node.rotation.y = randf() * TAU
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.3, 0.2, 0.12)
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = Color(0.2, 0.2, 0.21)
+	iron.metallic = 0.6
+	for part: Array in [[Vector3(0.06, 0.06, 0.75), Vector3(0, 0, 0.1), wood], [Vector3(0.03, 0.03, 0.7), Vector3(0, 0.02, -0.55), iron]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = part[0]
+		mi.mesh = bm
+		mi.position = part[1]
+		mi.material_override = part[2]
+		node.add_child(mi)
+	loot.append({"at": r.position, "node": node, "ammo": randi_range(3, 12), "claimed": false})
 
 
 func _think() -> void:
@@ -594,7 +605,9 @@ func _think() -> void:
 	var burning := village.buildings.filter(func(b: Building) -> bool: return b.is_burning()).size()
 	var leaving := _burnt >= mini(_size + 2, maxi(2, standing / 4)) or burning * 3 >= maxi(standing, 3) or village.clock - _started > 220.0 or live * 3 < _size or dawn
 	for r in raiders:
-		if r.dead:
+		if r.dead or r.job == "Teslim oluyor":
+			continue
+		if leaving and r.job != "Kaçıyor" and live * 3 < _size and _surrender(r):
 			continue
 		if leaving and r.job != "Kaçıyor":
 			r.abort()
@@ -659,7 +672,7 @@ func _think() -> void:
 					_plunder(b)
 				return true},
 		], "Yakıyor", b)
-	if leaving and raiders.all(func(r: Villager) -> bool: return r.dead or r.job == "Kaçıyor"):
+	if leaving and raiders.all(func(r: Villager) -> bool: return r.dead or r.job in ["Kaçıyor", "Teslim oluyor"]):
 		message.emit("Firariler ormana çekiliyor." if soldiers == "" else "Askerler geri çekiliyor.", "info")
 		active = false # (the rest only walk off)
 		next_day = village.day + every()
@@ -667,6 +680,53 @@ func _think() -> void:
 		_finish_quietly()
 		_stand_down()
 		ended.emit()
+
+
+## The band broken (too many lost): one with an armed man of the town close and in sight, and a cell
+## free for him, may give himself up rather than run: the gun thrown down, the hands up, then walked
+## to the cells with them on his head. True if he does.
+func _surrender(r: Villager) -> bool:
+	if r.has_meta("wont_yield") or soldiers != "":
+		return false
+	var jails: Array = village.call("_jails_free")
+	if jails.is_empty():
+		return false
+	var guard: Villager = null
+	for v in town_folk():
+		if v.armed and not v.dead and not v.down and v.position.distance_to(r.position) < 18.0 and can_see(v.position, r):
+			guard = v
+			break
+	if guard == null or randf() > 0.45:
+		r.set_meta("wont_yield", true)
+		return false
+	var jail: Building = village.call("_nearest", jails, r.position)
+	r.abort()
+	if r.role == "shooter":
+		r.role = ""
+		_drop_rifle(r) # (thrown down: picked up after like a dead man's)
+	r.arm_with("")
+	r.ranged = 0.0
+	r.fighter = false
+	if r.has_meta("haul"):
+		var store := _main_store()
+		var haul: Dictionary = r.get_meta("haul")
+		if store:
+			for res: String in haul:
+				store.add_goods(res, int(haul[res]))
+		r.remove_meta("haul")
+		r.set_carry("", 0)
+	r.give([{"t": "work", "time": 2.5, "anim": "idle", "face": guard.position},
+		{"t": "go", "to": jail.door()},
+		{"t": "do", "f": func() -> bool:
+			raiders.erase(r)
+			if is_instance_valid(jail) and jail.takes_prisoners():
+				village.call("imprison", r, jail)
+				message.emit("Teslim olan bir firari hücreye kapatıldı.", "good")
+			else:
+				r.queue_free()
+			return true}], "Teslim oluyor")
+	message.emit("Bir firari silahını atıp teslim oldu!", "good")
+	return true
 
 
 ## A shooter: whoever it can see within its reach gets shot at; with nobody in sight it creeps up
@@ -1039,6 +1099,7 @@ func _mg_shots(dt: float) -> void:
 		st[1] = int(st[1]) - 1
 		st[0] = 0.2 if int(st[1]) > 0 else 1.6
 		man.look_at(Vector3(foe.position.x, man.position.y, foe.position.z), Vector3.UP)
+		CombatPose.mg_fired(b)
 		shoot(gun, foe, randf_range(18.0, 26.0), clampf(0.45 - bd / 260.0, 0.15, 0.4), null, "war/burst_shot")
 
 
@@ -1228,6 +1289,9 @@ func shoot(from: Vector3, foe: Villager, dmg: float, chance: float, by: Villager
 		by.learn("nisan", 12.0)
 	chance = float(hit_chance(from, foe, chance, by)[0])
 	_flash(from, sound)
+	CombatPose.heard_shot(from)
+	if by and is_instance_valid(by) and sound == "war/rifle" and by._rifle:
+		by._attack_t += CombatPose.fired(by) # (the bolt worked after it; every fifth, a clip pressed in)
 	var streak := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	var length := from.distance_to(to)
@@ -1268,12 +1332,13 @@ func _struck(foe: Villager, dmg: float, by: Villager, from: Vector3) -> void:
 	_puff(at, dir, Color(0.5, 0.44, 0.36, 0.6), 3) # (the coat's dust)
 	if foe.dead or foe.down:
 		if was_up:
+			CombatPose.fell(foe, dir, dmg) # (forward, thrown back, crumpled, spun round: as it was hit)
 			Ambience.play("log_drop_0%d" % randi_range(1, 3), foe.position, 4.0, 0.55, 220.0) # (a body hitting the ground)
 			var cam := get_viewport().get_camera_3d() as RtsCamera
 			if cam and foe.position.distance_to(cam.global_position) < 70.0:
 				cam.shake(foe.position, 0.28)
 	elif foe._body:
-		foe._body.flinch("RifleHit" if foe.armed else "HitReact")
+		CombatPose.struck(foe, dir, dmg) # (jerked the way the shot went)
 
 
 ## A puff off a man struck: a few dark motes flung on the way the shot went, falling fast.

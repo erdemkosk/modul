@@ -33,7 +33,8 @@ const JOG_SPEED := 3.5
 const CARRY_SPEED := 1.4
 ## Played over and over though made to play once.
 const LOOPED := ["PickUp", "Throw", "MeleeSwing", "Interact", "Repair", "ual/UalConsume", "ual/UalPush",
-	"ual/UalInteract", "ual/UalPickUpTable", "ual/UalFixKneeling"]
+	"ual/UalInteract", "ual/UalPickUpTable", "ual/UalFixKneeling", "TurnInPlace", "RifleTurnInPlace", "CarryBoxIdle",
+	"CarrySideIdle", "CarrySideWalk", "CarryBoxWalk"]
 
 static var _scene: PackedScene
 static var _ual: AnimationLibrary
@@ -232,6 +233,10 @@ func _dress(kind: String, rng: RandomNumberGenerator) -> void:
 	keys[head] = 1.0
 	_blend = keys
 	var heavy_brows := not woman and not child and rng.randf() < 0.35
+	# (the walk goes with it: the old stooped, a woman's sway, a child's skip)
+	pose.age = age
+	pose.female = woman or _girl
+	pose.child = child
 	# the clothes, summer and winter, chosen now (so the same each time the seed is built)
 	_summer = _outfit(kind, false, rng, grey, age, beard)
 	_winter_fit = _outfit(kind, true, rng, grey, age, beard)
@@ -625,20 +630,247 @@ func flinch(clip: String) -> void:
 	player.speed_scale = 1.5
 
 
+## ---- Named poses (TownsfolkPose.want's numbers), for anyone to hold or flash ----------------
+## Townsfolk.pose_preset(name) gives a copy; register_pose(name, v) adds one (combat, the daily
+## round...). Keys as TownsfolkPose.want.
+const POSES := {
+	"hands_on_knees": {"arm_l": -0.55, "arm_r": -0.5, "el": 0.8, "er": 0.75, "lean": 0.12},
+	"arms_out": {"abd_l": 0.6, "abd_r": 0.6, "el": 0.3, "er": 0.3},
+	"shrug": {"sh_l": 0.18, "sh_r": 0.18, "abd_l": 0.15, "abd_r": 0.15, "el": 0.9, "er": 0.9, "head": -0.05},
+	"bent_low": {"lean": 0.85, "hip_y": 0.12, "head": -0.2, "arm_l": -0.4, "arm_r": -0.4, "el": 0.3, "er": 0.3},
+	"crouch": {"hip_y": 0.38, "hip_z": 0.08, "lean": 0.35, "arm_l": -0.5, "arm_r": -0.5, "el": 0.6, "er": 0.6},
+	"brace": {"hip_y": 0.08, "lean": 0.18, "roll": 0.0, "arm_l": -0.6, "arm_r": -0.6, "el": 1.2, "er": 1.2},
+	"look_up": {"head": -0.35, "lean": -0.08},
+	"weary": {"sh_l": -0.12, "sh_r": -0.12, "lean": 0.12, "head": 0.2},
+}
+static var _poses := {}
+
+
+static func pose_preset(name: String) -> Dictionary:
+	if _poses.has(name):
+		return (_poses[name] as Dictionary).duplicate()
+	return (POSES.get(name, {}) as Dictionary).duplicate()
+
+
+static func register_pose(name: String, v: Dictionary) -> void:
+	_poses[name] = v.duplicate()
+
+
+## Held in a named pose (or a dictionary of numbers) over the standing clip, as `sit` holds one:
+## for whoever isn't driven by a villager's moves (Villager.drive puts its own each frame).
+func hold(pose_name_or_v: Variant, rate := 1.0) -> void:
+	var v: Dictionary = pose_preset(pose_name_or_v) if pose_name_or_v is String else pose_name_or_v
+	pose.want(v, rate)
+
+
+## ---- One-shot moves played over whatever drive() says --------------------------------------
+## gesture(clip): the clip played once through from its start (PutDown, PickUp, GetUp,
+## GetUpFromProne, SoldierWave, RifleReload, Interact...), then back to what it was doing; `still`
+## asks the villager to stand where it is till it's done (Villager._walk waits on busy()).
+## flash(v, secs): a set of numbers (TownsfolkPose.want's) swelled in over whatever's driven and
+## let go again (a wince, a wave of the hand, a startle).
+var _shot := ""
+var _shot_t := 0.0
+var _shot_len := 0.0
+var _shot_speed := 1.0
+var _shot_still := false
+var _flash := {}
+var _flash_t := -1.0
+var _flash_len := 1.0
+
+
+func gesture(clip: String, speed := 1.0, still := true, blend := 0.15) -> void:
+	if _dead or not player.has_animation(clip):
+		return
+	_shot = clip
+	_shot_t = 0.0
+	_shot_speed = maxf(speed, 0.05)
+	_shot_len = player.get_animation(clip).length / _shot_speed
+	_shot_still = still
+	_clip = clip
+	player.play(clip, blend)
+	player.seek(0.0, true)
+	player.speed_scale = _shot_speed
+
+
+## Playing a one-shot that wants the feet kept still.
+func busy() -> bool:
+	return _shot != "" and _shot_still
+
+
+func flash(v: Dictionary, secs := 0.8) -> void:
+	_flash = v
+	_flash_len = maxf(secs, 0.05)
+	_flash_t = 0.0
+
+
+## ---- What's carried and how --------------------------------------------------------------
+## carry(load, res, n): the load Villager made (_hand_load) put where it's carried, the clip and
+## the hands to go with it: "box" a crate, a hod of stone, bricks, a basket of mud held in front
+## in both hands (the hands on its sides); "armful" split firewood against the chest; "log" a log
+## on the right shoulder, the right hand steadying it; "sack" a sack over the right shoulder on the
+## back, the hand at its neck; "side" a bucket of water or a basket of herbs hanging from the right
+## hand, the body leaning away from it, the free arm out. put_down(load) sets it down (the PutDown
+## clip; the load freed as it touches the ground).
+const CARRY := {"tas": "box", "komur": "box", "demir": "box", "kerpic": "box", "camur": "box", "tufek": "box",
+	"yiyecek": "sack", "su": "side", "ot": "side", "odun": "log"}
+## Per style: [bone, offset (body frame), turn (euler), upright, left hand, right hand] (hands as
+## offsets from the bone, INF: the clip's own).
+const MOUNT := {
+	"box": ["Cargo", Vector3(0, 0.12, 0.0), Vector3.ZERO, false, Vector3(-0.28, 0.12, 0.0), Vector3(0.28, 0.12, 0.0)],
+	"armful": ["Cargo", Vector3(0, 0.15, 0.08), Vector3.ZERO, false, Vector3(-0.17, 0.06, 0.07), Vector3(0.17, 0.06, 0.07)],
+	"log": ["UpperChest", Vector3(0.15, 0.21, 0.06), Vector3(PI * 0.5 + 0.1, 0.06, 0.0), false, Vector3.INF, Vector3(0.19, 0.11, -0.3)],
+	"sack": ["UpperChest", Vector3(0.07, 0.0, 0.22), Vector3(-0.2, 0.0, -0.32), false, Vector3.INF, Vector3(0.19, 0.12, -0.05)],
+	"side": ["Cargo", Vector3(0, 0.06, 0.0), Vector3.ZERO, true, Vector3.INF, Vector3.INF],
+}
+## How high each load's own origin sits over where the clip holds it (a hod's middle, the foot of
+## a stack of bricks...).
+const LOAD_LIFT := {"kerpic": -0.06, "camur": 0.0, "ot": 0.08, "su": 0.0}
+var _carry: Node3D
+var _carry_style := ""
+var _carry_lift := 0.0
+var _ghost: Node3D ## (being set down)
+var _ghost_style := ""
+var _ghost_lift := 0.0
+var _hooked := false
+
+
+func carry(load: Node3D, res: String, n: int) -> void:
+	_carry = load
+	_carry_style = ""
+	if load == null or res == "" or n <= 0 or not CARRY.has(res):
+		return
+	_carry_style = CARRY[res]
+	if res == "odun" and n > 3 and n < 10:
+		_carry_style = "armful"
+	_carry_lift = float(LOAD_LIFT.get(res, 0.0))
+	_hook()
+
+
+## Set down where it stands (the clip bending to the ground with it): true if the body takes
+## `load` and frees it itself.
+func put_down(load: Node3D) -> bool:
+	var style := _carry_style if load == _carry else ""
+	_carry = null
+	_carry_style = ""
+	if style == "" or _lying or _dead or not is_visible_in_tree():
+		return false
+	if is_instance_valid(_ghost):
+		_ghost.queue_free()
+	_ghost = load
+	_ghost_style = style
+	_ghost_lift = _carry_lift
+	gesture("PutDown", 1.3)
+	_hook()
+	return true
+
+
+func _hook() -> void:
+	if not _hooked:
+		_hooked = true
+		skeleton.skeleton_updated.connect(_place_loads)
+
+
+## (after the bones are posed: the loads where the body holds them)
+func _place_loads() -> void:
+	if is_instance_valid(_carry) and _carry_style != "":
+		_place(_carry, _carry_style, _carry_lift)
+	elif _carry != null:
+		_carry = null
+		_carry_style = ""
+	if is_instance_valid(_ghost):
+		if _shot != "PutDown" or _shot_t > _shot_len * 0.55:
+			_ghost.queue_free()
+			_ghost = null
+		else:
+			_place(_ghost, _ghost_style, _ghost_lift)
+
+
+func _place(load: Node3D, style: String, lift: float) -> void:
+	var m: Array = MOUNT[style]
+	var f := skeleton.global_transform * pose.frame(m[0])
+	var at: Vector3 = f * ((m[1] as Vector3) + Vector3(0, lift, 0))
+	var b: Basis
+	if m[3]:
+		b = global_basis.orthonormalized() # (it hangs: upright, whatever the hand does)
+		at = f.origin + Vector3(0, ((m[1] as Vector3).y + lift) * global_basis.get_scale().y, 0)
+	else:
+		b = f.basis.orthonormalized() * Basis.from_euler(m[2])
+	load.global_transform = Transform3D(b, at)
+
+
+## The hands on the load (while it's to be seen: put by while the work's done).
+func _carry_hands() -> void:
+	var on := is_instance_valid(_carry) and _carry_style != "" and _carry.visible and not busy()
+	if not on:
+		if _hands_on:
+			_hands_on = false
+			pose.release(0)
+			pose.release(1)
+		return
+	_hands_on = true
+	var m: Array = MOUNT[_carry_style]
+	for i in 2:
+		var at: Vector3 = m[4 + i]
+		if at == Vector3.INF:
+			pose.release(i)
+		else:
+			pose.reach(i, at + Vector3(0, _carry_lift, 0), m[0], 1.0)
+
+
+var _hands_on := false
+
+
+## ---- The moves for what it's doing --------------------------------------------------------
 ## Moves for `anim` (Villager._anim): a clip, and over it (for the work no clip has) the numbers
 ## Villager._animate worked out. `speed` is how fast it's going over the ground, `rate` the game's.
+var _was_walking := false
+var _yaw_prev := INF
+var _turn_t := 0.0
+var _turn_dir := 0.0
+var _kick_t := 0.0
+var _kick_sign := 0.0
+var _work_t := 0.0 ## s of its own work cycle (the spade, the herbs, the berries)
+var _beat_prev := 0.0
+var _bite := 0.0 ## (a blow just landed: the body jolted by it, easing off)
+var _stuck_t := -1.0 ## (the axe bitten in and wrenched out: s into it)
+var _stuck_v := {}
+var _basket: Node3D
+
+
 func drive(anim: String, walking: bool, speed: float, rate: float, carrying: String, vehicle: String,
 		armed: bool, v: Dictionary) -> void:
+	var real_dt := get_process_delta_time()
+	var dt := real_dt * maxf(rate, 0.01) # (the game's seconds)
+	_track(walking, real_dt, dt)
 	if _lying or Time.get_ticks_msec() < _flinch_t:
 		return
+	_carry_hands()
+	if _shot != "":
+		_shot_t += dt
+		player.speed_scale = _shot_speed * rate
+		if _shot_t < _shot_len - 0.12:
+			pose.want({}, rate)
+			pose.walking = false
+			return
+		_shot = ""
+		_clip = ""
 	var clip := "Idle"
 	var pace := rate
 	var procedural := false
+	var style := _carry_style if is_instance_valid(_carry) and _carry.visible else ""
+	var scale_now := maxf(global_basis.get_scale().y * model.scale.y, 0.2) # (a child's legs are short)
+	var stride := 1.0
+	_show_basket(anim)
 	if walking:
-		var real := speed / maxf(rate, 0.01)
-		if carrying in ["tas", "yiyecek", "su", "camur", "kerpic", "tufek"] or vehicle == "hand":
+		var real := speed / maxf(rate, 0.01) / scale_now
+		var box := style in ["box", "armful"] or (style == "" and carrying in ["tas", "yiyecek", "su", "camur", "kerpic", "tufek"])
+		if box or vehicle == "hand":
 			clip = "CarryBoxWalk"
 			pace = speed / CARRY_SPEED
+		elif style == "side":
+			clip = "CarrySideWalk"
+			pace = speed / WALK_SPEED
 		elif armed:
 			clip = "RifleWalk" if real < 2.6 else "RifleJog"
 			pace = speed / (WALK_SPEED if real < 2.6 else JOG_SPEED)
@@ -648,12 +880,21 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 		else:
 			clip = "Jog"
 			pace = speed / JOG_SPEED
-		procedural = carrying in ["odun", "yarali"] or vehicle == "ox"
+		pace /= scale_now
+		procedural = (style == "" and carrying == "odun") or carrying == "yarali" or vehicle == "ox"
+		stride = _stride()
+		pace /= stride
 	else:
 		match anim:
 			"idle", "look", "stretch":
 				clip = "RifleIdle" if armed else _idle_clip()
 				procedural = anim != "idle"
+				if style in ["box", "armful"] and anim != "stretch":
+					clip = "CarryBoxIdle"
+					procedural = false
+				elif style == "side" and anim != "stretch":
+					clip = "CarrySideIdle"
+					procedural = false
 			"chat":
 				# (talking with the hands, now and then a nod or a shake of the head)
 				var beat := int(Time.get_ticks_msec() / 6000 + _seed) % 5
@@ -670,6 +911,33 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 				clip = "ual/UalConsume"
 			"gather", "draw":
 				clip = "PickUp"
+			"berry":
+				# down on the knees at the bush (the clip kneels, then works with the hands: held
+				# there, not stood up again each time round), a hand to the berries and back to
+				# the basket at the knee
+				clip = "ual/UalFixKneeling"
+				procedural = true
+				v = _berry(dt)
+			"herb":
+				clip = "Idle"
+				procedural = true
+				v = _herb(dt)
+			"dig":
+				clip = "Idle"
+				procedural = true
+				v = _dig(dt)
+			"chop", "limb", "mine", "build":
+				clip = "Idle"
+				procedural = true
+				v = _blow(anim, v, dt)
+			"chisel":
+				clip = "Idle"
+				procedural = true
+				v = _chisel(v)
+			"saw":
+				clip = "Idle"
+				procedural = true
+				v = _saw(v)
 			"throw":
 				clip = "Throw"
 			"strike":
@@ -688,10 +956,262 @@ func drive(anim: String, walking: bool, speed: float, rate: float, carrying: Str
 		clip = side_step
 		pace = side_pace
 		procedural = false
+	elif _turn_t > 0.0 and not walking and pose.seat < 0.0 and clip in ["Idle", "ual/UalIdleFoldArms", "RifleIdle", "CarryBoxIdle", "CarrySideIdle", "ual/UalIdleTalking", "SoldierTalk", "ual/UalIdleNo"]:
+		# turning where it stands: the feet stepping round under it, not the body spun on them
+		clip = "RifleTurnInPlace" if armed else "TurnInPlace"
+		pace = rate * 1.3
 	pose.nod = 1.0 if anim == "listen" else 0.0
 	pose.bow = 1.0 if anim == "pray" else 0.0
+	pose.stride = stride
+	pose.walking = walking
 	play(clip, pace)
-	pose.want(v if procedural else {}, rate)
+	if clip == "ual/UalFixKneeling" and player.current_animation_position > 4.7:
+		player.seek(1.6, true) # (kept on its knees)
+	if walking:
+		var len := player.current_animation_length
+		pose.phase = player.current_animation_position / len if len > 0.0 else 0.0
+	var out: Dictionary = v if procedural else {}
+	out = _carry_body(style, walking, anim, out)
+	if _flash_t >= 0.0:
+		_flash_t += dt
+		var e := sin(clampf(_flash_t / _flash_len, 0.0, 1.0) * PI)
+		if _flash_t >= _flash_len:
+			_flash_t = -1.0
+		else:
+			out = out.duplicate()
+			for k: String in _flash:
+				out[k] = lerpf(float(out.get(k, TownsfolkPose.REST.get(k, 0.0))), float(_flash[k]), e)
+	pose.want(out, rate)
+
+
+## The turn where it stands and the lean starting off and stopping, read off how the body moves.
+func _track(walking: bool, real_dt: float, dt: float) -> void:
+	var yaw := global_rotation.y
+	if _yaw_prev != INF and real_dt > 0.0:
+		var dy := angle_difference(_yaw_prev, yaw)
+		if not walking and absf(dy) / real_dt > 1.4 and absf(dy) < 1.0:
+			_turn_t = 0.5
+			_turn_dir = signf(dy)
+	_yaw_prev = yaw
+	_turn_t = maxf(_turn_t - dt, 0.0)
+	pose.turn_lead = _turn_dir * 0.4 if _turn_t > 0.0 else 0.0
+	if walking != _was_walking:
+		_kick_t = 0.45
+		_kick_sign = 1.0 if walking else -0.6
+	_was_walking = walking
+	_kick_t = maxf(_kick_t - dt, 0.0)
+	pose.lean_kick = _kick_sign * 0.13 * sin(_kick_t / 0.45 * PI)
+
+
+## How long its step is against the clip's (shorter: quicker steps for the same ground).
+func _stride() -> float:
+	var s := 1.0 - 0.22 * smoothstep(0.6, 1.0, pose.age)
+	if pose.female:
+		s *= 0.93
+	s *= 1.0 - 0.12 * pose.tired
+	s *= 1.0 - 0.18 * pose.snow
+	s *= 1.0 - 0.2 * pose.mud
+	return s
+
+
+## The body under what it carries: leaning away from a bucket, under a sack, off a log.
+func _carry_body(style: String, walking: bool, anim: String, out: Dictionary) -> Dictionary:
+	if style == "" or not (walking or anim in ["idle", "look", "listen", "chat"]):
+		return out
+	var add: Dictionary
+	match style:
+		"side":
+			add = {"roll": -0.09, "abd_l": 0.3, "el": 0.25}
+		"sack":
+			add = {"lean": 0.14, "roll": -0.05, "head": -0.08}
+		"log":
+			add = {"roll": -0.06, "head": 0.04}
+		"box":
+			add = {"lean": -0.03}
+		_:
+			return out
+	out = out.duplicate()
+	for k: String in add:
+		out[k] = float(out.get(k, TownsfolkPose.REST[k])) + float(add[k])
+	return out
+
+
+## A table of keys [u, {numbers}] played at `u` (0..1): eased between, the last stretch (back to
+## the first) quickening all the way in (a blow).
+static func _keyed(table: Array, u: float, blow_last := true) -> Dictionary:
+	var n := table.size()
+	for i in n:
+		var a: Array = table[i]
+		var last := i == n - 1
+		var b: Array = table[0] if last else table[i + 1]
+		var t1 := 1.0 if last else float(b[0])
+		if u >= float(a[0]) and u < t1:
+			var k := (u - float(a[0])) / maxf(t1 - float(a[0]), 0.001)
+			k = k * k if last and blow_last else smoothstep(0.0, 1.0, k)
+			var out := {}
+			var da: Dictionary = a[1]
+			var db: Dictionary = b[1]
+			for key: String in da:
+				out[key] = lerpf(float(da[key]), float(db.get(key, da[key])), k)
+			return out
+	return (table[0][1] as Dictionary).duplicate()
+
+
+## The spade: driven in with the weight on it, levered back, the load lifted and thrown off to the
+## right, the blade brought round again.
+const DIG := [
+	[0.0, {"arm_l": -0.75, "arm_r": -0.8, "el": 0.65, "er": 0.6, "lean": 0.25, "hip_y": 0.03, "twist": 0.05, "kn": 0.05}],
+	[0.2, {"arm_l": -0.42, "arm_r": -0.38, "el": 0.35, "er": 0.28, "lean": 0.5, "hip_y": 0.12, "twist": 0.0, "kn": 0.05}],
+	[0.38, {"arm_l": -0.3, "arm_r": -0.22, "el": 0.55, "er": 0.45, "lean": 0.32, "hip_y": 0.07, "twist": 0.0, "kn": 0.05}],
+	[0.55, {"arm_l": -0.9, "arm_r": -0.95, "el": 0.95, "er": 0.85, "lean": 0.22, "hip_y": 0.05, "twist": 0.1, "kn": 0.05}],
+	[0.7, {"arm_l": -1.05, "arm_r": -1.15, "el": 0.7, "er": 0.6, "lean": 0.12, "hip_y": 0.03, "twist": -0.65, "kn": 0.05}],
+	[0.8, {"arm_l": -0.95, "arm_r": -1.05, "el": 0.6, "er": 0.5, "lean": 0.15, "hip_y": 0.03, "twist": -0.75, "kn": 0.05}],
+]
+
+
+func _dig(dt: float) -> Dictionary:
+	_work_t += dt
+	return _keyed(DIG, fmod(_work_t + _seed * 0.13, 2.4) / 2.4, false)
+
+
+## The mallet on the chisel: drawn up slow, held a beat at the top (the chest lifting with it),
+## brought down quick; the jolt of it, the mallet bouncing off.
+const CHISEL := [
+	[0.0, {"arm_l": -0.72, "arm_r": -1.12, "el": 0.82, "er": 0.42, "lean": 0.4, "head": 0.1}],
+	[0.1, {"arm_l": -0.7, "arm_r": -1.2, "el": 0.8, "er": 0.6, "lean": 0.39, "head": 0.08}],
+	[0.55, {"arm_l": -0.7, "arm_r": -1.65, "el": 0.8, "er": 1.35, "lean": 0.33, "head": 0.04}],
+	[0.75, {"arm_l": -0.7, "arm_r": -1.78, "el": 0.8, "er": 1.55, "lean": 0.3, "head": 0.02}],
+]
+
+
+func _chisel(v: Dictionary) -> Dictionary:
+	var u := float(v.get("beat", fmod(Time.get_ticks_msec() * 0.001, 0.9) / 0.9))
+	var out := _keyed(CHISEL, u)
+	out["hip_y"] = 0.03 + (0.02 if u < 0.08 else 0.0)
+	return out
+
+
+## The saw drawn to and fro: the body rocking with each stroke, the knees soft.
+func _saw(v: Dictionary) -> Dictionary:
+	var s := clampf((1.1 - float(v.get("el", 1.1))) / 0.5, -1.0, 1.0)
+	var out := v.duplicate()
+	out["hip_z"] = -s * 0.045
+	out["hip_y"] = 0.06 + absf(s) * 0.015
+	out["lean"] = float(v.get("lean", 0.3)) + s * 0.06
+	out["head"] = 0.12
+	return out
+
+
+## An axe, a pick, a hammer, as Villager swings it (its beat): the jolt of the blow through the
+## body, the tool bouncing back off the wood; now and then the axe bites in and sticks, and is
+## worked free and wrenched out, the body thrown back with it.
+func _blow(anim: String, v: Dictionary, dt: float) -> Dictionary:
+	var u := float(v.get("beat", -1.0))
+	var out := v.duplicate()
+	if u >= 0.0:
+		if u < _beat_prev - 0.5:
+			_bite = 1.0
+			if anim == "chop" and _stuck_t < 0.0 and randf() < 0.16:
+				_stuck_t = 0.0
+				_stuck_v = v.duplicate()
+		_beat_prev = u
+	_bite = maxf(_bite - dt * 6.0, 0.0)
+	var b := _bite * _bite
+	out["hip_y"] = 0.035 + b * 0.05
+	out["lean"] = float(out.get("lean", 0.0)) + b * 0.06
+	out["head"] = b * 0.08
+	out["arm_l"] = float(out.get("arm_l", 0.0)) - b * 0.1 # (the haft springing back up off it)
+	out["arm_r"] = float(out.get("arm_r", 0.0)) - b * 0.1
+	if _stuck_t >= 0.0:
+		_stuck_t += dt
+		var t := _stuck_t / 1.5
+		if t >= 1.0:
+			_stuck_t = -1.0
+		else:
+			var held := _stuck_v.duplicate()
+			var tug := 0.0
+			if t < 0.25:
+				tug = sin(t / 0.25 * PI) * 0.4 # (a first pull: it holds)
+			elif t < 0.6:
+				var e := (t - 0.25) / 0.35
+				tug = 0.5 + e * 0.5 + sin(e * TAU * 3.0) * 0.12 # (worked side to side, leaning into it)
+				held["twist"] = float(held.get("twist", 0.0)) + sin(e * TAU * 3.0) * 0.12
+			else:
+				tug = 1.0 - smoothstep(0.6, 0.72, t) * 1.6 # (it gives: thrown back a step)
+			held["lean"] = float(held.get("lean", 0.0)) - tug * 0.28
+			held["hip_y"] = 0.05 + absf(tug) * 0.08
+			held["hip_z"] = tug * 0.06
+			held["arm_l"] = float(held.get("arm_l", 0.0)) + tug * 0.3
+			held["arm_r"] = float(held.get("arm_r", 0.0)) + tug * 0.3
+			held["el"] = float(held.get("el", 0.3)) + tug * 0.25
+			held["er"] = float(held.get("er", 0.3)) + tug * 0.25
+			var back := smoothstep(0.72, 1.0, t) # (and back to the swing)
+			for k: String in held:
+				out[k] = lerpf(float(held[k]), float(out.get(k, held[k])), back)
+	return out
+
+
+## Berries: on the knees, the right hand to the bush and back to the basket at the left knee.
+func _berry(dt: float) -> Dictionary:
+	_work_t += dt
+	var u := fmod(_work_t + _seed * 0.21, 2.6) / 2.6
+	var to_bush := smoothstep(0.0, 0.3, u) * (1.0 - smoothstep(0.55, 0.8, u))
+	var pick := sin(u * TAU * 4.0) * 0.06 * to_bush
+	return {"arm_r": -0.15 - to_bush * 0.55 + pick, "er": 0.6 - to_bush * 0.35, "twist": 0.25 * (1.0 - to_bush),
+		"arm_l": -0.15, "el": 0.4, "lean": 0.1 + to_bush * 0.12, "head": 0.15}
+
+
+## Herbs: bent low over them, the left hand gathering the stalks, the sickle drawn through under
+## it; straightening a little now and then to lay a handful in the basket.
+func _herb(dt: float) -> Dictionary:
+	_work_t += dt
+	var u := fmod(_work_t + _seed * 0.17, 4.0) / 4.0
+	var up := smoothstep(0.72, 0.82, u) * (1.0 - smoothstep(0.9, 1.0, u))
+	var cut := maxf(sin(u * TAU * 5.0), 0.0) * (1.0 - up)
+	return {"lean": 1.25 - up * 0.4, "hip_y": 0.2 - up * 0.07, "hip_z": 0.07, "head": -0.35, "kn": 0.05,
+		"arm_l": -0.5 - up * 0.2, "el": 0.35 + up * 0.5, "arm_r": -0.35 - cut * 0.3 + up * 0.1, "er": 0.35 + cut * 0.4,
+		"twist": -0.1 + up * 0.35, "abd_l": 0.1}
+
+
+## The basket by it, picking berries or cutting herbs.
+func _show_basket(anim: String) -> void:
+	var want := anim in ["berry", "herb"]
+	if want and _basket == null:
+		_basket = Node3D.new()
+		add_child(_basket)
+		var mi := MeshInstance3D.new()
+		var c := CylinderMesh.new()
+		c.top_radius = 0.17
+		c.bottom_radius = 0.12
+		c.height = 0.2
+		c.radial_segments = 10
+		mi.mesh = c
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.55, 0.42, 0.25)
+		m.roughness = 1.0
+		mi.material_override = m
+		mi.position.y = 0.1
+		_basket.add_child(mi)
+		var fill := MeshInstance3D.new()
+		var s := SphereMesh.new()
+		s.radius = 0.15
+		s.height = 0.08
+		s.radial_segments = 8
+		s.rings = 4
+		fill.mesh = s
+		fill.position.y = 0.19
+		_basket.add_child(fill)
+		_basket.set_meta("fill", fill)
+	if _basket:
+		_basket.visible = want
+		if want:
+			_basket.position = Vector3(-0.42, 0.0, -0.32) if anim == "berry" else Vector3(0.45, 0.0, 0.15)
+			var fill := _basket.get_meta("fill") as MeshInstance3D
+			if fill.material_override == null or fill.get_meta("for", "") != anim:
+				var fm := StandardMaterial3D.new()
+				fm.albedo_color = Color(0.35, 0.08, 0.12) if anim == "berry" else Color(0.35, 0.5, 0.22)
+				fill.material_override = fm
+				fill.set_meta("for", anim)
 
 
 ## (Villager: shouldered aside while standing, the step's clip, WalkLeft and so on, and its pace)
@@ -704,27 +1224,39 @@ var side_pace := 1.0
 func sit(seat := 0.45, speed := 1.0) -> void:
 	pose.seat = seat
 	play("Idle", speed, 0.0)
-	pose.want({"arm_l": -0.55, "arm_r": -0.5, "el": 0.8, "er": 0.75, "lean": 0.12, "kn": 0.05}, 1.0)
+	pose.want(pose_preset("hands_on_knees"), 1.0)
 
 
 ## Down, wounded: the fall, then lying there.
 func lie() -> void:
 	_lying = true
+	_shot = ""
 	pose.seat = -1.0
 	side_step = ""
 	_clip = "Death"
 	player.play("Death", 0.15)
 	player.speed_scale = 1.0
 	pose.want({}, 1.0)
+	pose.release(0)
+	pose.release(1)
 
 
+## On its feet again: up off the ground the way one gets up from lying on one's front (it fell
+## so), then whatever it was doing.
 func stand() -> void:
+	var was := _lying
 	_lying = false
 	_clip = ""
-	play("Idle")
+	if was and not _dead:
+		gesture("GetUpFromProne", 1.0)
+	else:
+		play("Idle")
 
 
 func die() -> void:
 	play("Death", 1.0, 0.15)
 	_dead = true
+	_shot = ""
 	pose.want({}, 1.0)
+	pose.release(0)
+	pose.release(1)

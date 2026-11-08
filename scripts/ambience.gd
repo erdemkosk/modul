@@ -295,6 +295,90 @@ static func bell(at: Vector3) -> void:
 	a.play()
 
 
+## The evening's music by the square (LifeScenes' dance): a garmon (two reeds a hair apart, the
+## bellows' swell, a bass and chord on the beat) or a balalaika (plucked, the long notes
+## tremolo-picked), a short folk tune made here once, looped from where the player stands. `kind`
+## "" stops it.
+static var _tunes := {}
+var _music: AudioStreamPlayer3D
+var _music_kind := ""
+
+
+static func music(at: Vector3, kind: String) -> void:
+	if _me == null or not is_instance_valid(_me):
+		return
+	if _me._music == null:
+		_me._music = AudioStreamPlayer3D.new()
+		_me._music.unit_size = 14.0
+		_me._music.max_distance = 140.0
+		_me._music.volume_db = -3.0
+		_me.add_child(_me._music)
+	var m := _me._music
+	if kind == "":
+		if m.playing:
+			m.stop()
+		_me._music_kind = ""
+		return
+	m.global_position = at
+	if kind != _me._music_kind or not m.playing:
+		_me._music_kind = kind
+		m.stream = _tune(kind)
+		m.play()
+
+
+## The beat is LifePoses.BEAT (0.5 s a crotchet): the dancers stamp to it.
+const TUNE := [0, 0, 3, 7, 5, 3, 2, 0, 3, 3, 7, 10, 8, 7, 5, 3, 0, 0, 3, 7, 5, 3, 2, 0, -2, -2, 2, 5, 3, 2, 0, 0]
+const BASS := [-24, -17, -24, -17, -19, -12, -24, -17, -24, -17, -19, -14, -24, -17, -24, -24]
+
+
+static func _tune(kind: String) -> AudioStreamWAV:
+	if _tunes.has(kind):
+		return _tunes[kind]
+	var rate := 22050
+	var eighth := 0.25
+	var n := int(rate * eighth * TUNE.size())
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var reed := kind == "garmon"
+	for i in n:
+		var t := float(i) / rate
+		var k := int(t / eighth)
+		var tn := t - k * eighth # (into this note)
+		var f := 440.0 * pow(2.0, float(TUNE[k % TUNE.size()]) / 12.0)
+		var s := 0.0
+		if reed:
+			# two reeds, a few cents apart (the musette's beating); odd harmonics strong
+			for h: int in [1, 2, 3, 5]:
+				var amp := 1.0 / h
+				s += sin(TAU * f * h * t) * amp + sin(TAU * f * 1.004 * h * t) * amp * 0.7
+			s *= 0.16 * minf(tn / 0.02, 1.0) * (0.85 + 0.15 * sin(TAU * t / 2.0))
+		else:
+			# plucked: each note struck (twice on the long ones, the tremolo), dying away
+			var tp := fmod(tn, eighth * 0.5) if TUNE[k % TUNE.size()] == TUNE[(k + 1) % TUNE.size()] else tn
+			for h: int in [1, 2, 3, 4]:
+				s += sin(TAU * f * h * t) * exp(-tp * (6.0 + h * 5.0)) / h
+			s *= 0.32
+		# the bass and the chord: oom on the beat, pah off it
+		var q := int(t / (eighth * 2.0))
+		var tq := t - q * eighth * 2.0
+		var bf := 440.0 * pow(2.0, float(BASS[q % BASS.size()]) / 12.0)
+		if tq < eighth:
+			s += (sin(TAU * bf * t) + sin(TAU * bf * 2.0 * t) * 0.4) * 0.22 * exp(-tq * (3.0 if reed else 9.0))
+		else:
+			var ct := tq - eighth
+			for st: int in [12, 15, 19]:
+				s += sin(TAU * bf * pow(2.0, st / 12.0) * t) * 0.06 * exp(-ct * (4.0 if reed else 12.0))
+		data.encode_s16(i * 2, clampi(int(s * 0.8 * 32767.0), -32768, 32767))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.data = data
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_end = n
+	_tunes[kind] = w
+	return w
+
+
 ## An axe or a pick biting.
 static func knock(at: Vector3, pitch := 1.0) -> void:
 	play("knock_0%d" % randi_range(1, 4), at, -3.0, pitch)

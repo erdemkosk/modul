@@ -495,7 +495,7 @@ var _rifle := false
 
 ## The tool in the right hand for each kind of work.
 const TOOLS := {"mow": "scythe", "eat": "bowl", "chop": "axe", "limb": "axe", "mine": "pick", "build": "hammer", "reap": "sickle", "hoe": "hoe", "dig": "spade", "saw": "saw", "chisel": "mallet",
-	"fish": "rod", "pipe": "pipe", "whittle": "knife", "drink": "cup"}
+	"fish": "rod", "pipe": "pipe", "whittle": "knife", "drink": "cup", "herb": "sickle"}
 
 
 ## Room kept between folk: no one walks through another. Everyone on their feet out in the open is
@@ -815,7 +815,9 @@ func set_carry(res: String, n: int) -> void:
 	carry_res = res
 	carry_n = n
 	if _load:
-		_load.queue_free()
+		# (set down where it stands, the body bending to the ground with it, or just gone)
+		if not (_body and (res == "" or n <= 0) and not drafted and not armed and _body.put_down(_load)):
+			_load.queue_free()
 		_load = null
 	if res == "" or n <= 0:
 		return
@@ -825,6 +827,8 @@ func set_carry(res: String, n: int) -> void:
 		return
 	_load = _hand_load(res, n)
 	add_child(_load)
+	if _body:
+		_body.carry(_load, res, n) # (held where it's carried: on the shoulder, in the arms, from the hand)
 
 
 ## What's carried in the arms or on the shoulder, as it's carried: logs roped together, stone in a
@@ -833,6 +837,17 @@ func _hand_load(res: String, n: int) -> Node3D:
 	var at := Node3D.new()
 	var rope := Building.material("thatch")
 	match res:
+		"odun" when _body and n > 3 and n < 10:
+			# an armful of split firewood, across the arms against the chest (Townsfolk "armful")
+			at.position = Vector3(0, 1.06, -0.3)
+			var split := Node3D.new()
+			split.basis = Basis(Vector3.BACK, PI * 0.5)
+			at.add_child(split)
+			var bark := Building.material("log")
+			for k in clampi(n, 4, 7):
+				var row := k / 3
+				var col := k % 3 - 1
+				_hand_cyl(split, 0.045 + 0.008 * float(k % 2), 0.46 - 0.03 * float(k % 3), Vector3(row * 0.085, 0.015 * float(col), col * 0.09 + row * 0.04), bark)
 		"odun":
 			at.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).rotated(Vector3.UP, 0.25), Vector3(0.2, 1.5 if _body else 1.62, 0.0))
 			var logs := clampi(1 + n / 7, 1, 4)
@@ -1194,6 +1209,7 @@ func wake() -> void:
 		if _body:
 			_body.rotation = Vector3.ZERO
 			_body.position = Vector3.ZERO
+			_body.gesture("GetUp", 1.1) # (up off the ground, out of the blanket)
 		return
 	var from: Building = inside if is_instance_valid(inside) else (home if is_instance_valid(home) else null)
 	inside = null
@@ -1231,6 +1247,10 @@ func get_down() -> void:
 ## without a fire, the back bent when it's low.
 var _look_t := 0.0
 var _look_at := Vector3.INF
+var _gait_t := 0.0
+var _gait_tired := 0.0
+var _gait_snow := 0.0
+var _gait_mud := 0.0
 
 
 func _body_mood(walking: bool) -> void:
@@ -1258,6 +1278,22 @@ func _body_mood(walking: bool) -> void:
 	pose.shiver = move_toward(pose.shiver, 1.0 if freezing and not walking else 0.0, 0.02)
 	_body.cold = village.weather.temperature < 0.0
 	pose.slump = move_toward(pose.slump, 1.0 if mood < 25.0 else 0.0, 0.01)
+	# the walk: worn out (hungry, low, hurt) and the going underfoot (deep snow, mud), looked at now
+	# and then (Townsfolk / TownsfolkPose)
+	_gait_t -= get_process_delta_time()
+	if _gait_t <= 0.0:
+		_gait_t = 0.5
+		var hungry := thoughts.any(func(t: Dictionary) -> bool: return str(t.id) == "hungry")
+		_gait_tired = clampf((0.6 if hungry else 0.0) + (40.0 - mood) / 30.0 + (0.4 if hp < max_hp * 0.4 else 0.0), 0.0, 1.0)
+		_gait_snow = 0.0
+		_gait_mud = 0.0
+		if walking and nav and not nav.on_road(position):
+			var worn := nav.worn(position)
+			_gait_snow = smoothstep(0.35, 0.9, Weather.snow_cover_now) * (1.0 - 0.6 * worn)
+			_gait_mud = clampf(Weather.wet_now * (0.2 + worn * 0.8) + nav.terrain.soft_at(position.x, position.z).x * 1.5 - Weather.snow_cover_now, 0.0, 1.0)
+	pose.tired = move_toward(pose.tired, 0.0 if is_child else _gait_tired, 0.01)
+	pose.snow = move_toward(pose.snow, _gait_snow, 0.02)
+	pose.mud = move_toward(pose.mud, _gait_mud, 0.02)
 
 
 ## In the winter, the winter's clothes (a sheepskin or a greatcoat, felt boots, a fur hat or a
@@ -1378,6 +1414,7 @@ func _downed(dt: float) -> void:
 	if carried_by != null:
 		carried_by = null # (put down, or the one carrying it fell)
 		position.y = village.ground_at(position)
+	CombatPose.crawl(self, dt) # (one that fell face down may drag itself a few metres toward a door)
 	bleed -= dt
 	if bleed <= 0.0:
 		die()
@@ -1815,6 +1852,9 @@ func _walk(dt: float) -> bool:
 	in_cover = false
 	if _path_i >= _path.size():
 		return true
+	if _body and _body.busy() and team == 0:
+		_animate(dt, false) # (setting a load down, getting up off the ground: done before it walks on)
+		return false
 	if team == 1 and village.has_method("barrier_at"):
 		var bar: Dictionary = village.barrier_at(position, _path[_path_i])
 		if not bar.is_empty():
@@ -2245,7 +2285,7 @@ func _face(p: Vector3, dt: float) -> void:
 
 ## The blows' time (s), heard (Ambience.knock) and swung in time with it (_animate: the bite at the
 ## top of the beat).
-const BEATS := {"chop": 1.37, "limb": 1.2, "mine": 1.57, "chisel": 0.45, "build": 0.9}
+const BEATS := {"chop": 1.37, "limb": 1.2, "mine": 1.57, "chisel": 0.9, "build": 0.9}
 ## A blow as it's dealt, keyed through its beat (0 the bite): the follow-through after it, the tool
 ## freed and lifted, drawn back slow with the weight going onto the back foot, held a moment at
 ## the top, then brought in hard (eased in: quickest at the end). [t, twist, arm_l, arm_r, el, er,
@@ -2580,8 +2620,11 @@ func _animate(dt: float, walking: bool) -> void:
 		else:
 			_body.side_step = ""
 		_body_mood(walking)
+		if LifePoses.drive(self, walking):
+			return # (the daily round's own moves: the yoke, the shovel, the chain, the dance...)
 		_body.drive(_anim, walking, _speed_now, _rate(), carry_res if carry_n > 0 else "", vehicle, _rifle,
-			{"arm_l": arm_l, "arm_r": arm_r, "el": el, "er": er, "lean": lean, "twist": twist, "kn": kn})
+			{"arm_l": arm_l, "arm_r": arm_r, "el": el, "er": er, "lean": lean, "twist": twist, "kn": kn,
+			"beat": 1.0 - clampf(_hit_t / float(BEATS.get(_anim, 1.0)), 0.0, 1.0)}) # (beat: 0 the blow lands)
 		return
 	var k := 1.0 - exp(-14.0 * dt)
 	# Sitting: down on the ground, the knees up a little.
