@@ -4,11 +4,6 @@ extends Node3D
 ## placed by tools/world/build_world.py; models from assets/nature/, made by
 ## tools/blender/build_nature.py).
 ##
-## The baked placements name one model per prop (spruce_a, rock_b...); each is drawn as one of its
-## species' variants (nature.json "species": spruce_a..e, rock_a..e, log, log_b and the branch heap),
-## picked by where it stands, so the same valley looks the same every run.
-## The models' colours are in their vertices (painted and shaded in Blender, as the buildings are).
-##
 ## Drawing: each model has a detailed LOD0 and a cheap LOD1. LOD1 copies sit in MultiMeshes per
 ## 128 m chunk and kind, drawn out to the kind's far range. Every quarter second the props within
 ## the kind's near range of the camera move to one LOD0 MultiMesh per kind (their LOD1 copy is
@@ -31,8 +26,7 @@ const PAD := 8.0 ## The near set reaches this far past the near range, so it sti
 const FOLIAGE := ["Needles", "Leaves", "LeavesAutumn", "FernLeaf"]
 ## The LOD1 copies of the kinds seen from far off go in bigger chunks: each chunk is a draw call
 ## in every pass, and 128 m ones made thousands of them for trees seen across the whole basin.
-## (512 m for trees: with five variants to a species, 384 m ones made too many.)
-const FAR_CHUNK := {"tree": 512.0, "cliff": 512.0, "rock": 256.0, "iron": 256.0, "coal": 256.0}
+const FAR_CHUNK := {"tree": 384.0, "cliff": 512.0, "rock": 256.0, "iron": 256.0, "coal": 256.0}
 
 ## Per model kind: near (LOD0) range, far (LOD1) range (0 = no LOD1 at all), shadows of LOD1.
 const RANGES := {
@@ -51,7 +45,6 @@ var terrain: WorldTerrain
 static var detail := 1.0 ## the near ranges' share (Graphics: a lower quality draws the trees in full less far off)
 
 var _models: Array[Dictionary] = [] ## Per kind index: {id, kind, info, lod0, lod1, near, far}
-var _pool := {} ## baked model index -> the model indices it may be drawn as (its species' variants)
 var _xf: Array[Transform3D] = []
 var _kind := PackedInt32Array()
 var _tint := PackedFloat32Array()
@@ -82,22 +75,6 @@ func _ready() -> void:
 		info = JSON.parse_string(FileAccess.get_file_as_string(NATURE_DIR + "nature.json"))
 	for id: String in terrain.meta.props:
 		_models.append(_load_model(id, info.get(id, {})))
-	# The other variants in the set, after the baked ones (whose indices the placements use).
-	# (only species the valley has placements for: the set's reeds are WorldDecor's)
-	var baked := {}
-	for m in _models:
-		baked[_species(m)] = true
-	for id: String in info:
-		if not id in terrain.meta.props and baked.has(str((info[id] as Dictionary).get("species", id.get_slice("_", 0)))):
-			_models.append(_load_model(id, info[id]))
-	var by_species := {}
-	for k in _models.size():
-		var sp := _species(_models[k])
-		if not by_species.has(sp):
-			by_species[sp] = []
-		(by_species[sp] as Array).append(k)
-	for k in terrain.meta.props.size():
-		_pool[k] = by_species[_species(_models[k])]
 	for ore: String in ORES:
 		var m := _ore_model(ore, ORES[ore].colour, str(ORES[ore].get("kind", ore)))
 		if not m.is_empty():
@@ -167,10 +144,6 @@ func _load_model(id: String, info: Dictionary) -> Dictionary:
 	}
 
 
-static func _species(m: Dictionary) -> String:
-	return str((m.info as Dictionary).get("species", str(m.id).get_slice("_", 0)))
-
-
 static func _guess_kind(id: String) -> String:
 	for k in ["cliff", "rock", "bush", "fern", "stump", "log"]:
 		if id.begins_with(k):
@@ -216,10 +189,14 @@ func _with_nature_materials(mesh: Mesh, kind: String, height: float, lod_role :=
 		elif src:
 			mat_name = src.resource_name
 		var foliage := mat_name in FOLIAGE
+		if mat_name == "Bark":
+			col = BARK
+		elif mat_name == "Wood":
+			col = CUT_WOOD
 		mat.set_shader_parameter("albedo", col)
 		mat.set_shader_parameter("roughness", rough)
 		mat.set_shader_parameter("leaf", 1.0 if foliage else 0.0)
-		mat.set_shader_parameter("broadleaf", 1.0 if mat_name in ["Leaves", "LeavesAutumn"] else 0.0) # (juniper keeps its needles)
+		mat.set_shader_parameter("broadleaf", 1.0 if mat_name in ["Leaves", "LeavesAutumn"] or (foliage and kind == "bush") else 0.0)
 		mat.set_shader_parameter("model_height", maxf(height, 0.5))
 		mat.set_shader_parameter("lod_role", lod_role)
 		mat.set_shader_parameter("lod_near", lod_near)
@@ -300,9 +277,6 @@ func _load_props() -> void:
 	for i in count:
 		var o := i * 6
 		var k := int(data[o + 3])
-		var pool: Array = _pool[k]
-		if pool.size() > 1:
-			k = pool[int(fposmod(sin(data[o] * 91.17 + data[o + 2] * 47.61) * 24634.6345, 1.0) * pool.size()) % pool.size()]
 		var s := data[o + 4]
 		if _models[k].kind == "bush":
 			s *= 0.7 # smaller tufts: a bush by the road, not a wall of leaves filling the view
@@ -330,42 +304,7 @@ func _load_props() -> void:
 			if tilt.cross(Vector3.UP).length() > 0.001:
 				basis = Basis(Quaternion(Vector3.UP, tilt)) * basis
 			var low := minf(minf(hx0, hx1), minf(hz0, hz1))
-			if model.kind == "rock":
-				y = minf(y, low - (0.1 + 0.35 * minf(slope * 3.0, 1.0)) * s)
-			else:
-				# A cliff is leaned 0.6 of the way to the slope, so only the rest of the fall under
-				# its low side is left, and its own rock runs on ~2 m under its foot: it's let down
-				# only as far as that needs, its face standing out of the hill (sunk to the lowest
-				# corner's ground, it was buried whole on the steep faces it stands on).
-				var centre := terrain.height_at(px, pz)
-				y = minf(y, centre - maxf(0.0, 0.4 * (centre - low) - 1.6 * s) - 0.15 * s)
-		elif model.kind == "log":
-			# A fallen trunk lies along the ground: tipped to the slope along its length and across it,
-			# and let down to the ground between its two ends.
-			var ax := basis.orthonormalized() * Vector3.RIGHT
-			var half := float(model.info.get("length", 6.0)) * 0.5 * s
-			var px := data[o]
-			var pz := data[o + 2]
-			var h0 := terrain.height_at(px - ax.x * half, pz - ax.z * half)
-			var h1 := terrain.height_at(px + ax.x * half, pz + ax.z * half)
-			var side := Vector3(-ax.z, 0.0, ax.x)
-			var hs0 := terrain.height_at(px - side.x, pz - side.z)
-			var hs1 := terrain.height_at(px + side.x, pz + side.z)
-			var along := Vector3(ax.x * 2.0 * half, h1 - h0, ax.z * 2.0 * half).normalized()
-			var across := Vector3(side.x * 2.0, hs1 - hs0, side.z * 2.0).normalized()
-			var up := along.cross(across).normalized()
-			if up.y < 0.0:
-				up = -up
-			basis = Basis(Quaternion(Vector3.UP, up)) * basis
-			y = minf(y, minf((h0 + h1) * 0.5, terrain.height_at(px, pz)) - 0.06 * s)
-		elif model.kind in ["tree", "stump", "bush"]:
-			# On a slope the trunk's foot goes down to the ground on its low side (the roots and the
-			# trunk run on under it), so no root or trunk hangs over a gap.
-			var r := (0.9 if model.kind == "tree" else 0.6) * s
-			var px := data[o]
-			var pz := data[o + 2]
-			var low := minf(minf(terrain.height_at(px - r, pz), terrain.height_at(px + r, pz)), minf(terrain.height_at(px, pz - r), terrain.height_at(px, pz + r)))
-			y = minf(y, low + 0.08 * s)
+			y = minf(y, low - (0.1 + 0.35 * minf(slope * 3.0, 1.0)) * s)
 		_xf[i] = Transform3D(basis, Vector3(data[o], y, data[o + 2]))
 		_kind[i] = k
 		_tint[i] = fposmod(sin(data[o] * 12.9898 + data[o + 2] * 78.233) * 43758.5453, 1.0)
@@ -459,9 +398,8 @@ func _ore_model(ore: String, colour: Color, kind: String) -> Dictionary:
 		var m: Dictionary = rock.duplicate()
 		m.id = "ore_" + ore
 		m.kind = kind
-		# (the stone's own grey is in its vertices, about half bright: the seam's colour over it)
-		m.lod0 = _recoloured(rock.lod0, colour * 1.8)
-		m.lod1 = _recoloured(rock.lod1, colour * 1.8)
+		m.lod0 = _recoloured(rock.lod0, colour)
+		m.lod1 = _recoloured(rock.lod1, colour)
 		return m
 	return {}
 

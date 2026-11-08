@@ -121,14 +121,33 @@ func _clump_mesh() -> ArrayMesh:
 
 # --- Water ------------------------------------------------------------------------------------------
 
-## Reeds and rushes in the shallows round the lake: clumps of blades and bulrushes where the bank
-## goes under the water (assets/nature/reeds.glb, tools/blender/build_nature.py: its colours in its
-## vertices, as the trees' are), sunk to the bed so none stands on the water.
+## Reeds and rushes in the shallows round the lake: clumps of thin blades where the bank goes under
+## the water, browner toward the tips, swaying with the grass's wind.
 func _reeds(lake: Dictionary) -> void:
-	var mesh := _reed_mesh()
+	var blade := CylinderMesh.new()
+	blade.top_radius = 0.0
+	blade.bottom_radius = 0.025
+	blade.height = 1.6
+	blade.radial_segments = 3
+	blade.rings = 1
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.36, 0.42, 0.18)
+	m.roughness = 0.9
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	blade.material = m
+	var head := CylinderMesh.new()
+	head.top_radius = 0.035
+	head.bottom_radius = 0.035
+	head.height = 0.22
+	head.radial_segments = 5
+	head.rings = 1
+	var hm := StandardMaterial3D.new()
+	hm.albedo_color = Color(0.32, 0.2, 0.11)
+	head.material = hm
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9091
-	var clumps: Array[Transform3D] = []
+	var blades: Array[Transform3D] = []
+	var heads: Array[Transform3D] = []
 	var lvl := terrain.lake_level
 	for k in 900:
 		var a := rng.randf() * TAU
@@ -137,46 +156,29 @@ func _reeds(lake: Dictionary) -> void:
 		var h := terrain.height_at(c.x, c.z)
 		if h < lvl - 0.6 or h > lvl + 0.35:
 			continue # (only where the bank goes under the water)
-		for b in rng.randi_range(2, 4):
+		for b in rng.randi_range(5, 9):
 			var p := c + Vector3(rng.randf_range(-0.5, 0.5), 0, rng.randf_range(-0.5, 0.5))
-			var s := rng.randf_range(0.7, 1.25)
-			var tilt := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.0, 0.12))
-			var at := Vector3(p.x, maxf(terrain.height_at(p.x, p.z), lvl - 0.6), p.z)
-			clumps.append(Transform3D(tilt * Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.85, 1.15), s)), at))
-	if clumps.is_empty() or mesh == null:
-		return
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	mm.instance_count = clumps.size()
-	for i in clumps.size():
-		mm.set_instance_transform(i, clumps[i])
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = mm
-	mi.visibility_range_end = 260.0
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-
-
-## The reed clump's detailed mesh, its stuffs given plain vertex-coloured materials, both sides drawn.
-func _reed_mesh() -> Mesh:
-	var path := WorldProps.NATURE_DIR + "reeds.glb"
-	if not ResourceLoader.exists(path):
-		return null
-	var scene := (load(path) as PackedScene).instantiate()
-	var out: Mesh = null
-	for n: MeshInstance3D in scene.find_children("LOD0*", "MeshInstance3D", true, false):
-		out = n.mesh.duplicate() as Mesh
-	scene.free()
-	if out == null:
-		return null
-	for s in out.get_surface_count():
-		var m := StandardMaterial3D.new()
-		m.vertex_color_use_as_albedo = true
-		m.roughness = 0.9
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		(out as ArrayMesh).surface_set_material(s, m)
-	return out
+			var tall := rng.randf_range(0.7, 1.3)
+			var tilt := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.0, 0.18))
+			var at := Vector3(p.x, maxf(terrain.height_at(p.x, p.z), lvl - 0.6) + 0.8 * tall, p.z)
+			blades.append(Transform3D(tilt * Basis.from_scale(Vector3(1, tall, 1)), at))
+			if rng.randf() < 0.2:
+				heads.append(Transform3D(tilt, at + tilt * Vector3(0, 0.7 * tall, 0)))
+	for pair: Array in [[blade, blades], [head, heads]]:
+		var list: Array = pair[1]
+		if list.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = pair[0]
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.visibility_range_end = 260.0
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
 
 
 func _build_water() -> void:

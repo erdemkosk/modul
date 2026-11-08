@@ -301,8 +301,8 @@ func _unhandled_input(e: InputEvent) -> void:
 					hud.toggle_log()
 				elif _placing != "":
 					stop_placing()
-				elif hud.build_keys:
-					hud.build_keys = false # (the numbers are the groups' again)
+				elif hud.build_keys or hud.build_open():
+					hud.close_build() # (the tray sinks; the numbers are the groups' again)
 				elif selected or selected_villager:
 					select(null)
 				else:
@@ -335,7 +335,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				set_speed(Hud.SPEEDS[maxi(Hud.SPEEDS.find(Engine.time_scale) - 1, 0)])
 			KEY_TAB:
-				hud.show_category(hud.category + 1)
+				hud.cycle_build()
 				hud.build_keys = true
 			KEY_F:
 				ignite_selected()

@@ -5,8 +5,9 @@ extends CanvasLayer
 ##   top left     the store (all the stores' goods together), the people, the free hands
 ##   top right    the day, the hour, the weather; the next raid; the game's speed (click to set)
 ##   top middle   news, a few lines at a time, fading
-##   bottom       the buildings to put up, in four groups (tabs), the keys on each; what's being
-##                placed and why it can't go there above them
+##   bottom       the build tray: five group medallions on a walnut plinth, the chosen group's
+##                buildings on a tray over it (BuildTray); what's being placed and why it can't go
+##                there above them
 ##   right        the chosen building's card (its work, its stuff, its workers, mend, pull down) or
 ##                the chosen settler's (its work, its home; free it, or right-click a workplace to
 ##                put it to work there)
@@ -30,7 +31,7 @@ const SPEEDS := [1.0, 2.0, 4.0]
 const KEYS := [
 	["Kamera", [[["W", "A", "S", "D"], "kaydır"], [["Shift"], "hızlı kaydır"], [["Q", "E"], "döndür (orta tuşla da)"],
 		[["Tekerlek"], "yakınlaş"], [["H"], "depoya dön"], [["Home"], "seçileni izle"], [["Harita"], "tıklanan yere git"]]],
-	["Bina", [[["Tab"], "bina grubu, sonra 1–6 bina seçer"], [["1", "–", "6"], "bina seç (Tab'dan, sekmeden sonra)"], [["Sol tık"], "koy"], [["Shift", "+", "tık"], "üst üste koy"],
+	["Bina", [[["Tab"], "bina tepsisini aç, sonraki grup"], [["1", "–", "9"], "bina seç (Tab'dan, madalyondan sonra)"], [["Esc", "/", "Sağ tık"], "tepsiyi kapat (tepsinin üstünde)"], [["Sol tık"], "koy"], [["Shift", "+", "tık"], "üst üste koy"],
 		[["Q", "/", "E"], "çevir"], [["Shift", "+", "Tekerlek"], "çevir"], [["Alt"], "hizasız koy"], [["Sağ tık", "/", "Esc"], "vazgeç"]]],
 	["Emirler", [[["Sürükle"], "kesim, tuzak, mayın alanı"], [["Çizgi"], "hendek: boştakiler kazar"], [["Sağ tık"], "işareti kaldır (kimse seçili değilken)"]]],
 	["Seçim", [[["Sol tık"], "bina ya da kasabalı"], [["Shift", "+", "tık"], "birkaç kasabalı"], [["Sürükle"], "kutuyla seç"],
@@ -49,8 +50,9 @@ const COVER := [["Kütük duvar", "0,22"], ["Kum torbası", "0,28"], ["Hendek", 
 	["Ağaç", "0,60"], ["Duvar dibi, köşe", "0,65"]]
 
 var game: Node
-var category := 0
-var build_keys := false ## Tab pressed or a tab clicked: the numbers pick a building of the group, not the folk kept under them (Main)
+var category: int: ## the group shown in the build tray
+	get: return _tray.category if _tray else 0
+var build_keys := false ## Tab pressed or a medallion clicked: the numbers pick a building of the group, not the folk kept under them (Main)
 
 var _res: Dictionary = {} ## good -> [row, amount Label, change Label]
 const GOODS := ["odun", "tas", "yiyecek", "camur", "kerpic", "ot", "komur", "demir"]
@@ -70,8 +72,7 @@ var _raid: Label
 var _speed_buttons: Array[Button] = []
 var _hint: Label
 var _toasts: VBoxContainer
-var _tabs: Array[Button] = []
-var _build_row: HBoxContainer
+var _squad: SquadBar ## everyone in hand, over the build tray
 var _card: PanelContainer
 var _card_title: Label
 var _card_kind: Label ## printed at the head of the card: what sort of record it is
@@ -166,13 +167,12 @@ func _ready() -> void:
 		keys.add_child(b)
 	if _test_panel:
 		_test_panel.move_to_front()
-	var squad := SquadBar.new()
-	squad.game = game
-	squad.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	squad.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	squad.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	squad.offset_bottom = -208
-	add_child(squad)
+	_squad = SquadBar.new()
+	_squad.game = game
+	_squad.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_squad.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_squad.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(_squad)
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -202,7 +202,7 @@ func _ready() -> void:
 	_test_plate()
 	_make_help()
 	_make_pause()
-	show_category(0)
+	_stack_over_tray()
 
 
 func _plate(lean := true, fill := Ui.GLASS) -> PanelContainer:
@@ -580,18 +580,7 @@ func _test_plate() -> void:
 			r.add_child(b)
 
 
-var _tray: PanelContainer
-var _tab_row: HBoxContainer
-var _build_info: PanelContainer ## the card over the bar naming what the mouse is on
-var _info_pic: Control
-var _info_name: Label
-var _info_gives: Label
-var _info_costs: GridContainer
-var _info_work: Label
-var _info_desc: Label
-var _info_lock: Label
-var _info_at := 0.0 ## where along the card its notch points
-var _info_tex: Texture2D
+var _tray: BuildTray ## the build tray at the foot of the view (build_tray.gd)
 
 # The bar's palette: the top bars' leather, their cream, brass; the enamel of the season dial.
 const _AMBER := Ui.ACCENT ## brass
@@ -600,192 +589,83 @@ const _BRASS_LO := Color(0.36, 0.25, 0.11)
 const _FROST := Ui.INK ## cream lettering
 const _ENAMEL := Color(0.94, 0.9, 0.8)
 const _ENAMEL_LO := Color(0.82, 0.76, 0.64)
-const _LEATHER := Color(0.25, 0.18, 0.13) ## (Ui.PAPER: the tabs are cut from the same hide)
+const _LEATHER := Color(0.25, 0.18, 0.13) ## (Ui.PAPER)
 const _SHORT := Color(0.78, 0.2, 0.1) ## the red of what can't be paid for
-const _MEDAL_R := 44.0
-const TILE := Vector2(118, 124) ## a building's card on the board
 
 
 func _build_bar() -> void:
-	# The station master's board along the foot of the view: the leather of the bars above, its
-	# worn lower edge off the bottom of the screen; the groups as folder tabs standing up out of it,
-	# the chosen one cut from the same hide so it runs on into the board unbroken; the buildings as
-	# enamel medallions in brass bezels, as the season dial is, each with its engraved plate.
-	var p := PanelContainer.new()
-	var sb := Ui.paper(8.0)
-	sb.content_margin_left = 30
-	sb.content_margin_right = 30
-	sb.content_margin_top = 18
-	sb.content_margin_bottom = 26
-	p.add_theme_stylebox_override("panel", sb)
-	p.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	p.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	p.offset_bottom = 12 # (its worn foot below the screen's edge: the board sits on it)
-	add_child(p)
-	_tray = p
-	_build_row = HBoxContainer.new()
-	_build_row.add_theme_constant_override("separation", 6)
-	_build_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	p.add_child(_build_row)
-	_tab_row = HBoxContainer.new()
-	_tab_row.top_level = true # (placed by hand on the board's top edge, over it)
-	_tab_row.add_theme_constant_override("separation", 3)
-	p.add_child(_tab_row)
-	for i in CATS.size():
-		var t := Button.new()
-		t.text = Ui.upper(str(CATS[i][0]))
-		t.focus_mode = Control.FOCUS_NONE
-		t.tooltip_text = "Tab: sonraki grup"
-		t.custom_minimum_size = Vector2(0, 30)
-		t.add_theme_font_override("font", Ui.face("head", 14))
-		t.add_theme_font_size_override("font_size", 14)
-		t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.45))
-		t.add_theme_constant_override("outline_size", 2)
-		t.pressed.connect(func() -> void:
-			show_category(i)
-			build_keys = true)
-		_tab_row.add_child(t)
-		_tabs.append(t)
-	p.resized.connect(_place_tabs)
-	_tab_row.resized.connect(_place_tabs)
-	_make_build_info()
+	# The build tray along the foot of the view: the walnut plinth with the groups' brass
+	# medallions, the tray rising over it with the buildings (BuildTray).
+	_tray = BuildTray.new()
+	_tray.game = game
+	_tray.hud = self
+	add_child(_tray)
+	_tray.reach_changed.connect(_stack_over_tray)
 	_hint = Ui.label(self, "", 17, Ui.INK, "strong")
-	_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE) # (the screen's width: centred, whatever it says)
 	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_hint.offset_top = -236
-	_hint.offset_bottom = -204
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## The tabs set on the board's top edge, in the middle.
-func _place_tabs() -> void:
-	if _tab_row == null or _tray == null:
+## What stands over the tray (the placing plate, the hint, the muster slip) kept just over its top as
+## it rises and sinks.
+func _stack_over_tray() -> void:
+	if _tray == null:
 		return
-	_tab_row.reset_size()
-	var w := _tab_row.size.x
-	var want := w + 90.0 # (the board never narrower than its tabs, whatever the group holds)
-	if absf(_tray.custom_minimum_size.x - want) > 1.0:
-		_tray.custom_minimum_size.x = want
-		return # (resized: called again)
-	_tab_row.global_position = Vector2(_tray.global_position.x + (_tray.size.x - w) * 0.5, _tray.global_position.y - _tab_row.size.y + 5.0)
+	var top := -roundf(_tray.reach + 8.0)
+	if _placing_plate:
+		_placing_plate.offset_bottom = top
+	if _squad:
+		_squad.offset_bottom = top
+	if _hint:
+		var over := top
+		if _placing_plate and _placing_plate.visible:
+			over -= _placing_plate.size.y + 6.0
+		elif _squad and _squad.visible:
+			over -= _squad.size.y + 6.0
+		_hint.offset_bottom = over
+		_hint.offset_top = over - 32.0
 
 
-## A group's tab: a flap of the board's leather with a stitched brass edge; the chosen one the same
-## hide as the board, reaching down over its edge so the two are one piece; the rest a shade darker,
-## standing behind.
+## A button of the placing plate's: cream capitals on a walnut key with a brass rim, the rim
+## brightening under the mouse; pressed, pale brass with the letters dark.
 static func _tab_style(on: bool, hover: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = _LEATHER.lightened(0.02) if on else (_LEATHER.darkened(0.2) if hover else _LEATHER.darkened(0.36))
-	s.border_color = Color(_AMBER, 0.85) if on else Color(0.62, 0.5, 0.34, 0.45 if hover else 0.28)
-	s.border_width_top = 1
-	s.border_width_left = 1
-	s.border_width_right = 1
-	s.corner_radius_top_left = 6
-	s.corner_radius_top_right = 6
-	s.content_margin_left = 18
-	s.content_margin_right = 18
+	s.bg_color = BuildTray.C_BRASS if on else (Color("3e2b19") if hover else Color("2c1f12"))
+	s.border_color = BuildTray.C_BRASS_HI if on else (BuildTray.C_FRAME_HI if hover else Color(BuildTray.C_BRASS, 0.55))
+	s.set_border_width_all(1)
+	s.border_width_bottom = 2
+	s.set_corner_radius_all(3)
+	s.content_margin_left = 16
+	s.content_margin_right = 16
 	s.content_margin_top = 4
-	if on:
-		s.expand_margin_bottom = 12 # (down over the board's worn edge: one hide)
-		s.shadow_color = Color(0, 0, 0, 0.25)
-		s.shadow_size = 3
-		s.shadow_offset = Vector2(0, -1)
+	s.content_margin_bottom = 4
+	s.shadow_color = Color(0, 0, 0, 0.35)
+	s.shadow_size = 2
+	s.shadow_offset = Vector2(0, 1)
+	s.anti_aliasing = true
 	return s
 
 
-## The group's buildings along the board (Tab, or its tab), each medallion coming up in turn.
+## The tray up with group `i` in it (Tab, a medallion).
 func show_category(i: int) -> void:
-	category = posmod(i, CATS.size())
-	for k in _tabs.size():
-		var on := k == category
-		_tabs[k].add_theme_stylebox_override("normal", _tab_style(on, false))
-		_tabs[k].add_theme_stylebox_override("hover", _tab_style(on, true))
-		_tabs[k].add_theme_stylebox_override("pressed", _tab_style(true, true))
-		_tabs[k].add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		_tabs[k].add_theme_color_override("font_color", _AMBER_HI if on else _FROST.darkened(0.3))
-		_tabs[k].add_theme_color_override("font_hover_color", _AMBER_HI if on else _FROST)
-		_tabs[k].add_theme_color_override("font_pressed_color", _AMBER_HI)
-	for c in _build_row.get_children():
-		c.queue_free()
-	if _build_info:
-		_build_info.visible = false
-	var kinds: Array = CATS[category][1]
-	for k in kinds.size():
-		var b := _build_button(kinds[k], k)
-		_build_row.add_child(b)
-		b.modulate.a = 0.0
-		var tw := b.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw.tween_interval(0.03 * k)
-		tw.tween_method(func(v: float) -> void:
-			b.set_meta("enter", v)
-			b.modulate.a = v
-			b.queue_redraw(), 0.0, 1.0, 0.22)
-	_place_tabs.call_deferred()
+	_tray.open_category(i)
 
 
-## A build medallion: the engraved plate (assets/ui/plates, tools/ink_plates.py) on cream enamel in
-## a brass bezel, its key on a small plaque at the top. Lifts and warms under the mouse; the card
-## over the board names it. Shows how many stand (a brass coin), whether the stores can't pay for it
-## (the bezel's foot red), a new one (a red dot), the one in hand (lit), a locked one (greyed, a lock).
-func _build_button(kind: String, k: int) -> Button:
-	var def: Dictionary = ORDERS[kind] if ORDERS.has(kind) else BuildingDefs.DEFS[kind]
-	var b := Button.new()
-	b.custom_minimum_size = TILE
-	b.focus_mode = Control.FOCUS_NONE
-	b.set_meta("title", str(def.name))
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
-	b.set_meta("kind", kind)
-	b.set_meta("key", k)
-	b.set_meta("lift", 0.0)
-	b.set_meta("enter", 0.0)
-	var pic := "atolye" if kind == "oduncu" else kind # (the workshop: its four trades)
-	for path in ["res://assets/ui/plates/%s.png" % kind, "res://assets/ui/icons/%s.png" % pic]:
-		if ResourceLoader.exists(path):
-			b.set_meta("tex", load(path))
-			break
-	b.pressed.connect(func() -> void: game.start_placing(kind))
-	b.draw.connect(func() -> void: _draw_medal(b))
-	var lift_to := func(to: float) -> void:
-		var tw := b.create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.tween_method(func(v: float) -> void:
-			b.set_meta("lift", v)
-			b.queue_redraw(), float(b.get_meta("lift")), to, 0.13)
-	b.mouse_entered.connect(func() -> void:
-		lift_to.call(1.0)
-		if b.get_meta("new", false):
-			b.set_meta("new", false)
-			_seen_new[kind] = true
-		_show_build_info(b, kind, def))
-	b.mouse_exited.connect(func() -> void:
-		lift_to.call(0.0)
-		_build_info.visible = false)
-	b.button_down.connect(func() -> void: lift_to.call(0.25))
-	b.button_up.connect(func() -> void: lift_to.call(1.0 if b.is_hovered() else 0.0))
-	# (kept for the frame's update: the cost's figures, coloured as the stores stand)
-	var costs := HBoxContainer.new()
-	costs.visible = false
-	b.add_child(costs)
-	var nums: Array = []
-	if not ORDERS.has(kind):
-		var cost: Dictionary = BuildingDefs.DEFS[kind].cost
-		for r: String in cost:
-			var n := Ui.label(costs, str(int(cost[r])), 13, _FROST, "type_bold")
-			nums.append([r, n])
-	var lock := Ui.label(b, "", 10, _SHORT, "type_bold")
-	lock.visible = false
-	var needs := str(def.get("needs", ""))
-	if needs != "":
-		b.set_meta("needs", needs)
-	b.set_meta("costs", nums)
-	b.set_meta("cost_row", costs)
-	b.set_meta("lock_label", lock)
-	return b
+## Tab: the tray up, or on to the next group.
+func cycle_build() -> void:
+	_tray.cycle()
 
 
-var _seen_new := {} ## kinds whose "new" dot has been seen (moused over) since they were unlocked
+## The tray sunk (Esc, a right-click on it); the numbers are the groups' again.
+func close_build() -> void:
+	_tray.close()
+	build_keys = false
+
+
+func build_open() -> bool:
+	return _tray != null and _tray.is_open
 
 
 ## The ink drawings of the goods as pale marks on the leather (they're drawn dark for paper).
@@ -801,229 +681,9 @@ static func _pale_mat() -> ShaderMaterial:
 	return _pale
 
 
-## A medallion drawn at `ctr`, radius `r`: shadow, bezel, enamel face, plate. (The card's picture
-## uses it too.)
-func _medal(c: CanvasItem, ctr: Vector2, r: float, tex: Texture2D, warm: float, grey: bool, short: bool, held: float) -> void:
-	# the shadow it throws on the leather
-	c.draw_circle(ctr + Vector2(0, r * 0.1 + 2.0), r + 3.0, Color(0, 0, 0, 0.16))
-	c.draw_circle(ctr + Vector2(0, r * 0.06 + 1.0), r + 1.0, Color(0, 0, 0, 0.32))
-	# warm light round it under the mouse, or in hand
-	var glow := maxf(warm, held)
-	if glow > 0.01:
-		for k in 5:
-			c.draw_circle(ctr, r + 3.0 + float(5 - k) * 2.4, Color(1.0, 0.72, 0.35, 0.05 * glow))
-	# the bezel: dark brass at its rim, bright through its middle, lit at the upper left
-	var lit := 0.25 * warm + 0.35 * held
-	c.draw_circle(ctr, r, _BRASS_LO)
-	c.draw_circle(ctr, r - 1.4, _AMBER.darkened(0.1).lerp(_AMBER_HI, lit))
-	c.draw_arc(ctr, r - 3.2, PI * 1.0, PI * 1.8, 28, Color(_AMBER_HI, 0.85), 2.2, true)
-	c.draw_arc(ctr, r - 3.2, PI * 0.05, PI * 0.8, 28, Color(_BRASS_LO, 0.55), 2.0, true)
-	if short: # (the foot of the bezel in the red, as a gauge past its mark)
-		c.draw_arc(ctr, r - 2.4, PI * 0.36, PI * 0.64, 16, Color(_SHORT, 0.9), 2.0, true)
-	c.draw_circle(ctr, r - 6.0, _BRASS_LO.darkened(0.3))
-	# the enamel face: lit from the upper left, deeper toward its rim
-	var face := _ENAMEL if not grey else Color(0.66, 0.65, 0.62)
-	var face_lo := _ENAMEL_LO if not grey else Color(0.52, 0.51, 0.49)
-	c.draw_circle(ctr, r - 7.0, face_lo)
-	c.draw_circle(ctr + Vector2(-1.2, -1.6), r - 9.0, face_lo.lerp(face, 0.6))
-	c.draw_circle(ctr + Vector2(-2.6, -3.4), r - 13.0, face)
-	c.draw_circle(ctr + Vector2(-r * 0.25, -r * 0.3), r * 0.42, Color(1, 1, 1, 0.12))
-	if held > 0.01:
-		c.draw_arc(ctr, r - 8.5, 0.0, TAU, 48, Color(_AMBER, 0.8 * held), 2.0, true)
-	if tex:
-		var s := (r - 8.0) * 1.9
-		c.draw_texture_rect(tex, Rect2(ctr - Vector2(s, s) * 0.5 + Vector2(0, 1.0), Vector2(s, s)), false, Color(1, 1, 1, 0.32) if grey else (Color(1, 1, 1, 0.78) if short else Color(1, 1, 1)))
-	# the glaze: a thin bright crescent along the top of the face
-	c.draw_arc(ctr, r - 8.5, PI * 1.15, PI * 1.6, 20, Color(1, 1, 1, 0.35), 1.2, true)
-
-
-func _draw_medal(b: Button) -> void:
-	var t: float = b.get_meta("lift", 0.0)
-	var enter: float = b.get_meta("enter", 1.0)
-	var locked: bool = b.get_meta("locked", false)
-	var short: bool = b.get_meta("short", false)
-	var held: float = 1.0 if b.get_meta("held", false) else 0.0
-	var card := Rect2(Vector2(3.0, 5.0 - 4.0 * t - 1.0 * held + (1.0 - enter) * 14.0), TILE - Vector2(6.0, 10.0))
-	b.draw_rect(Rect2(card.position + Vector2(0, 3), card.size), Color(0, 0, 0, 0.42), true)
-	var glow := maxf(t * (0.4 if locked else 1.0), held)
-	if glow > 0.01:
-		b.draw_rect(card.grow(3.0), Color(1.0, 0.72, 0.35, 0.3 * glow), true)
-	var paper := Color(0.9, 0.83, 0.69).lerp(Color(0.97, 0.9, 0.74), glow)
-	if locked:
-		paper = Color(0.62, 0.58, 0.51)
-	b.draw_rect(card, paper, true)
-	b.draw_rect(card.grow(-3.0), Color(0.36, 0.24, 0.13, 0.35), false, 1.0)
-	b.draw_rect(card, _BRASS_LO if held <= 0.0 else _AMBER, false, 2.0)
-	var tex: Texture2D = b.get_meta("tex", null)
-	if tex:
-		var pic := Rect2(card.position + Vector2((card.size.x - 84.0) * 0.5, 4.0), Vector2(84, 84))
-		b.draw_texture_rect(tex, pic, false, Color(0.55, 0.53, 0.5, 0.75) if locked else Color.WHITE)
-	# its name along the foot, smaller if it's long
-	var title := str(b.get_meta("title", ""))
-	var size := 14
-	var f := Ui.face("strong", size)
-	while size > 10 and f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > card.size.x - 8.0:
-		size -= 1
-	var w := f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	b.draw_string(f, Vector2(card.position.x + (card.size.x - w) * 0.5, card.end.y - 8.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, _SHORT if short and not locked else Ui.P_INK)
-	# its key, top left
-	var kf := Ui.face("type_bold", 12)
-	var key := str(int(b.get_meta("key", 0)) + 1)
-	b.draw_rect(Rect2(card.position + Vector2(4, 4), Vector2(16, 15)), Color(0.27, 0.19, 0.13), true)
-	b.draw_string(kf, card.position + Vector2(8, 16), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.INK)
-	# how many stand: a brass coin, top right
-	var count: int = b.get_meta("count", 0)
-	if count > 0:
-		var cc := card.position + Vector2(card.size.x - 15.0, 15.0)
-		b.draw_circle(cc + Vector2(0, 1.5), 10.5, Color(0, 0, 0, 0.4))
-		b.draw_circle(cc, 10.0, _BRASS_LO)
-		b.draw_circle(cc, 8.8, _AMBER)
-		var cs := str(count)
-		var cw := kf.get_string_size(cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		b.draw_string(kf, cc + Vector2(-cw * 0.5, 4.5), cs, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ui.P_INK)
-	# new: a red dot
-	if b.get_meta("new", false):
-		var nc := card.position + Vector2(card.size.x - 12.0, 34.0)
-		b.draw_circle(nc, 5.5, _SHORT.lightened(0.1))
-	# locked: a padlock on the picture
-	if locked:
-		var lc := card.position + Vector2(card.size.x * 0.5, 54.0)
-		var ink := Color(Ui.P_INK, 0.9)
-		b.draw_arc(lc + Vector2(0, -5.5), 5.0, PI, TAU, 14, ink, 2.0, true)
-		b.draw_rect(Rect2(lc + Vector2(-7.5, -5.5), Vector2(15, 11)), Color(0.6, 0.59, 0.56), true)
-		b.draw_rect(Rect2(lc + Vector2(-7.5, -5.5), Vector2(15, 11)), ink, false, 1.4)
-
-
-## The card over the board: the building's medallion small and its name, what it brings; under a
-## brass rule what it takes (each good: what's in the stores against what's needed, red if short),
-## who works it; what it's for; how to unlock it if it's locked.
-func _make_build_info() -> void:
-	_build_info = PanelContainer.new()
-	var ib := Ui.paper(6.0)
-	ib.content_margin_left = 20
-	ib.content_margin_right = 22
-	ib.content_margin_top = 14
-	ib.content_margin_bottom = 16
-	_build_info.add_theme_stylebox_override("panel", ib)
-	_build_info.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_info.visible = false
-	_build_info.top_level = true
-	add_child(_build_info)
-	_build_info.draw.connect(func() -> void:
-		var bx := clampf(_info_at, 18.0, _build_info.size.x - 18.0)
-		var y := _build_info.size.y
-		_build_info.draw_colored_polygon(PackedVector2Array([Vector2(bx - 9, y - 7), Vector2(bx + 9, y - 7), Vector2(bx, y + 6)]), _LEATHER.darkened(0.25)))
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_info.add_child(col)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 12)
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(head)
-	_info_pic = Control.new()
-	_info_pic.custom_minimum_size = Vector2(52, 52)
-	_info_pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_info_pic.draw.connect(func() -> void: _medal(_info_pic, Vector2(26, 26), 25.0, _info_tex, 0.0, false, false, 0.0))
-	head.add_child(_info_pic)
-	var names := VBoxContainer.new()
-	names.add_theme_constant_override("separation", 0)
-	names.alignment = BoxContainer.ALIGNMENT_CENTER
-	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(names)
-	_info_name = Ui.label(names, "", 20, _AMBER_HI, "head")
-	_info_gives = Ui.label(names, "", 15, _FROST.darkened(0.05), "italic")
-	var rule := ColorRect.new()
-	rule.color = Color(_AMBER, 0.35)
-	rule.custom_minimum_size = Vector2(0, 1)
-	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(rule)
-	_info_costs = GridContainer.new()
-	_info_costs.columns = 3
-	_info_costs.add_theme_constant_override("h_separation", 8)
-	_info_costs.add_theme_constant_override("v_separation", 2)
-	_info_costs.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(_info_costs)
-	_info_work = Ui.label(col, "", 14, _FROST.darkened(0.05), "italic")
-	_info_desc = Ui.label(col, "", 15, Color(0.95, 0.9, 0.8), "text")
-	_info_desc.add_theme_constant_override("line_spacing", 3)
-	_info_lock = Ui.label(col, "", 14, Color(1.0, 0.56, 0.42), "type_bold")
-	for l: Label in [_info_name, _info_gives, _info_work, _info_desc, _info_lock]:
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		l.add_theme_constant_override("outline_size", 0) # (no halo on the leather: it muddies the letters)
-
-
-## `s` broken into lines of at most `n` letters, at the spaces.
-static func _wrap(s: String, n: int) -> String:
-	var out := ""
-	var line := ""
-	for w in s.split(" ", false):
-		if line.length() + w.length() + 1 > n and line != "":
-			out += line + "\n"
-			line = w
-		else:
-			line = w if line == "" else line + " " + w
-	return out + line
-
-
-func _show_build_info(b: Button, kind: String, def: Dictionary) -> void:
-	_info_tex = b.get_meta("tex", null)
-	_info_pic.queue_redraw()
-	_info_name.text = Ui.upper(str(def.name))
-	var gives := str(def.gives) if ORDERS.has(kind) else str(BuildingDefs.GIVES.get(kind, ""))
-	_info_gives.text = gives
-	_info_gives.visible = gives != ""
-	for c in _info_costs.get_children():
-		c.queue_free()
-	var stock: Dictionary = game.village.stock if game.village else {}
-	if ORDERS.has(kind):
-		Ui.label(_info_costs, "", 12, _FROST)
-		Ui.label(_info_costs, "bedava", 14, _FROST, "italic")
-		Ui.label(_info_costs, "", 12, _FROST)
-	else:
-		var cost: Dictionary = BuildingDefs.DEFS[kind].cost
-		for good: String in cost:
-			var icn := TextureRect.new()
-			if ResourceLoader.exists("res://assets/ui/ink/%s.png" % good):
-				icn.texture = load("res://assets/ui/ink/%s.png" % good)
-			icn.custom_minimum_size = Vector2(22, 22)
-			icn.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			icn.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			icn.material = _pale_mat()
-			_info_costs.add_child(icn)
-			var have := int(stock.get(good, 0))
-			var need := int(cost[good])
-			var fig := Ui.label(_info_costs, "%d / %d" % [have, need], 16, _FROST if have >= need else Color(1.0, 0.56, 0.42), "type_bold")
-			fig.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-			fig.add_theme_constant_override("outline_size", 0)
-			var gn := Ui.label(_info_costs, str(BuildingDefs.RES_NAMES.get(good, good)).to_lower(), 15, _FROST.darkened(0.05), "italic")
-			gn.add_theme_constant_override("outline_size", 0)
-	var slots := int(def.get("slots", 0))
-	_info_work.text = "%d kişi çalışır" % slots if slots > 0 else ""
-	_info_work.visible = slots > 0
-	_info_desc.text = _wrap(str(def.desc), 44)
-	var locked: bool = b.get_meta("locked", false)
-	_info_lock.visible = locked
-	if locked:
-		_info_lock.text = _wrap("Kilitli: okuma odasında %s araştırılınca açılır" % BuildingDefs.TECHS[b.get_meta("needs")].name, 44)
-	_build_info.visible = true
-	_build_info.reset_size()
-	await get_tree().process_frame
-	if not is_instance_valid(b) or not _build_info.visible:
-		return
-	_build_info.reset_size()
-	var w := _build_info.size.x
-	var mid := b.global_position.x + b.size.x * 0.5
-	var x := clampf(mid - w * 0.5, 8.0, get_viewport().get_visible_rect().size.x - w - 8.0)
-	_build_info.global_position = Vector2(x, _tab_row.global_position.y - _build_info.size.y - 12.0)
-	_info_at = mid - x
-	_build_info.queue_redraw()
-
-
 ## The kind under key `n` (0-based) in the shown group, or "".
 func kind_at(n: int) -> String:
-	var kinds: Array = CATS[category][1]
-	return kinds[n] if n >= 0 and n < kinds.size() else ""
+	return _tray.kind_at(n)
 
 
 var _dial: SeasonDial
@@ -1362,11 +1022,17 @@ func _help_heading(parent: Control, text: String) -> void:
 
 ## While a building's being placed: turn it, or give up, with the mouse.
 func _make_placing() -> void:
-	_placing_plate = _plate(false)
+	# (a small board of the tray's walnut, over it)
+	_placing_plate = PanelContainer.new()
+	var pad := StyleBoxEmpty.new()
+	pad.set_content_margin_all(12)
+	_placing_plate.add_theme_stylebox_override("panel", pad)
+	var board := BuildTray._board_style("shelf", [56, 56, 56, 56])
+	_placing_plate.draw.connect(func() -> void:
+		BuildTray.draw_board(_placing_plate, board, Rect2(Vector2(-BuildTray.SHADOW, -BuildTray.SHADOW), _placing_plate.size + Vector2.ONE * BuildTray.SHADOW * 2.0)))
 	_placing_plate.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_placing_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_placing_plate.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_placing_plate.offset_bottom = -188 # (above the build bar and its tabs)
 	_placing_plate.visible = false
 	add_child(_placing_plate)
 	var row := HBoxContainer.new()
@@ -1398,7 +1064,7 @@ func _iron_button(text: String, f: Callable, tip: String) -> Button:
 	b.add_theme_font_size_override("font_size", 13)
 	b.add_theme_color_override("font_color", _FROST.darkened(0.15))
 	b.add_theme_color_override("font_hover_color", _AMBER_HI)
-	b.add_theme_color_override("font_pressed_color", _AMBER)
+	b.add_theme_color_override("font_pressed_color", Color("2c1f12"))
 	b.add_theme_stylebox_override("normal", _tab_style(false, false))
 	b.add_theme_stylebox_override("hover", _tab_style(false, true))
 	b.add_theme_stylebox_override("pressed", _tab_style(true, true))
@@ -2269,33 +1935,8 @@ func _process(dt: float) -> void:
 	for k in _speed_buttons.size():
 		var on := is_equal_approx(now, 0.0 if k == 0 else SPEEDS[k - 1])
 		_speed_buttons[k].add_theme_stylebox_override("normal", Ui.ink_box(Ui.P_INK, 0.0, 0.5, on))
-	for b: Node in _build_row.get_children():
-		if b.has_meta("kind") and BuildingDefs.DEFS.has(b.get_meta("kind")):
-			var can := true
-			var cost: Dictionary = BuildingDefs.DEFS[b.get_meta("kind")].cost
-			for r: String in cost:
-				if int(stock.get(r, 0)) < int(cost[r]):
-					can = false
-			var row := b.get_meta("cost_row") as Control
-			var lock := b.get_meta("lock_label") as Label
-			var locked: bool = b.has_meta("needs") and not game.village.knows(str(b.get_meta("needs")))
-			row.visible = false
-			lock.visible = false
-			var kind: String = b.get_meta("kind")
-			var was_locked: bool = b.get_meta("locked", false)
-			if was_locked and not locked and not _seen_new.has(kind):
-				b.set_meta("new", true) # (just unlocked: a red dot till it's looked at)
-			var count := 0
-			for o in v.buildings:
-				if o.kind == kind and o.state != "gone":
-					count += 1
-			var held: bool = game._placing == kind
-			if was_locked != locked or bool(b.get_meta("short", false)) != (not can) or int(b.get_meta("count", 0)) != count or bool(b.get_meta("held", false)) != held:
-				b.set_meta("locked", locked)
-				b.set_meta("short", not can)
-				b.set_meta("count", count)
-				b.set_meta("held", held)
-				(b as Control).queue_redraw()
+	_tray.refresh(stock)
+	_stack_over_tray()
 	_update_card()
 
 

@@ -1,533 +1,236 @@
 {
  "spruce_a": {
   "kind": "tree",
-  "species": "spruce",
   "height": 19.5,
-  "trunk_radius": 0.307,
+  "trunk_radius": 0.286,
   "collision": "trunk",
-  "crown_radius": 3.5,
+  "crown_radius": 3.53,
   "crown_base": 2.4,
   "tris": [
-   4742,
-   225
+   6618,
+   318
   ]
  },
  "spruce_b": {
   "kind": "tree",
-  "species": "spruce",
   "height": 23.5,
-  "trunk_radius": 0.36,
+  "trunk_radius": 0.348,
   "collision": "trunk",
-  "crown_radius": 3.33,
+  "crown_radius": 4.17,
   "crown_base": 5.0,
   "tris": [
-   5122,
-   225
+   5948,
+   318
   ]
  },
  "spruce_c": {
   "kind": "tree",
-  "species": "spruce",
   "height": 14.5,
-  "trunk_radius": 0.227,
+  "trunk_radius": 0.209,
   "collision": "trunk",
-  "crown_radius": 3.2,
-  "crown_base": 0.6,
+  "crown_radius": 3.22,
+  "crown_base": 0.7,
   "tris": [
-   3884,
-   225
-  ]
- },
- "spruce_d": {
-  "kind": "tree",
-  "species": "spruce",
-  "height": 17.5,
-  "trunk_radius": 0.271,
-  "collision": "trunk",
-  "crown_radius": 3.3,
-  "crown_base": 1.5,
-  "tris": [
-   4464,
-   225
-  ]
- },
- "spruce_e": {
-  "kind": "tree",
-  "species": "spruce",
-  "height": 21.0,
-  "trunk_radius": 0.32,
-  "collision": "trunk",
-  "crown_radius": 3.23,
-  "crown_base": 3.4,
-  "tris": [
-   4838,
-   225
+   5790,
+   318
   ]
  },
  "pine_a": {
   "kind": "tree",
-  "species": "pine",
-  "height": 17.5,
-  "trunk_radius": 0.317,
+  "height": 17.53,
+  "trunk_radius": 0.267,
   "collision": "trunk",
-  "crown_radius": 4.0,
-  "crown_base": 10.0,
+  "crown_radius": 5.33,
+  "crown_base": 10.04,
   "tris": [
-   5684,
-   505
+   7428,
+   380
   ]
  },
  "pine_b": {
   "kind": "tree",
-  "species": "pine",
-  "height": 19.5,
-  "trunk_radius": 0.345,
+  "height": 19.45,
+  "trunk_radius": 0.309,
   "collision": "trunk",
-  "crown_radius": 4.2,
-  "crown_base": 12.5,
+  "crown_radius": 5.82,
+  "crown_base": 12.76,
   "tris": [
-   5025,
-   445
-  ]
- },
- "pine_c": {
-  "kind": "tree",
-  "species": "pine",
-  "height": 15.0,
-  "trunk_radius": 0.273,
-  "collision": "trunk",
-  "crown_radius": 4.4,
-  "crown_base": 7.5,
-  "tris": [
-   6316,
-   565
-  ]
- },
- "pine_d": {
-  "kind": "tree",
-  "species": "pine",
-  "height": 18.0,
-  "trunk_radius": 0.321,
-  "collision": "trunk",
-  "crown_radius": 3.9,
-  "crown_base": 11.0,
-  "tris": [
-   5684,
-   505
-  ]
- },
- "pine_e": {
-  "kind": "tree",
-  "species": "pine",
-  "height": 12.5,
-  "trunk_radius": 0.239,
-  "collision": "trunk",
-  "crown_radius": 3.0,
-  "crown_base": 5.0,
-  "tris": [
-   6280,
-   565
+   7532,
+   440
   ]
  },
  "birch_a": {
   "kind": "tree",
-  "species": "birch",
   "height": 13.0,
-  "trunk_radius": 0.188,
+  "trunk_radius": 0.161,
   "collision": "trunk",
-  "crown_radius": 3.7,
-  "crown_base": 4.16,
+  "crown_radius": 4.96,
+  "crown_base": 3.72,
   "tris": [
-   3944,
-   585
+   7242,
+   506
   ]
  },
  "birch_b": {
   "kind": "tree",
-  "species": "birch",
-  "height": 11.7,
-  "trunk_radius": 0.17,
+  "height": 11.68,
+  "trunk_radius": 0.14,
   "collision": "trunk",
-  "crown_radius": 3.7,
-  "crown_base": 3.74,
+  "crown_radius": 5.28,
+  "crown_base": 3.79,
   "tris": [
-   3928,
-   585
-  ]
- },
- "birch_c": {
-  "kind": "tree",
-  "species": "birch",
-  "height": 14.0,
-  "trunk_radius": 0.195,
-  "collision": "trunk",
-  "crown_radius": 3.2,
-  "crown_base": 4.48,
-  "tris": [
-   3944,
-   585
-  ]
- },
- "birch_d": {
-  "kind": "tree",
-  "species": "birch",
-  "height": 10.5,
-  "trunk_radius": 0.184,
-  "collision": "trunk",
-  "crown_radius": 3.6,
-  "crown_base": 3.36,
-  "tris": [
-   4852,
-   802
-  ]
- },
- "birch_e": {
-  "kind": "tree",
-  "species": "birch",
-  "height": 12.0,
-  "trunk_radius": 0.173,
-  "collision": "trunk",
-  "crown_radius": 4.0,
-  "crown_base": 3.84,
-  "tris": [
-   3928,
-   585
+   6528,
+   440
   ]
  },
  "dead_tree": {
   "kind": "tree",
-  "species": "dead",
   "height": 11.2,
-  "trunk_radius": 0.313,
+  "trunk_radius": 0.28,
   "collision": "trunk",
-  "crown_radius": 2.5,
+  "crown_radius": 3.0,
   "crown_base": 2.5,
   "tris": [
-   628,
+   871,
    72
-  ]
- },
- "dead_tree_b": {
-  "kind": "tree",
-  "species": "dead",
-  "height": 8.5,
-  "trunk_radius": 0.32,
-  "collision": "trunk",
-  "crown_radius": 2.5,
-  "crown_base": 2.5,
-  "tris": [
-   645,
-   81
-  ]
- },
- "log": {
-  "kind": "log",
-  "species": "log",
-  "height": 0.44,
-  "radius": 0.22,
-  "length": 6.0,
-  "axis": "x",
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.22,
-   0.0
-  ],
-  "tris": [
-   434,
-   45
-  ]
- },
- "log_b": {
-  "kind": "log",
-  "species": "log",
-  "height": 0.44,
-  "radius": 0.22,
-  "length": 6.0,
-  "axis": "x",
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.22,
-   0.0
-  ],
-  "tris": [
-   220,
-   30
-  ]
- },
- "branches": {
-  "kind": "log",
-  "species": "log",
-  "height": 0.7,
-  "radius": 0.35,
-  "length": 2.2,
-  "axis": "x",
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.35,
-   0.0
-  ],
-  "tris": [
-   960,
-   105
-  ]
- },
- "stump": {
-  "kind": "stump",
-  "species": "stump",
-  "height": 0.55,
-  "radius": 0.3,
-  "trunk_radius": 0.3,
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.275,
-   0.0
-  ],
-  "tris": [
-   296,
-   18
-  ]
- },
- "stump_b": {
-  "kind": "stump",
-  "species": "stump",
-  "height": 0.55,
-  "radius": 0.3,
-  "trunk_radius": 0.3,
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.275,
-   0.0
-  ],
-  "tris": [
-   252,
-   18
-  ]
- },
- "stump_c": {
-  "kind": "stump",
-  "species": "stump",
-  "height": 0.42,
-  "radius": 0.3,
-  "trunk_radius": 0.3,
-  "collision": "cylinder",
-  "center": [
-   0.0,
-   0.21,
-   0.0
-  ],
-  "tris": [
-   296,
-   18
   ]
  },
  "bush_a": {
   "kind": "bush",
-  "species": "bush",
-  "height": 1.7,
+  "height": 1.71,
   "radius": 0.75,
   "collision": "none",
   "tris": [
-   608,
-   60
+   2272,
+   140
   ]
  },
  "bush_b": {
   "kind": "bush",
-  "species": "bush",
-  "height": 1.5,
-  "radius": 0.8,
+  "height": 1.22,
+  "radius": 0.85,
   "collision": "none",
   "tris": [
-   392,
-   120
-  ]
- },
- "bush_c": {
-  "kind": "bush",
-  "species": "bush",
-  "height": 0.75,
-  "radius": 1.2,
-  "collision": "none",
-  "tris": [
-   768,
+   798,
    60
   ]
  },
  "fern": {
   "kind": "fern",
-  "species": "fern",
   "height": 0.67,
   "radius": 0.74,
   "collision": "none",
   "tris": [
-   288,
-   288
-  ]
- },
- "fern_b": {
-  "kind": "fern",
-  "species": "fern",
-  "height": 0.47,
-  "radius": 0.52,
-  "collision": "none",
-  "tris": [
-   288,
-   288
-  ]
- },
- "reeds": {
-  "kind": "decor",
-  "species": "reeds",
-  "height": 1.8,
-  "collision": "none",
-  "tris": [
-   174,
-   72
+   952,
+   112
   ]
  },
  "rock_a": {
   "kind": "rock",
-  "species": "rock",
-  "height": 1.5,
+  "height": 1.28,
   "collision": "box",
   "size": [
-   1.53,
-   1.5,
-   1.36
+   1.35,
+   1.28,
+   1.28
   ],
   "center": [
-   0.0,
-   0.75,
-   0.0
+   0.14,
+   0.64,
+   -0.18
   ],
   "tris": [
-   320,
-   80
+   1280,
+   160
   ]
  },
  "rock_b": {
   "kind": "rock",
-  "species": "rock",
-  "height": 2.2,
+  "height": 2.01,
   "collision": "box",
   "size": [
-   2.21,
-   2.2,
-   1.87
+   2.24,
+   2.01,
+   1.52
   ],
   "center": [
-   0.0,
-   1.1,
-   0.0
+   0.05,
+   1.0,
+   -0.04
   ],
   "tris": [
-   320,
-   80
+   1280,
+   180
   ]
  },
  "rock_c": {
   "kind": "rock",
-  "species": "rock",
-  "height": 0.85,
+  "height": 0.73,
   "collision": "box",
   "size": [
-   2.12,
-   0.85,
-   1.78
+   2.24,
+   0.73,
+   1.93
   ],
   "center": [
-   0.0,
-   0.42,
-   0.0
+   -0.08,
+   0.37,
+   0.15
   ],
   "tris": [
-   320,
-   80
-  ]
- },
- "rock_d": {
-  "kind": "rock",
-  "species": "rock",
-  "height": 1.4,
-  "collision": "box",
-  "size": [
-   2.38,
-   1.4,
-   2.04
-  ],
-  "center": [
-   0.0,
-   0.7,
-   0.0
-  ],
-  "tris": [
-   480,
-   120
-  ]
- },
- "rock_e": {
-  "kind": "rock",
-  "species": "rock",
-  "height": 0.85,
-  "collision": "box",
-  "size": [
-   1.02,
-   0.85,
-   0.85
-  ],
-  "center": [
-   0.0,
-   0.42,
-   0.0
-  ],
-  "tris": [
-   320,
-   80
+   1280,
+   140
   ]
  },
  "cliff_a": {
   "kind": "cliff",
-  "species": "cliff",
   "height": 4.75,
   "collision": "box",
   "size": [
-   6.29,
+   6.25,
    4.75,
    4.84
   ],
   "center": [
-   0.0,
+   -0.15,
    2.38,
-   0.0
+   0.32
   ],
   "tris": [
-   1680,
-   320
+   3840,
+   420
   ]
  },
- "cliff_b": {
-  "kind": "cliff",
-  "species": "cliff",
-  "height": 5.4,
-  "collision": "box",
-  "size": [
-   5.27,
-   5.4,
-   3.91
-  ],
+ "stump": {
+  "kind": "stump",
+  "height": 0.6,
+  "radius": 0.3,
+  "collision": "cylinder",
   "center": [
    0.0,
-   2.7,
+   0.3,
    0.0
   ],
   "tris": [
-   1680,
-   320
+   471,
+   119
+  ]
+ },
+ "log": {
+  "kind": "log",
+  "height": 0.4,
+  "radius": 0.2,
+  "length": 6.0,
+  "axis": "x",
+  "collision": "cylinder",
+  "center": [
+   0.0,
+   0.2,
+   0.0
+  ],
+  "tris": [
+   837,
+   139
   ]
  }
 }

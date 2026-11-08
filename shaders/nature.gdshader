@@ -5,12 +5,11 @@ render_mode cull_disabled;
 // swaying in the global wind (trunks bend from the base, leaves and needles flutter),
 // darkening when wet and catching snow on upward faces.
 //
-// The look is a painted miniature, made as the buildings are (tools/blender/build_nature.py):
-// the colours are painted into the models' vertices, the shade of a crown's inside and of the
-// ground baked into them. A crown is lit as one rounded shape (the normals are bent out from the
-// crown's middle), light at the top and dark underneath, glowing where the sun comes through;
-// each tree a shade of its own; broadleaves turn through the autumn (gold, orange, a few red,
-// some still green) and drop their leaves. Bark, rock and wood keep the model's colours.
+// The look is a painted miniature. A crown is one mass of colour, not thousands of leaves:
+// each tree takes a single colour from a small palette (conifers in deep greens; broadleaves
+// through the autumn: green-gold, gold, orange, red), lit as one rounded shape (the normals
+// are bent out from the crown's middle), light at the top and dark underneath, glowing where
+// the sun comes through. Bark, rock and wood keep the model's colours, softened.
 
 uniform vec3 albedo : source_color = vec3(0.5);
 uniform float roughness = 0.85;
@@ -39,7 +38,6 @@ global uniform vec4 view_focus; // xyz: what the view is on (your machine); w: 1
 uniform vec4 view_folk[6];
 
 varying vec3 w_normal;
-varying float v_up; // the face's own upward facing (the snow lies on it, not on the crown's bent normal)
 varying float v_tint;
 varying float v_hf;
 varying float v_pick;
@@ -100,7 +98,6 @@ void vertex() {
 	float bend = (0.6 + 0.4 * sin(t * (0.7 + gust * 0.8) + phase)) * (0.25 + strength) + sin(t * 1.9 + phase * 1.3) * 0.15 * gust;
 	vec3 world_off = vec3(dir.x, 0.0, dir.y) * bend * hf * hf * sway * 0.55;
 	vec3 n = NORMAL;
-	vec3 own = NORMAL;
 	if (leaf > 0.5) {
 		float f = sin(t * 7.0 + dot(VERTEX, vec3(3.1, 2.3, 4.7)) + phase) * (0.02 + 0.05 * strength + 0.04 * gust);
 		world_off += vec3(f, f * 0.5, f * 0.7) * hf;
@@ -116,26 +113,23 @@ void vertex() {
 	VERTEX += (inverse(mat3(MODEL_MATRIX)) * world_off);
 	NORMAL = n;
 	w_normal = normalize(mat3(MODEL_MATRIX) * n);
-	v_up = normalize(mat3(MODEL_MATRIX) * own).y;
 	w_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_base_y = MODEL_MATRIX[3].y;
 	v_tint = INSTANCE_CUSTOM.r;
 }
 
-// The crown's painted colour (the model's vertices), made this tree's own: a little lighter or
-// darker, warmer or greener (never bluer). Broadleaves turn in the autumn (season_autumn, Seasons):
-// mostly gold and orange, some still green, a few red, each tree on its own day (pick), keeping the
-// painted light and shade; the last leaves hanging on into the winter dead and brown.
-vec3 crown_colour(vec3 painted, float pick, float tint) {
-	vec3 c = painted * mix(0.88, 1.1, tint) * vec3(mix(0.95, 1.08, pick), 1.0, mix(1.0, 0.86, pick));
+vec3 crown_colour(float pick) {
 	if (broadleaf > 0.5) {
-		float lum = dot(painted, vec3(0.3, 0.59, 0.11)) * 2.3;
-		vec3 turned = pick < 0.2 ? c : (pick < 0.55 ? vec3(0.86, 0.62, 0.2) : (pick < 0.82 ? vec3(0.82, 0.42, 0.13) : vec3(0.66, 0.2, 0.1))) * lum;
+		// Green in spring and summer (a fresh birch green, a darker one), turning in the autumn
+		// (season_autumn, Seasons): mostly gold and orange, some still green, a few red; each tree
+		// turns on its own day (pick), not all at once.
+		vec3 green = mix(vec3(0.3, 0.48, 0.12), vec3(0.45, 0.6, 0.16), fract(pick * 7.13));
+		vec3 turned = pick < 0.22 ? vec3(0.42, 0.55, 0.14) : (pick < 0.52 ? vec3(0.9, 0.62, 0.12) : (pick < 0.8 ? vec3(0.92, 0.4, 0.09) : vec3(0.78, 0.17, 0.08)));
 		float t = smoothstep(fract(pick * 3.71) * 0.7, fract(pick * 3.71) * 0.7 + 0.3, season_autumn);
-		c = mix(c, turned, t);
-		c = mix(c, vec3(0.36, 0.25, 0.13) * lum, smoothstep(0.3, 0.8, season_bare)); // the last ones dead and brown
+		return mix(green, turned, t);
 	}
-	return c;
+	// Conifers: deep, slightly blue greens, a few brighter.
+	return mix(vec3(0.05, 0.16, 0.11), vec3(0.15, 0.29, 0.12), pick);
 }
 
 void fragment() {
@@ -199,8 +193,11 @@ void fragment() {
 	}
 	vec3 c = albedo * COLOR.rgb;
 	if (leaf > 0.5) {
-		c = crown_colour(c, v_pick, v_tint);
-		c *= mix(0.8, 1.06, smoothstep(0.1, 0.95, v_hf)); // darker under the crown, light at the top (the rest is baked)
+		c = crown_colour(v_pick) * mix(0.92, 1.08, v_tint);
+		if (broadleaf > 0.5) {
+			c = mix(c, vec3(0.36, 0.24, 0.12), smoothstep(0.3, 0.8, season_bare)); // the last ones dead and brown
+		}
+		c *= mix(0.5, 1.12, smoothstep(0.1, 0.95, v_hf)); // dark under the crown, light at the top
 	} else {
 		// Bark, rock, wood: the model's own colour, a touch warmer and cleaner.
 		float l = dot(c, vec3(0.3, 0.59, 0.11));
@@ -221,7 +218,7 @@ void fragment() {
 			c = mix(c, c * vec3(0.55, 0.52, 0.5), max(crack * 0.7, streak * 0.35 * (1.0 - w_normal.y)) * k);
 			c = mix(c, c * vec3(0.78, 0.72, 0.62), smoothstep(0.55, 0.8, big) * 0.5); // iron and dust
 			float up = smoothstep(0.45, 0.85, w_normal.y + (mid - 0.5) * 0.5);
-			c = mix(c, vec3(0.3, 0.34, 0.16), up * smoothstep(0.45, 0.7, big + mid * 0.3) * 0.25); // moss, lichen (the models' own is painted on)
+			c = mix(c, vec3(0.22, 0.26, 0.13), up * smoothstep(0.45, 0.7, big + mid * 0.3) * 0.55); // moss, lichen
 			float foot = 1.0 - smoothstep(0.0, 1.2, w_pos.y - (v_base_y + 0.3));
 			c = mix(c, vec3(0.16, 0.13, 0.09), foot * 0.5); // earth splashed up the foot
 		}
@@ -229,9 +226,9 @@ void fragment() {
 	float wet = weather_wetness * (leaf > 0.5 ? 0.35 : 0.8);
 	c *= mix(1.0, 0.6, wet);
 	float rough = mix(roughness, 0.4, wet);
-	float up = leaf > 0.5 ? mix(v_up, w_normal.y, 0.35) : w_normal.y;
+	float up = w_normal.y;
 	float snow = smoothstep(0.25, 0.7, up * weather_snow * 1.3 - (1.0 - weather_snow) * 0.2);
-	c = mix(c, vec3(0.9, 0.9, 0.89), snow);
+	c = mix(c, vec3(0.88, 0.9, 0.95), snow);
 	ALBEDO = c;
 	ROUGHNESS = mix(leaf > 0.5 ? 0.9 : rough, 0.75, snow);
 	SPECULAR = leaf > 0.5 ? 0.15 : 0.3;
